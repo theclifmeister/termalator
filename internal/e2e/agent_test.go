@@ -461,7 +461,7 @@ func TestSmokeMakeRun(t *testing.T) {
 
 // agentWait bounds waits in agent scenarios. Every hook the fake fires
 // starts a tm process; a race-built tm can take a second to start on
-// some macOS versions, so the smoke set (E2E_RACE=1) waits longer.
+// some macOS versions, so a race-built run (E2E_RACE=1) waits longer.
 var agentWait = func() time.Duration {
 	if os.Getenv("E2E_RACE") == "1" {
 		return 90 * time.Second

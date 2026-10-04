@@ -65,7 +65,9 @@ jobs:
       - name: selftest
         run: ./bin/tm selftest
 
-      # End-to-end smoke set (internal/e2e TestSmoke*), tm built with -race.
+      # End-to-end smoke set (internal/e2e TestSmoke*), without -race: a
+      # race-built tm starts slowly and every agent hook starts one. The
+      # race-built smoke set runs nightly (nightly.yml).
       - name: e2e smoke
         run: make e2e-smoke
         env:
