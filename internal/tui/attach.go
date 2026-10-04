@@ -34,6 +34,11 @@ import (
 // then % or " splits the focused pane and starts a shell beside or below
 // it (panes.go holds the layout); each pane has its own connection,
 // mirror and renderer.
+//
+// A thread's pane is watch-only: the user talks to coordinators, and
+// threads to their coordinator (docs/SPEC.md §4). Keys, paste and the
+// mouse don't reach it until the user takes it over with the prefix then
+// u and confirms; the thread's coordinator is then told.
 
 const (
 	frameInterval = time.Second / 120 // render cap
@@ -61,8 +66,13 @@ type Options struct {
 	Log *log.Logger
 	// StatusBar draws the status bar (docs/SPEC.md §4) on the window's
 	// last row, kept current by polling the server; the pane is shown in
-	// the rows above it.
+	// the rows above it. It also means there is a dashboard to go back
+	// to. A thread's pane gets the status bar anyway, to show that it is
+	// watch-only.
 	StatusBar bool
+	// Takeover tells a thread's coordinator that the user took over the
+	// thread's pane; nil tells no one.
+	Takeover func(s proto.SessionInfo) error
 }
 
 // Result says how an attach ended.
@@ -103,11 +113,15 @@ func Attach(opts Options) (res Result, err error) {
 		return res, err
 	}
 	defer c.close()
-	c.prefix, c.statusBar = prefix, opts.StatusBar
+	c.prefix, c.statusBar, c.dashboard, c.takeover = prefix, opts.StatusBar, opts.StatusBar, opts.Takeover
 	c.setWindow(cols, rows)
 	p, err := c.open(opts.Session, cols, c.paneRows)
 	if err != nil {
 		return res, err
+	}
+	if p.watch && !c.statusBar {
+		c.statusBar = true // says the pane is watch-only
+		c.setWindow(cols, rows)
 	}
 	c.mu.Lock()
 	c.root, c.focus = &node{leaf: p}, p
@@ -167,6 +181,7 @@ type pane struct {
 	held     bool // inside the program's 2026 hold
 	heldAt   time.Time
 	scrolled bool // the local viewport is scrolled back
+	watch    bool // a thread's pane, not taken over: no input reaches it
 	info     proto.SessionInfo
 	rect     rect      // where it is in the window (panes.go)
 	asked    [2]uint16 // the size last sent, until the server's RESIZE
@@ -192,10 +207,13 @@ type client struct {
 	pending     bool      // the prefix was typed: the next key is a command
 	repeatUntil time.Time // until then, a resize key repeats without the prefix
 	flash       string    // a note for the status bar until the next key
+	confirm     *pane     // asking whether to take over this watch-only pane
+	takeover    func(proto.SessionInfo) error
 
 	statusBar   bool
-	cols, rows  int // the window
-	paneRows    int // the rows above the status bar
+	dashboard   bool // there is a dashboard to go back to
+	cols, rows  int  // the window
+	paneRows    int  // the rows above the status bar
 	statusText  string
 	statusDrawn string
 	lastCursor  string
@@ -247,7 +265,7 @@ func (c *client) open(id string, cols, rows int) (*pane, error) {
 		conn.Close()
 		return nil, err
 	}
-	p := &pane{conn: conn, r: r, info: *info}
+	p := &pane{conn: conn, r: r, info: *info, watch: info.Role == proto.RoleThread}
 	// The stream starts with the pane's snapshot.
 	typ, payload, err := conn.ReadFrame()
 	if err == nil && typ != proto.FrameSnapshot {
@@ -489,11 +507,15 @@ func (c *client) relayout(send bool) []resize {
 }
 
 // claimSizes: the console typed in sizes the panes it shows (docs/SPEC.md
-// §3.3). It returns the visible panes whose session has another size than
-// their rectangle, unless that size was already asked for. c.mu held.
+// §3.3). It returns the visible panes, other than watch-only ones, whose
+// session has another size than their rectangle, unless that size was
+// already asked for. c.mu held.
 func (c *client) claimSizes() []resize {
 	var out []resize
 	for _, p := range c.visible() {
+		if p.watch { // watching never resizes
+			continue
+		}
 		want := [2]uint16{uint16(p.rect.w), uint16(p.rect.h)}
 		if cols, rows := p.mirror.Size(); (cols == want[0] && rows == want[1]) || p.asked == want {
 			continue
@@ -595,6 +617,10 @@ func (c *client) handle(ev uv.Event) {
 			return
 		}
 		p := c.focus
+		if p.watch {
+			c.mu.Unlock()
+			return
+		}
 		b, err := emu.Paste(p.mirror, []byte(e.Content))
 		sizes := c.claimSizes()
 		c.mu.Unlock()
@@ -624,8 +650,12 @@ func (c *client) key(k uv.Key) {
 	if !c.lock() {
 		return
 	}
+	if p := c.confirm; p != nil {
+		c.answerTakeover(p, keyName(k) == "y")
+		return
+	}
 	pending := c.pending
-	do := prefixStep(c.prefix, pending, time.Now().Before(c.repeatUntil), k, c.statusBar)
+	do := prefixStep(c.prefix, pending, time.Now().Before(c.repeatUntil), k, c.dashboard)
 	c.pending = do.arm
 	redraw := pending || do.arm || c.flash != ""
 	c.flash = ""
@@ -643,6 +673,8 @@ func (c *client) key(k uv.Key) {
 		c.detachThen(do.then)
 	case do.pane != "":
 		c.paneCommand(do.pane)
+	case do.takeover:
+		c.askTakeover()
 	}
 }
 
@@ -653,6 +685,8 @@ type prefixDo struct {
 	detach bool   // detach, then run then on the dashboard
 	then   string //
 	pane   string // a split-pane command (paneCommands)
+	// takeover asks to take over the focused watch-only pane.
+	takeover bool
 }
 
 // paneCommands are the keys that, after the prefix, act on the window's
@@ -677,8 +711,9 @@ func keyName(k uv.Key) string {
 
 // prefixStep decides what k does. After the prefix: d detaches, a
 // dashboard key detaches and runs there (only when there is a dashboard
-// to go back to), a pane command acts on the panes, the prefix again
-// goes to the program, and anything else cancels. While repeat holds (just
+// to go back to), a pane command acts on the panes, u takes over a
+// watch-only pane, the prefix again goes to the program, and anything
+// else cancels. While repeat holds (just
 // after a resize) a resize key needs no prefix.
 func prefixStep(prefix chord, pending, repeat bool, k uv.Key, dashboard bool) prefixDo {
 	name := keyName(k)
@@ -691,6 +726,8 @@ func prefixStep(prefix chord, pending, repeat bool, k uv.Key, dashboard bool) pr
 		return prefixDo{input: true}
 	case name == "d":
 		return prefixDo{detach: true}
+	case name == "u":
+		return prefixDo{takeover: true}
 	case prefixCommands[name] && dashboard:
 		return prefixDo{detach: true, then: name}
 	case paneCommands[name]:
@@ -893,16 +930,83 @@ func (c *client) closePane() {
 	c.poke()
 }
 
+// askTakeover asks, in the status bar, whether to take over the focused
+// pane when it is watch-only.
+func (c *client) askTakeover() {
+	if !c.lock() {
+		return
+	}
+	if c.focus.watch {
+		c.confirm = c.focus
+	} else {
+		c.flash = "this pane takes your keys already"
+	}
+	c.status()
+	c.mu.Unlock()
+	c.poke()
+}
+
+// answerTakeover takes over p on yes: it takes keys from now on, for this
+// attach, and its coordinator is told. c.mu held; released here.
+func (c *client) answerTakeover(p *pane, yes bool) {
+	c.confirm = nil
+	yes = yes && !p.gone
+	if yes {
+		p.watch = false
+		c.flash = "you took over " + paneName(p.info) + "; its coordinator is told"
+	} else {
+		c.flash = "still watching"
+	}
+	c.status()
+	info, tell := p.info, c.takeover
+	c.mu.Unlock()
+	c.poke()
+	if yes && tell != nil {
+		go func() {
+			if err := tell(info); err != nil && c.lock() {
+				c.flash = "telling the coordinator failed: " + err.Error()
+				c.status()
+				c.mu.Unlock()
+				c.poke()
+			}
+		}()
+	}
+}
+
+// paneName is how the status bar names a session: its thread's id, else
+// its own.
+func paneName(s proto.SessionInfo) string {
+	if s.Thread != "" {
+		return s.Thread
+	}
+	return s.ID
+}
+
 // status redraws the status bar. c.mu held.
 func (c *client) status() {
 	if !c.statusBar || c.focus == nil {
 		return
 	}
+	if p := c.confirm; p != nil {
+		line := "\x1b[7m" + fit(" take over "+paneName(p.info)+" and type into it? Its coordinator is told. y yes · any other key no", c.cols) + "\x1b[27m"
+		if c.single {
+			c.focus.r.SetStatus(line)
+		}
+		c.statusText = line
+		return
+	}
 	where := ""
+	switch {
+	case c.focus.watch:
+		where = "watch-only, " + c.prefix.String() + " u takes over"
+	case c.focus.info.Role == proto.RoleThread:
+		where = "taken over"
+	}
 	if ps := c.root.leaves(nil); len(ps) > 1 {
+		where = strings.TrimPrefix(where+" · ", " · ")
 		for i, p := range ps {
 			if p == c.focus {
-				where = fmt.Sprintf("pane %d/%d", i+1, len(ps))
+				where += fmt.Sprintf("pane %d/%d", i+1, len(ps))
 			}
 		}
 		if c.zoomed {
@@ -919,7 +1023,8 @@ func (c *client) status() {
 	c.statusText = line
 }
 
-// input sends a key to the focused program.
+// input sends a key to the focused program, unless its pane is
+// watch-only.
 func (c *client) input(k uv.Key) {
 	if !c.lock() {
 		return
@@ -937,6 +1042,10 @@ func (c *client) input(k uv.Key) {
 		p.scrolled = true
 		c.mu.Unlock()
 		c.poke()
+		return
+	}
+	if p.watch {
+		c.mu.Unlock()
 		return
 	}
 	if p.scrolled {
@@ -959,8 +1068,8 @@ func (c *client) input(k uv.Key) {
 	}
 }
 
-// mouse forwards a mouse event to the program under it; a click on
-// another pane focuses that pane first. The outer terminal only reports
+// mouse forwards a mouse event to the program under it, unless its pane
+// is watch-only; a click on another pane focuses that pane first. The outer terminal only reports
 // the mouse while the focused program tracks it (see outerModes).
 func (c *client) mouse(ev uv.Event) {
 	m, ok := toMouse(ev)
@@ -981,6 +1090,10 @@ func (c *client) mouse(ev uv.Event) {
 	if click && p != c.focus {
 		c.setFocus(p)
 		c.poke()
+	}
+	if p.watch {
+		c.mu.Unlock()
+		return
 	}
 	var sizes []resize
 	if _, wheel := ev.(uv.MouseWheelEvent); click || wheel {
@@ -1007,6 +1120,10 @@ func (c *client) focusReport(gained bool) {
 		return
 	}
 	p := c.focus
+	if p.watch {
+		c.mu.Unlock()
+		return
+	}
 	b := emu.Focus(p.mirror, gained)
 	c.mu.Unlock()
 	if b != nil {

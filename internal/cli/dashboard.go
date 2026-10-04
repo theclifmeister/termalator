@@ -1,12 +1,9 @@
 package cli
 
 import (
-	"bytes"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/theclifmeister/termalator/internal/caller"
 	"github.com/theclifmeister/termalator/internal/home"
@@ -39,7 +36,7 @@ func (e *Env) dashboardCmd() int {
 			who = caller.Narrower(who, c)
 		}
 	}
-	src := &tui.ServerSource{Paths: p, Agent: defaultAgent, Caller: who, Run: e.quietRun(who)}
+	src := &tui.ServerSource{Paths: p, Agent: defaultAgent, Caller: who}
 	defer src.Close()
 	var uiFile string // ui.json: the dashboard's layout (docs/SPEC.md §5.1)
 	if d, err := home.Dir(); err == nil {
@@ -48,7 +45,7 @@ func (e *Env) dashboardCmd() int {
 	var st tui.DashState
 	for {
 		res, err := tui.Dashboard(tui.DashOptions{Source: src, In: os.Stdin, Out: os.Stdout,
-			Cwd: e.Cwd, AgentName: defaultAgent, State: st, UIFile: uiFile, Prefix: tui.ConfigPrefix()})
+			Cwd: e.Cwd, State: st, UIFile: uiFile, Prefix: tui.ConfigPrefix()})
 		if err != nil {
 			return e.srvFail("dashboard", err)
 		}
@@ -94,22 +91,4 @@ func (e *Env) openCmd(slug, agentName string) error {
 	}
 	fmt.Fprintf(e.Stdout, "[%s: %s]\n", id, res.Reason)
 	return nil
-}
-
-// quietRun runs tm commands for the dashboard as who, with their output
-// captured: a failure becomes an error with the command's message.
-func (e *Env) quietRun(who caller.Caller) func(args ...string) error {
-	return func(args ...string) error {
-		var out, errb bytes.Buffer
-		sub := *e
-		sub.Stdin, sub.Stdout, sub.Stderr, sub.Caller = strings.NewReader(""), &out, &errb, who
-		if code, _ := sub.Run(args); code != ExitOK {
-			msg := strings.TrimSpace(errb.String())
-			if msg == "" {
-				msg = fmt.Sprintf("tm %s: exit %d", args[0], code)
-			}
-			return errors.New(msg)
-		}
-		return nil
-	}
 }

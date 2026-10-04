@@ -194,7 +194,7 @@ After the hello the client sends `{"attach":{"session":"s-…","cols":C,"rows":R
 - **Scrollback limits.** libghostty trims scrollback page by page, and a snapshot carries no limits. Server emulators and mirrors therefore both use a line limit only (10,000 lines, no byte limit), and `DIGEST` covers the screen plus the last 1,000 rows of scrollback: a mirror's page layout differs from the server's, so the two may keep a few hundred more or fewer of the oldest rows.
 - **Back-pressure.** The PTY reader never blocks on a client. Each client has a byte-bounded queue of 4 MB, with adjacent `OUTPUT` frames merged. Past the limit the backlog is dropped and replaced by a fresh `SNAPSHOT` (resync). macOS PTYs deliver about 68-byte reads, so the server coalesces reads, reading until `EAGAIN` or for a few hundred µs, and avoids allocating per chunk.
 - **Sizing: the console you type in.** A pane's PTY has one size, kept by the server. Each console lays out its own split panes, and the pane follows the console that last typed into it, as tmux's `window-size latest` does.
-  - **Attaching never resizes.** A console whose window is a different size shows the pane cropped or padded, and when it has fewer rows than the pane it shows the rows around the cursor. A console that only watches never resizes anything.
+  - **Attaching never resizes.** A console whose window is a different size shows the pane cropped or padded, and when it has fewer rows than the pane it shows the rows around the cursor. A console that only watches never resizes anything, and neither does a watch-only thread pane (§4) until it is taken over.
   - **Typing claims the size.** A key, a paste, a mouse click or the wheel sent from a console first resizes every pane that console shows to its rectangle there (`CLAIM_SIZE`, only for panes whose size differs and wasn't already asked for). Focus reports and mouse motion don't count. The pane then keeps that size until another console claims it.
   - **Window resizes and split changes always resize.** When the user really resizes a console's window, or changes its split panes (split, close, zoom, resize a divider, switch layout; §4), every pane whose rectangle changed is resized to it (`SET_SIZE`), whichever console typed last.
   - **Coalescing.** The server resizes a session at most once per 250 ms (`TIOCSWINSZ` + `SIGWINCH`). A request inside that time waits until it is over, and later requests replace it. Two consoles typed into in turn, or a window being dragged, can't flood the program with SIGWINCH.
@@ -262,55 +262,48 @@ The processes die with the server, because the PTY master closes and the childre
 
 `tm` with no arguments opens the dashboard. It is a client and holds no state.
 
+**The coordinator owns all communication.** The user talks only to coordinators, and threads talk only to their coordinator. The dashboard shows threads, tasks and the inbox so the user can see where things stand, but it has no keys that act on them: acknowledging a report, sending a thread its next prompt and marking a task done are the coordinator's `tm` commands (§10), which it runs when the user asks. A thread's pane opens watch-only.
+
 ```
  termalator                                            server ok · 6 sessions
  NEEDS YOU ───────────────────────────────────────────────────────────────────
-  ! termalator  t-0004 Claude spike         blocked  permission: Bash(git push)
-  ? termalator  T7     Pick a licence       review   ← t-0002 "Waiting for you"
+  ! foodperfect coordinator                 blocked  question
  PROJECTS ────────────────────────────────────────────────────────────────────
   termalator    coordinator                 idle     2 inbox
     t-0002 Bootstrap repo + spec   T3       working  60% 3/5 ▸ Write SPEC §8   4m
     t-0003 libghostty spike        T4       working  30% 2/7 ▸ Build the lib   1m
     t-0004 Claude spike            T5       blocked  permission             0m
     tasks: 2 needs you · 3 in motion · 4 on deck
-  foodperfect   coordinator                 idle
+  foodperfect   coordinator                 blocked  question
  ─────────────────────────────────────────────────────────────────────────────
- enter attach · t tasks · n new project · d mark done · ? help · q quit
+ enter attach · t tasks · i inbox · p projects · ? help · q quit
 ```
 
 - **Rows.** There are three sections. NEEDS YOU comes first, across every project. Then each project shows its coordinator and its threads, with task counts. Shell sessions are listed last.
-- **NEEDS YOU** includes:
-  - sessions that are `blocked`
-  - threads whose last report is unacknowledged, or that self-reported `Waiting for you`
-  - tasks in `review` or `blocked`
-  - inbox items marked `needs_user`
+- **NEEDS YOU** lists only what waits on the user: coordinators that are `blocked` (a question or a permission dialog), and blocked sessions of the user's own outside the projects (an agent started with `tm session start`, which has no coordinator). Everything about threads (a blocked thread, an unacknowledged report, a `Waiting for you` self-report) and tasks in `review` or `blocked` goes to the coordinator's inbox; the coordinator asks the user when it needs them.
 - **Per-row data.** Each row shows:
   - the state from the server's arbitration (§8.4);
   - the derived percent, done/total, and the current todo or step after `▸` (§7.3); the self-reported activity appears only when there are no todos or steps;
   - the time since the last change, and the linked task id.
 
-  Selecting a thread row shows its full todo list, its task's steps and its report's `## Next` lines: in the details panel beside the list, or under the row when the window is too narrow for the panel. Threads are ordered as in §7.4; a row says `report waiting`, or `ready for review` once the thread called `tm done`, and the PR number from the report.
+  Selecting a thread row shows its full todo list, its task's steps and its report's `## Next` lines, to read: in the details panel beside the list, or under the row when the window is too narrow for the panel. Threads are ordered as in §7.4; a row says `report waiting`, or `ready for review` once the thread called `tm done`, and the PR number from the report.
 - **Details panel.** In a window at least 120 columns wide, a panel right of the list shows everything about the selected row: a thread's state, task, progress, PR, report and the lines above; a task's notes and steps; a session's directory, command and progress; a project's coordinator, counts and inbox. `<` and `>` narrow and widen the list, dragging the divider with the mouse does the same, and `|` hides or shows the panel. The layout is kept in `ui.json` (§5.1), not `config.toml`, which `tm` never writes.
 - **Look.** Colours are the terminal's 16 ANSI colours, so they follow the user's theme; `NO_COLOR` turns them off. Every state also has its own glyph (● working, ▲ blocked, ○ idle, ◌ starting, ◆ needs you, ✓ done), so colour is never the only signal. A row shows a five-cell progress bar when it still fits.
 - **Popups.** Help, the inbox, the task board, the project switcher, prompts and the settings open as bordered boxes over the dimmed dashboard; `esc` closes the topmost. The footer lists the popup's keys and still shows messages.
 - **Settings** (`,`): the prefix key, the selected project's safety settings (§11.2), each marked when it is the default, and the layout. `tm` never writes `config.toml`; `e` opens it in `$VISUAL` or `$EDITOR`, and the popup reloads when the editor exits.
-- **Footer.** It lists only the keys that apply to the selected row: `enter attach`, `enter show` or `enter open`, `a ack` and `1-9 send next` on a thread with a report, `d done` on a task in review. `?` lists every key.
+- **Footer.** It lists only the keys that apply to the selected row: `enter attach`, `enter watch` on a thread, `enter show` or `enter open`. `?` lists every key.
 - **Mouse.** A click selects a row, the wheel moves the selection, and the divider can be dragged. Holding Shift selects text as usual in most terminals.
 - **Keys** (small and fixed in v0.1):
 
   | Key | Action |
   |---|---|
-  | `enter` | attach to the selected session |
-  | `t` | task view for the project: tasks grouped NEEDS YOU / IN MOTION / ON DECK, with the done count; `enter` shows one task with its notes and steps |
-  | `d` | on a task in `review`, mark it `done` (a human action, §6.4) |
+  | `enter` | attach to the selected session; a thread's session opens watch-only |
+  | `t` | task view for the project, read-only: tasks grouped NEEDS YOU / IN MOTION / ON DECK, with the done count; `enter` shows one task with its notes and steps |
   | `n` | new project |
   | `s` | new shell session |
-  | `c` | new Claude (or other agent) session in a chosen directory |
   | `p` | project switcher: every project with its coordinator's state; `enter` opens that project's coordinator (started if none runs) |
   | `]` / `[` | open the next / previous project's coordinator |
-  | `i` | the project's inbox: every unhandled item, `!` on those for the human |
-  | `a` | on a thread with an unacknowledged report, acknowledge it (`tm thread ack`) |
-  | `1`–`9` | on a thread, send that `## Next` line of its report as its next prompt (`tm thread prompt --next N`) |
+  | `i` | the project's inbox, read-only: every unhandled item, which the coordinator handles |
   | `,` | settings |
   | `<` / `>` | narrow / widen the list beside the details panel |
   | `\|` | show or hide the details panel |
@@ -331,13 +324,15 @@ The processes die with the server, because the PTY master closes and the childre
   | `z` | zoom the focused pane to the whole window, and back |
   | `x` | close the focused pane; its session keeps running (the last pane detaches) |
   | Space | switch between all panes side by side and all stacked |
+  | `u` | take over the focused watch-only pane (see below) |
   | the prefix | send the prefix itself to the program |
   | anything else | cancel |
 
-  Only `d`, the pane commands and the prefix work in `tm attach` and `tm project open`, which have no dashboard to go back to.
+  Only `d`, the pane commands, `u` and the prefix work in `tm attach` and `tm project open`, which have no dashboard to go back to.
+- **Watch-only threads.** A pane whose session is a thread's is watch-only, in the dashboard's attach, in split panes and in `tm attach` (which then shows the status bar too): keys, paste, the mouse and focus reports don't reach it, and the status bar says `watch-only, ctrl+\ u takes over`. Shift+PgUp/PgDn still scroll the local scrollback. The prefix then `u` asks in the status bar whether to take the thread over; `y` unlocks typing in that pane for the rest of the attach, and the status bar says `taken over`; any other key keeps watching. Taking over adds a `takeover` inbox item for the thread's coordinator and a journal line (`human thread.takeover t-0004`), so the coordinator learns that the user intervened. The next attach is watch-only again.
 - **Split panes.** A split attaches the new shell as another pane of the same window; the panes share it with one-cell dividers, those around the focused pane in the accent colour, and the status bar names the focused pane's session with `pane 2/3`. Keys, paste and the cursor go to the focused pane; a click focuses the pane under it (when the outer terminal reports the mouse, i.e. while the focused program tracks it). When a pane's session exits, the pane closes and the status bar says why; when the last one does, the attach ends as before. Detaching (`d`) detaches every pane. Splits last as long as the attach: back on the dashboard, `enter` attaches one session. On the dashboard the prefix then a key is that key, so the same keys do the same things in both places.
 - **Project switching.** While attached, the prefix then `p` opens the project switcher, and the prefix then `]` or `[` jumps to the next or previous project's coordinator. These run on the dashboard, so they are the dashboard's own keys and no key is taken from the pane but the prefix. "Next" is relative to the project last attached to; the status bar always names the current project.
-- **Projects.** A project row with no running coordinator says so; `enter` on it starts the coordinator (as `tm project open` does) and attaches. A done confirmation the coordinator raised (§6.4) is a NEEDS YOU row on which `d` completes it.
+- **Projects.** A project row with no running coordinator says so; `enter` on it starts the coordinator (as `tm project open` does) and attaches.
 - **Rendering.** The dashboard uses Bubble Tea v2 and Lip Gloss v2. The attached panes bypass Bubble Tea: a cell renderer per pane draws dirty rows from its mirror (§3.3).
 - **Notifications.** When a session becomes `blocked`, or a thread reports, every client (dashboard or attached) rings the bell on its terminal, and the server sends an OS notification (`osascript` on macOS, `notify-send` on Linux, both optional). The client re-emits a pane's OSC 9/777 notifications and OSC 52 clipboard writes to the outer terminal while attached. OSC 52 reads are denied.
 
@@ -492,6 +487,7 @@ tm task list --needs-you --json           # machine-readable
 tm task list --status started,blocked
 tm task show T12 [--json]
 tm task status T12 started                # also: open ready blocked review done
+tm task status T12 done --approved-by-user  # the coordinator, once the user accepted the work (§6.4)
 tm task status T12 blocked --note "waiting for API key"
 tm task edit T12 --title "…" [--notes "…" | --notes-file f.md]
 tm task steps T12 add "Open a PR"
@@ -524,12 +520,12 @@ tm task delegate T12 [--agent claude] [--repo PATH]   # = tm thread start --task
 | Caller | May |
 |---|---|
 | Human | everything, including setting `done` |
-| Coordinator | everything except setting `done`: add, edit, set `open`/`ready`/`started`/`blocked`/`review`, steps, archive, delegate |
+| Coordinator | everything: add, edit, set `open`/`ready`/`started`/`blocked`/`review`, steps, archive, delegate; `done` only with `--approved-by-user` |
 | Thread | read every task; on **its own task** only: `tm task steps add` (to write down its plan, §6.5) and `check`/`uncheck`; nothing else |
 
-- **Only the human sets `done`.** This is tsk's rule, kept unchanged, because "done" is the human's acceptance of the work and the one signal the coordinator must never fake.
-  - The server enforces it by caller (§11.1). An agent call to `tm task status T12 done` exits 1 with `human-only`.
-  - It costs the human one keystroke. When the coordinator asks for it (for example because the user said "mark T12 done"), the call creates a NEEDS YOU confirmation on the dashboard, and `d` there completes it.
+- **Only the human accepts work.** This is tsk's rule, because "done" is the human's acceptance of the work and the one signal the coordinator must never fake. Since the user talks only to the coordinator (§4), the coordinator relays it.
+  - The server enforces it by caller (§11.1). An agent call to `tm task status T12 done` exits 1 with `human-only` and says how to relay the user's decision.
+  - Once the user says the work is accepted ("mark T12 done"), the coordinator runs `tm task status T12 done --approved-by-user`. It is journaled as `coordinator task.status T12 done (approved by the user)`, as `tm thread start --approved-by-user` is. Threads can't set `done` at all.
 - **Threads don't change task status or notes.** Adding and ticking steps on their own task is the one exception to "only the coordinator writes project state". It keeps a thread's plan on disk, and it is journaled.
 - **Threads change nothing else.** A thread call to any other task command exits 1 with `coordinator-only`. The coordinator, which is the only agent writer of project state (§5.2), moves the task after reading the thread's report.
 - A human may make any change, either from a shell outside termalator or from a `shell` session inside it.
@@ -583,7 +579,7 @@ tm report --show                                                # print the curr
 
 The format is herdr-projects': an optional `PR:` first line, `## Report`, a required `## Next`, and an optional `## Remember`.
 
-- `## Next` holds one imperative action per line, at most 100 characters each. The coordinator, or the human in the dashboard, can send a line back to the thread as its next prompt.
+- `## Next` holds one imperative action per line, at most 100 characters each. The coordinator can send a line back to the thread as its next prompt (`tm thread prompt <id> --next N`), for example when the user picks one.
 - **Validation is synchronous.** The server checks the format before storing anything. A malformed report exits 1 with the reason (`missing ## Next`, `line 7 over 100 chars`, `bad PR line`), so the thread fixes it right away instead of the coordinator finding out later.
 - **Storage.** The server stores the report as `threads/<id>/REPORT.md`, moves the previous one to `threads/<id>/reports/<n>.md`, and copies `--attach` files into `threads/<id>/library/`. It reads attachments with its own permissions, so the thread needs no write access to the project folder. It then adds an inbox item (§7.5).
 - **Memory stays with the coordinator.** `## Remember` lines are suggestions. Only the coordinator moves them into `MEMORY.md`.
@@ -662,15 +658,15 @@ Threads are grouped as herdr-projects does: Waiting on you → Ready for review 
   - a PR's state changes (`gh pr view --json` every 2 minutes, fixed fields only)
   - a process exits
   - a server restart
-  - a task needs the human's confirmation
-- Kinds (M7): `report`, `thread-done`, `thread-resolved` and `needs-you` come from the `tm` commands; the ticker adds `blocked` (`needs_user` unless it is a permission prompt the coordinator may approve), `idle` (once per report, and not while that report's own item is unhandled), `exited`, `server-restart`, and `pr-opened`, `pr-checks-failed`, `pr-review` (approved or changes requested), `pr-merged`, `pr-closed`.
+  - the user takes over a thread's pane (§4)
+- Kinds (M7): `report`, `thread-done`, `thread-resolved` and `needs-you` come from the `tm` commands, `takeover` from the attach client; the ticker adds `blocked` (`needs_user` unless it is a permission prompt the coordinator may approve), `idle` (once per report, and not while that report's own item is unhandled), `exited`, `server-restart`, and `pr-opened`, `pr-checks-failed`, `pr-review` (approved or changes requested), `pr-merged`, `pr-closed`.
 - What the ticker already reported (per-thread state, PR fields, nudged item ids) is kept in `state/ticker.json`, so a server restart repeats nothing. `TERMALATOR_TICK_SWEEP`, `TERMALATOR_TICK_PR` and `TERMALATOR_TICK_NUDGE` shorten the intervals for tests.
 - **PR polling.** For each unresolved thread with a repo, `gh pr view <report PR URL, else the branch> --json number,url,state,reviewDecision,statusCheckRollup` in the repo, every 2 minutes, until the PR merged. Only those fields are kept, each checked against a strict pattern. A failed `gh` (no PR yet, no network) is retried at the next poll.
 - **PR follow-up** (built in, `pr_followup`, §11.2). When the checks start failing, or a reviewer requests changes, the thread gets one fixed prompt naming the PR number and the `gh` command to read them. No PR text is quoted.
 - **Auto-resolve** (`auto_resolve`, §11.2). Once the PR merged and the agent is idle, exited or stopped, the ticker runs `tm thread resolve` as caller `ticker`, once; resolve's own rules apply (never forced, the branch deleted only because the PR merged).
 - **Notifications.** A thread's new report, like a session becoming blocked, sends an OS notification and raises the server's alert count (`session.list`'s `alerts`); every client rings its bell when the count goes up.
 - `tm inbox list` and `tm inbox done <id>…` (which moves items to `inbox/done/`). Done items are deleted after 30 days.
-- **Nudge.** When new items arrive and the coordinator is idle, the server sends it one line, e.g. `[tm] 2 new inbox items: t-0004 blocked; t-0002 reported`. It uses the agent's prompt injector (§8.1). Nudges are rate-limited to one a minute and are never sent while the coordinator is working or blocked, or has a prompt queued. A nudge holds fixed words and ids only, never an item's summary, and ends by saying the items are data, not instructions. Done confirmations (§6.4) are the human's and don't nudge.
+- **Nudge.** When new items arrive and the coordinator is idle, the server sends it one line, e.g. `[tm] 2 new inbox items: t-0004 blocked; t-0002 reported`. It uses the agent's prompt injector (§8.1). Nudges are rate-limited to one a minute and are never sent while the coordinator is working or blocked, or has a prompt queued. A nudge holds fixed words and ids only, never an item's summary, and ends by saying the items are data, not instructions.
 
 ### 7.6 `tm context`
 
@@ -980,7 +976,7 @@ These commands are used by the human, the coordinator and threads alike. Exit co
 | `tm project repo add\|remove PATH` | human, coordinator | change the project's repo list in `PROJECT.md`; `tm thread start` defaults to the first repo |
 | `tm context [--project]` | coordinator | §7.6 |
 | `tm skill coordinator\|thread` | agents | print the standing rules, versioned with the binary (§7.8) |
-| `tm task …` | all | §6.3; threads only read, and add or tick steps on their own task (§6.4) |
+| `tm task …` | all | §6.3; threads only read, and add or tick steps on their own task (§6.4); the coordinator sets `done` only with `--approved-by-user` |
 | `tm thread start [--task T12] [--agent A] [--repo PATH] [--base B] [--approved-by-user] "title"` | coordinator | §9; refused if `start_threads = "propose"` and the human hasn't approved (§11) |
 | `tm thread list \| show <id> \| read <id> [--lines N]` | coordinator | state, report, screen text |
 | `tm thread prompt <id> "text" \| --next N` | coordinator | queue a prompt (sent when idle; refused while blocked) |
@@ -1016,7 +1012,7 @@ This is stronger than herdr-projects' TTY check, because an agent's own shell ha
 A thread call is further limited to its own thread: `tm status`, `tm report`, `tm done`, read commands, and `tm task steps` on its own task. Everything else exits 1 with `coordinator-only`.
 
 Human-only operations:
-- `task status … done` (§6.4);
+- `task status … done` (§6.4), which the coordinator relays with `--approved-by-user` once the user accepted the work;
 - changing safety settings. These live in `~/.termalator/config.toml` under `[projects.<slug>]`, not in `PROJECT.md`, so the coordinator editing `PROJECT.md` can't touch them;
 - `tm server stop|restart`;
 - `--fix` in `tm doctor`;
@@ -1028,7 +1024,7 @@ File access is enforced separately, by the agent's own permission rules and sand
 
 | Setting | Values | Default | Meaning |
 |---|---|---|---|
-| `start_threads` | `propose` / `auto` | `propose` | `propose`: the coordinator lists proposals, and threads start only after the human's go-ahead (a dashboard key, or the human telling the coordinator; the coordinator then calls `tm thread start --approved-by-user`, which is journaled) |
+| `start_threads` | `propose` / `auto` | `propose` | `propose`: the coordinator lists proposals, and threads start only after the human's go-ahead (the human tells the coordinator, which then calls `tm thread start --approved-by-user`; it is journaled) |
 | `yolo` | bool | `false` | launch with the manifest's `yolo_args` (Claude `--dangerously-skip-permissions`). Allowed, per the user's decision. It can only be turned on by a human call with a TTY confirmation. The access policy (§5.2) is still applied, and the deny rule and the sandbox hold under yolo (verified on macOS by t-0004) |
 | `coordinator_approves` | bool | `true` | the coordinator may answer in-scope permission prompts of its own threads with `tm thread approve` |
 | `auto_resolve` | bool | `true` | the ticker resolves a thread once its PR merged and its agent is idle (§9) |
@@ -1201,11 +1197,11 @@ Sizes: **S** ≤ 2 days, **M** 3–5 days, **L** 1–2 weeks, for one developer 
 - **Goal:** open `tm`, see every session with its live state, attach to a Claude session and back. This is the first thing to use day to day.
 - **Deliverables:**
   - the Bubble Tea dashboard: a session list with state, reason, todo progress and age; NEEDS YOU first (blocked sessions);
-  - keys: `enter` attach, `s` new shell, `c` new Claude session in a chosen directory, `?` help, `q` quit;
+  - keys: `enter` attach, `s` new shell, `c` new Claude session in a chosen directory, `?` help, `q` quit (`c` was removed later: the user's agents are coordinators, §4);
   - hand-off to the M2 attach view and back with Ctrl+\\; the status line;
   - the bell and OS notification when a session becomes blocked.
 - **Also (user decisions):** the project switcher and `]`/`[` (§4), `tm project open`, the server-side caller check (§11.1), and `make run` opening the dashboard.
-- **Try it:** run `tm`, press `c`, pick a repo, give Claude a task, detach, watch the row go working → blocked (a permission dialog) → idle, with the notification. Attach, answer, detach. Close the terminal, run `tm` again: everything is still there.
+- **Try it:** run `tm`, start Claude in a repo (`c` then; now `tm session start --agent claude --cwd <repo>`), give Claude a task, detach, watch the row go working → blocked (a permission dialog) → idle, with the notification. Attach, answer, detach. Close the terminal, run `tm` again: everything is still there.
 - **Tests:**
   - dashboard golden screens (empty, several sessions, NEEDS YOU);
   - the "first local run" scenario end to end with the fake agent: create, prompt, block, answer, detach, close the terminal, reopen;
@@ -1259,8 +1255,8 @@ Sizes: **S** ≤ 2 days, **M** 3–5 days, **L** 1–2 weeks, for one developer 
 - **Deliverables:**
   - the event loop and 15 s sweep; inbox items (§7.5) and `tm inbox list|done`;
   - nudges through the injector; PR polling with `gh`; auto-resolve after merge;
-  - the dashboard project view: NEEDS YOU across projects, the per-thread progress line (§7.4), the task view, and `d` to mark a task done.
-- **Try it:** let a thread finish and open a PR. The coordinator gets a nudge with the report, the dashboard shows "Ready for review", you press `d` on the task. Merge the PR on GitHub, and the thread resolves itself.
+  - the dashboard project view: NEEDS YOU across projects, the per-thread progress line (§7.4), the task view, and `d` to mark a task done (removed later, with `a` and `1`–`9`: the coordinator does these, §4).
+- **Try it:** let a thread finish and open a PR. The coordinator gets a nudge with the report, the dashboard shows "Ready for review", you tell the coordinator the task is done. Merge the PR on GitHub, and the thread resolves itself.
 - **Tests:**
   - ticker scenarios with a scripted fake `gh` on `PATH` (PR opened, checks failed, merged);
   - inbox item fuzzing; nudge rate limits and "never while working or blocked";

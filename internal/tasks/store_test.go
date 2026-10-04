@@ -18,21 +18,11 @@ var (
 )
 
 type fakeEvents struct {
-	journal   []string
-	requests  []string
-	confirmed []string
+	journal []string
 }
 
 func (f *fakeEvents) Journal(c caller.Caller, action, ref, detail string) error {
 	f.journal = append(f.journal, strings.TrimSpace(c.String()+" "+action+" "+ref+" "+detail))
-	return nil
-}
-func (f *fakeEvents) RequestDone(c caller.Caller, t *Task) (string, error) {
-	f.requests = append(f.requests, t.Ref())
-	return "c1", nil
-}
-func (f *fakeEvents) Confirmed(t *Task) error {
-	f.confirmed = append(f.confirmed, t.Ref())
 	return nil
 }
 
@@ -128,19 +118,32 @@ func TestStatusAndDoneRule(t *testing.T) {
 		t.Fatalf("thread done: %v", err)
 	}
 	_, err = s.SetStatus(coord, 1, Done, "")
-	if code(err) != "human-only" || !strings.Contains(err.Error(), "inbox c1") || len(ev.requests) != 1 {
-		t.Fatalf("coordinator done: %v %v", err, ev.requests)
+	if code(err) != "human-only" || !strings.Contains(err.Error(), "--approved-by-user") {
+		t.Fatalf("coordinator done: %v", err)
 	}
 	if tk, _ := s.Get(1); tk.Status != Started {
 		t.Fatalf("status changed to %s", tk.Status)
 	}
 	res, err = s.SetStatus(human, 1, Done, "")
-	if err != nil || !res.Changed || len(ev.confirmed) != 1 {
-		t.Fatalf("human done: %v %+v %v", err, res, ev.confirmed)
+	if err != nil || !res.Changed {
+		t.Fatalf("human done: %v %+v", err, res)
 	}
 	// An agent asking again once it's done is already true.
 	if _, err := s.SetStatus(coord, 1, Done, ""); err != nil {
 		t.Fatalf("done again: %v", err)
+	}
+
+	// The coordinator relays the user's acceptance; a thread can't.
+	mustAdd(t, s, coord, NewTask{Title: "B"})
+	if _, err := s.SetDoneApproved(thread, 2, ""); code(err) != "coordinator-only" {
+		t.Fatalf("thread approved done: %v", err)
+	}
+	res, err = s.SetDoneApproved(coord, 2, "")
+	if err != nil || !res.Changed || res.Task.Status != Done {
+		t.Fatalf("approved done: %v %+v", err, res)
+	}
+	if j := ev.journal[len(ev.journal)-1]; j != "coordinator task.status T2 done (approved by the user)" {
+		t.Fatalf("journal %q", j)
 	}
 	if _, err := s.SetStatus(coord, 9, Ready, ""); code(err) != "unknown-task" {
 		t.Fatalf("unknown: %v", err)

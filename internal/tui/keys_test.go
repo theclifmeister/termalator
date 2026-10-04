@@ -1,13 +1,19 @@
 package tui
 
 import (
+	"io"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/theclifmeister/termalator/internal/emu"
+	"github.com/theclifmeister/termalator/internal/proto"
+	"github.com/theclifmeister/termalator/internal/server"
 )
 
 func TestParseChord(t *testing.T) {
@@ -82,6 +88,8 @@ func TestPrefixStep(t *testing.T) {
 		{"ctrl+→ repeats without the prefix", false, true, ctrlRight, false, prefixDo{pane: "ctrl+right"}},
 		{"ctrl+→ without the repeat is typed", false, false, ctrlRight, false, prefixDo{input: true}},
 		{"→ never repeats", false, true, uv.Key{Code: uv.KeyRight}, false, prefixDo{input: true}},
+		{"prefix u takes over", true, false, key("u"), false, prefixDo{takeover: true}},
+		{"u alone is typed", false, false, key("u"), true, prefixDo{input: true}},
 	}
 	for _, c := range cases {
 		if got := prefixStep(p, c.pending, c.repeat, c.k, c.dashboard); got != c.want {
@@ -110,5 +118,55 @@ func TestToKey(t *testing.T) {
 	m, ok := toMouse(uv.MouseWheelEvent{X: 3, Y: 4, Button: uv.MouseWheelDown})
 	if !ok || m != (emu.Mouse{Action: emu.MousePress, Button: emu.MouseWheelDown, X: 3, Y: 4}) {
 		t.Errorf("toMouse: %+v %v", m, ok)
+	}
+}
+
+// TestWatchOnlyPane: a thread's pane takes no keys and says so; prefix u
+// asks, and only y takes it over and tells the coordinator.
+func TestWatchOnlyPane(t *testing.T) {
+	c, err := newClient(server.Paths{}, log.New(io.Discard, "", 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.enc.Close()
+	told := make(chan proto.SessionInfo, 1)
+	c.prefix, c.statusBar, c.cols = chord{'\\'}, true, 160
+	c.takeover = func(s proto.SessionInfo) error { told <- s; return nil }
+	// No connection: a key sent to the program would panic.
+	p := &pane{watch: true, info: proto.SessionInfo{ID: "s-2", Role: proto.RoleThread, Project: "demo", Thread: "t-0001"}}
+	c.root, c.focus = &node{leaf: p}, p
+	c.status()
+	if !strings.Contains(c.statusText, `watch-only, ctrl+\ u takes over`) {
+		t.Fatalf("status %q", c.statusText)
+	}
+	pk := uv.Key{Code: '\\', Mod: uv.ModCtrl}
+	u := uv.Key{Code: 'u', Text: "u"}
+	c.key(uv.Key{Code: 'x', Text: "x"})
+	c.handle(uv.PasteEvent{Content: "hello"})
+
+	// Anything but y keeps watching.
+	c.key(pk)
+	c.key(u)
+	if c.confirm != p || !strings.Contains(c.statusText, "take over t-0001 and type into it?") {
+		t.Fatalf("no question: %q", c.statusText)
+	}
+	c.key(uv.Key{Code: 'n', Text: "n"})
+	if !p.watch || c.confirm != nil || !strings.Contains(c.statusText, "still watching") {
+		t.Fatalf("n took over: %q", c.statusText)
+	}
+
+	c.key(pk)
+	c.key(u)
+	c.key(uv.Key{Code: 'y', Text: "y"})
+	if p.watch || !strings.Contains(c.statusText, "taken over") {
+		t.Fatalf("y: watch %v status %q", p.watch, c.statusText)
+	}
+	select {
+	case s := <-told:
+		if s.Thread != "t-0001" {
+			t.Fatalf("told about %+v", s)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the coordinator wasn't told")
 	}
 }

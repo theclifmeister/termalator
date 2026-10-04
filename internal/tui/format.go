@@ -118,7 +118,7 @@ func statusLine(s proto.SessionInfo, prefix chord, pending bool, cols int, where
 	right := prefix.String() + " d dashboard "
 	left := strings.Join(parts, " · ")
 	if pending {
-		left = " " + prefix.String() + ` ▸ d dashboard · p ] [ projects · i t , ? · % " split · arrows focus · ctrl+arrows resize · z zoom · x close`
+		left = " " + prefix.String() + ` ▸ d dashboard · p ] [ projects · i t , ? · % " split · arrows focus · ctrl+arrows resize · z zoom · x close · u take over`
 		right = prefix.String() + " again sends it "
 	}
 	w := cols - ansi.StringWidth(right) - 1

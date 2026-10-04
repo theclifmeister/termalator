@@ -205,7 +205,6 @@ func TestNudge(t *testing.T) {
 	}
 	// A new item within the minute waits; nothing is told twice.
 	r.p.AddItem("thread-done", "t-0001", "t-0001 is done", false)
-	r.p.AddItem(project.KindConfirmDone, "T1", "coordinator asks to mark T1 done", true)
 	r.sweep(30 * time.Second)
 	if len(r.host.prompts) != 1 {
 		t.Fatalf("rate limit: %v", r.host.prompts)

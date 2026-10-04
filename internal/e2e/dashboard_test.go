@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/theclifmeister/termalator/internal/emu"
 )
@@ -33,9 +34,9 @@ func newProject(env *Env, name string) (slug, dir string) {
 	return p.Slug, p.Dir
 }
 
-// TestSmokeDashboard: the dashboard's screens, empty, with a project and
-// sessions, and with NEEDS YOU; t shows the tasks and d marks a task in
-// review done.
+// TestSmokeDashboard: the dashboard's screens, empty, and with a project
+// and sessions; t shows the tasks, read-only: a task in review waits for
+// the coordinator, not in NEEDS YOU, and d does nothing.
 func TestSmokeDashboard(t *testing.T) {
 	env := New(t)
 	w := env.Window(100, 24)
@@ -53,50 +54,32 @@ func TestSmokeDashboard(t *testing.T) {
 	Golden(t, w.Screen(), "dashboard-sessions.txt", dashMasks...)
 
 	env.MustCLI("task", "status", "T1", "review", "--project", slug)
-	w.WaitFor("NEEDS YOU", wait)
 	w.WaitFor("1 needs you", wait)
-	Golden(t, w.Screen(), "dashboard-needs-you.txt", dashMasks...)
+	if strings.Contains(w.Screen(), "NEEDS YOU") {
+		t.Fatalf("a task in review is in NEEDS YOU:\n%s", w.Screen())
+	}
 
-	// The task view: T1 first (needs you); d marks it done.
+	// The task view: T1 first (needs you); it only shows.
 	w.Type("t")
 	w.WaitFor("demo tasks", wait)
 	w.WaitFor("T1", wait)
+	Golden(t, w.Screen(), "dashboard-tasks.txt", dashMasks...)
 	w.Type("d")
-	w.WaitFor("T1 done", wait)
-	if out := env.MustCLI("task", "show", "T1", "--project", slug, "--json"); !strings.Contains(out, `"status": "done"`) {
+	w.Quiet(500 * time.Millisecond)
+	if out := env.MustCLI("task", "show", "T1", "--project", slug, "--json"); !strings.Contains(out, `"status": "review"`) {
 		t.Fatalf("T1 after d:\n%s", out)
 	}
 	w.Key(keyEsc)
-	w.WaitUntil("NEEDS YOU gone", wait, func(s string) bool { return !strings.Contains(s, "NEEDS YOU") })
 	w.Type("q")
 	w.WaitExit(wait)
 }
 
-// agentSession waits for the one agent session and returns it.
-func agentSession(env *Env) *Session {
-	env.T.Helper()
-	var s *Session
-	Poll(wait, func() bool {
-		for _, info := range env.Sessions() {
-			if info.Agent != "" {
-				s = &Session{ID: info.ID, PID: info.PID}
-				return true
-			}
-		}
-		return false
-	})
-	if s == nil {
-		env.T.Fatal("no agent session started")
-	}
-	env.track(s.PID, "session "+s.ID)
-	return s
-}
-
-// TestSmokeFirstLocalRun is M4's "Try it" with the fake agent: from the
-// dashboard, c starts an agent in a chosen directory and attaches; a
-// prompt typed there blocks on a permission dialog; Ctrl+\ d shows the
-// session under NEEDS YOU; enter attaches again to answer it; closing the
-// terminal loses nothing, and a new dashboard shows the session idle.
+// TestSmokeFirstLocalRun is M4's "Try it" with the fake agent: an agent
+// session of the user's own, outside any project, shows on the dashboard
+// and enter attaches; a prompt typed there blocks on a permission dialog;
+// Ctrl+\ d shows the session under NEEDS YOU; enter attaches again to
+// answer it; closing the terminal loses nothing, and a new dashboard
+// shows the session idle.
 func TestSmokeFirstLocalRun(t *testing.T) {
 	env := New(t)
 	env.FakeClaude()
@@ -105,15 +88,9 @@ func TestSmokeFirstLocalRun(t *testing.T) {
 
 	w := env.Window(100, 30)
 	w.WaitFor("no sessions", wait)
-	w.Type("c")
-	w.WaitFor("claude session in directory:", wait)
-	w.Key(emu.Key{Rune: 'u', Mods: emu.ModCtrl})
-	w.Type(dir)
+	s := env.StartAgent("claude", dir)
+	w.WaitFor(s.ID+" ", wait)
 	w.Key(Enter)
-	s := agentSession(env)
-	if c, r := paneSize(env, s); c != 100 || r != 29 {
-		t.Errorf("new session is %d×%d, want 100×29 (the window less the status bar)", c, r)
-	}
 	// Attached, with the status bar on the last row.
 	w.WaitFor("Fake Claude Code", agentWait)
 	w.WaitFor(s.ID+" · claude · ", wait)

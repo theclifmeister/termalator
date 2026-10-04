@@ -202,7 +202,10 @@ func TestSmokeTickerPRMergedAutoResolve(t *testing.T) {
 
 // TestSmokeProjectDashboard: the project view of M7. A thread with a
 // task and a report shows its progress line, PR and Next lines when
-// selected; a acknowledges the report; i shows the project's inbox.
+// selected, only to read: the coordinator acks the report (tm thread
+// ack), and i shows the project's inbox. enter watches the thread: keys
+// don't reach it until prefix u, y takes it over, which the coordinator
+// is told about.
 func TestSmokeProjectDashboard(t *testing.T) {
 	env, projDir, out := tickerEnv(t)
 	os.WriteFile(filepath.Join(env.scriptsDir(), "thread-report-ok.toml"), []byte(`
@@ -225,29 +228,56 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 
 	w := env.Window(110, 30)
 	w.WaitFor("report waiting  PR #7", wait)
-	w.Type("jj")
-	w.WaitFor("1-9 sends that line to the thread", wait)
+	if strings.Contains(w.Screen(), "NEEDS YOU") {
+		t.Fatalf("a thread's report is in NEEDS YOU:\n%s", w.Screen())
+	}
+	w.Type("j")
+	w.WaitFor("report 1 (new) next:", wait)
 	Golden(t, w.Screen(), "dashboard-thread.txt", dashMasks...)
 
 	// 140 columns wide: the details beside the list instead of under it.
 	wide := env.Window(140, 30)
-	wide.WaitFor("unacknowledged report", wait)
-	wide.Type("jj")
-	wide.WaitFor("1-9 sends that line to the thread", wait)
+	wide.WaitFor("t-0001 Fix the login", wait)
+	wide.Type("j")
+	wide.WaitFor("enter watches it", wait)
 	Golden(t, wide.Screen(), "dashboard-split.txt", dashMasks...)
 	wide.Type("q")
 	wide.WaitExit(wait)
 
+	// a is no key any more; the coordinator acks.
 	w.Type("a")
-	w.WaitFor("t-0001 report 1 acknowledged", wait)
-	if r := env.MustCLI("thread", "show", "t-0001", "--project", "demo"); !strings.Contains(r, "report: acked") {
-		t.Fatalf("not acked:\n%s", r)
+	w.Quiet(500 * time.Millisecond)
+	if r := env.MustCLI("thread", "show", "t-0001", "--project", "demo"); !strings.Contains(r, "report: new") {
+		t.Fatalf("a acked:\n%s", r)
 	}
+	env.MustCLI("thread", "ack", "t-0001", "--project", "demo")
+	w.WaitFor("report 1 (acked) next:", wait)
 	w.Type("i")
 	w.WaitFor("demo inbox", wait)
 	w.WaitFor("t-0001 handed in report 1", wait)
 	Golden(t, w.Screen(), "dashboard-inbox.txt", dashMasks...)
 	w.Key(keyEsc)
+
+	// enter on the thread: watch-only.
+	w.Key(Enter)
+	w.WaitUntil("watching", wait, func(sc string) bool { return lastLine(sc, "watch-only") })
+	w.Type("zzz")
+	w.Quiet(500 * time.Millisecond)
+	if strings.Contains(w.Screen(), "zzz") {
+		t.Fatalf("keys reached a watch-only thread:\n%s", w.Screen())
+	}
+	w.Prefix("u")
+	w.WaitUntil("asked", wait, func(sc string) bool { return lastLine(sc, "take over t-0001") })
+	w.Type("y")
+	w.WaitUntil("taken over", wait, func(sc string) bool { return lastLine(sc, "taken over") })
+	w.Type("qqq")
+	w.WaitFor("qqq", wait)
+	waitInbox(t, env, "takeover: the user took over t-0001's pane")
+	if j, _ := os.ReadFile(filepath.Join(projDir, "JOURNAL.md")); !strings.Contains(string(j), "human thread.takeover t-0001") {
+		t.Fatalf("journal:\n%s", j)
+	}
+	w.Detach()
+	w.WaitFor("PROJECTS", wait)
 	w.Type("q")
 	w.WaitExit(wait)
 }
