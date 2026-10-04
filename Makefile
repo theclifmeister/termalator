@@ -5,7 +5,8 @@
 # into .build/, and points pkg-config at it. Nothing is installed system-wide.
 #
 #   make            build bin/tm
-#   make test       go test ./...
+#   make test       go test -race ./... (unit + integration + fuzz seed corpora)
+#   make fuzz       run every fuzz target for FUZZTIME each (nightly)
 #   make vet        go vet ./...
 #   make toolchain  check Go, Zig, pkg-config and git
 #   make env        print the PKG_CONFIG_PATH export, for gopls or a plain `go build`
@@ -41,7 +42,7 @@ export CGO_ENABLED := 1
 CGO_CFLAGS ?= -O2 -g
 export CGO_CFLAGS += -DTM_LIBGHOSTTY=$(notdir $(GHOSTTY_OUT))
 
-.PHONY: all build test vet ghostty toolchain env clean distclean
+.PHONY: all build test fuzz vet ghostty toolchain env clean distclean
 
 all: build
 
@@ -49,7 +50,16 @@ build: $(STAMP)
 	$(GO) build -ldflags '$(LDFLAGS)' -o bin/tm ./cmd/tm
 
 test: $(STAMP)
-	$(GO) test ./...
+	$(GO) test -race ./...
+
+FUZZTIME ?= 5m
+fuzz: $(STAMP)
+	@set -e; for pkg in $$($(GO) list ./...); do \
+		for t in $$($(GO) test -list '^Fuzz' $$pkg | grep '^Fuzz' || true); do \
+			echo "== $$pkg $$t"; \
+			$(GO) test $$pkg -run '^$$' -fuzz "^$$t\$$" -fuzztime $(FUZZTIME); \
+		done; \
+	done
 
 vet: $(STAMP)
 	$(GO) vet ./...
