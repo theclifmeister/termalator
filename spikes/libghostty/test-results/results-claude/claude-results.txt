@@ -1,0 +1,48 @@
+  server pid=52589 claude pid=52590
+[PASS] claude-1-startup: outer screen == server screen
+  outer terminal sent Shift+Enter as "\x1b[13;2u"
+[PASS] Shift+Enter inserts a newline (not submit)
+  outer terminal sent Ctrl+Enter as "\x1b[13;5u"
+  Ctrl+Enter: Claude SUBMITTED the prompt
+  inner encodings are in claude-client.log (key ... -> ...)
+[PASS] multi-line bracketed paste lands in the prompt without submitting — ❯ third linepaste-alpha
+[PASS] claude-5-wide: outer screen == server screen
+[PASS] wide chars/emoji visible in prompt
+  detached A mid-stream at 1.882s
+[PASS] server + claude alive after mid-stream detach
+[PASS] claude kept producing output while detached — last row 20 -> 102
+  client exit after window close: exit status 0
+  client exited 50ms after window close
+[PASS] window B closed mid-stream; only the client died — <nil>
+  stream finished after 13.033s
+  CPU during stream: server 30ms, claude tree 670ms (wall 13.033s)
+  client A CPU while streaming to it: 0s
+[PASS] claude-8-after-reattach: outer screen == server screen
+[PASS] no ghost/duplicate rows on screen claude-6-streaming-A — rows 1..20
+[PASS] no ghost/duplicate rows on screen claude-7-streaming-B — rows 278..300
+[PASS] no ghost/duplicate rows on screen claude-8-after-reattach-outer — rows 270..300
+  wheel up sent by outer terminal as "\x1b[<64;21;11M"
+[PASS] scrolling back shows earlier output — top "  row 270 ok" -> "❯ Print the numbers 1 to 300, one per line, each line exactly 'row N ok' (e.g. row 7 ok). No tools, no other text."
+[PASS] no ghost/duplicate rows on scrolled screen — rows 252..282
+[PASS] claude-10-resize-90x30: outer screen == server screen
+[PASS] claude-11-resize-140x45: outer screen == server screen
+[PASS] claude-13-back-at-bottom: outer screen == server screen
+[PASS] server exits after claude exits
+  client A: frames=234 frameBytes=62334 outMsgs=261 outBytes=27604 2026holds=233 holdTimeouts=0 digestOK=0 mismatch=0 snapshot=1210B decode=66.25µs
+    output_to_frame: n=232 p50=136us p95=484us p99=7807us max=48903us
+    key_to_echo: n=167 p50=1308us p95=4254us p99=9598us max=17367us
+    render_time: n=234 p50=118us p95=307us p99=740us max=1015us
+    client_cpu: user=56.177ms sys=38.045ms
+    client_maxrss: 15 MB
+  client B: frames=47 frameBytes=47352 outMsgs=57 outBytes=15832 2026holds=47 holdTimeouts=0 digestOK=5 mismatch=0 snapshot=4213B decode=80µs
+    output_to_frame: n=47 p50=811us p95=1638us p99=4506us max=9710us
+    key_to_echo: n/a
+    render_time: n=47 p50=765us p95=1177us p99=1403us max=1567us
+    client_cpu: user=44.015ms sys=9.613ms
+    client_maxrss: 15 MB
+  client C: frames=29 frameBytes=46226 outMsgs=40 outBytes=16234 2026holds=26 holdTimeouts=0 digestOK=2 mismatch=0 snapshot=3383B decode=164.917µs
+    output_to_frame: n=27 p50=887us p95=8190us p99=8700us max=9922us
+    key_to_echo: n=2 p50=6326us p95=6326us p99=6326us max=10735us
+    render_time: n=29 p50=797us p95=1207us p99=1635us max=2528us
+    client_cpu: user=34.736ms sys=13.24ms
+    client_maxrss: 15 MB

@@ -1,0 +1,20 @@
+{
+  "Frames": 223,
+  "FrameBytes": 250227,
+  "OutputMsgs": 253,
+  "OutputBytes": 34192,
+  "Holds": 222,
+  "HoldTimeouts": 0,
+  "DigestOK": 0,
+  "DigestMismatch": 0,
+  "SnapshotBytes": 1210,
+  "Resyncs": 0,
+  "SnapshotDecode": "61.5µs",
+  "Summary": {
+    "client_cpu": "user=88.627ms sys=42.818ms",
+    "client_maxrss": "15 MB",
+    "key_to_echo": "n=167 p50=1114us p95=4671us p99=8360us max=14869us",
+    "output_to_frame": "n=222 p50=257us p95=1969us p99=7865us max=21917us",
+    "render_time": "n=223 p50=226us p95=626us p99=940us max=1179us"
+  }
+}
