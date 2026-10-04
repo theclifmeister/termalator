@@ -1,6 +1,7 @@
-# Build output
+# Build output (dist/: release archives)
 /bin/
 /.build/
+/dist/
 
 # Per-thread working files from herdr-projects
 /.herdr-project/

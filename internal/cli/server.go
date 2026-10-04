@@ -18,7 +18,8 @@ import (
 	"github.com/theclifmeister/termalator/internal/version"
 )
 
-const serverUsage = `usage: tm server run [--detached] | start | stop [--yes] [--force] | restart [--yes] | status [--json]`
+const serverUsage = `usage: tm server run [--detached] | start | stop [--yes] [--force] | restart [--yes] | status [--json]
+       tm server service install|uninstall [--print]`
 
 // serverCmd implements `tm server …` (docs/SPEC.md §3.1).
 func serverCmd(e *Env, args []string) int {
@@ -39,6 +40,8 @@ func serverCmd(e *Env, args []string) int {
 		return serverStart(e, nil)
 	case "status":
 		return serverStatus(e, args[1:])
+	case "service":
+		return serverService(e, args[1:])
 	}
 	return e.srvUsage("server", serverUsage)
 }

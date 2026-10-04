@@ -9,9 +9,20 @@ Claude Code is the first supported agent. Other agents plug in through a manifes
 - the attach client (milestone M2): `tm attach` shows a session full-screen; Ctrl+\ detaches and leaves it running;
 - agent sessions (milestone M3): `tm session start --agent claude` runs Claude Code with its live state (working / blocked / idle), todos and resume;
 - the dashboard (milestone M4): `tm` lists every session and project with live state, attaches with `enter` and comes back with Ctrl+\;
-- projects and tasks (milestone M5): `tm project new|list|open`, `tm skill`, `tm task …`, `tm context` and `tm inbox list|done`.
+- projects and tasks (milestone M5): `tm project new|list|open`, `tm skill`, `tm task …`, `tm context` and `tm inbox list|done`;
+- threads (milestone M6): `tm thread start|prompt|restart|resolve`, agents in git worktrees reporting through `tm`;
+- hardening (milestone M8): agents resume after a server crash or restart, `tm doctor [--fix]`, an optional login service (`tm server service install`), and release archives.
 
-Threads come next.
+## Install
+
+Once a release is published (none yet), on macOS 13+ or Linux with glibc 2.28+:
+
+```sh
+mkdir -p ~/.local/bin && curl -fsSL "https://github.com/theclifmeister/termalator/releases/latest/download/tm_$(uname -s | tr A-Z a-z)_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar -xz -C ~/.local/bin tm
+tm doctor
+```
+
+Where state lives, logs, the login service, upgrading and uninstalling: [docs/OPERATIONS.md](docs/OPERATIONS.md). Until then, build from source (below).
 
 ## Try it
 
@@ -112,6 +123,8 @@ internal/agent       agent interface, manifests (manifests/claude.toml), registr
 internal/…           see docs/SPEC.md §2.1
 scripts/run.sh       what `make run` does
 docs/SPEC.md         the v0.1 specification and milestone plan
+docs/OPERATIONS.md   installing, state, logs, doctor, service, upgrading, uninstalling
+scripts/release/     release builds: per-target libghostty-vt, zig cc wrapper, archive checks
 spikes/              throwaway experiments, each with its own go.mod and FINDINGS.md
 ```
 

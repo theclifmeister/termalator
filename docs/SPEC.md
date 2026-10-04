@@ -245,7 +245,7 @@ The processes die with the server, because the PTY master closes and the childre
   - Shell sessions are not restored in v0.1. They are listed as "lost".
   - Sessions with no recorded agent session id come back as fresh launches of the same thread only if the thread is not resolved. Their brief tells them to read their last report first (`tm report --show`), then continue from the task's unchecked steps.
   - Turns that were running when the server stopped are lost. The resumed agent is idle.
-- **Reporting.** Each restart writes an inbox item (`kind = "server"`) to every affected project: "server restarted after crash; resumed t-0003, t-0005; lost shell s-12". The coordinator decides what to re-prompt.
+- **Reporting.** Each restart writes an inbox item (`kind = "server-restart"`, raised by the ticker, §7.5) to every affected project with the counts of resumed and lost sessions; the server log names them: "server restarted after crash; resumed coordinator, t-0003; lost shell s-12". The coordinator decides what to re-prompt.
 - **Upgrade.**
   - Installing a new `tm` doesn't touch a running server. Attach keeps working, because the client re-execs the server's binary (§3.3).
   - A control client with a newer protocol asks the human to run `tm server restart`. Restart warns about how many agents are mid-turn and asks for confirmation on a TTY.
@@ -1095,7 +1095,7 @@ All three spikes have reported:
 | 3 | Claude edge cases: auto-compaction, `async` hooks, `PermissionDenied`/`StopFailure`/MCP elicitation, the status file after a Claude crash, Ctrl+U, `skipDangerousModePermissionPrompt`, the `deleted` task status | 8.6 | Fixtures in M3; the dead-pid rule covers the crash case |
 | 4 | The undocumented status file and `uds-messaging` socket can change in any Claude release | 8.6 | `tested_versions` guard and fallbacks (in place); `tm doctor` warns |
 | 5 | Live server upgrade (PTY handoff over `SCM_RIGHTS` + snapshots) | 3.6 | Later spike; v0.1 resumes agents instead |
-| 6 | Release binaries: glibc floor or musl on Linux; macOS signing and notarisation | 12 | M8 |
+| 6 | Release binaries: macOS signing and notarisation. (Settled in M8: `zig cc` builds with a glibc 2.28 floor, checked on Debian 10; see `.goreleaser.yaml` and docs/OPERATIONS.md) | 12 | Needs an Apple Developer ID; ad hoc signed until then |
 | 7 | Codex and pi under the same harness | 8.7 | After v0.1 |
 
 ---

@@ -151,7 +151,7 @@ func Run(ctx context.Context, opts Options) error {
 		prevProject: map[string]string{},
 	}
 	s.loadAgents()
-	toResume := s.loadPrevious()
+	toResume, lost := s.loadPrevious()
 	if err := s.saveLocked(""); err != nil {
 		logger.Printf("sessions.json: %v", err)
 	}
@@ -170,7 +170,9 @@ func Run(ctx context.Context, opts Options) error {
 	}()
 	// Resume once hooks can be answered: a resumed agent fires
 	// SessionStart at once.
-	s.resume(toResume)
+	if outs := s.resume(toResume); s.prevShut != "" {
+		s.logRestart(s.prevShut, append(lost, outs...))
+	}
 	tctx, stopTicker := context.WithCancel(context.Background())
 	tickerDone := s.startTicker(tctx)
 
@@ -200,14 +202,14 @@ func Run(ctx context.Context, opts Options) error {
 // clean, which agent sessions to resume, and which sessions are gone.
 // Shell sessions and agents without a recorded agent session id are never
 // restored (docs/SPEC.md §3.6).
-func (s *Server) loadPrevious() (resume []SessionRecord) {
+func (s *Server) loadPrevious() (resume []SessionRecord, lost []restartOutcome) {
 	prev, err := loadState(s.opts.Paths.Sessions)
 	if err != nil {
 		s.log.Printf("sessions.json unreadable, starting fresh: %v", err)
-		return nil
+		return nil, nil
 	}
 	if prev == nil {
-		return nil
+		return nil, nil
 	}
 	if prev.NextID > s.nextID {
 		s.nextID = prev.NextID
@@ -227,11 +229,12 @@ func (s *Server) loadPrevious() (resume []SessionRecord) {
 			continue
 		}
 		s.lost = append(s.lost, r.ID)
+		lost = append(lost, restartOutcome{rec: r, how: "lost"})
 	}
 	if len(s.lost) > 0 {
 		s.log.Printf("sessions of the previous server not restored: %v", s.lost)
 	}
-	return resume
+	return resume, lost
 }
 
 // saveLocked rewrites sessions.json; s.mu held (or no concurrency yet).
