@@ -111,7 +111,7 @@ func TestSmokeFirstLocalRun(t *testing.T) {
 	// Attach again (the session's row is still selected) and approve.
 	w.Key(Enter)
 	w.WaitUntil("attached", wait, func(sc string) bool {
-		return lastLine(sc, `ctrl+\ d dashboard`) && strings.Contains(sc, "Do you want to create x.txt?")
+		return lastLine(sc, `prefix+d dashboard`) && strings.Contains(sc, "Do you want to create x.txt?")
 	})
 	w.Type("1")
 	env.WaitState(s, "idle", agentWait)

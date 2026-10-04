@@ -15,15 +15,16 @@ import (
 	"github.com/theclifmeister/termalator/internal/emu"
 )
 
-// DefaultPrefixKey is Ctrl+\. Outer terminals send it as 0x1c, or as
-// CSI 92;5u once the client has pushed kitty "disambiguate"; ultraviolet
-// decodes both to the same key.
+// DefaultPrefixKey is Ctrl+B, as in tmux. Outer terminals send it as
+// 0x02, or as CSI 98;5u once the client has pushed kitty "disambiguate";
+// ultraviolet decodes both to the same key. Inside tmux, which takes
+// Ctrl+B itself, users set another one in config.toml ([keys] prefix).
 //
 // The prefix starts a key command, as in tmux (docs/SPEC.md §4): in a
 // session, prefix then d returns to the dashboard, prefix then p, ], [,
 // i, t, , or ? returns and opens that view, and prefix twice sends the
 // prefix itself to the program.
-const DefaultPrefixKey = `ctrl+\`
+const DefaultPrefixKey = "ctrl+b"
 
 // chord is a Ctrl+<character> key combination.
 type chord struct{ r rune }

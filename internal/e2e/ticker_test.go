@@ -226,7 +226,7 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	}
 	env.WaitState(th, "idle", agentWait)
 
-	w := env.Window(110, 30)
+	w := env.Window(110+24, 30) // the dashboard and the panes get 110: the sidebar takes 24
 	w.WaitFor("report waiting  PR #7", wait)
 	if strings.Contains(w.Screen(), "NEEDS YOU") {
 		t.Fatalf("a thread's report is in NEEDS YOU:\n%s", w.Screen())
@@ -236,7 +236,7 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	Golden(t, w.Screen(), "dashboard-thread.txt", dashMasks...)
 
 	// 140 columns wide: the details beside the list instead of under it.
-	wide := env.Window(140, 30)
+	wide := env.Window(140+24, 30)
 	wide.WaitFor("t-0001 Fix the login", wait)
 	wide.Type("j")
 	wide.WaitFor("enter watches it", wait)
@@ -283,7 +283,7 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 		t.Fatalf("journal:\n%s", j)
 	}
 	w.Detach()
-	w.WaitFor("PROJECTS", wait)
+	w.WaitFor("SESSIONS", wait)
 	w.Type("q")
 	w.WaitExit(wait)
 }

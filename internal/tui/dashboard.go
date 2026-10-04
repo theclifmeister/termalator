@@ -53,7 +53,7 @@ type DashOptions struct {
 	// UIFile is ui.json, where the layout is kept; empty keeps it in
 	// memory only (tests).
 	UIFile string
-	// Prefix is the prefix key ("ctrl+\\"); empty is the default.
+	// Prefix is the prefix key ("ctrl+b"); empty is the default.
 	Prefix string
 }
 
@@ -603,7 +603,7 @@ func (m *dash) frame(title string, body []string, sel int, keys string) string {
 	head := fit(left, max(m.w-ansi.StringWidth(right)-1, 1)) + reset + " " + right
 	foot := []string{m.rule("")}
 	if m.prefixed {
-		keys = m.prefix + " ▸ any dashboard key · d or esc cancels"
+		keys = "prefix ▸ any dashboard key · d or esc cancels"
 	}
 	foot = append(foot, fit(" "+keysLine(keys), m.w)+reset)
 	msg := " " + oneLine(m.msg)

@@ -226,7 +226,7 @@ func TestRealFirstLocalRun(t *testing.T) {
 	s := env.StartAgent("claude", dir)
 	w.WaitFor(s.ID+" ", wait)
 	w.Key(Enter)
-	w.WaitUntil("attached", realWait, func(sc string) bool { return lastLine(sc, `ctrl+\ d dashboard`) })
+	w.WaitUntil("attached", realWait, func(sc string) bool { return lastLine(sc, `prefix+d dashboard`) })
 	if !Poll(realWait, func() bool {
 		i, _ := env.Info(s)
 		return i.State == "idle" || i.Reason == "trust"
@@ -251,7 +251,7 @@ func TestRealFirstLocalRun(t *testing.T) {
 	w.Detach()
 	w.WaitFor("NEEDS YOU", wait)
 	w.Key(Enter)
-	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, `ctrl+\ d dashboard`) })
+	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, `prefix+d dashboard`) })
 	time.Sleep(time.Second)
 	w.Type("1")
 	env.WaitState(s, "idle", realWait)

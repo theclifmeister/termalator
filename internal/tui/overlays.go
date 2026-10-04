@@ -90,7 +90,7 @@ type helpView struct{}
 func (helpView) key(m *dash, _ tea.KeyPressMsg) tea.Cmd { m.pop(); return nil }
 
 func (helpView) render(m *dash) string {
-	return m.popup(box{title: "keys", body: helpLines(m.prefix), sel: -1, keys: "any key returns", width: 96})
+	return m.popup(box{title: "keys · prefix = " + m.prefix, body: helpLines(), sel: -1, keys: "any key returns", width: 96})
 }
 
 // inputView reads a line of text.
@@ -409,7 +409,7 @@ func (sv *settingsView) load(m *dash) {
 		l = append(l, styleBad.Render(oneLine(err.Error())))
 	}
 	add("prefix", m.prefix, def(m.prefix == DefaultPrefixKey))
-	l = append(l, "")
+	l = append(l, styleFaint.Render("Hints write it as prefix+<key>. Inside tmux, which takes ctrl+b, set another, e.g. ctrl+a."), "")
 
 	cfg, err := config.Load()
 	switch {

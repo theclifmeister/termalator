@@ -260,21 +260,21 @@ func hasBell(cmd tea.Cmd) bool {
 func TestStatusLine(t *testing.T) {
 	info := proto.SessionInfo{ID: "s-4", Role: proto.RoleCoordinator, Project: "termalator", Agent: "claude",
 		State: "working", TodosDone: 2, TodosTotal: 5, Current: "Write §8"}
-	got := statusLine(info, chord{'\\'}, false, 80, "")
+	got := statusLine(info, false, 80, "")
 	want := "\x1b[7m s-4 · termalator coordinator · working 40% 2/5 ▸ Write §8"
-	if !strings.HasPrefix(got, want) || !strings.HasSuffix(got, `ctrl+\ d dashboard `+"\x1b[27m") {
+	if !strings.HasPrefix(got, want) || !strings.HasSuffix(got, `prefix+d dashboard `+"\x1b[27m") {
 		t.Fatalf("status line %q", got)
 	}
 	if w := len([]rune(strings.TrimSuffix(strings.TrimPrefix(got, "\x1b[7m"), "\x1b[27m"))); w != 80 {
 		t.Fatalf("status line is %d cells, want 80", w)
 	}
 	// Split panes: where the focused one is.
-	if got := statusLine(info, chord{'\\'}, false, 120, "pane 2/3"); !strings.Contains(got, "▸ Write §8 · pane 2/3 ") {
+	if got := statusLine(info, false, 120, "pane 2/3"); !strings.Contains(got, "▸ Write §8 · pane 2/3 ") {
 		t.Fatalf("status line with panes %q", got)
 	}
 	// After the prefix: the commands.
-	got = statusLine(info, chord{'\\'}, true, 160, "")
-	if !strings.Contains(got, `d dashboard · p ] [ projects · i t , ? · % " split`) || !strings.Contains(got, `ctrl+\ again sends it`) {
+	got = statusLine(info, true, 160, "")
+	if !strings.Contains(got, `d dashboard · p ] [ projects · i t , ? · % " split`) || !strings.Contains(got, `prefix again sends it`) {
 		t.Fatalf("pending status line %q", got)
 	}
 }
@@ -338,7 +338,7 @@ func TestDashboardOverlays(t *testing.T) {
 func TestDashboardSplit(t *testing.T) {
 	src := &fakeSource{data: testData()}
 	ui := filepath.Join(t.TempDir(), "ui.json")
-	m := newDash(DashOptions{Source: src, Width: 140, Height: 40, UIFile: ui})
+	m := newDash(DashOptions{Source: src, Width: 140 + sideDefault, Height: 40, UIFile: ui})
 	m.setData(src.data)
 
 	m.sel = "th:beta:t-0005"
@@ -381,9 +381,9 @@ func TestDashboardSplit(t *testing.T) {
 	}
 	_, lw := m.split()
 	m.Update(tea.MouseClickMsg{X: sw + lw, Y: 5, Button: tea.MouseLeft})
-	m.Update(tea.MouseMotionMsg{X: sw + 58, Y: 5, Button: tea.MouseLeft})
-	m.Update(tea.MouseReleaseMsg{X: sw + 58, Y: 5, Button: tea.MouseLeft})
-	if _, lw := m.split(); lw != 58 || LoadLayout(ui).Split != 0.5 {
+	m.Update(tea.MouseMotionMsg{X: sw + 70, Y: 5, Button: tea.MouseLeft})
+	m.Update(tea.MouseReleaseMsg{X: sw + 70, Y: 5, Button: tea.MouseLeft})
+	if _, lw := m.split(); lw != 70 || LoadLayout(ui).Split != 0.5 {
 		t.Fatalf("drag: list %d wide, ui.json %+v", lw, LoadLayout(ui))
 	}
 
@@ -419,9 +419,9 @@ func TestDashboardPrefix(t *testing.T) {
 	m := newDash(DashOptions{Source: src, Width: 100, Height: 30})
 	m.setData(src.data)
 	m.sel = "p:alpha"
-	prefix := tea.KeyPressMsg{Code: '\\', Mod: tea.ModCtrl}
+	prefix := tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl}
 	m.Update(prefix)
-	if !m.prefixed || !strings.Contains(screen(m), `ctrl+\ ▸ any dashboard key`) {
+	if !m.prefixed || !strings.Contains(screen(m), `prefix ▸ any dashboard key`) {
 		t.Fatalf("prefix not shown:\n%s", screen(m))
 	}
 	press(m, "t")
@@ -502,7 +502,7 @@ func TestDashboardPopups(t *testing.T) {
 	press(m, ",")
 	out = screen(m)
 	for _, want := range []string{"settings · alpha", "[projects.alpha]", "yolo                   true",
-		"start_threads          propose  default", "prefix                 ctrl+\\  default", "e edit config.toml"} {
+		"start_threads          propose  default", "prefix                 ctrl+b  default", "e edit config.toml"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("settings lack %q:\n%s", want, out)
 		}

@@ -238,8 +238,9 @@ type client struct {
 	statusDrawn string
 	lastCursor  string
 	title       string
-	outer       map[int]bool
-	bell        bool // ring the outer terminal's bell with the next frame
+	outer       map[int]bool // focus reports and SGR set on the outer terminal
+	outerTrack  int          // the mouse tracking mode set there: 1000, 1002, 1003 or 0
+	bell        bool         // ring the outer terminal's bell with the next frame
 	buf         []byte
 
 	// detaching is set before DETACH is written. The server may hang up
@@ -1028,7 +1029,7 @@ func (c *client) status() {
 	where := ""
 	switch {
 	case c.focus.watch:
-		where = "watch-only, " + c.prefix.String() + " u takes over"
+		where = "watch-only, prefix+u takes over"
 	case c.focus.info.Role == proto.RoleThread:
 		where = "taken over"
 	}
@@ -1046,7 +1047,7 @@ func (c *client) status() {
 	if c.flash != "" {
 		where = strings.TrimPrefix(where+" · "+c.flash, " · ")
 	}
-	line := statusLine(c.focus.info, c.prefix, c.pending, c.paneCols, where)
+	line := statusLine(c.focus.info, c.pending, c.paneCols, where)
 	if c.single {
 		c.focus.r.SetStatus(line)
 	}
@@ -1168,27 +1169,52 @@ func (c *client) focusReport(gained bool) {
 // outerModes turns mouse tracking and focus reports on the outer terminal
 // on or off to match the focused program, so native selection works
 // whenever the program doesn't want the mouse. c.mu held.
+//
+// Terminals keep one mouse tracking mode, not three flags: resetting any
+// of 1000, 1002 and 1003 stops all tracking. So the client moves from
+// the mode it set to the one it wants, never resetting one after setting
+// another.
 func (c *client) outerModes() []byte {
 	m := c.focus.mirror.Modes()
-	want := map[int]bool{1000: m.NormalMouse, 1002: m.ButtonMouse, 1003: m.AnyMouse, 1004: m.Focus,
-		1006: m.MouseTracking()} // always SGR coordinates from the outer terminal
-	if c.side != nil {
+	track := 0
+	switch {
+	case m.AnyMouse:
+		track = 1003
+	case m.ButtonMouse:
+		track = 1002
+	case m.NormalMouse:
+		track = 1000
+	}
+	if c.side != nil && track < 1002 {
 		// The sidebar takes clicks and drags whatever the program wants;
 		// selecting text in a pane then needs Shift.
-		want[1000], want[1002], want[1006] = true, true, true
+		track = 1002
 	}
 	var b []byte
-	for _, n := range []int{1000, 1002, 1003, 1004, 1006} {
-		if c.outer[n] == want[n] {
-			continue
-		}
-		c.outer[n] = want[n]
+	set := func(n int, on bool) {
 		b = append(b, "\x1b[?"...)
 		b = strconv.AppendInt(b, int64(n), 10)
-		if want[n] {
+		if on {
 			b = append(b, 'h')
 		} else {
 			b = append(b, 'l')
+		}
+	}
+	if track != c.outerTrack {
+		if c.outerTrack != 0 {
+			set(c.outerTrack, false)
+		}
+		if track != 0 {
+			set(track, true)
+		}
+		c.outerTrack = track
+	}
+	// Always SGR coordinates from the outer terminal while it reports.
+	want := map[int]bool{1004: m.Focus, 1006: track != 0}
+	for _, n := range []int{1004, 1006} {
+		if c.outer[n] != want[n] {
+			c.outer[n] = want[n]
+			set(n, want[n])
 		}
 	}
 	return b

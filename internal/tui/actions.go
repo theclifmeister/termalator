@@ -137,7 +137,7 @@ func (m *dash) footKeys() string {
 	return strings.Join(out, " · ")
 }
 
-func helpLines(prefix string) []string {
+func helpLines() []string {
 	var out []string
 	for _, a := range actions {
 		if a.label != "" {
@@ -146,17 +146,18 @@ func helpLines(prefix string) []string {
 	}
 	return append(out,
 		"",
-		styleHead.Render("In a session")+", the prefix "+styleAccent.Render(prefix)+" then:",
-		fmt.Sprintf("%-9s %s", "d", "back to this dashboard (the session keeps running)"),
-		fmt.Sprintf("%-9s %s", "p ] [", "back here and switch project"),
-		fmt.Sprintf("%-9s %s", "i t , ?", "back here with the inbox, tasks, settings or help open"),
-		fmt.Sprintf("%-9s %s", `% "`, "split the window: a new shell beside / below"),
-		fmt.Sprintf("%-9s %s", "arrows o", "focus another pane;  ctrl+arrows resize, z zooms, x closes, space switches the layout"),
-		fmt.Sprintf("%-9s %s", "u", "take over a watch-only thread pane and type into it (asks first; its coordinator is told)"),
-		fmt.Sprintf("%-9s %s", prefix, "send "+prefix+" itself to the program"),
+		styleHead.Render("In a session")+" (prefix+<key> is the prefix, then the key):",
+		fmt.Sprintf("%-16s %s", "prefix+d", "back to this dashboard (the session keeps running)"),
+		fmt.Sprintf("%-16s %s", "prefix+p ] [", "back here and switch project; a click on the sidebar does too"),
+		fmt.Sprintf("%-16s %s", "prefix+i t , ?", "back here with the inbox, tasks, settings or help open"),
+		fmt.Sprintf("%-16s %s", `prefix+% "`, "split the window: a new shell beside / below"),
+		fmt.Sprintf("%-16s %s", "prefix+arrows o", "focus another pane;  ctrl+arrows resize, z zooms, x closes, space switches the layout"),
+		fmt.Sprintf("%-16s %s", "prefix+{ } b", "narrow / widen the sidebar, or make it a slim strip"),
+		fmt.Sprintf("%-16s %s", "prefix+u", "take over a watch-only thread pane and type into it (asks first; its coordinator is told)"),
+		fmt.Sprintf("%-16s %s", "prefix+prefix", "send the prefix key itself to the program"),
 		"",
 		styleFaint.Render("You talk to coordinators; they run the threads, their reports and the tasks (tm thread, tm task)."),
-		styleFaint.Render("Here, the prefix then a key is that key. The prefix is [keys] prefix in config.toml."),
+		styleFaint.Render("Here, prefix+<key> is that key. The prefix is [keys] prefix in config.toml; inside tmux, pick another."),
 	)
 }
 
@@ -234,7 +235,7 @@ func (m *dash) switcher(string) tea.Cmd {
 
 func (m *dash) resize(key string) tea.Cmd {
 	if split, _ := m.split(); !split {
-		m.msg = fmt.Sprintf("the details panel shows in windows %d columns or wider; | turns it on", splitMin)
+		m.msg = fmt.Sprintf("the details panel shows when the dashboard (the window less the sidebar) is %d columns or wider; | turns it on", splitMin)
 		return nil
 	}
 	l := m.layout

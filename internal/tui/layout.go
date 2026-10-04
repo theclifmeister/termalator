@@ -14,8 +14,8 @@ import (
 
 // Layout is ui.json.
 type Layout struct {
-	// Details shows the details panel beside the list in a window at
-	// least splitMin columns wide.
+	// Details shows the details panel beside the list when the dashboard,
+	// the window less the sidebar, is at least splitMin columns wide.
 	Details bool `json:"details"`
 	// Split is the list's share of the window's width, between minSplit
 	// and maxSplit.
@@ -26,7 +26,7 @@ type Layout struct {
 }
 
 const (
-	splitMin     = 120  // narrower windows show details under the row
+	splitMin     = 120  // a narrower dashboard (less the sidebar) shows details under the row
 	defaultSplit = 0.6  // the list's share
 	minSplit     = 0.3  // of the width, either way
 	maxSplit     = 0.8  //
@@ -83,7 +83,7 @@ func clampSplit(f float64) float64 {
 // split says whether the dashboard shows the details panel, and the
 // list's width when it does.
 func (m *dash) split() (bool, int) {
-	if !m.layout.Details || m.winW < splitMin {
+	if !m.layout.Details || m.w < splitMin {
 		return false, m.w
 	}
 	return true, int(float64(m.w)*m.layout.Split + 0.5)

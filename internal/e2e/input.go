@@ -14,16 +14,16 @@ import (
 // window's terminal would send them, honouring the keyboard modes the
 // program in the window (tm attach) negotiated.
 var (
-	CtrlBackslash = emu.Key{Rune: '\\', Mods: emu.ModCtrl}
-	ShiftEnter    = emu.Key{Special: emu.KeyEnter, Mods: emu.ModShift}
-	Enter         = emu.Key{Special: emu.KeyEnter}
-	ShiftPageUp   = emu.Key{Special: emu.KeyPageUp, Mods: emu.ModShift}
+	CtrlB       = emu.Key{Rune: 'b', Mods: emu.ModCtrl}
+	ShiftEnter  = emu.Key{Special: emu.KeyEnter, Mods: emu.ModShift}
+	Enter       = emu.Key{Special: emu.KeyEnter}
+	ShiftPageUp = emu.Key{Special: emu.KeyPageUp, Mods: emu.ModShift}
 )
 
-// Prefix presses the prefix key, Ctrl+\ by default (docs/SPEC.md §4);
+// Prefix presses the prefix key, Ctrl+B by default (docs/SPEC.md §4);
 // then key types the command after it.
 func (w *Window) Prefix(key string) {
-	w.Key(CtrlBackslash)
+	w.Key(CtrlB)
 	w.Type(key)
 }
 
@@ -172,5 +172,33 @@ func (e *Env) AssertMirrorsServer(w *Window) {
 	}
 	if !strings.Contains(last, " digest ok ") {
 		e.T.Fatalf("client mirror differs from the server: %s", last)
+	}
+}
+
+// Click clicks the left button at cell (x, y). The window only reports it
+// if the program in the window turned on mouse tracking.
+func (w *Window) Click(x, y int) {
+	w.env.T.Helper()
+	w.Drag(x, x, y)
+}
+
+// Drag presses the left button at cell (x, y), moves it to (to, y) and
+// releases it there.
+func (w *Window) Drag(x, to, y int) {
+	w.env.T.Helper()
+	ms := []emu.Mouse{{Action: emu.MousePress, Button: emu.MouseLeft, X: x, Y: y}}
+	if to != x {
+		ms = append(ms, emu.Mouse{Action: emu.MouseMotion, Button: emu.MouseLeft, X: to, Y: y})
+	}
+	ms = append(ms, emu.Mouse{Action: emu.MouseRelease, Button: emu.MouseLeft, X: to, Y: y})
+	for _, m := range ms {
+		w.mu.Lock()
+		enc, err := w.encoder()
+		var b []byte
+		if err == nil {
+			b, err = enc.Mouse(w.term, m)
+		}
+		w.mu.Unlock()
+		w.send(fmt.Sprintf("mouse %+v", m), b, err)
 	}
 }
