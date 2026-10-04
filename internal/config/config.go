@@ -35,6 +35,11 @@ type Safety struct {
 	// PRFollowup prompts a thread when its PR's checks fail or a reviewer
 	// asks for changes (§7.5).
 	PRFollowup bool `json:"pr_followup"`
+	// CoordinatorRemoteControl starts the coordinator with the agent's
+	// remote control on (e.g. Claude Code's Remote Control), named after
+	// the project (§8.2 [remote_control]). The prefix key and tm project
+	// remote change only the running session.
+	CoordinatorRemoteControl bool `json:"coordinator_remote_control"`
 }
 
 // Defaults are the settings of a project that config.toml doesn't name.
@@ -46,6 +51,7 @@ type rawSafety struct {
 	CoordinatorApproves *bool   `toml:"coordinator_approves"`
 	AutoResolve         *bool   `toml:"auto_resolve"`
 	PRFollowup          *bool   `toml:"pr_followup"`
+	CoordinatorRC       *bool   `toml:"coordinator_remote_control"`
 }
 
 // Config is the parsed file.
@@ -121,6 +127,9 @@ func (c *Config) Safety(slug string) (Safety, error) {
 	}
 	if r.PRFollowup != nil {
 		s.PRFollowup = *r.PRFollowup
+	}
+	if r.CoordinatorRC != nil {
+		s.CoordinatorRemoteControl = *r.CoordinatorRC
 	}
 	return s, nil
 }

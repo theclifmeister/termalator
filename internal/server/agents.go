@@ -203,6 +203,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		Role: agent.Role(r.Role), SessionID: r.ID, AgentSID: r.AgentSessionID,
 		Cwd: r.Cwd, RuntimeDir: rt, BriefPath: r.Brief, Kickoff: l.kick, Resume: l.resume,
 		Yolo: r.Yolo, Model: r.Model, TMBin: s.opts.Bin, Socket: s.opts.Paths.Socket, Access: access,
+		RemoteControl: r.RemoteControl, RemoteName: remoteName(r),
 	}
 	launch, err := a.Launch(spec)
 	if err != nil {
@@ -233,6 +234,8 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		Scheme:    s.scheme,
 		Logf:      s.log.Printf,
 		OnExit:    s.sessionExited,
+		// Set before Start: the first session.list must show it.
+		RemoteControl: r.RemoteControl,
 		Agent: &session.AgentConfig{
 			Agent: a, AgentSID: r.AgentSessionID, Home: home,
 			Context:  contextFor(r.Role, r.Project, r.Thread, r.Brief),
@@ -320,9 +323,15 @@ func (s *Server) agentChanged(sess *session.Session) {
 		return
 	}
 	prompted := r.Prompted || st.State == agent.StateWorking || st.State == agent.StateBlocked
-	if (st.AgentSID == "" || r.AgentSessionID == st.AgentSID) && prompted == r.Prompted {
+	// The agent's own word on remote control wins: a resume reconnects.
+	remote := r.RemoteControl
+	if _, restarting := s.relaunch[sess.ID()]; st.RemoteKnown && !restarting {
+		remote = st.RemoteControl
+	}
+	if (st.AgentSID == "" || r.AgentSessionID == st.AgentSID) && prompted == r.Prompted && remote == r.RemoteControl {
 		return
 	}
+	r.RemoteControl = remote
 	if st.AgentSID != "" {
 		r.AgentSessionID = st.AgentSID
 	}

@@ -41,6 +41,7 @@ yolo = true
 coordinator_approves = false
 auto_resolve = false
 pr_followup = false
+coordinator_remote_control = true
 `)
 	c, err := Load()
 	if err != nil {
@@ -49,7 +50,7 @@ pr_followup = false
 	if s, _ := c.Safety("demo"); s != (Safety{StartThreads: "auto", Yolo: true, CoordinatorApproves: true, AutoResolve: true, PRFollowup: true}) {
 		t.Fatalf("demo %+v", s)
 	}
-	if s, _ := c.Safety("other"); s != (Safety{StartThreads: "propose"}) {
+	if s, _ := c.Safety("other"); s != (Safety{StartThreads: "propose", CoordinatorRemoteControl: true}) {
 		t.Fatalf("other %+v", s)
 	}
 }

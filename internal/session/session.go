@@ -38,6 +38,9 @@ type Config struct {
 	// OnExit is called once, after the process has exited and every
 	// subscriber has been closed.
 	OnExit func(*Session)
+	// RemoteControl: the agent started reachable from another device
+	// (docs/SPEC.md §8.2); SetRemoteControl tracks later changes.
+	RemoteControl bool
 
 	// Agent, when set, makes this an agent session (docs/SPEC.md §8).
 	Agent *AgentConfig
@@ -68,6 +71,10 @@ type Session struct {
 	stateCh    chan struct{} // closed and replaced on every state change
 
 	output atomic.Bool // output arrived since the last screen evaluation
+	remote atomic.Bool // remote control is on
+	// closeNote, when set, replaces "session exited: …" as the reason
+	// subscribers are given when the process ends.
+	closeNote string
 
 	// RequestResize's coalescing (rmu before mu).
 	rmu         sync.Mutex
@@ -100,6 +107,7 @@ func Start(cfg Config) (*Session, error) {
 		scheme:  cfg.Scheme,
 		stateCh: make(chan struct{}),
 	}
+	s.remote.Store(cfg.RemoteControl)
 	term, err := emu.NewWith(emu.Options{
 		Cols: cfg.Cols, Rows: cfg.Rows,
 		// Answers to terminal queries go back to the program. Only this
@@ -165,6 +173,17 @@ func (s *Session) PID() int { return s.cmd.Process.Pid }
 // Done is closed once the process has exited and the session is torn down.
 func (s *Session) Done() <-chan struct{} { return s.done }
 
+// SetRemoteControl records whether remote control is on.
+func (s *Session) SetRemoteControl(on bool) { s.remote.Store(on) }
+
+// SetCloseNote sets the reason attached clients are given when the
+// process ends, e.g. proto.ClosedRestarting.
+func (s *Session) SetCloseNote(note string) {
+	s.mu.Lock()
+	s.closeNote = note
+	s.mu.Unlock()
+}
+
 // ExitStatus describes how the process ended; it is empty while it runs.
 func (s *Session) ExitStatus() string {
 	s.mu.Lock()
@@ -190,6 +209,8 @@ func (s *Session) Info() proto.SessionInfo {
 		Rows:    s.rows,
 		Created: s.cfg.Created,
 		Clients: len(s.subs),
+
+		RemoteControl: s.remote.Load(),
 	}
 	if s.term != nil {
 		info.Title = s.term.Title()
@@ -199,6 +220,9 @@ func (s *Session) Info() proto.SessionInfo {
 		info.Agent = st.Agent
 		info.State, info.Reason, info.StateSources = string(st.State), st.Reason, st.Sources
 		info.AgentSID, info.Identified, info.Queued = st.AgentSID, st.Observed, st.Queued
+		if st.RemoteKnown {
+			info.RemoteControl = st.RemoteControl
+		}
 		for _, t := range st.Todos {
 			info.TodosTotal++
 			switch t.Status {
@@ -450,8 +474,12 @@ func (s *Session) waitLoop(readDone <-chan struct{}) {
 
 	s.mu.Lock()
 	s.exitStatus = status
+	reason := "session exited: " + status
+	if s.closeNote != "" {
+		reason = s.closeNote
+	}
 	for sub := range s.subs {
-		sub.enqueue(proto.FrameClosed, []byte("session exited: "+status))
+		sub.enqueue(proto.FrameClosed, []byte(reason))
 		sub.close()
 	}
 	s.subs = map[*Subscriber]struct{}{}

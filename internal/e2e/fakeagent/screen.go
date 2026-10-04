@@ -262,6 +262,10 @@ func (d *dialog) lines() []string {
 		out = append(out, " "+d.title, " Do you want to "+d.subject+"?")
 		opts()
 		out = append(out, " Esc to cancel · Tab to amend")
+	case "remote":
+		out = append(out, " Remote Control", "", " This session is available in the Claude mobile app.", "")
+		opts()
+		out = append(out, "", " Enter to select · Esc to continue")
 	case "question":
 		out = append(out, " ☐ "+d.header, " "+d.question)
 		opts()

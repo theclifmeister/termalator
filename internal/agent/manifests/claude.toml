@@ -99,6 +99,20 @@ template = '''
 }
 '''
 
+# Remote Control (2.1.289): the Claude apps list the session under its
+# name. /remote-control <name> turns it on in a running session. A resumed
+# conversation reconnects on its own, flag or not, so off can't be a
+# restart: /remote-control while connected opens a menu (Disconnect this
+# session · Show QR code · Continue, on Continue), answered with Up Up
+# Enter, and the transcript then says it disconnected.
+[remote_control]
+args = ["--remote-control", "{{.RemoteName}}"]
+enable = "/remote-control {{.RemoteName}}"
+disable = "/remote-control"
+# The session file's bridgeSessionId is null while it is off.
+status_field = "remote_control"
+disable_dialog = { contains = "Disconnect this session", keys = "\u001b[A\u001b[A\r", done = "Remote Control disconnected" }
+
 [inject]
 # Bracketed paste + Enter while idle with an empty prompt box (core).
 # "channel" would use Claude's undocumented uds-messaging socket (Go, in
@@ -142,7 +156,7 @@ reason_field = "waitingFor"
 reason_map = { "permission prompt" = "permission", "input needed" = "question" }
 session_field = "sessionId"
 version_field = "version"
-fields = { messaging_socket = "messagingSocketPath" }
+fields = { messaging_socket = "messagingSocketPath", remote_control = "bridgeSessionId" }
 
 # Cross-check when the status file is missing or untrusted.
 [jsonl_tail]

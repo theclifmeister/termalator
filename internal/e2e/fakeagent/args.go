@@ -12,6 +12,7 @@ type options struct {
 	briefPath  string
 	yolo       bool
 	model      string
+	remote     *string // nil unless --remote-control was given
 	prompt     string
 }
 
@@ -24,6 +25,7 @@ var valueFlags = map[string]bool{
 	"-r":                          true,
 	"--append-system-prompt-file": true,
 	"--model":                     true,
+	"--remote-control":            true,
 }
 
 // parseArgs reads argv (without the program name). Unknown flags are
@@ -51,8 +53,9 @@ func parseArgs(args []string) options {
 		name, value, hasValue := strings.Cut(arg, "=")
 		if !hasValue && valueFlags[name] {
 			switch {
-			case i+1 < len(args) && (name == "--resume" || name == "-r") && strings.HasPrefix(args[i+1], "-"):
-				// --resume with no id: the interactive picker.
+			case i+1 < len(args) && (name == "--resume" || name == "-r" || name == "--remote-control") && strings.HasPrefix(args[i+1], "-"):
+				// --resume with no id: the interactive picker;
+				// --remote-control with no name: a generated one.
 			case i+1 < len(args):
 				i++
 				value = args[i]
@@ -80,6 +83,9 @@ func parseArgs(args []string) options {
 			o.yolo = true
 		case "--model":
 			o.model = value
+		case "--remote-control":
+			v := value
+			o.remote = &v
 		}
 	}
 	o.prompt = strings.Join(prompt, " ")

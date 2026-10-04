@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/theclifmeister/termalator/internal/emu"
 	"github.com/theclifmeister/termalator/internal/project"
 	"github.com/theclifmeister/termalator/internal/proto"
@@ -110,7 +112,8 @@ type sideProject struct {
 // sideItem is one sidebar line: a project and its coordinator's state.
 type sideItem struct {
 	sideProject
-	state string // the coordinator's state, "" without one
+	state  string // the coordinator's state, "" without one
+	remote bool   // its coordinator's remote control is on
 }
 
 // sideItems joins the projects with their coordinators' sessions.
@@ -120,7 +123,7 @@ func sideItems(ps []sideProject, sessions []proto.SessionInfo) []sideItem {
 		it := sideItem{sideProject: p}
 		for _, s := range sessions {
 			if s.Role == proto.RoleCoordinator && s.Project == p.slug {
-				it.state = stateWord(s)
+				it.state, it.remote = stateWord(s), s.RemoteControl
 				break
 			}
 		}
@@ -203,7 +206,8 @@ func sidebarLines(items []sideItem, current string, w, h int) []string {
 
 // sideLine is one project cw cells wide: "▸● alpha        2" when full,
 // "▸●alph" in the slim strip. The current project is marked and in
-// reverse video, so colour is never the only signal.
+// reverse video, so colour is never the only signal. A coordinator with
+// remote control on gets "⌁" after the name, in either width.
 func sideLine(it sideItem, current bool, cw int, slim bool) string {
 	mark := " "
 	if current {
@@ -213,16 +217,24 @@ func sideLine(it sideItem, current bool, cw int, slim bool) string {
 	if it.state == "" {
 		g, st = "·", styleFaint // no coordinator runs
 	}
+	rc := ""
+	if it.remote {
+		rc = remoteMark
+	}
 	if slim {
 		name := []rune(it.slug)
-		name = name[:min(len(name), max(cw-2, 0))]
+		name = name[:min(len(name), max(cw-2-len([]rune(rc)), 0))]
 		if current {
-			return styleSel.Bold(true).Render(fit(mark+g+string(name), cw))
+			return styleSel.Bold(true).Render(fit(mark+g+string(name)+rc, cw))
 		}
-		return fit(mark+st.Render(g)+string(name), cw)
+		return fit(mark+st.Render(g)+string(name)+rc, cw)
 	}
 	count := fmt.Sprintf(" %d ", it.threads)
-	name := fit(it.slug, max(cw-3-len(count), 1))
+	nw := max(cw-3-len(count), 1)
+	name := fit(it.slug, nw)
+	if rc != "" {
+		name = fit(ansi.Truncate(it.slug, max(nw-1, 0), "…")+rc, nw)
+	}
 	if current {
 		return styleSel.Bold(true).Render(fit(mark+g+" "+name+count, cw))
 	}
