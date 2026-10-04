@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/theclifmeister/termalator/internal/agent"
+	"github.com/theclifmeister/termalator/internal/caller"
 	"github.com/theclifmeister/termalator/internal/emu"
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/session"
@@ -46,6 +47,9 @@ type Options struct {
 	Bin string
 	// Env is the base environment for sessions; nil means os.Environ().
 	Env []string
+	// RunCLI runs a project command for cli.run (set by package cli,
+	// which imports this one). Nil refuses cli.run.
+	RunCLI func(p proto.CLIRunParams, c caller.Caller) proto.CLIRunResult
 }
 
 // Server owns every session and the control socket.
@@ -56,6 +60,9 @@ type Server struct {
 	started time.Time
 	stopReq chan struct{}
 	stopOne sync.Once
+
+	// threadMu serialises the mirroring of thread state into files.
+	threadMu sync.Mutex
 
 	mu       sync.Mutex
 	sessions map[string]*session.Session
@@ -326,13 +333,7 @@ func (s *Server) serveControl(c net.Conn, br *bufio.Reader, peerPID int) {
 		if err := readJSONLine(br, &req); err != nil {
 			return
 		}
-		var result any
-		var perr *proto.Error
-		if req.Method == proto.MethodCallerWho {
-			result = s.whoIs(peerPID)
-		} else {
-			result, perr = s.dispatch(req)
-		}
+		result, perr := s.dispatch(req, peerPID)
 		resp := proto.Response{ID: req.ID, Error: perr}
 		if perr == nil {
 			b, err := json.Marshal(result)
@@ -352,8 +353,16 @@ func (s *Server) serveControl(c net.Conn, br *bufio.Reader, peerPID int) {
 	}
 }
 
-func (s *Server) dispatch(req proto.Request) (any, *proto.Error) {
+func (s *Server) dispatch(req proto.Request, peerPID int) (any, *proto.Error) {
 	switch req.Method {
+	case proto.MethodCallerWho:
+		return s.whoIs(peerPID), nil
+	case proto.MethodCLIRun:
+		var p proto.CLIRunParams
+		if err := decodeParams(req.Params, &p); err != nil {
+			return nil, err
+		}
+		return s.cliRun(p, peerPID)
 	case proto.MethodPing:
 		return map[string]bool{"pong": true}, nil
 	case proto.MethodServerStatus:
@@ -561,7 +570,11 @@ func (s *Server) startSession(p proto.SessionStartParams) (any, *proto.Error) {
 	if p.Agent != "" {
 		rec.Agent, rec.AgentSessionID, rec.Brief, rec.Model, rec.Yolo = p.Agent, newUUID(), p.Brief, p.Model, p.Yolo
 		rec.Kickoff = p.Kickoff
-		sess, perr := s.launchAgent(agentLaunch{rec: rec, kick: p.Kickoff, cols: cols, rows: rows})
+		l := agentLaunch{rec: rec, kick: p.Kickoff, cols: cols, rows: rows}
+		if p.ResumeSID != "" {
+			l.rec.AgentSessionID, l.rec.Prompted, l.resume, l.kick = p.ResumeSID, true, true, ""
+		}
+		sess, perr := s.launchAgent(l)
 		if perr != nil {
 			return nil, perr
 		}

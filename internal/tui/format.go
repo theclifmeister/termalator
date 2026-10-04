@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/theclifmeister/termalator/internal/proto"
+	"github.com/theclifmeister/termalator/internal/thread"
 )
 
 // Shared text for the dashboard rows and the attach status bar.
@@ -116,4 +117,27 @@ func statusLine(s proto.SessionInfo, detach chord, cols int) string {
 		return "\x1b[7m" + fit(left, cols) + "\x1b[27m"
 	}
 	return "\x1b[7m" + fit(left, w) + " " + right + "\x1b[27m"
+}
+
+// threadProgress is a thread's line from STATUS.md (docs/SPEC.md §7.3):
+// "60% 3/5 ▸ current", the self-reported activity only without steps or
+// todos.
+func threadProgress(st *thread.Status) string {
+	if st == nil {
+		return ""
+	}
+	var parts []string
+	if st.PercentSource != "" {
+		parts = append(parts, fmt.Sprintf("%d%%", st.Percent))
+	}
+	if n := st.StepsTotal + st.TodosTotal; n > 0 {
+		parts = append(parts, fmt.Sprintf("%d/%d", st.StepsDone+st.TodosDone, n))
+	}
+	switch {
+	case st.Current != "":
+		parts = append(parts, "▸ "+oneLine(st.Current))
+	case st.Activity != "":
+		parts = append(parts, `"`+oneLine(st.Activity)+`"`)
+	}
+	return strings.Join(parts, " ")
 }

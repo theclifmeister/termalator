@@ -42,3 +42,15 @@ func ProcArgs(pid int) ([]string, error) {
 	}
 	return out, nil
 }
+
+// ParentPID returns a process's parent pid.
+func ParentPID(pid int) (int, error) {
+	kp, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
+	if err != nil {
+		return 0, err
+	}
+	if kp.Proc.P_pid != int32(pid) {
+		return 0, fmt.Errorf("pty: no process %d", pid)
+	}
+	return int(kp.Eproc.Ppid), nil
+}

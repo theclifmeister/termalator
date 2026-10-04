@@ -11,6 +11,7 @@ import (
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/server"
 	"github.com/theclifmeister/termalator/internal/tasks"
+	"github.com/theclifmeister/termalator/internal/thread"
 )
 
 // Data is one poll of everything the dashboard shows. The dashboard holds
@@ -34,7 +35,16 @@ type ProjectData struct {
 	Inbox []InboxRow
 	// Unread counts every unhandled inbox item.
 	Unread int
-	Err    string
+	// Threads are the project's unresolved threads (M6).
+	Threads []ThreadRow
+	Err     string
+}
+
+// ThreadRow is one thread: its record (thread.toml) and its STATUS.md,
+// nil when it has none yet.
+type ThreadRow struct {
+	*thread.Record
+	Status *thread.Status
 }
 
 // InboxRow is an inbox item; Task is set for a done confirmation (§6.4),
@@ -126,6 +136,14 @@ func (s *ServerSource) Load() Data {
 						pd.NeedsYou = append(pd.NeedsYou, t)
 					}
 				}
+			}
+			recs, _ := thread.List(p)
+			for _, r := range recs {
+				if r.State == thread.Resolved {
+					continue
+				}
+				st, _ := thread.ReadStatus(p, r.ID)
+				pd.Threads = append(pd.Threads, ThreadRow{Record: r, Status: st})
 			}
 			items, _ := p.Inbox()
 			pd.Unread = len(items)

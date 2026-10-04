@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/theclifmeister/termalator/internal/caller"
@@ -47,7 +48,19 @@ func OSEnv() *Env {
 // Run runs a tm subcommand from this package with the process's
 // environment. handled is false if args name no command of this package,
 // so cmd/tm can try others.
-func Run(args []string) (code int, handled bool) { return OSEnv().Run(args) }
+//
+// An agent's project command runs inside the server (forward), which
+// tells the caller from the process tree and writes the project folder
+// that a sandboxed thread can't. Without a server it runs here.
+func Run(args []string) (code int, handled bool) {
+	e := OSEnv()
+	if len(args) > 0 && forwarded[args[0]] && e.Getenv(caller.EnvSession) != "" {
+		if code, ok := e.forward(args); ok {
+			return code, true
+		}
+	}
+	return e.Run(args)
+}
 
 type command func(e *Env, args []string) error
 
@@ -57,6 +70,10 @@ var commands = map[string]command{
 	"context": runContext,
 	"inbox":   runInbox,
 	"skill":   runSkill,
+	"thread":  runThread,
+	"report":  runReport,
+	"status":  runStatus,
+	"done":    runDone,
 }
 
 // checked are the commands whose rights depend on the caller: for them
@@ -196,10 +213,19 @@ func (e *Env) readArg(path string) (string, error) {
 	if path == "-" {
 		data, err = io.ReadAll(e.Stdin)
 	} else {
-		data, err = os.ReadFile(path)
+		data, err = os.ReadFile(e.abs(path))
 	}
 	if err != nil {
 		return "", usagef("%v", err)
 	}
 	return string(data), nil
+}
+
+// abs resolves a path argument against the caller's cwd, which inside the
+// server is not the process's own.
+func (e *Env) abs(path string) string {
+	if filepath.IsAbs(path) || e.Cwd == "" {
+		return path
+	}
+	return filepath.Join(e.Cwd, path)
 }

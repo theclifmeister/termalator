@@ -49,7 +49,11 @@ type LaunchSpec struct {
 // Paths are absolute directories; each grant covers everything below it.
 type Access struct {
 	Read    []string // readable without a prompt
+	Write   []string // writable besides the cwd, e.g. a worktree's git dir
 	NoWrite []string // must never be written, even where a broader rule would allow it
+	// NoWriteFiles are single files that must never be written, e.g.
+	// config.toml, which holds the human's safety settings.
+	NoWriteFiles []string
 }
 
 // Launch is the agent's answer: what to exec in the PTY, and which files to

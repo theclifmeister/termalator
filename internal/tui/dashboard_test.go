@@ -10,6 +10,7 @@ import (
 	"github.com/theclifmeister/termalator/internal/project"
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/tasks"
+	"github.com/theclifmeister/termalator/internal/thread"
 )
 
 // fakeSource records the dashboard's actions.
@@ -48,12 +49,17 @@ func testData() Data {
 		Sessions: []proto.SessionInfo{
 			{ID: "s-1", Role: proto.RoleCoordinator, Project: "alpha", Agent: "claude", State: "idle", Created: now},
 			{ID: "s-2", Role: proto.RoleThread, Project: "alpha", Thread: "t-0002", Agent: "claude", State: "blocked", Reason: "permission", Created: now},
+			{ID: "s-5", Role: proto.RoleThread, Project: "beta", Thread: "t-0005", Agent: "claude", State: "working", Created: now},
 			{ID: "s-3", Role: proto.RoleShell, Argv: []string{"/bin/zsh", "-l"}, State: "", Cwd: "/x", Created: now},
 		},
 		Projects: []ProjectData{
 			{Slug: "alpha", Counts: map[string]int{"needs_you": 1, "in_motion": 1}, NeedsYou: []*tasks.Task{review},
 				Inbox: []InboxRow{{Item: project.Item{ID: "i1", Kind: project.KindConfirmDone, Subject: "T3", Summary: "coordinator asks to mark T3 done", NeedsUser: true}, Task: started}}},
-			{Slug: "beta", Counts: map[string]int{}},
+			{Slug: "beta", Counts: map[string]int{}, Threads: []ThreadRow{
+				{Record: &thread.Record{ID: "t-0005", Title: "Write docs", Task: "T4", State: thread.Running, Session: "s-5", Reports: 1},
+					Status: &thread.Status{Percent: 60, PercentSource: "steps", StepsDone: 3, StepsTotal: 5, Current: "Draft §2"}},
+				{Record: &thread.Record{ID: "t-0006", Title: "Old work", State: thread.Stopped}},
+			}},
 		},
 	}
 }
@@ -98,6 +104,9 @@ func TestDashboardRows(t *testing.T) {
 	if needs < 0 || !(needs < projs && projs < sess) {
 		t.Fatalf("sections out of order:\n%s", out)
 	}
+	if strings.Contains(out, "s-5 ") {
+		t.Errorf("thread session listed besides its thread row:\n%s", out)
+	}
 	for _, want := range []string{
 		"! alpha        t-0002                         blocked   permission",
 		"? alpha        T7 Pick a licence              review",
@@ -106,6 +115,9 @@ func TestDashboardRows(t *testing.T) {
 		"    s-2          t-0002",
 		"  beta         coordinator                    —         enter starts the coordinator",
 		"  s-3          /bin/zsh -l                    running",
+		"                 t-0005 Write docs              working   T4  60% 3/5 ▸ Draft §2  report waiting",
+		"                 t-0006 Old work                stopped",
+		"? beta         t-0005 Write docs              report    unacknowledged report",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in\n%s", want, out)

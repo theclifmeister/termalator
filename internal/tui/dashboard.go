@@ -616,13 +616,22 @@ func buildRows(d Data) []row {
 
 		var coord *proto.SessionInfo
 		var members []proto.SessionInfo
+		byID := map[string]proto.SessionInfo{}
+		threadOf := map[string]bool{}
+		for _, t := range p.Threads {
+			threadOf[t.ID] = true
+		}
 		for i, s := range d.Sessions {
+			byID[s.ID] = s
 			if s.Project != p.Slug {
 				continue
 			}
 			if s.Role == proto.RoleCoordinator && coord == nil {
 				coord = &d.Sessions[i]
 				continue
+			}
+			if s.Role == proto.RoleThread && threadOf[s.Thread] {
+				continue // shown as its thread's row
 			}
 			members = append(members, s)
 		}
@@ -641,6 +650,37 @@ func buildRows(d Data) []row {
 			r.session = coord.ID
 		}
 		projs = append(projs, r)
+		for _, t := range p.Threads {
+			tr := row{key: "th:" + p.Slug + ":" + t.ID, project: p.Slug}
+			state := t.State
+			if s, ok := byID[t.Session]; ok && t.Session != "" {
+				tr.session, state = s.ID, stateWord(s)
+				if s.State == "blocked" && s.Reason != "" {
+					state += " " + s.Reason
+				}
+			}
+			what := t.ID + " " + oneLine(t.Title)
+			rest := threadProgress(t.Status)
+			if t.Task != "" {
+				rest = joinSp(t.Task, rest)
+			}
+			if t.Status != nil && !t.Status.Updated.IsZero() {
+				rest = joinSp(rest, age(now.Sub(t.Status.Updated)))
+			}
+			if t.ReportState() == "new" {
+				rest = joinSp(rest, "report waiting")
+			}
+			tr.text = cols("    ", "", what, state, rest)
+			projs = append(projs, tr)
+			switch {
+			case t.ReportState() == "new":
+				needs = append(needs, row{key: "nt:" + p.Slug + ":" + t.ID, project: p.Slug, session: tr.session,
+					text: cols(" ? ", p.Slug, what, "report", "unacknowledged report")})
+			case t.Status != nil && t.Status.NeedsYou != "":
+				needs = append(needs, row{key: "nt:" + p.Slug + ":" + t.ID, project: p.Slug, session: tr.session,
+					text: cols(" ? ", p.Slug, what, "waiting", oneLine(t.Status.NeedsYou))})
+			}
+		}
 		sort.SliceStable(members, func(i, j int) bool { return members[i].Thread < members[j].Thread })
 		for _, s := range members {
 			projs = append(projs, row{key: "s:" + s.ID, session: s.ID, project: p.Slug,
