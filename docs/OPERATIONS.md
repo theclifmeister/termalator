@@ -54,7 +54,7 @@ When the server stops, every session it hosts stops with it. The next server rea
 - starts an agent that never got a prompt fresh (there is no conversation to resume);
 - does not restore shell sessions; they are listed as lost.
 
-Turns that were running are lost; resumed agents are idle. Each affected project gets a `server` inbox item such as `server restarted after crash; resumed coordinator, t-0003; lost shell s-12`, and the coordinator decides what to re-prompt. `tm server status` shows the same.
+Turns that were running are lost; resumed agents are idle. Each affected project gets a `server-restart` inbox item ("the server restarted after a crash: 2 session(s) resumed, 1 not restored"), and the coordinator decides what to re-prompt. `tm server status` lists the resumed and lost session ids, and `server.log` names each one (`server restarted after crash; resumed coordinator, t-0003; lost shell s-12`).
 
 ### Start at login (optional)
 

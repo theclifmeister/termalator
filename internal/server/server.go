@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/theclifmeister/termalator/internal/agent"
@@ -20,6 +21,7 @@ import (
 	"github.com/theclifmeister/termalator/internal/emu"
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/session"
+	"github.com/theclifmeister/termalator/internal/ticker"
 	"github.com/theclifmeister/termalator/internal/version"
 )
 
@@ -74,6 +76,14 @@ type Server struct {
 	lost     []string
 	resumed  []string
 	conns    map[net.Conn]struct{}
+	// prevProject maps the previous server's session ids to their
+	// project, for the restart inbox items.
+	prevProject map[string]string
+
+	// tick is the ticker (docs/SPEC.md §7.5); alerts counts the
+	// notifications sent, so clients know when to ring.
+	tick   *ticker.Ticker
+	alerts atomic.Uint64
 
 	agents    *agent.Registry
 	agentErrs []string
@@ -137,6 +147,8 @@ func Run(ctx context.Context, opts Options) error {
 		blocked:  map[string]bool{},
 		nextID:   1,
 		conns:    map[net.Conn]struct{}{},
+
+		prevProject: map[string]string{},
 	}
 	s.loadAgents()
 	toResume, lost := s.loadPrevious()
@@ -158,15 +170,24 @@ func Run(ctx context.Context, opts Options) error {
 	}()
 	// Resume once hooks can be answered: a resumed agent fires
 	// SessionStart at once.
-	if s.prevShut != "" {
-		s.reportRestart(s.prevShut, append(lost, s.resume(toResume)...))
+	if outs := s.resume(toResume); s.prevShut != "" {
+		s.logRestart(s.prevShut, append(lost, outs...))
 	}
+	tctx, stopTicker := context.WithCancel(context.Background())
+	tickerDone := s.startTicker(tctx)
 
 	select {
 	case <-ctx.Done():
 		logger.Printf("stopping: %v", context.Cause(ctx))
 	case <-s.stopReq:
 		logger.Printf("stopping: requested by a client")
+	}
+	// Let a sweep in progress finish while the socket still answers.
+	stopTicker()
+	select {
+	case <-tickerDone:
+	case <-time.After(15 * time.Second):
+		logger.Printf("ticker: still sweeping; stopping anyway")
 	}
 	ln.Close()
 	<-acceptDone
@@ -200,6 +221,9 @@ func (s *Server) loadPrevious() (resume []SessionRecord, lost []restartOutcome) 
 		s.log.Printf("previous server (pid %d) did not shut down cleanly", prev.ServerPID)
 	}
 	for _, r := range prev.Sessions {
+		if r.Project != "" {
+			s.prevProject[r.ID] = r.Project
+		}
 		if r.Agent != "" && r.AgentSessionID != "" {
 			resume = append(resume, r)
 			continue
@@ -365,7 +389,9 @@ func (s *Server) dispatch(req proto.Request, peerPID int) (any, *proto.Error) {
 		if err := decodeParams(req.Params, &p); err != nil {
 			return nil, err
 		}
-		return s.cliRun(p, peerPID)
+		res, perr := s.cliRun(p, peerPID)
+		s.kick()
+		return res, perr
 	case proto.MethodPing:
 		return map[string]bool{"pong": true}, nil
 	case proto.MethodServerStatus:
@@ -490,7 +516,7 @@ func (s *Server) list() proto.SessionListResult {
 		sessions = append(sessions, sess)
 	}
 	s.mu.Unlock()
-	res := proto.SessionListResult{Sessions: []proto.SessionInfo{}}
+	res := proto.SessionListResult{Sessions: []proto.SessionInfo{}, Alerts: s.alerts.Load()}
 	for _, sess := range sessions {
 		res.Sessions = append(res.Sessions, sess.Info())
 	}
@@ -621,6 +647,9 @@ func (s *Server) sessionExited(sess *session.Session) {
 	defer s.mu.Unlock()
 	delete(s.sessions, sess.ID())
 	delete(s.blocked, sess.ID())
+	if s.tick != nil {
+		s.tick.Kick()
+	}
 	if s.stopping {
 		return // keep the record: shutdown writes it for resume
 	}

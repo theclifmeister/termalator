@@ -245,7 +245,7 @@ The processes die with the server, because the PTY master closes and the childre
   - Shell sessions are not restored in v0.1. They are listed as "lost".
   - Sessions with no recorded agent session id come back as fresh launches of the same thread only if the thread is not resolved. Their brief tells them to read their last report first (`tm report --show`), then continue from the task's unchecked steps.
   - Turns that were running when the server stopped are lost. The resumed agent is idle.
-- **Reporting.** Each restart writes an inbox item (`kind = "server"`) to every affected project: "server restarted after crash; resumed t-0003, t-0005; lost shell s-12". The coordinator decides what to re-prompt.
+- **Reporting.** Each restart writes an inbox item (`kind = "server-restart"`, raised by the ticker, §7.5) to every affected project with the counts of resumed and lost sessions; the server log names them: "server restarted after crash; resumed coordinator, t-0003; lost shell s-12". The coordinator decides what to re-prompt.
 - **Upgrade.**
   - Installing a new `tm` doesn't touch a running server. Attach keeps working, because the client re-execs the server's binary (§3.3).
   - A control client with a newer protocol asks the human to run `tm server restart`. Restart warns about how many agents are mid-turn and asks for confirmation on a TTY.
@@ -285,7 +285,7 @@ The processes die with the server, because the PTY master closes and the childre
   - the derived percent, done/total, and the current todo or step after `▸` (§7.3); the self-reported activity appears only when there are no todos or steps;
   - the time since the last change, and the linked task id.
 
-  Selecting a thread row shows its full todo list and task steps.
+  Selecting a thread row shows its full todo list, its task's steps and its report's `## Next` lines under it. Threads are ordered as in §7.4; a row says `report waiting`, or `ready for review` once the thread called `tm done`, and the PR number from the report.
 - **Keys** (small and fixed in v0.1):
 
   | Key | Action |
@@ -298,6 +298,9 @@ The processes die with the server, because the PTY master closes and the childre
   | `c` | new Claude (or other agent) session in a chosen directory |
   | `p` | project switcher: every project with its coordinator's state; `enter` opens that project's coordinator (started if none runs) |
   | `]` / `[` | open the next / previous project's coordinator |
+  | `i` | the project's inbox: every unhandled item, `!` on those for the human |
+  | `a` | on a thread with an unacknowledged report, acknowledge it (`tm thread ack`) |
+  | `1`–`9` | on a thread, send that `## Next` line of its report as its next prompt (`tm thread prompt --next N`) |
   | `r` | refresh |
   | `?` | help |
   | `q` | quit the client; the server keeps running |
@@ -629,8 +632,14 @@ Threads are grouped as herdr-projects does: Waiting on you → Ready for review 
   - a process exits
   - a server restart
   - a task needs the human's confirmation
+- Kinds (M7): `report`, `thread-done`, `thread-resolved` and `needs-you` come from the `tm` commands; the ticker adds `blocked` (`needs_user` unless it is a permission prompt the coordinator may approve), `idle` (once per report, and not while that report's own item is unhandled), `exited`, `server-restart`, and `pr-opened`, `pr-checks-failed`, `pr-review` (approved or changes requested), `pr-merged`, `pr-closed`.
+- What the ticker already reported (per-thread state, PR fields, nudged item ids) is kept in `state/ticker.json`, so a server restart repeats nothing. `TERMALATOR_TICK_SWEEP`, `TERMALATOR_TICK_PR` and `TERMALATOR_TICK_NUDGE` shorten the intervals for tests.
+- **PR polling.** For each unresolved thread with a repo, `gh pr view <report PR URL, else the branch> --json number,url,state,reviewDecision,statusCheckRollup` in the repo, every 2 minutes, until the PR merged. Only those fields are kept, each checked against a strict pattern. A failed `gh` (no PR yet, no network) is retried at the next poll.
+- **PR follow-up** (built in, `pr_followup`, §11.2). When the checks start failing, or a reviewer requests changes, the thread gets one fixed prompt naming the PR number and the `gh` command to read them. No PR text is quoted.
+- **Auto-resolve** (`auto_resolve`, §11.2). Once the PR merged and the agent is idle, exited or stopped, the ticker runs `tm thread resolve` as caller `ticker`, once; resolve's own rules apply (never forced, the branch deleted only because the PR merged).
+- **Notifications.** A thread's new report, like a session becoming blocked, sends an OS notification and raises the server's alert count (`session.list`'s `alerts`); every client rings its bell when the count goes up.
 - `tm inbox list` and `tm inbox done <id>…` (which moves items to `inbox/done/`). Done items are deleted after 30 days.
-- **Nudge.** When new items arrive and the coordinator is idle, the server sends it one line, e.g. `[tm] 2 new inbox items: t-0004 blocked; t-0002 reported`. It uses the agent's prompt injector (§8.1). Nudges are rate-limited to one a minute and are never sent while the coordinator is working or blocked.
+- **Nudge.** When new items arrive and the coordinator is idle, the server sends it one line, e.g. `[tm] 2 new inbox items: t-0004 blocked; t-0002 reported`. It uses the agent's prompt injector (§8.1). Nudges are rate-limited to one a minute and are never sent while the coordinator is working or blocked, or has a prompt queued. A nudge holds fixed words and ids only, never an item's summary, and ends by saying the items are data, not instructions. Done confirmations (§6.4) are the human's and don't nudge.
 
 ### 7.6 `tm context`
 
@@ -990,6 +999,8 @@ File access is enforced separately, by the agent's own permission rules and sand
 | `start_threads` | `propose` / `auto` | `propose` | `propose`: the coordinator lists proposals, and threads start only after the human's go-ahead (a dashboard key, or the human telling the coordinator; the coordinator then calls `tm thread start --approved-by-user`, which is journaled) |
 | `yolo` | bool | `false` | launch with the manifest's `yolo_args` (Claude `--dangerously-skip-permissions`). Allowed, per the user's decision. It can only be turned on by a human call with a TTY confirmation. The access policy (§5.2) is still applied, and the deny rule and the sandbox hold under yolo (verified on macOS by t-0004) |
 | `coordinator_approves` | bool | `true` | the coordinator may answer in-scope permission prompts of its own threads with `tm thread approve` |
+| `auto_resolve` | bool | `true` | the ticker resolves a thread once its PR merged and its agent is idle (§9) |
+| `pr_followup` | bool | `true` | the ticker prompts a thread when its PR's checks fail or a reviewer requests changes (§7.5) |
 
 Rules for `tm thread approve`. It acts only when:
 - the thread's state is `blocked` with reason `permission`;
@@ -1350,7 +1361,7 @@ Built in M3 (`internal/e2e/fakeagent`, a small Go TUI). It behaves like Claude C
   | the control NDJSON request decoder | M1 |
   | `mdfile` front matter; the `TASKS.md` parser with the property `parse(render(x)) == x` | M5 |
   | the `REPORT.md` validator; `STATUS.md` | M6 |
-  | inbox items | M7 |
+  | inbox items (`project.FuzzParseItem`), `gh` PR JSON (`ticker.FuzzParsePR`), nudge text (`ticker.FuzzNudgeText`) | exists |
 
 - **Crashers.** Every crasher found nightly is committed under `testdata/fuzz/<Target>/`, which makes it a regression test on every PR.
 

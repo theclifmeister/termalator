@@ -92,15 +92,63 @@ func (p *Project) Inbox() ([]Item, error) {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
-		var it Item
-		if _, err := mdfile.Read(p.Path("inbox", e.Name()), &it); err != nil {
+		data, err := os.ReadFile(p.Path("inbox", e.Name()))
+		if errors.Is(err, fs.ErrNotExist) {
+			continue // handled meanwhile
+		}
+		if err != nil {
 			return nil, err
 		}
-		it.ID = strings.TrimSuffix(e.Name(), ".md")
+		it, err := ParseItem(strings.TrimSuffix(e.Name(), ".md"), data)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", p.Path("inbox", e.Name()), err)
+		}
 		items = append(items, it)
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
 	return items, nil
+}
+
+// ParseItem reads one inbox file; its id is the file name. The summary
+// is folded to one line, so nothing in an item can pose as more lines of
+// a prompt or a listing.
+func ParseItem(id string, data []byte) (Item, error) {
+	var it Item
+	if _, err := mdfile.Decode(data, &it); err != nil {
+		return Item{}, err
+	}
+	it.ID = id
+	it.Kind = strings.Join(strings.Fields(it.Kind), "-")
+	it.Subject = strings.Join(strings.Fields(it.Subject), " ")
+	it.Summary = strings.Join(strings.Fields(it.Summary), " ")
+	return it, nil
+}
+
+// PruneDone deletes handled items older than maxAge (§7.5: 30 days),
+// judged by the file's modification time, which DoneItem's rename keeps
+// from the item's creation.
+func (p *Project) PruneDone(maxAge time.Duration) (int, error) {
+	dir := p.Path("inbox", "done")
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	cutoff := now().Add(-maxAge)
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		if fi, err := e.Info(); err == nil && fi.ModTime().Before(cutoff) {
+			if os.Remove(filepath.Join(dir, e.Name())) == nil {
+				n++
+			}
+		}
+	}
+	return n, nil
 }
 
 // DoneItem moves an item to inbox/done/. An item already done is fine.

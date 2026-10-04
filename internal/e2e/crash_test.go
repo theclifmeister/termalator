@@ -17,7 +17,8 @@ import (
 // TestSmokeCrashResume is M8's "Try it": kill -9 the server with a
 // coordinator and threads running; the next tm brings them back. Prompted
 // sessions resume their latest agent session id, an unprompted thread
-// starts fresh, a shell is lost, and the project gets a "server" item.
+// starts fresh, a shell is lost, and the project gets a server-restart
+// item (M7's ticker) while the server log names every session.
 func TestSmokeCrashResume(t *testing.T) {
 	env, projDir, _ := threadEnv(t)
 	coord := env.StartAgent("claude", projDir, "--role", "coordinator", "--project", "demo")
@@ -105,14 +106,19 @@ func TestSmokeCrashResume(t *testing.T) {
 	if st.PreviousShutdown != "crash" || !slices.Equal(st.Lost, []string{shell.ID}) || len(st.Resumed) != 3 {
 		t.Fatalf("status after crash: %+v", st)
 	}
-	want := "server: server restarted after crash; resumed coordinator, t-0001; started fresh claude " + fresh.ID + "; lost shell " + shell.ID
+	want := "server-restart: the server restarted after a crash: 2 session(s) resumed, 0 not restored"
 	if items := env.MustCLI("inbox", "list", "--project", "demo"); !strings.Contains(items, want) {
 		t.Fatalf("inbox lacks %q:\n%s", want, items)
 	}
+	logWant := "server restarted after crash; resumed coordinator, t-0001; started fresh claude " + fresh.ID + "; lost shell " + shell.ID
+	if b, _ := os.ReadFile(filepath.Join(env.Home, "logs", "server.log")); !strings.Contains(string(b), logWant) {
+		t.Errorf("server.log lacks %q", logWant)
+	}
+
 	// A clean restart after that resumes again and says so without "crash".
 	env.MustCLI("server", "restart", "--yes")
 	env.WaitState(coord, "idle", agentWait)
-	if items := env.MustCLI("inbox", "list", "--project", "demo"); !strings.Contains(items, "server: server restarted; resumed coordinator, t-0001; started fresh claude "+fresh.ID) {
+	if items := env.MustCLI("inbox", "list", "--project", "demo"); !strings.Contains(items, "server-restart: the server restarted after a clean stop: 2 session(s) resumed") {
 		t.Fatalf("inbox after a clean restart:\n%s", items)
 	}
 }

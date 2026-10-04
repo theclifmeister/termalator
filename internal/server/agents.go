@@ -302,10 +302,14 @@ func (s *Server) agentChanged(sess *session.Session) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.tick != nil && ok && r.Project != "" {
+		s.tick.Kick()
+	}
 	s.log.Printf("session %s: %s %s/%s (%s)", sess.ID(), st.Agent, st.State, st.Reason, st.Sources)
 	if blocked := st.State == agent.StateBlocked; blocked != s.blocked[sess.ID()] {
 		if blocked {
 			s.blocked[sess.ID()] = true
+			s.alerts.Add(1)
 			go notify(s.log, blockedMessage(info, st.Reason))
 		} else {
 			delete(s.blocked, sess.ID())
