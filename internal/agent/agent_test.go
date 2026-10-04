@@ -454,6 +454,32 @@ state = "working"
 	}
 }
 
+func TestManifestScreenResize(t *testing.T) {
+	const base = "manifest_version = 1\nname = \"a\"\n[launch]\ncommand = \"a\"\n"
+	for _, c := range []struct {
+		screen string
+		follow bool
+		ok     bool
+	}{
+		{"", true, true},
+		{"[screen]\nresize = \"follow\"\n", true, true},
+		{"[screen]\nresize = \"explicit\"\n", false, true},
+		{"[screen]\nresize = \"never\"\n", false, false},
+	} {
+		m, err := ParseManifest([]byte(base + c.screen))
+		if (err == nil) != c.ok {
+			t.Errorf("%q: err = %v, want ok %v", c.screen, err, c.ok)
+			continue
+		}
+		if err == nil && FollowsTyping(FromManifest(m)) != c.follow {
+			t.Errorf("%q: FollowsTyping = %v", c.screen, !c.follow)
+		}
+	}
+	if !FollowsTyping(nil) {
+		t.Error("a pane without an agent must follow typing")
+	}
+}
+
 func TestBuiltinUnsetEnv(t *testing.T) {
 	got := FilterEnv([]string{"CLAUDECODE=1", "CLAUDE_CODE_SESSION_ID=x", "CLAUDE_CODE_USE_BEDROCK=1", "PATH=/bin"}, BuiltinUnsetEnv())
 	if len(got) != 2 || got[0] != "CLAUDE_CODE_USE_BEDROCK=1" || got[1] != "PATH=/bin" {

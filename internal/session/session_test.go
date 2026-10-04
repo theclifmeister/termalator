@@ -2,6 +2,7 @@ package session
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -158,6 +159,61 @@ func TestAttachMirrorMatchesServer(t *testing.T) {
 	}
 	if m.snaps != 1 {
 		t.Fatalf("mirror got %d snapshots, want 1", m.snaps)
+	}
+}
+
+// TestRequestResizeCoalesces: the first request applies at once; a burst
+// right after it collapses into one resize to the last size, once the
+// quiet time is over.
+func TestRequestResizeCoalesces(t *testing.T) {
+	old := ResizeQuiet
+	ResizeQuiet = 200 * time.Millisecond
+	defer func() { ResizeQuiet = old }()
+
+	s := start(t, "/bin/sh")
+	sub, err := s.Attach()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sub.Detach()
+	if err := s.RequestResize(100, 30); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Info(); got.Cols != 100 || got.Rows != 30 {
+		t.Fatalf("first request not applied at once: %d×%d", got.Cols, got.Rows)
+	}
+	for _, c := range []uint16{90, 91, 92} {
+		if err := s.RequestResize(c, 20); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := s.Info(); got.Cols != 100 {
+		t.Fatalf("a request within the quiet time applied at once: %d×%d", got.Cols, got.Rows)
+	}
+	eventually(t, "the last request", func() bool { got := s.Info(); return got.Cols == 92 && got.Rows == 20 })
+
+	// The stream saw exactly two resizes: 100×30, then 92×20. The
+	// subscriber holds everything since attaching.
+	var sizes []string
+	for len(sizes) < 2 {
+		b, ok := sub.Next()
+		if !ok {
+			t.Fatal("stream ended")
+		}
+		r := bytes.NewReader(b)
+		for r.Len() > 0 {
+			typ, payload, err := proto.ReadFrame(r, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if typ == proto.FrameResize {
+				c, rows, _ := proto.ParseSize(payload)
+				sizes = append(sizes, fmt.Sprintf("%dx%d", c, rows))
+			}
+		}
+	}
+	if strings.Join(sizes, " ") != "100x30 92x20" {
+		t.Fatalf("resizes in the stream: %v, want 100x30 92x20", sizes)
 	}
 }
 

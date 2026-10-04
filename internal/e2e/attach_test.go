@@ -115,7 +115,9 @@ func TestSmokeAttachCloseWindowMidStream(t *testing.T) {
 	w2 := env.Attach(80, 24, s.ID)
 	w2.WaitFor("stream-42", 60*time.Second)
 	env.AssertMirrorsServer(w2)
-	assertPaneSize(t, env, s, 80, 24)
+	// Typing in the first window gave the pane its size; attaching w2
+	// didn't change it (docs/SPEC.md §3.3).
+	assertPaneSize(t, env, s, 90, 30)
 }
 
 // TestAttachKillClient SIGKILLs the client mid-stream: the server
@@ -191,6 +193,86 @@ func TestAttachResize(t *testing.T) {
 	w.WaitFor("resized to 90x20", wait)
 	assertPaneSize(t, env, s, 90, 20)
 	env.AssertMirrorsServer(w)
+}
+
+// TestSmokeAttachLatestTypistResizes: two windows of different sizes on
+// one pane. Watching resizes nothing; typing in a window gives the pane
+// that window's size, and typing in the other takes it back.
+func TestSmokeAttachLatestTypistResizes(t *testing.T) {
+	env := New(t)
+	s := env.Start("printer", "-lines", "5")
+	env.WaitFor(s, "ready", wait)
+	w1 := env.Attach(100, 30, s.ID)
+	w2 := env.Attach(90, 20, s.ID)
+	w1.WaitFor("ready", wait)
+	w2.WaitFor("ready", wait)
+	assertPaneSize(t, env, s, 80, 24)
+
+	w2.Type("a")
+	env.WaitFor(s, "resized to 90x20", wait)
+	waitPaneSize(t, env, s, 90, 20)
+	w1.Type("b")
+	env.WaitFor(s, "resized to 100x30", wait)
+	waitPaneSize(t, env, s, 100, 30)
+	w1.WaitFor("resized to 100x30", wait)
+	w2.WaitFor("resized to 100x30", wait)
+	env.AssertMirrorsServer(w1)
+	env.AssertMirrorsServer(w2)
+}
+
+// TestAttachTypingClaimsAllPanes: typing in a split window gives every
+// pane it shows its rectangle back, not only the focused one.
+func TestAttachTypingClaimsAllPanes(t *testing.T) {
+	env := New(t)
+	s1 := env.Start("printer", "-lines", "5")
+	env.WaitFor(s1, "ready", wait)
+	w1 := env.Attach(120, 30, s1.ID)
+	w1.WaitFor("ready", wait)
+	w1.Prefix("%")
+	var s2 *Session
+	Poll(wait, func() bool {
+		for _, info := range env.Sessions() {
+			if info.ID != s1.ID {
+				s2 = &Session{ID: info.ID, PID: info.PID}
+			}
+		}
+		return s2 != nil
+	})
+	if s2 == nil {
+		t.Fatal("prefix % started no session")
+	}
+	env.track(s2.PID, "session "+s2.ID)
+	waitPaneSize(t, env, s1, 60, 30)
+	waitPaneSize(t, env, s2, 59, 30)
+
+	w2 := env.Attach(80, 24, s1.ID)
+	w2.WaitFor("ready", wait)
+	w2.Type("x")
+	waitPaneSize(t, env, s1, 80, 24)
+
+	// The focus in w1 is on the new shell, yet s1 takes its half again.
+	w1.Type("y")
+	waitPaneSize(t, env, s1, 60, 30)
+	waitPaneSize(t, env, s2, 59, 30)
+}
+
+// TestAttachExplicitAgentKeepsSize: an agent whose manifest says
+// screen.resize = "explicit" isn't resized by typing, only by a real
+// window resize.
+func TestAttachExplicitAgentKeepsSize(t *testing.T) {
+	env := New(t)
+	env.FakeClaude(func(m string) string { return m + "\n[screen]\nresize = \"explicit\"\n" })
+	dir := env.Workdir()
+	env.Trust(dir)
+	s := env.StartAgent("claude", dir)
+	env.WaitState(s, "idle", agentWait)
+	w := env.Attach(90, 24, s.ID)
+	w.Quiet(200 * time.Millisecond)
+	w.Type("x")
+	time.Sleep(time.Second) // longer than the server's resize quiet time
+	assertPaneSize(t, env, s, 100, 30)
+	w.Resize(85, 20)
+	waitPaneSize(t, env, s, 85, 20)
 }
 
 // TestAttachSlowClientResync stops a client while a firehose fills its

@@ -49,6 +49,14 @@ type Manifest struct {
 		EmptyRule string `toml:"empty_rule"`
 	} `toml:"inject"`
 
+	Screen struct {
+		// Resize: "follow" (the default) lets the console typed in size
+		// the pane; "explicit" resizes it only on a window resize or a
+		// split change, for inline renderers that garble their scrollback
+		// on every resize (docs/SPEC.md §3.3).
+		Resize Resize `toml:"resize"`
+	} `toml:"screen"`
+
 	// IgnoreFields: a hook event with any of these payload fields present
 	// and non-empty (e.g. Claude's agent_id on subagent events) is ignored
 	// for state, session id and todos. It still feeds [[hooks]] entries
@@ -139,6 +147,11 @@ func (m *Manifest) validate() error {
 	default:
 		errs = append(errs, fmt.Errorf("inject.prompt %q is not paste|channel|none", m.Inject.Prompt))
 	}
+	switch m.Screen.Resize {
+	case "", ResizeFollow, ResizeExplicit:
+	default:
+		errs = append(errs, fmt.Errorf("screen.resize %q is not follow|explicit", m.Screen.Resize))
+	}
 	valid := map[State]bool{"": true, StateIdle: true, StateWorking: true, StateBlocked: true, StateExited: true}
 	for i, h := range m.Hooks {
 		if h.Event == "" {
@@ -206,6 +219,21 @@ func (m *Manifest) validate() error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// Resize is when a pane running the agent is resized (screen.resize).
+type Resize string
+
+const (
+	ResizeFollow   Resize = "follow"   // also to the console typed in
+	ResizeExplicit Resize = "explicit" // only on a window resize or split change
+)
+
+// FollowsTyping reports whether typing into a console may resize a pane
+// running a (nil: no agent, a shell).
+func FollowsTyping(a Agent) bool {
+	m := ManifestOf(a)
+	return m == nil || m.Screen.Resize != ResizeExplicit
 }
 
 // manifestAgent implements Agent from a Manifest alone.

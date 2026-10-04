@@ -68,6 +68,12 @@ type Session struct {
 	stateCh    chan struct{} // closed and replaced on every state change
 
 	output atomic.Bool // output arrived since the last screen evaluation
+
+	// RequestResize's coalescing (rmu before mu).
+	rmu         sync.Mutex
+	resizedAt   time.Time
+	want        [2]uint16 // cols, rows of the request waiting for timer
+	resizeTimer *time.Timer
 }
 
 // ErrExited is returned for operations on a session whose process is gone.
@@ -263,6 +269,42 @@ func (s *Session) Resize(cols, rows uint16) error {
 		sub.enqueue(proto.FrameResize, proto.Size(cols, rows))
 	}
 	return nil
+}
+
+// ResizeQuiet is how long after a resize RequestResize waits before the
+// next one. Requests in between collapse into the last, as in tmux.
+var ResizeQuiet = 250 * time.Millisecond
+
+// RequestResize is Resize at most once per ResizeQuiet: a request soon
+// after a resize waits until the quiet time is over, and later requests
+// replace it. Consoles typed into in turn, or a window being dragged,
+// can't storm the program with SIGWINCH (docs/SPEC.md §3.3).
+func (s *Session) RequestResize(cols, rows uint16) error {
+	if cols == 0 || rows == 0 {
+		return fmt.Errorf("session: invalid size %d×%d", cols, rows)
+	}
+	s.rmu.Lock()
+	defer s.rmu.Unlock()
+	if wait := time.Until(s.resizedAt.Add(ResizeQuiet)); wait > 0 {
+		s.want = [2]uint16{cols, rows}
+		if s.resizeTimer == nil {
+			s.resizeTimer = time.AfterFunc(wait, s.resizeLater)
+		}
+		return nil
+	}
+	s.resizedAt = time.Now()
+	return s.Resize(cols, rows)
+}
+
+// resizeLater applies the request that waited for the quiet time.
+func (s *Session) resizeLater() {
+	s.rmu.Lock()
+	defer s.rmu.Unlock()
+	s.resizeTimer = nil
+	s.resizedAt = time.Now()
+	if err := s.Resize(s.want[0], s.want[1]); err != nil && !errors.Is(err, ErrExited) {
+		s.cfg.Logf("session %s: resize: %v", s.cfg.ID, err)
+	}
 }
 
 // SetColorScheme records the colour scheme of the terminal a client is
