@@ -1,0 +1,30 @@
+# Keeps Go modules and GitHub Actions up to date with weekly PRs.
+#
+# go.mitchellh.com/libghostty is excluded: it must move together with
+# GHOSTTY_REV in the Makefile (the bindings track one Ghostty commit, and
+# the snapshot format is not stable), so it is bumped by hand. Zig is
+# pinned in the Makefile and the workflows for the same reason.
+# spikes/ are throwaway experiments and are not watched.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: go.mitchellh.com/libghostty
+    groups:
+      go-minor-and-patch:
+        update-types: [minor, patch]
+    commit-message:
+      prefix: deps
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci

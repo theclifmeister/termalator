@@ -4,7 +4,11 @@
 
 Claude Code is the first supported agent. Other agents plug in through a manifest; see [docs/SPEC.md §8](docs/SPEC.md#8-agents).
 
-**Status:** pre-alpha. The background server works (milestone M1): it hosts shell sessions that survive closing your terminal. The attach client, agents and projects come next; see the [v0.1 specification](docs/SPEC.md).
+**Status:** pre-alpha; see the [v0.1 specification](docs/SPEC.md). What works:
+- the background server (milestone M1): it hosts shell sessions that survive closing your terminal (`tm server …`, `tm session …`);
+- the file layer of projects and tasks (milestone M5): `tm project new|list`, `tm skill`, `tm task …`, `tm context` and `tm inbox list|done`. These work on the files directly; the server takes over writes later.
+
+The attach client and agents come next.
 
 ## Try it
 
@@ -23,6 +27,22 @@ bin/tm server status | stop
 ```
 
 `make run RUN_ARGS=top` runs another command instead of your shell. Until the attach client lands (M2), `tm session read` is how you see a session. The server keeps its state in `~/.termalator`; set `TERMALATOR_HOME` to use somewhere else.
+
+## Try projects and tasks
+
+```sh
+export TERMALATOR_HOME=$(mktemp -d)        # leave ~/.termalator alone while trying it
+./bin/tm project new "Demo" --goal "Try tm"
+export TERMALATOR_PROJECT=demo             # or cd into $TERMALATOR_HOME/projects/demo
+./bin/tm task add "Fix login redirect" --step "Reproduce" --step "Fix"
+./bin/tm task status T1 started
+./bin/tm task steps T1 check 1
+./bin/tm task list                         # add --json for machine-readable output
+./bin/tm context                           # what the coordinator reads every turn
+./bin/tm skill coordinator                 # the coordinator's standing rules, versioned with tm
+```
+
+`tm task help` lists every task command. Exit codes: 0 done or already true, 1 refused (with a stable code such as `human-only`), 2 usage error, 3 I/O error.
 
 ## Requirements
 
@@ -69,7 +89,7 @@ We use Mitchell Hashimoto's [go.mitchellh.com/libghostty](https://github.com/mit
 - they track libghostty's C API, which is still changing;
 - they already cover the terminal, formatter, snapshot, render state, and the key and mouse encoders.
 
-The bindings' API is not stable either. That is why `internal/emu` is the only package that imports them, and why the Ghostty commit in the `Makefile` (`GHOSTTY_REV`) is pinned to the one the bindings are developed against. Bump the two together.
+The bindings' API is not stable either. That is why `internal/emu` is the only package that imports them, and why the Ghostty commit in the `Makefile` (`GHOSTTY_REV`) is pinned to the one the bindings are developed against. Bump the two together. Dependabot (`.github/dependabot.yml`) keeps the other Go modules and the GitHub Actions current with weekly PRs; it skips the bindings for this reason.
 
 ## Layout
 
@@ -79,9 +99,9 @@ internal/server      background server: lifecycle, socket, sessions.json; also t
 internal/session     one hosted process: PTY + libghostty-vt emulator + attach subscribers
 internal/proto       wire protocol: handshake, control NDJSON, attach frames
 internal/e2e         end-to-end test harness and scenarios
-scripts/run.sh       what `make run` does
 internal/agent       agent interface, manifests (manifests/claude.toml), registry
 internal/…           see docs/SPEC.md §2.1
+scripts/run.sh       what `make run` does
 docs/SPEC.md         the v0.1 specification and milestone plan
 spikes/              throwaway experiments, each with its own go.mod and FINDINGS.md
 ```

@@ -20,10 +20,10 @@ import (
 
 const serverUsage = `usage: tm server run [--detached] | start | stop [--yes] [--force] | restart [--yes] | status [--json]`
 
-// Server implements `tm server …` (docs/SPEC.md §3.1).
-func Server(e Env, args []string) int {
+// serverCmd implements `tm server …` (docs/SPEC.md §3.1).
+func serverCmd(e *Env, args []string) int {
 	if len(args) == 0 {
-		return e.usage("server", serverUsage)
+		return e.srvUsage("server", serverUsage)
 	}
 	switch args[0] {
 	case "run":
@@ -40,10 +40,10 @@ func Server(e Env, args []string) int {
 	case "status":
 		return serverStatus(e, args[1:])
 	}
-	return e.usage("server", serverUsage)
+	return e.srvUsage("server", serverUsage)
 }
 
-func serverRun(e Env, args []string) int {
+func serverRun(e *Env, args []string) int {
 	fs := flag.NewFlagSet("server run", flag.ContinueOnError)
 	fs.SetOutput(e.Stderr)
 	detached := fs.Bool("detached", false, "detach from the terminal and log to the server log")
@@ -52,7 +52,7 @@ func serverRun(e Env, args []string) int {
 	}
 	p, err := server.ResolvePaths()
 	if err != nil {
-		return e.fail("server run", err)
+		return e.srvFail("server run", err)
 	}
 	logger := log.New(e.Stderr, "", log.LstdFlags|log.Lmicroseconds)
 	sigs := []os.Signal{syscall.SIGTERM, syscall.SIGINT}
@@ -60,13 +60,13 @@ func serverRun(e Env, args []string) int {
 		if !server.IsSessionLeader() {
 			// Started by hand from a shell: get a fresh session first.
 			if err := server.Respawn(); err != nil {
-				return e.fail("server run", err)
+				return e.srvFail("server run", err)
 			}
 			return ExitOK
 		}
 		lf, err := server.OpenLog(p)
 		if err != nil {
-			return e.fail("server run", err)
+			return e.srvFail("server run", err)
 		}
 		defer lf.Close()
 		logger.SetOutput(lf)
@@ -95,9 +95,9 @@ func serverRun(e Env, args []string) int {
 	return ExitOK
 }
 
-func serverStart(e Env, args []string) int {
+func serverStart(e *Env, args []string) int {
 	if len(args) > 0 {
-		return e.usage("server start", serverUsage)
+		return e.srvUsage("server start", serverUsage)
 	}
 	c, p, err := connect(false)
 	if err == nil {
@@ -106,21 +106,21 @@ func serverStart(e Env, args []string) int {
 		return ExitOK
 	}
 	if !errors.Is(err, server.ErrNotRunning) {
-		return e.fail("server start", err)
+		return e.srvFail("server start", err)
 	}
 	if err := server.StartDetached(p); err != nil {
-		return e.fail("server start", err)
+		return e.srvFail("server start", err)
 	}
 	c, err = server.Dial(p, proto.KindControl)
 	if err != nil {
-		return e.fail("server start", err)
+		return e.srvFail("server start", err)
 	}
 	defer c.Close()
 	fmt.Fprintf(e.Stdout, "started (pid %d)\n", c.Server.PID)
 	return ExitOK
 }
 
-func serverStop(e Env, args []string) int {
+func serverStop(e *Env, args []string) int {
 	fs := flag.NewFlagSet("server stop", flag.ContinueOnError)
 	fs.SetOutput(e.Stderr)
 	yes := fs.Bool("yes", false, "stop even while agent sessions run")
@@ -131,7 +131,7 @@ func serverStop(e Env, args []string) int {
 	if *force {
 		p, err := server.ResolvePaths()
 		if err != nil {
-			return e.fail("server stop", err)
+			return e.srvFail("server stop", err)
 		}
 		pid, err := server.ForceKill(p)
 		if errors.Is(err, server.ErrNotRunning) {
@@ -139,7 +139,7 @@ func serverStop(e Env, args []string) int {
 			return ExitOK
 		}
 		if err != nil {
-			return e.fail("server stop", err)
+			return e.srvFail("server stop", err)
 		}
 		server.WaitStopped(p, 5*time.Second)
 		os.Remove(p.Socket)
@@ -153,7 +153,7 @@ func serverStop(e Env, args []string) int {
 		return ExitOK
 	}
 	if err != nil {
-		return e.fail("server stop", err)
+		return e.srvFail("server stop", err)
 	}
 	defer c.Close()
 	pid := c.Server.PID
@@ -168,7 +168,7 @@ func serverStop(e Env, args []string) int {
 		err = c.Call(proto.MethodServerStop, proto.ServerStopParams{Yes: true}, nil)
 	}
 	if err != nil {
-		return e.fail("server stop", err)
+		return e.srvFail("server stop", err)
 	}
 	// The lock goes first; the process exits a moment later.
 	if !server.WaitStopped(p, server.StopGrace+5*time.Second) || !server.WaitExited(pid, 3*time.Second) {
@@ -179,7 +179,7 @@ func serverStop(e Env, args []string) int {
 	return ExitOK
 }
 
-func serverStatus(e Env, args []string) int {
+func serverStatus(e *Env, args []string) int {
 	fs := flag.NewFlagSet("server status", flag.ContinueOnError)
 	fs.SetOutput(e.Stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
@@ -189,21 +189,21 @@ func serverStatus(e Env, args []string) int {
 	c, _, err := connect(false)
 	if errors.Is(err, server.ErrNotRunning) {
 		if *asJSON {
-			return e.printJSON(map[string]bool{"running": false})
+			return e.srvJSON(map[string]bool{"running": false})
 		}
 		fmt.Fprintln(e.Stdout, "not running")
 		return ExitRefused
 	}
 	if err != nil {
-		return e.fail("server status", err)
+		return e.srvFail("server status", err)
 	}
 	defer c.Close()
 	var st proto.ServerStatus
 	if err := c.Call(proto.MethodServerStatus, nil, &st); err != nil {
-		return e.fail("server status", err)
+		return e.srvFail("server status", err)
 	}
 	if *asJSON {
-		return e.printJSON(st)
+		return e.srvJSON(st)
 	}
 	fmt.Fprintf(e.Stdout, "pid       %d\n", st.PID)
 	fmt.Fprintf(e.Stdout, "uptime    %s\n", time.Since(st.Started).Round(time.Second))

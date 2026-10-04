@@ -25,16 +25,11 @@ func main() {
 		fmt.Println("libghostty-vt: ok")
 		return
 	}
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "server":
-			os.Exit(cli.Server(cli.StdEnv(), os.Args[2:]))
-		case "session":
-			os.Exit(cli.Session(cli.StdEnv(), os.Args[2:]))
-		}
+	if code, ok := cli.Run(os.Args[1:]); ok {
+		os.Exit(code)
 	}
 	fmt.Fprintln(os.Stderr, "tm: not implemented yet; see docs/SPEC.md")
-	fmt.Fprintln(os.Stderr, "usage: tm version | selftest | server … | session …")
+	fmt.Fprintln(os.Stderr, "usage: tm version | selftest | server | session | project | task | context | skill | inbox")
 	os.Exit(2)
 }
 
