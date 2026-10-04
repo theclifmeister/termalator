@@ -34,6 +34,11 @@ LDFLAGS := -X github.com/theclifmeister/termalator/internal/version.Version=$(VE
 
 export PKG_CONFIG_PATH := $(GHOSTTY_OUT)/share/pkgconfig$(if $(PKG_CONFIG_PATH),:$(PKG_CONFIG_PATH))
 export CGO_ENABLED := 1
+# Go's build cache doesn't key on pkg-config output, so a cached cgo package
+# would keep linking the previous library path. CGO_CFLAGS is part of the
+# key: naming the library build here forces a rebuild when it changes.
+CGO_CFLAGS ?= -O2 -g
+export CGO_CFLAGS += -DTM_LIBGHOSTTY=$(notdir $(GHOSTTY_OUT))
 
 .PHONY: all build test vet ghostty toolchain env clean distclean
 
@@ -76,6 +81,7 @@ toolchain:
 
 env:
 	@echo 'export PKG_CONFIG_PATH=$(PKG_CONFIG_PATH)'
+	@echo 'export CGO_CFLAGS="$(CGO_CFLAGS)"'
 
 clean:
 	rm -rf bin
