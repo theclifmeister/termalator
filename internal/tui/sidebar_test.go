@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/charmbracelet/x/ansi"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -21,12 +22,12 @@ func TestDashboardSidebar(t *testing.T) {
 	m := newDash(DashOptions{Source: src, Width: 120, Height: 30, UIFile: ui, State: DashState{Current: "beta"}})
 	m.setData(src.data)
 	want := []string{
-		" PROJECTS 2            │ termalator",
+		" PROJECTS 2            │ tm dashboard",
 		"▸▲ alpha             0 │",
 		"▾· beta            ◆ 2 │", // t-0005 waits on a question
 		"  · coordinator        │",
-		"  ● t-0005 Write d… 60%│",
-		"  · t-0006 Old work    │",
+		"  ● Write docs      60%│",
+		"  · Old work           │",
 	}
 	lines := strings.Split(whole(m), "\n")
 	for i, w := range want {
@@ -131,4 +132,27 @@ func hereRow(rows []treeRow) treeRow {
 		}
 	}
 	return treeRow{}
+}
+
+// TestTreeThreadRows: every row is the same width with the percent in a
+// column of its own, so titles are cut alike whatever the percent, and never leave a space before the "…".
+func TestTreeThreadRows(t *testing.T) {
+	for _, r := range []treeRow{
+		{kind: treeThread, thread: "t-0003", title: "Key the CI cache on the Zig version", state: "blocked", pct: 0},
+		{kind: treeThread, thread: "t-0002", title: "Rewrite the README", state: "done", pct: 100},
+		{kind: treeThread, thread: "t-0001", title: "Fix the login session expiry", state: "working", pct: -1},
+	} {
+		l := ansi.Strip(treeLine(r, 23, false))
+		if strings.Contains(l, " …") || strings.Contains(l, "t-000") {
+			t.Errorf("row %q", l)
+		}
+		if w := ansi.StringWidth(l); w != 23 {
+			t.Errorf("row %q is %d cells", l, w)
+		}
+		// The title column is the same on every row: 4 cells in, 14 wide,
+		// then the percent's 5.
+		if title := []rune(l)[4:18]; strings.TrimSpace(string(title)) == "" {
+			t.Errorf("row %q: no title", l)
+		}
+	}
 }

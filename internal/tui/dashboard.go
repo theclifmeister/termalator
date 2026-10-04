@@ -311,6 +311,9 @@ func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		return m, m.load()
 	case boardMsg:
+		if pv := m.projectPopupView(); pv != nil && pv.slug == msg.slug && msg.err == nil {
+			pv.board = msg.board
+		}
 		b := m.boardView()
 		if b == nil || msg.slug != b.slug {
 			return m, nil
@@ -355,19 +358,12 @@ func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if b := m.boardView(); b != nil {
 			cmds = append(cmds, m.loadBoard(b.slug))
 		}
+		if pv := m.projectPopupView(); pv != nil {
+			cmds = append(cmds, m.loadBoard(pv.slug))
+		}
 		return m, tea.Batch(cmds...)
 	case tea.KeyPressMsg:
 		return m, m.key(msg)
-	case editedMsg:
-		if msg.err != nil {
-			m.fail(fmt.Errorf("editor: %w", msg.err))
-		}
-		if p, err := prefixKey(); err == nil {
-			m.prefix = p.String()
-		}
-		if sv, ok := m.top().(*settingsView); ok {
-			sv.load(m)
-		}
 	case tea.MouseClickMsg:
 		if mo := msg.Mouse(); mo.X < m.sideW() {
 			return m, m.sideClick(mo)
@@ -571,6 +567,11 @@ func (m *dash) paneSize() (int, int) { return m.w, max(m.h-1, 1) }
 func (m *dash) key(k tea.KeyPressMsg) tea.Cmd {
 	if k.String() == "ctrl+c" {
 		return tea.Quit
+	}
+	if cv, ok := m.top().(*captureView); ok {
+		// Any key, the prefix too, is the new prefix.
+		m.prefixed = false
+		return cv.key(m, k)
 	}
 	if m.prefixed {
 		m.prefixed = false
@@ -782,7 +783,9 @@ func (m *dash) frame(title string, body []string, sel int, keys string) string {
 		n := len(m.data.Sessions)
 		right = styleGood.Render("●") + " server ok" + styleFaint.Render(fmt.Sprintf(" · %d session%s", n, map[bool]string{true: "s"}[n != 1]))
 	}
-	left := styleTitle.Render(" termalator")
+	// The app, not a project: the project's own section is headed by its
+	// slug, which may well be "termalator".
+	left := styleTitle.Render(" tm") + styleFaint.Render(" dashboard")
 	if title != "" {
 		left += styleFaint.Render(" · ") + styleHead.Render(title)
 	}

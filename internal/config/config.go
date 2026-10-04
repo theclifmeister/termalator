@@ -1,11 +1,12 @@
-// Package config reads ~/.termalator/config.toml, the human's settings
-// (docs/SPEC.md §5.1, §11.2). This package covers the per-project safety
-// settings under [projects.<slug>]; other sections (keys, default agent)
-// belong to the packages that use them and are ignored here.
+// Package config reads and writes ~/.termalator/config.toml, the human's
+// settings (docs/SPEC.md §5.1, §11.2): the per-project safety settings
+// under [projects.<slug>] and the default agent; the prefix key ([keys])
+// belongs to the TUI, which reads it itself.
 //
-// tm never writes this file: changing safety settings is a human action,
-// done by editing it. It lives outside every project folder, so a
-// coordinator editing PROJECT.md can't touch it.
+// Changing safety settings is a human action: tm writes this file only
+// from the TUI's settings popups, on the human's keypress (write.go). It
+// lives outside every project folder, so a coordinator editing
+// PROJECT.md can't touch it, and coordinators get an Edit deny rule on it.
 package config
 
 import (
@@ -58,6 +59,7 @@ type rawSafety struct {
 type Config struct {
 	Path     string
 	projects map[string]rawSafety
+	agent    string
 }
 
 // Path returns <home>/config.toml.
@@ -78,7 +80,8 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	var raw struct {
-		Projects map[string]rawSafety `toml:"projects"`
+		DefaultAgent string               `toml:"default_agent"`
+		Projects     map[string]rawSafety `toml:"projects"`
 	}
 	md, err := toml.DecodeFile(path, &raw)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -92,7 +95,7 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("%s: unknown setting %s", path, k.String())
 		}
 	}
-	c := &Config{Path: path, projects: raw.Projects}
+	c := &Config{Path: path, projects: raw.Projects, agent: raw.DefaultAgent}
 	for slug := range raw.Projects {
 		if _, err := c.Safety(slug); err != nil {
 			return nil, err
@@ -132,4 +135,23 @@ func (c *Config) Safety(slug string) (Safety, error) {
 		s.CoordinatorRemoteControl = *r.CoordinatorRC
 	}
 	return s, nil
+}
+
+// DefaultAgent is the agent new coordinators run (default_agent), or
+// fallback when the file doesn't set one.
+func (c *Config) DefaultAgent(fallback string) string {
+	if c == nil || c.agent == "" {
+		return fallback
+	}
+	return c.agent
+}
+
+// DefaultAgent reads the default agent from the file; fallback when it
+// is unset or the file can't be read.
+func DefaultAgent(fallback string) string {
+	c, err := Load()
+	if err != nil {
+		return fallback
+	}
+	return c.DefaultAgent(fallback)
 }

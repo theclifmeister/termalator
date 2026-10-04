@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/theclifmeister/termalator/internal/config"
 	"github.com/theclifmeister/termalator/internal/project"
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/server"
@@ -73,10 +74,12 @@ func attachCmd(e *Env, args []string) int {
 			return ExitRefused
 		}
 	}
-	// A thread's pane is watch-only, and the status bar says so.
-	thread := false
+	// A thread's pane is watch-only, and the status bar says so; a
+	// coordinator's shows its state and remote control there. Other
+	// sessions get the whole window.
+	bar := false
 	for _, s := range list.Sessions {
-		thread = thread || s.ID == id && s.Role == proto.RoleThread
+		bar = bar || s.ID == id && (s.Role == proto.RoleThread || s.Role == proto.RoleCoordinator)
 	}
 	cols, rows, ok := termSize()
 	if !ok {
@@ -84,12 +87,12 @@ func attachCmd(e *Env, args []string) int {
 	}
 	uiFile := uiFile()
 	side := tui.LoadLayout(uiFile).Sidebar
-	vc, err := tui.JoinView(p, proto.ViewSubscribeParams{Own: true, Bare: true, StatusBar: thread, Session: id,
+	vc, err := tui.JoinView(p, proto.ViewSubscribeParams{Own: true, Bare: true, StatusBar: bar, Session: id,
 		Cols: cols, Rows: rows, Sidebar: &side})
 	if err != nil {
 		return e.srvFail("attach", err)
 	}
-	res, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Agent: defaultAgent}, []string{"attach", id})
+	res, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Agent: config.DefaultAgent(defaultAgent)}, []string{"attach", id})
 	vc.Close()
 	if code != ExitOK {
 		return code
@@ -97,7 +100,7 @@ func attachCmd(e *Env, args []string) int {
 	if res.GoTo != nil {
 		// A click on the sidebar: this console becomes a full one of view
 		// main, which opens what was clicked (docs/SPEC.md §3.3).
-		return e.fullConsole(false, res.GoTo, defaultAgent)
+		return e.fullConsole(false, res.GoTo, config.DefaultAgent(defaultAgent))
 	}
 	if res.Detached {
 		fmt.Fprintf(e.Stdout, "[%s from %s]\n", res.Reason, id)

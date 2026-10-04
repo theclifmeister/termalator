@@ -1,0 +1,327 @@
+package tui
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/theclifmeister/termalator/internal/config"
+	"github.com/theclifmeister/termalator/internal/project"
+	"github.com/theclifmeister/termalator/internal/proto"
+	"github.com/theclifmeister/termalator/internal/tasks"
+)
+
+// keyPress sends a named key: tab, shift+tab, esc, space, enter, up,
+// down, or a character.
+func keyPress(m *dash, name string) tea.Cmd {
+	var msg tea.KeyPressMsg
+	switch name {
+	case "tab":
+		msg = tea.KeyPressMsg{Code: tea.KeyTab}
+	case "shift+tab":
+		msg = tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
+	case "esc":
+		msg = tea.KeyPressMsg{Code: tea.KeyEscape}
+	case "space":
+		msg = tea.KeyPressMsg{Code: tea.KeySpace, Text: " "}
+	case "enter":
+		msg = tea.KeyPressMsg{Code: tea.KeyEnter}
+	case "up":
+		msg = tea.KeyPressMsg{Code: tea.KeyUp}
+	case "down":
+		msg = tea.KeyPressMsg{Code: tea.KeyDown}
+	case "ctrl+a":
+		msg = tea.KeyPressMsg{Code: 'a', Mod: tea.ModCtrl}
+	default:
+		msg = tea.KeyPressMsg{Code: rune(name[0]), Text: name}
+	}
+	_, cmd := m.Update(msg)
+	return cmd
+}
+
+// act presses a key and runs the action it starts, then polls again.
+func act(m *dash, src *fakeSource, name string) {
+	run(m, keyPress(m, name))
+	m.setData(src.Load())
+}
+
+func popupData(t *testing.T) (*fakeSource, *dash) {
+	t.Helper()
+	t.Setenv("TERMALATOR_HOME", t.TempDir())
+	src := &fakeSource{data: testData(), agents: []string{"claude", "pi"}}
+	alpha := &src.data.Projects[0]
+	alpha.Name, alpha.Goal, alpha.Repos = "Alpha", "Ship the alpha", []string{"/src/alpha"}
+	alpha.Items = []project.Item{{ID: "x", Kind: "report", Summary: "t-0002 handed in report 1"}}
+	src.board = &tasks.Board{Tasks: []*tasks.Task{
+		{ID: 1, Title: "Write the README", Status: tasks.Started, Thread: "t-0002",
+			Steps: []tasks.Step{{N: 1, Text: "Draft", Done: true}, {N: 2, Text: "Review"}}},
+		{ID: 2, Title: "Ship it", Status: tasks.Ready},
+	}}
+	m := newDash(DashOptions{Source: src, Width: 110, Height: 40, Cwd: "/work"})
+	m.setData(src.Load())
+	m.sel = "p:alpha"
+	return src, m
+}
+
+// TestProjectPopup: a opens the selected project's popup, its tabs
+// switch with tab, shift+tab and 1-5, and esc closes it.
+func TestProjectPopup(t *testing.T) {
+	src, m := popupData(t)
+	cmd := keyPress(m, "a")
+	pv, ok := m.top().(*projectView)
+	if !ok || pv.slug != "alpha" {
+		t.Fatalf("a opened %T", m.top())
+	}
+	m.Update(cmd()) // the board
+	out := screen(m)
+	for _, want := range []string{"alpha · prefix = ctrl+b", "1 Overview", "2 Inbox 1", "5 Keys",
+		"Project", "Alpha", "Goal", "Ship the alpha", "Repositories", "/src/alpha", "Machines", "this one",
+		"Coordinator", "claude · s-1 blocked", "1 needs you · 1 in motion"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("overview lacks %q:\n%s", want, out)
+		}
+	}
+
+	keyPress(m, "tab")
+	if out := screen(m); pv.tab != tabInbox || !strings.Contains(out, "t-0002 handed in report 1") || !strings.Contains(out, "Read-only") {
+		t.Fatalf("inbox tab:\n%s", out)
+	}
+	keyPress(m, "tab")
+	out = screen(m)
+	for _, want := range []string{"IN MOTION", "T1    Write the README", "started · 1/2 · t-0002", "✓ Draft", "Review", "ON DECK", "T2    Ship it", "read-only"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("tasks tab lacks %q:\n%s", want, out)
+		}
+	}
+	keyPress(m, "5")
+	if pv.tab != tabKeys {
+		t.Fatalf("5: tab %d", pv.tab)
+	}
+	keyPress(m, "shift+tab")
+	if pv.tab != tabSettings {
+		t.Fatalf("shift+tab: tab %d", pv.tab)
+	}
+	out = screen(m)
+	for _, want := range []string{"Start threads", "ask first", "Yolo mode", "Coordinator approves", "Auto-close finished threads",
+		"Pull request follow-up", "Remote control"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("settings tab lacks %q:\n%s", want, out)
+		}
+	}
+	keyPress(m, "esc")
+	if m.top() != nil {
+		t.Fatalf("esc left %T", m.top())
+	}
+	if len(src.settings) != 0 {
+		t.Fatalf("looking changed settings: %v", src.settings)
+	}
+}
+
+// TestProjectSettingsToggle: enter and space change a setting in place;
+// it is written to the settings file and shows at once. Yolo asks.
+func TestProjectSettingsToggle(t *testing.T) {
+	src, m := popupData(t)
+	keyPress(m, "a")
+	keyPress(m, "4")
+	act(m, src, "enter") // start threads
+	if !strings.Contains(screen(m), "automatically") {
+		t.Fatalf("start threads didn't change:\n%s", screen(m))
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := cfg.Safety("alpha"); s.StartThreads != config.StartAuto {
+		t.Fatalf("saved %+v", s)
+	}
+
+	// Yolo asks first: n keeps it off, y turns it on.
+	keyPress(m, "down")
+	act(m, src, "space")
+	if _, ok := m.top().(*confirmView); !ok {
+		t.Fatalf("yolo didn't ask: %T", m.top())
+	}
+	act(m, src, "n")
+	if cfg, _ := config.Load(); must(cfg.Safety("alpha")).Yolo {
+		t.Fatal("n turned yolo on")
+	}
+	act(m, src, "space")
+	act(m, src, "y")
+	if cfg, _ := config.Load(); !must(cfg.Safety("alpha")).Yolo {
+		t.Fatal("y left yolo off")
+	}
+
+	// Remote control: the row, and a note when the running coordinator
+	// differs.
+	for range 4 {
+		keyPress(m, "down")
+	}
+	src.data.Sessions[0].RemoteControl = true
+	m.setData(src.Load())
+	if out := screen(m); !strings.Contains(out, "the running coordinator has it on (prefix+r)") {
+		t.Fatalf("no running note:\n%s", out)
+	}
+	act(m, src, "enter")
+	if cfg, _ := config.Load(); !must(cfg.Safety("alpha")).CoordinatorRemoteControl {
+		t.Fatal("remote control not saved")
+	}
+	if out := screen(m); strings.Contains(out, "the running coordinator has it") {
+		t.Fatalf("note after the setting matches:\n%s", out)
+	}
+	path, _ := config.Path()
+	data, _ := os.ReadFile(path)
+	if want := "[projects.alpha]\nstart_threads = \"auto\"\nyolo = true\ncoordinator_remote_control = true\n"; string(data) != want {
+		t.Fatalf("file:\n%s", data)
+	}
+}
+
+func must(s config.Safety, _ error) config.Safety { return s }
+
+// TestProjectRepos: + adds a repository from a typed path, x removes the
+// selected one after a y.
+func TestProjectRepos(t *testing.T) {
+	src, m := popupData(t)
+	dir := t.TempDir()
+	keyPress(m, "a")
+	keyPress(m, "+")
+	in, ok := m.top().(*inputView)
+	if !ok {
+		t.Fatalf("+ opened %T", m.top())
+	}
+	in.text = dir
+	act(m, src, "enter")
+	real, _ := filepath.EvalSymlinks(dir)
+	if len(src.repos) != 1 || src.repos[0] != "+"+real {
+		t.Fatalf("repos %v", src.repos)
+	}
+	if !strings.Contains(screen(m), real[:30]) {
+		t.Fatalf("added repo not shown:\n%s", screen(m))
+	}
+	keyPress(m, "x")
+	act(m, src, "y")
+	if len(src.repos) != 2 || src.repos[1] != "-/src/alpha" {
+		t.Fatalf("repos %v", src.repos)
+	}
+}
+
+// TestKeysParity: the Keys tab and the help are the same list, and it
+// names every dashboard action and session command.
+func TestKeysParity(t *testing.T) {
+	_, m := popupData(t)
+	keyPress(m, "?")
+	help := m.top().(*helpView).box(m).body
+	keyPress(m, "x")
+	keyPress(m, "a")
+	keyPress(m, "5")
+	tab := m.top().(*projectView).box(m).body
+	if len(tab) < 2 || strings.Join(tab[2:], "\n") != strings.Join(help, "\n") {
+		t.Fatalf("keys tab and help differ:\n%s\n----\n%s", strings.Join(tab, "\n"), strings.Join(help, "\n"))
+	}
+	text := ansi.Strip(strings.Join(help, "\n"))
+	for _, a := range actions {
+		if a.label != "" && !strings.Contains(text, a.label+" ") {
+			t.Errorf("keys lack %q", a.label)
+		}
+	}
+	for k := range prefixCommands {
+		if !strings.Contains(text, "prefix+") || !strings.Contains(text, k) {
+			t.Errorf("keys lack prefix+%s", k)
+		}
+	}
+	for k := range paneCommands {
+		name := strings.TrimPrefix(k, "ctrl+")
+		if name == "left" || name == "right" || name == "up" || name == "down" {
+			name = "arrows"
+		}
+		if !strings.Contains(text, name) {
+			t.Errorf("keys lack the pane command %s", k)
+		}
+	}
+	// Wide windows: nothing is cut off; lines wrap instead.
+	for _, l := range keyLines(60) {
+		if w := ansi.StringWidth(l); w > 60 {
+			t.Errorf("line %d cells wide: %q", w, l)
+		}
+	}
+}
+
+// TestNoFileNamesInUI: no screen of the dashboard, its popups or the
+// status bar names the settings file, TOML or a setting's key.
+func TestNoFileNamesInUI(t *testing.T) {
+	src, m := popupData(t)
+	src.data.Sessions[0].RemoteControl = true
+	m.setData(src.Load())
+	var screens []string
+	snap := func() { screens = append(screens, whole(m)) }
+	snap()
+	for _, k := range []string{"?", "esc", ",", "enter", "esc", "esc", "i", "esc", "t", "esc", "p", "esc"} {
+		keyPress(m, k)
+		snap()
+	}
+	keyPress(m, "a")
+	for range tabCount {
+		snap()
+		keyPress(m, "tab")
+	}
+	keyPress(m, "4")
+	keyPress(m, "down")
+	keyPress(m, "enter") // the yolo question
+	snap()
+	screens = append(screens, statusLine(proto.SessionInfo{ID: "s-1", Project: "alpha", Role: proto.RoleCoordinator, RemoteControl: true}, nil, false, 200, ""),
+		statusLine(proto.SessionInfo{ID: "s-1"}, nil, true, 400, ""))
+	// "Yolo mode" is the setting's label; its key is only ever yolo =.
+	keys := []string{"config", "toml", "ui.json", "$EDITOR", "$VISUAL", "yolo =", "yolo:", "[projects", "[keys"}
+	for _, k := range config.ProjectKeys {
+		if strings.Contains(k, "_") {
+			keys = append(keys, k)
+		}
+	}
+	for _, s := range screens {
+		low := strings.ToLower(s)
+		for _, bad := range keys {
+			if strings.Contains(low, strings.ToLower(bad)) {
+				t.Errorf("a screen names %q:\n%s", bad, s)
+			}
+		}
+	}
+	// A broken file is reported by line, without its name or keys.
+	if e := settingsErr(errors.New("/h/config.toml: toml: line 3 (last key \"projects.a.yolo\"): bad")); e.Error() != "the settings can't be read: line 3 is broken" {
+		t.Errorf("broken file: %v", e)
+	}
+}
+
+// TestPrefixCapture: the , popup's prefix row takes the next ctrl+key,
+// the current prefix too, and saves it; the default agent steps through
+// the known agents.
+func TestPrefixCapture(t *testing.T) {
+	src, m := popupData(t)
+	keyPress(m, ",")
+	keyPress(m, "enter")
+	if _, ok := m.top().(*captureView); !ok {
+		t.Fatalf("enter on the prefix opened %T", m.top())
+	}
+	keyPress(m, "x")
+	if !strings.Contains(screen(m), "can't be the prefix") {
+		t.Fatalf("x taken as the prefix:\n%s", screen(m))
+	}
+	act(m, src, "ctrl+a")
+	if m.prefix != "ctrl+a" {
+		t.Fatalf("prefix %q", m.prefix)
+	}
+	if c, err := prefixKey(); err != nil || c.String() != "ctrl+a" {
+		t.Fatalf("saved prefix %v %v", c, err)
+	}
+	keyPress(m, "down")
+	act(m, src, "enter")
+	if got := config.DefaultAgent(DefaultAgent); got != "pi" {
+		t.Fatalf("default agent %q", got)
+	}
+	if !strings.Contains(screen(m), "pi") {
+		t.Fatalf("default agent not shown:\n%s", screen(m))
+	}
+}

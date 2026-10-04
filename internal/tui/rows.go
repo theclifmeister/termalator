@@ -315,9 +315,15 @@ func buildRows(d Data, project string) []row {
 	} else {
 		rows = append(rows, row{note: "  no projects; n creates one"})
 	}
-	rows = append(rows, row{head: "SESSIONS", count: len(other)})
+	// The header's count is every session; this section has those outside
+	// the projects, so it says so.
+	rows = append(rows, row{head: "OTHER SESSIONS", count: len(other)})
 	if len(other) == 0 {
-		other = []row{{note: "  no sessions; s starts a shell"}}
+		note := "  no sessions; s starts a shell"
+		if n := len(d.Sessions); n > 0 {
+			note = fmt.Sprintf("  none outside the projects (%d in them); s starts a shell", n)
+		}
+		other = []row{{note: note}}
 	}
 	return append(rows, other...)
 }

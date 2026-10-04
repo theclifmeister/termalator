@@ -8,6 +8,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/theclifmeister/termalator/internal/caller"
+	"github.com/theclifmeister/termalator/internal/config"
 	"github.com/theclifmeister/termalator/internal/project"
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/skill"
@@ -45,7 +46,7 @@ func runProject(e *Env, args []string) error {
 			return usagef("%s", projectUsage)
 		}
 		if *agentName == "" {
-			*agentName = defaultAgent
+			*agentName = config.DefaultAgent(defaultAgent)
 		}
 		if e.Caller.IsAgent() {
 			return &project.Error{Code: "human-only", Msg: "the human opens projects"}

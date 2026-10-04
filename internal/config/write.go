@@ -1,0 +1,273 @@
+package config
+
+import (
+	"bytes"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"regexp"
+	"strconv"
+	"strings"
+
+	"github.com/BurntSushi/toml"
+
+	"github.com/theclifmeister/termalator/internal/mdfile"
+)
+
+// Writing settings (docs/SPEC.md §11.2). Only the TUI's settings popups
+// call these, on the human's keypress: no CLI command or socket method
+// reaches them, so agents can't change safety settings. The file is
+// edited line by line, so the user's comments, order and formatting stay
+// as they were; the result is parsed before it replaces the file, which
+// happens atomically under the file's lock.
+
+// ErrForm: the file sets the setting in a form the line editor doesn't
+// change (a dotted key, an inline table); the user edits it by hand.
+var ErrForm = errors.New("this setting is set in a form tm can't change here")
+
+// SetProject sets one of a project's safety settings by its key
+// (start_threads, yolo, …), checked against the setting's type.
+func SetProject(slug, key string, value any) error {
+	if !validKey(key) {
+		return fmt.Errorf("unknown setting %q", key)
+	}
+	if key == "start_threads" && value != StartPropose && value != StartAuto {
+		return fmt.Errorf("start threads must be %q or %q", StartPropose, StartAuto)
+	}
+	return Set("projects."+slug, key, value)
+}
+
+// validKey reports whether key is a project setting.
+func validKey(key string) bool {
+	for _, k := range ProjectKeys {
+		if k == key {
+			return true
+		}
+	}
+	return false
+}
+
+// ProjectKeys are the settings of a [projects.<slug>] table.
+var ProjectKeys = []string{"start_threads", "yolo", "coordinator_approves", "auto_resolve", "pr_followup", "coordinator_remote_control"}
+
+// Set sets key in table ("" is the top level, "keys", "projects.<slug>")
+// to value: a bool, an int or a string.
+func Set(table, key string, value any) error {
+	path, err := Path()
+	if err != nil {
+		return err
+	}
+	unlock, err := mdfile.Lock(path)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	perm := fs.FileMode(0o600)
+	old, err := os.ReadFile(path)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+	case err != nil:
+		return err
+	default:
+		if fi, err := os.Stat(path); err == nil {
+			perm = fi.Mode().Perm()
+		}
+	}
+	data, err := Edit(old, table, key, value)
+	if err != nil {
+		return err
+	}
+	if old != nil && bytes.Equal(old, data) {
+		return nil
+	}
+	return mdfile.WriteAtomic(path, data, perm)
+}
+
+// Edit returns data with key in table set to value, everything else kept.
+func Edit(data []byte, table, key string, value any) ([]byte, error) {
+	val, err := tomlValue(value)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := toml.Decode(string(data), new(map[string]any)); err != nil {
+		return nil, fmt.Errorf("the settings can't be read: %w", err)
+	}
+	lines := strings.SplitAfter(string(data), "\n")
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	want := splitTable(table)
+	in := len(want) == 0 // the top level comes first
+	found := in
+	last := -1 // the region's last setting line, or its header
+	var out []string
+	done := false
+	for i, l := range lines {
+		if h, ok := header(l); ok {
+			if in && !done {
+				out = insertAt(out, last, key+" = "+val+"\n", len(out))
+				done = true
+			}
+			in = equal(h, want)
+			if in {
+				found, last = true, len(out)
+			}
+			out = append(out, l)
+			continue
+		}
+		if in && !done {
+			if indent, comment, ok := setting(l, key); ok {
+				nl := ""
+				if strings.HasSuffix(l, "\n") || i < len(lines)-1 {
+					nl = "\n"
+				}
+				out = append(out, indent+key+" = "+val+comment+nl)
+				done = true
+				continue
+			}
+			if t := strings.TrimSpace(l); t != "" && !strings.HasPrefix(t, "#") {
+				last = len(out)
+			}
+		}
+		out = append(out, l)
+	}
+	if n := len(out); n > 0 && !strings.HasSuffix(out[n-1], "\n") {
+		out[n-1] += "\n"
+	}
+	switch {
+	case done:
+	case found:
+		out = insertAt(out, last, key+" = "+val+"\n", len(out))
+	default:
+		if len(out) > 0 && strings.TrimSpace(out[len(out)-1]) != "" {
+			out = append(out, "\n")
+		}
+		out = append(out, "["+table+"]\n", key+" = "+val+"\n")
+	}
+	res := []byte(strings.Join(out, ""))
+	// The edit must parse and say what was meant; else the file sets it
+	// in another form (dotted keys, inline tables) and stays untouched.
+	var got map[string]any
+	if _, err := toml.Decode(string(res), &got); err != nil {
+		return nil, ErrForm
+	}
+	v := any(got)
+	for _, k := range append(want, key) {
+		m, ok := v.(map[string]any)
+		if !ok {
+			return nil, ErrForm
+		}
+		v = m[k]
+	}
+	if n, ok := value.(int); ok {
+		value = int64(n)
+	}
+	if v != value {
+		return nil, ErrForm
+	}
+	return res, nil
+}
+
+// insertAt inserts s after index i of lines (at the start for -1); at
+// end appends.
+func insertAt(lines []string, i int, s string, end int) []string {
+	if i+1 >= end {
+		return append(lines, s)
+	}
+	out := append([]string{}, lines[:i+1]...)
+	out = append(out, s)
+	return append(out, lines[i+1:]...)
+}
+
+func tomlValue(v any) (string, error) {
+	switch v := v.(type) {
+	case bool:
+		return strconv.FormatBool(v), nil
+	case int:
+		return strconv.Itoa(v), nil
+	case string:
+		var b strings.Builder
+		b.WriteByte('"')
+		for _, r := range v {
+			switch {
+			case r == '"' || r == '\\':
+				b.WriteByte('\\')
+				b.WriteRune(r)
+			case r < 0x20 || r == 0x7f:
+				fmt.Fprintf(&b, `\u%04X`, r)
+			default:
+				b.WriteRune(r)
+			}
+		}
+		b.WriteByte('"')
+		return b.String(), nil
+	}
+	return "", fmt.Errorf("can't write a %T setting", v)
+}
+
+var headerRE = regexp.MustCompile(`^\s*\[\s*([^\[\]#]+?)\s*\]\s*(#.*)?$`)
+
+// header reads a [table] line (not an [[array]] one).
+func header(l string) ([]string, bool) {
+	m := headerRE.FindStringSubmatch(strings.TrimRight(l, "\r\n"))
+	if m == nil {
+		return nil, false
+	}
+	return splitTable(m[1]), true
+}
+
+// splitTable splits a table name at its dots, quotes and spaces removed.
+// Slugs and our keys need no quoting, so a dot inside quotes isn't read.
+func splitTable(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ".")
+	for i, p := range parts {
+		p = strings.TrimSpace(p)
+		if len(p) >= 2 && (p[0] == '"' || p[0] == '\'') && p[len(p)-1] == p[0] {
+			p = p[1 : len(p)-1]
+		}
+		parts[i] = p
+	}
+	return parts
+}
+
+func equal(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// valueRE is a simple value with an optional comment after it.
+var valueRE = regexp.MustCompile(`^\s*(true|false|[+-]?[0-9_]+|"(?:[^"\\]|\\.)*"|'[^']*')(\s*#.*)?$`)
+
+// setting reads a "key = value" line for key: its indentation and the
+// comment after the value, kept when the value is a simple one.
+func setting(l, key string) (indent, comment string, ok bool) {
+	t := strings.TrimRight(l, "\r\n")
+	rest := strings.TrimLeft(t, " \t")
+	indent = t[:len(t)-len(rest)]
+	k, v, ok := strings.Cut(rest, "=")
+	if !ok {
+		return "", "", false
+	}
+	k = strings.TrimSpace(k)
+	if len(k) >= 2 && (k[0] == '"' || k[0] == '\'') && k[len(k)-1] == k[0] {
+		k = k[1 : len(k)-1]
+	}
+	if k != key {
+		return "", "", false
+	}
+	if m := valueRE.FindStringSubmatch(v); m != nil {
+		comment = m[2]
+	}
+	return indent, comment, true
+}

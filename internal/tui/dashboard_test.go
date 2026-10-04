@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -12,21 +13,65 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/theclifmeister/termalator/internal/agent"
+	"github.com/theclifmeister/termalator/internal/config"
 	"github.com/theclifmeister/termalator/internal/project"
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/tasks"
 	"github.com/theclifmeister/termalator/internal/thread"
 )
 
-// fakeSource records the dashboard's actions.
+// fakeSource records the dashboard's actions. Settings go to the real
+// settings file under the test's TERMALATOR_HOME, and Load reads them
+// back once one was set.
 type fakeSource struct {
-	data    Data
-	opened  []string
-	started []string
+	data     Data
+	board    *tasks.Board
+	opened   []string
+	started  []string
+	settings []string // table.key=value
+	repos    []string // +path or -path
+	agents   []string
 }
 
-func (f *fakeSource) Load() Data                             { return f.data }
-func (f *fakeSource) Board(string) (*tasks.Board, error)     { return &tasks.Board{}, nil }
+func (f *fakeSource) Load() Data {
+	if len(f.settings) > 0 {
+		if cfg, err := config.Load(); err == nil {
+			for i := range f.data.Projects {
+				s, _ := cfg.Safety(f.data.Projects[i].Slug)
+				f.data.Projects[i].Safety = &s
+			}
+		}
+	}
+	return f.data
+}
+func (f *fakeSource) Board(string) (*tasks.Board, error) {
+	if f.board != nil {
+		return f.board, nil
+	}
+	return &tasks.Board{}, nil
+}
+func (f *fakeSource) SetSetting(table, key string, value any) error {
+	f.settings = append(f.settings, fmt.Sprintf("%s.%s=%v", table, key, value))
+	if slug, ok := strings.CutPrefix(table, "projects."); ok {
+		return config.SetProject(slug, key, value)
+	}
+	return config.Set(table, key, value)
+}
+func (f *fakeSource) SetRepo(slug, path string, add bool) error {
+	sign := map[bool]string{true: "+", false: "-"}[add]
+	f.repos = append(f.repos, sign+path)
+	for i := range f.data.Projects {
+		if p := &f.data.Projects[i]; p.Slug == slug {
+			if add {
+				p.Repos = append(p.Repos, path)
+			} else {
+				p.Repos = slices.DeleteFunc(p.Repos, func(r string) bool { return r == path })
+			}
+		}
+	}
+	return nil
+}
+func (f *fakeSource) Agents() []string                       { return f.agents }
 func (f *fakeSource) NewProject(name string) (string, error) { return name, nil }
 func (f *fakeSource) StartShell(cwd string, c, r int) (string, error) {
 	f.started = append(f.started, "shell "+cwd)
@@ -186,11 +231,11 @@ func TestDashboardKeys(t *testing.T) {
 		t.Fatalf("attach %q", m.result.Attach)
 	}
 
-	// The keys that acted on threads and tasks are gone: c, d, a, 1-9
-	// do nothing on any row.
+	// The keys that acted on threads and tasks are gone: c, d, 1-9 do
+	// nothing on any row (a opens the project popup now).
 	for _, sel := range []string{"n:s-1", "th:beta:t-0005", "p:alpha"} {
 		m.sel, m.result = sel, DashResult{}
-		for _, k := range []string{"c", "d", "a", "1", "2"} {
+		for _, k := range []string{"c", "d", "1", "2"} {
 			if cmd := press(m, k); cmd != nil || m.top() != nil {
 				t.Fatalf("%s on %s did something: overlay %T", k, sel, m.top())
 			}
@@ -302,7 +347,7 @@ func TestStatusLine(t *testing.T) {
 	}
 	// After the prefix: the commands.
 	got = statusLine(info, nil, true, 160, "")
-	if !strings.Contains(got, `d dashboard · p ] [ projects · i t , ? · % " split`) || !strings.Contains(got, `prefix again sends it`) {
+	if !strings.Contains(got, `d dashboard · a project · p ] [ projects · i t , ? · % " split`) || !strings.Contains(got, `prefix again sends it`) {
 		t.Fatalf("pending status line %q", got)
 	}
 }
@@ -341,11 +386,15 @@ func TestDashboardOverlays(t *testing.T) {
 	}
 
 	press(m, "?")
-	out := screen(m)
+	out := ansi.Strip(strings.Join(m.top().(*helpView).box(m).body, "\n"))
 	for _, a := range actions {
-		if a.label != "" && !strings.Contains(out, " "+a.label+" ") {
+		if a.label != "" && !strings.Contains(out, " "+a.label+" ") && !strings.HasPrefix(out, a.label+" ") && !strings.Contains(out, "\n"+a.label+" ") {
 			t.Errorf("help lacks %q:\n%s", a.label, out)
 		}
+	}
+	press(m, "down") // the arrows scroll
+	if m.top() == nil {
+		t.Fatal("down closed the help")
 	}
 	press(m, "x")
 	if m.top() != nil {
@@ -483,10 +532,10 @@ func TestDashboardFooter(t *testing.T) {
 	m := newDash(DashOptions{Source: src, Width: 100, Height: 30, State: DashState{Current: "beta"}})
 	m.setData(src.data)
 	for sel, want := range map[string]string{
-		"n:s-1":          "enter attach · t tasks · i inbox · p projects · , settings · ? help · q quit",
-		"th:beta:t-0005": "enter watch · t tasks · i inbox · p projects",
-		"th:beta:t-0006": "t tasks · i inbox · p projects",
-		"p:beta":         "enter open · t tasks",
+		"n:s-1":          "enter attach · a project · t tasks · i inbox · p projects · , settings · ? help · q quit",
+		"th:beta:t-0005": "enter watch · a project · t tasks · i inbox · p projects",
+		"th:beta:t-0006": "a project · t tasks · i inbox · p projects",
+		"p:beta":         "enter open · a project · t tasks",
 	} {
 		m.sel = sel
 		if got := m.footKeys(); !strings.HasPrefix(got, want) {
@@ -500,12 +549,11 @@ func TestDashboardFooter(t *testing.T) {
 	}
 }
 
-// TestDashboardPopups: views draw as boxes over the dimmed list, and the
-// settings show the project's safety settings from config.toml.
+// TestDashboardPopups: views draw as boxes over the dimmed list; the
+// settings popup has the settings of every project.
 func TestDashboardPopups(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("TERMALATOR_HOME", home)
-	os.WriteFile(filepath.Join(home, "config.toml"), []byte("[projects.alpha]\nyolo = true\n"), 0o600)
 	src := &fakeSource{data: testData()}
 	src.data.Projects[0].Items = []project.Item{{ID: "x", Kind: "report", Summary: "t-0002 handed in report 1"}}
 	m := newDash(DashOptions{Source: src, Width: 100, Height: 30})
@@ -529,8 +577,7 @@ func TestDashboardPopups(t *testing.T) {
 
 	press(m, ",")
 	out = screen(m)
-	for _, want := range []string{"settings · alpha", "[projects.alpha]", "yolo                   true",
-		"start_threads          propose  default", "prefix                 ctrl+b  default", "e edit config.toml"} {
+	for _, want := range []string{"settings", "Prefix key", "ctrl+b", "Default agent", "Details panel", "List width", "Sidebar"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("settings lack %q:\n%s", want, out)
 		}
