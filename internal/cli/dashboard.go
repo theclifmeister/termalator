@@ -15,7 +15,7 @@ import (
 const defaultAgent = "claude"
 
 // dashboardCmd is `tm` with no arguments: the dashboard, and the attach
-// view in between (docs/SPEC.md §4). The prefix (Ctrl+\) then d in a
+// view in between (docs/SPEC.md §4). The prefix (Ctrl+B) then d in a
 // session comes back here.
 func (e *Env) dashboardCmd() int {
 	if !isTTY(os.Stdin) || !isTTY(os.Stdout) {
@@ -53,7 +53,7 @@ func (e *Env) dashboardCmd() int {
 			return ExitOK
 		}
 		st = res.State
-		ares, code := e.attach(p, res.Attach, true, []string{})
+		ares, code := e.attach(p, res.Attach, true, &tui.SidebarOptions{UIFile: uiFile, Current: st.Current}, []string{})
 		if code != ExitOK {
 			return code
 		}
@@ -85,7 +85,7 @@ func (e *Env) openCmd(slug, agentName string) error {
 		fmt.Fprintln(e.Stdout, id)
 		return nil
 	}
-	res, code := e.attach(p, id, true, []string{"project", "open", slug, "--agent", agentName})
+	res, code := e.attach(p, id, true, nil, []string{"project", "open", slug, "--agent", agentName})
 	if code != ExitOK {
 		return &exitError{code}
 	}

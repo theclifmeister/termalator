@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"io"
 	"log"
 	"os"
@@ -29,18 +30,34 @@ func TestParseChord(t *testing.T) {
 		}
 	}
 	c, _ := parseChord(DefaultPrefixKey)
-	if !c.match(uv.Key{Code: '\\', Mod: uv.ModCtrl}) {
-		t.Error("ctrl+\\ does not match its key")
+	if !c.match(uv.Key{Code: 'b', Mod: uv.ModCtrl}) {
+		t.Error("ctrl+b does not match its key")
 	}
-	if c.match(uv.Key{Code: '\\', Mod: uv.ModCtrl | uv.ModShift}) || c.match(uv.Key{Code: '\\'}) {
+	if c.match(uv.Key{Code: 'b', Mod: uv.ModCtrl | uv.ModShift}) || c.match(uv.Key{Code: 'b'}) {
 		t.Error("prefix key matches other modifiers")
+	}
+	// The outer terminal sends Ctrl+B as 0x02, or as CSI 98;5u under kitty
+	// "disambiguate": both are the prefix.
+	for _, in := range []string{"\x02", "\x1b[98;5u"} {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		events := make(chan uv.Event, 4)
+		go uv.NewTerminalReader(strings.NewReader(in), "xterm-256color").StreamEvents(ctx, events)
+		select {
+		case ev := <-events:
+			if k, ok := ev.(uv.KeyPressEvent); !ok || !c.match(uv.Key(k)) {
+				t.Errorf("%q decodes to %#v, not the prefix", in, ev)
+			}
+		case <-ctx.Done():
+			t.Errorf("%q decodes to nothing", in)
+		}
+		cancel()
 	}
 }
 
 func TestPrefixKeyFromConfig(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("TERMALATOR_HOME", home)
-	if c, err := prefixKey(); err != nil || c.r != '\\' {
+	if c, err := prefixKey(); err != nil || c.r != 'b' {
 		t.Fatalf("no config: %q %v", c.r, err)
 	}
 	path := filepath.Join(home, "config.toml")
@@ -49,12 +66,12 @@ func TestPrefixKeyFromConfig(t *testing.T) {
 	if c, err := prefixKey(); err != nil || c.r != ']' {
 		t.Fatalf("detach: %q %v", c.r, err)
 	}
-	os.WriteFile(path, []byte("[keys]\nprefix = \"ctrl+b\"\ndetach = \"ctrl+]\"\n"), 0o600)
-	if c, err := prefixKey(); err != nil || c.r != 'b' || ConfigPrefix() != "ctrl+b" {
+	os.WriteFile(path, []byte("[keys]\nprefix = \"ctrl+a\"\ndetach = \"ctrl+]\"\n"), 0o600)
+	if c, err := prefixKey(); err != nil || c.r != 'a' || ConfigPrefix() != "ctrl+a" {
 		t.Fatalf("prefix wins: %q %v", c.r, err)
 	}
 	os.WriteFile(path, []byte("[keys]\nprefix = \"F12\"\n"), 0o600)
-	if c, err := prefixKey(); err == nil || c.r != '\\' {
+	if c, err := prefixKey(); err == nil || c.r != 'b' {
 		t.Fatalf("bad key: %q %v (want the default and an error)", c.r, err)
 	}
 }
@@ -130,13 +147,14 @@ func TestWatchOnlyPane(t *testing.T) {
 	}
 	defer c.enc.Close()
 	told := make(chan proto.SessionInfo, 1)
-	c.prefix, c.statusBar, c.cols = chord{'\\'}, true, 160
+	c.prefix, c.statusBar = chord{'\\'}, true
+	c.setWindow(160, 40)
 	c.takeover = func(s proto.SessionInfo) error { told <- s; return nil }
 	// No connection: a key sent to the program would panic.
 	p := &pane{watch: true, info: proto.SessionInfo{ID: "s-2", Role: proto.RoleThread, Project: "demo", Thread: "t-0001"}}
 	c.root, c.focus = &node{leaf: p}, p
 	c.status()
-	if !strings.Contains(c.statusText, `watch-only, ctrl+\ u takes over`) {
+	if !strings.Contains(c.statusText, `watch-only, prefix+u takes over`) {
 		t.Fatalf("status %q", c.statusText)
 	}
 	pk := uv.Key{Code: '\\', Mod: uv.ModCtrl}
@@ -168,5 +186,39 @@ func TestWatchOnlyPane(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the coordinator wasn't told")
+	}
+}
+
+// TestOuterModes: the outer terminal moves from one mouse tracking mode
+// to the next without resetting one after setting another, which would
+// stop all tracking; with a sidebar it always reports clicks and drags.
+func TestOuterModes(t *testing.T) {
+	mirror, err := emu.New(80, 24)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mirror.Close()
+	c := &client{outer: map[int]bool{}, focus: &pane{mirror: mirror}}
+	steps := []struct {
+		program string // what the program writes
+		side    bool
+		want    string
+	}{
+		{"\x1b[?1003h\x1b[?1006h", false, "\x1b[?1003h\x1b[?1006h"},
+		{"\x1b[?1003l\x1b[?1002h", false, "\x1b[?1003l\x1b[?1002h"},
+		{"\x1b[?1002l", false, "\x1b[?1002l\x1b[?1006l"},
+		{"", true, "\x1b[?1002h\x1b[?1006h"},
+		{"\x1b[?1003h", true, "\x1b[?1002l\x1b[?1003h"},
+		{"\x1b[?1003l", true, "\x1b[?1003l\x1b[?1002h"},
+	}
+	for i, s := range steps {
+		mirror.Write([]byte(s.program))
+		c.side = nil
+		if s.side {
+			c.side = &sidebar{}
+		}
+		if got := string(c.outerModes()); got != s.want {
+			t.Errorf("step %d: %q, want %q", i, got, s.want)
+		}
 	}
 }

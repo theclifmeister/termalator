@@ -1,29 +1,30 @@
- termalator                                                                            ● server ok · 1 session
- PROJECTS 1 ──────────────────────────────────────────────────────────────────────────────────────────────────
-  demo         coordinator                    —           enter starts the coordinator  1 inbox
-                 t-0001 Fix the login           ○ idle      ▰▰▰▱▱  T1  50% 1/2 ▸ Fix  <duration>  PR #7
-        T1 steps:
-          ✓ 1 Reproduce
-          ○ 2 Fix
-        report 1 (acked) next:
-          1 Merge the PR
-          2 Remove the worktree
-    tasks: 0 needs you · 1 in motion · 0 on deck
- SE╭─ demo inbox ─────────────────────────────────────────────────────────────────────────────────────────╮───
-  n│ report           <duration>     t-0001 handed in report 1 (T1)                                               │
-   │                                                                                                      │
-   │ The coordinator handles these (tm inbox done).                                                       │
-   ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯
-
-
-
-
-
-
-
-
-
-
-
-──────────────────────────────────────────────────────────────────────────────────────────────────────────────
- r refresh · esc back
+ PROJECTS 1            │ termalator                                                                            ● server ok · 1 session
+▸· demo              1 │ PROJECTS 1 ──────────────────────────────────────────────────────────────────────────────────────────────────
+                       │  demo         coordinator                    —           enter starts the coordinator  1 inbox
+                       │                 t-0001 Fix the login           ○ idle      ▰▰▰▱▱  T1  50% 1/2 ▸ Fix  <duration>  PR #7
+                       │        T1 steps:
+                       │          ✓ 1 Reproduce
+                       │          ○ 2 Fix
+                       │        report 1 (acked) next:
+                       │          1 Merge the PR
+                       │          2 Remove the worktree
+                       │    tasks: 0 needs you · 1 in motion · 0 on deck
+                       │ SE╭─ demo inbox ─────────────────────────────────────────────────────────────────────────────────────────╮───
+                       │  n│ report           <duration>     t-0001 handed in report 1 (T1)                                               │
+                       │   │                                                                                                      │
+                       │   │ The coordinator handles these (tm inbox done).                                                       │
+                       │   ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                       │ r refresh · esc back
+                       │

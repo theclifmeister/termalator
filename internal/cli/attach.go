@@ -17,7 +17,7 @@ import (
 	"github.com/theclifmeister/termalator/internal/tui"
 )
 
-const attachUsage = `usage: tm attach [SESSION]   (the newest session when none is named; Ctrl+\ detaches)`
+const attachUsage = `usage: tm attach [SESSION]   (the newest session when none is named; the prefix, Ctrl+B, then d detaches)`
 
 // reexecEnv marks a tm that was re-executed as the server's binary, so a
 // build mismatch that survives the re-exec fails instead of looping.
@@ -72,7 +72,7 @@ func attachCmd(e *Env, args []string) int {
 	}
 	c.Close()
 
-	res, code := e.attach(p, id, false, []string{"attach", id})
+	res, code := e.attach(p, id, false, nil, []string{"attach", id})
 	if code != ExitOK {
 		return code
 	}
@@ -97,7 +97,7 @@ func (e *Env) tookOver(s proto.SessionInfo) error {
 // attach runs the attach view on this terminal until the user detaches
 // or the session ends. On a build mismatch it re-execs the server's
 // binary with args (docs/SPEC.md §3.3) and doesn't return.
-func (e *Env) attach(p server.Paths, id string, statusBar bool, args []string) (tui.Result, int) {
+func (e *Env) attach(p server.Paths, id string, statusBar bool, side *tui.SidebarOptions, args []string) (tui.Result, int) {
 	logger := log.New(io.Discard, "", 0)
 	if path := e.Getenv(attachLogEnv); path != "" {
 		if f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
@@ -106,7 +106,7 @@ func (e *Env) attach(p server.Paths, id string, statusBar bool, args []string) (
 		}
 	}
 	res, err := tui.Attach(tui.Options{Paths: p, Session: id, In: os.Stdin, Out: os.Stdout, Log: logger, StatusBar: statusBar,
-		Takeover: e.tookOver})
+		Takeover: e.tookOver, Sidebar: side})
 	var verr *proto.MismatchError
 	if errors.As(err, &verr) && verr.ReExec && e.Getenv(reexecEnv) == "" {
 		// The snapshot format is only stable within one build: become the

@@ -60,7 +60,7 @@ func TestSmokeProjectOpenAndSwitch(t *testing.T) {
 	w.Prefix("p")
 	w.WaitFor("enter open its coordinator", wait)
 	w.Key(keyEsc)
-	w.WaitFor("PROJECTS", wait)
+	w.WaitFor("SESSIONS", wait)
 	w.Type("q")
 	w.WaitExit(wait)
 
@@ -80,6 +80,115 @@ func TestSmokeProjectOpenAndSwitch(t *testing.T) {
 	w2.WaitUntil("attached to beta", wait, func(sc string) bool { return lastLine(sc, beta+" coordinator") })
 	w2.Detach()
 	w2.WaitExit(wait)
+}
+
+// TestSmokeSidebar: the projects sidebar (docs/SPEC.md §4) on every
+// screen. A click on a project opens its coordinator, from the dashboard
+// and while attached, also from a split layout; the sidebar stays left
+// of split panes; prefix } widens it and a drag on its border moves it,
+// both resizing the panes and kept in ui.json; a narrow window gets the
+// slim strip.
+func TestSmokeSidebar(t *testing.T) {
+	env := New(t)
+	env.FakeClaude()
+	alpha, alphaDir := newProject(env, "Alpha")
+	beta, betaDir := newProject(env, "Beta")
+	env.Trust(alphaDir, betaDir)
+
+	w := env.Window(120, 30)
+	w.WaitFor("beta         coordinator", wait)
+	// From the dashboard: a click on alpha opens its coordinator; the
+	// panes get the window less the sidebar's 24 columns.
+	w.Click(3, sideRow(t, w.Screen(), alpha))
+	w.WaitUntil("attached to alpha", agentWait, func(sc string) bool { return lastLine(sc, alpha+" coordinator") })
+	w.WaitFor("Fake Claude Code", agentWait)
+	w.WaitFor("▸○ "+alpha, wait) // the current project is marked
+	a := coordinatorOf(t, env, alpha)
+	waitPaneSize(t, env, a, 96, 29)
+
+	// A split: the sidebar stays, the panes share the 96 columns, and
+	// alpha stays the current project.
+	w.Prefix("%")
+	w.WaitUntil("two panes", wait, func(sc string) bool { return lastLine(sc, "pane 2/2") })
+	waitPaneSize(t, env, a, 48, 29)
+	for i, l := range strings.Split(w.Screen(), "\n")[:29] {
+		if r := []rune(l); len(r) <= 72 || r[23] != '│' || r[72] != '│' {
+			t.Fatalf("row %d lacks the sidebar's border or the divider:\n%s", i, w.Screen())
+		}
+	}
+	if !strings.Contains(w.Screen(), "▸○ "+alpha) {
+		t.Fatalf("alpha not marked current in a split:\n%s", w.Screen())
+	}
+
+	// From the split: a click on beta opens beta's coordinator.
+	w.Click(3, sideRow(t, w.Screen(), beta))
+	w.WaitUntil("attached to beta", agentWait, func(sc string) bool {
+		return lastLine(sc, beta+" coordinator") && !lastLine(sc, "pane ")
+	})
+	w.WaitFor("Fake Claude Code", agentWait)
+	b := coordinatorOf(t, env, beta)
+	waitPaneSize(t, env, b, 96, 29)
+
+	// Prefix } widens the sidebar: a layout change, so the pane follows,
+	// and ui.json keeps the width.
+	w.Prefix("}")
+	waitPaneSize(t, env, b, 94, 29)
+	if !Poll(wait, func() bool { return strings.Contains(readFile(env.Home, "ui.json"), `"width": 26`) }) {
+		t.Fatalf("ui.json: %s", readFile(env.Home, "ui.json"))
+	}
+	// Dragging its border to column 29 makes it 30 wide.
+	w.Drag(25, 29, 5)
+	waitPaneSize(t, env, b, 90, 29)
+	if !Poll(wait, func() bool { return strings.Contains(readFile(env.Home, "ui.json"), `"width": 30`) }) {
+		t.Fatalf("ui.json after the drag: %s", readFile(env.Home, "ui.json"))
+	}
+
+	// A narrow window: the slim strip, 7 columns, never nothing.
+	w.Resize(70, 30)
+	waitPaneSize(t, env, b, 63, 29)
+	w.WaitFor("▸○beta│", wait)
+	w.WaitFor(" ○alph│", wait)
+
+	w.Detach()
+	w.WaitFor("SESSIONS", wait)
+	w.Type("q")
+	w.WaitExit(wait)
+}
+
+// sideRow is the screen row where the sidebar lists slug.
+func sideRow(t *testing.T, screen, slug string) int {
+	t.Helper()
+	for i, l := range strings.Split(screen, "\n") {
+		if r := []rune(l); len(r) > 3 && strings.HasPrefix(strings.TrimSpace(string(r[2:min(len(r), 23)])), slug) {
+			return i
+		}
+	}
+	t.Fatalf("the sidebar doesn't list %s:\n%s", slug, screen)
+	return -1
+}
+
+// coordinatorOf is the project's coordinator session.
+func coordinatorOf(t *testing.T, env *Env, slug string) *Session {
+	t.Helper()
+	var s *Session
+	Poll(wait, func() bool {
+		for _, info := range env.Sessions() {
+			if info.Role == "coordinator" && info.Project == slug {
+				s = &Session{ID: info.ID, PID: info.PID}
+			}
+		}
+		return s != nil
+	})
+	if s == nil {
+		t.Fatalf("no coordinator for %s", slug)
+	}
+	env.track(s.PID, "coordinator "+s.ID)
+	return s
+}
+
+func readFile(dir, name string) string {
+	b, _ := os.ReadFile(filepath.Join(dir, name))
+	return string(b)
 }
 
 // scripts writes fake-agent scripts into a fresh directory, which the

@@ -443,7 +443,7 @@ func TestSmokeMakeRun(t *testing.T) {
 	w := env.WindowCmd(100, 30, "/bin/sh", "-c", "cd "+dir+" && exec "+filepath.Join(root, "scripts", "run.sh"))
 	w.WaitFor("no sessions; s starts a shell", wait)
 	w.Type("s")
-	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, `ctrl+\ d dashboard`) })
+	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, `prefix+d dashboard`) })
 	for _, s := range env.Sessions() {
 		env.track(s.PID, "session "+s.ID)
 		if real, _ := filepath.EvalSymlinks(dir); s.Cwd != dir && s.Cwd != real {

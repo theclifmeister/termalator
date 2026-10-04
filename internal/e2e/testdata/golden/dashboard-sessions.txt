@@ -1,23 +1,24 @@
- termalator                                                                  ● server ok · 1 session
- PROJECTS 1 ────────────────────────────────────────────────────────────────────────────────────────
-  demo         coordinator                    —           enter starts the coordinator
-    tasks: 0 needs you · 1 in motion · 1 on deck
- SESSIONS 1 ────────────────────────────────────────────────────────────────────────────────────────
-  <session>          /bin/sh                        ● running   <duration>  /
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-────────────────────────────────────────────────────────────────────────────────────────────────────
- enter open · t tasks · i inbox · , settings · ? help · q quit
+ PROJECTS 1            │ termalator                                          ● server ok · 1 session
+▸· demo              0 │ PROJECTS 1 ────────────────────────────────────────────────────────────────
+                       │  demo         coordinator                    —           enter starts the …
+                       │    tasks: 0 needs you · 1 in motion · 1 on deck
+                       │ SESSIONS 1 ────────────────────────────────────────────────────────────────
+                       │  <session>          /bin/sh                        ● running   <duration>  /
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │────────────────────────────────────────────────────────────────────────────
+                       │ enter open · t tasks · i inbox · , settings · ? help · q quit
+                       │

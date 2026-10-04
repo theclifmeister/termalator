@@ -77,7 +77,7 @@ func TestSmokeDashboard(t *testing.T) {
 // TestSmokeFirstLocalRun is M4's "Try it" with the fake agent: an agent
 // session of the user's own, outside any project, shows on the dashboard
 // and enter attaches; a prompt typed there blocks on a permission dialog;
-// Ctrl+\ d shows the session under NEEDS YOU; enter attaches again to
+// Ctrl+B d shows the session under NEEDS YOU; enter attaches again to
 // answer it; closing the terminal loses nothing, and a new dashboard
 // shows the session idle.
 func TestSmokeFirstLocalRun(t *testing.T) {
@@ -111,7 +111,7 @@ func TestSmokeFirstLocalRun(t *testing.T) {
 	// Attach again (the session's row is still selected) and approve.
 	w.Key(Enter)
 	w.WaitUntil("attached", wait, func(sc string) bool {
-		return lastLine(sc, `ctrl+\ d dashboard`) && strings.Contains(sc, "Do you want to create x.txt?")
+		return lastLine(sc, `prefix+d dashboard`) && strings.Contains(sc, "Do you want to create x.txt?")
 	})
 	w.Type("1")
 	env.WaitState(s, "idle", agentWait)

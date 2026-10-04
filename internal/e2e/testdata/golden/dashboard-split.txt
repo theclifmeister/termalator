@@ -1,29 +1,30 @@
- termalator                                                                                                          ● server ok · 1 session
- PROJECTS 1 ────────────────────────────────────────────────────────────────────────│ t-0001 Fix the login
-  demo         coordinator                    —           enter starts the coordina…│ ○ idle
-                 t-0001 Fix the login           ○ idle      T1  50% 1/2 ▸ Fix  <duration>  …│ ─────────────────────────────────────────────────────
-    tasks: 0 needs you · 1 in motion · 0 on deck                                    │ project   demo
- SESSIONS ──────────────────────────────────────────────────────────────────────────│ task      T1
-  no sessions; s starts a shell                                                     │ session   <session>
-                                                                                    │ progress  ▰▰▰▱▱ 50% 1/2
-                                                                                    │ now       ▸ Fix
-                                                                                    │ updated   <duration> ago
-                                                                                    │ PR        https://github.com/o/r/pull/7
-                                                                                    │ report    1, new · for the coordinator
-                                                                                    │
-                                                                                    │ T1 steps:
-                                                                                    │   ✓ 1 Reproduce
-                                                                                    │   ○ 2 Fix
-                                                                                    │ report 1 (new) next:
-                                                                                    │   1 Merge the PR
-                                                                                    │   2 Remove the worktree
-                                                                                    │
-                                                                                    │ enter watches it; the coordinator acts on it
-                                                                                    │
-                                                                                    │
-                                                                                    │
-                                                                                    │
-                                                                                    │
-                                                                                    │
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- enter watch · t tasks · i inbox · , settings · ? help · q quit
+ PROJECTS 1            │ termalator                                                                                                          ● server ok · 1 session
+▸· demo              1 │ PROJECTS 1 ────────────────────────────────────────────────────────────────────────│ t-0001 Fix the login
+                       │  demo         coordinator                    —           enter starts the coordina…│ ○ idle
+                       │                 t-0001 Fix the login           ○ idle      T1  50% 1/2 ▸ Fix  <duration>  …│ ─────────────────────────────────────────────────────
+                       │    tasks: 0 needs you · 1 in motion · 0 on deck                                    │ project   demo
+                       │ SESSIONS ──────────────────────────────────────────────────────────────────────────│ task      T1
+                       │  no sessions; s starts a shell                                                     │ session   <session>
+                       │                                                                                    │ progress  ▰▰▰▱▱ 50% 1/2
+                       │                                                                                    │ now       ▸ Fix
+                       │                                                                                    │ updated   <duration> ago
+                       │                                                                                    │ PR        https://github.com/o/r/pull/7
+                       │                                                                                    │ report    1, new · for the coordinator
+                       │                                                                                    │
+                       │                                                                                    │ T1 steps:
+                       │                                                                                    │   ✓ 1 Reproduce
+                       │                                                                                    │   ○ 2 Fix
+                       │                                                                                    │ report 1 (new) next:
+                       │                                                                                    │   1 Merge the PR
+                       │                                                                                    │   2 Remove the worktree
+                       │                                                                                    │
+                       │                                                                                    │ enter watches it; the coordinator acts on it
+                       │                                                                                    │
+                       │                                                                                    │
+                       │                                                                                    │
+                       │                                                                                    │
+                       │                                                                                    │
+                       │                                                                                    │
+                       │────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                       │ enter watch · t tasks · i inbox · , settings · ? help · q quit
+                       │
