@@ -531,12 +531,13 @@ func TestSmokeAttachSplitPanes(t *testing.T) {
 	if c := columnOf(w.Screen(), "right-6"); c < 73 {
 		t.Fatalf("right-6 at column %d, not in the right pane:\n%s", c, w.Screen())
 	}
-	// The prefix twice is Ctrl+B for the shell: back one character.
-	w.Type("echo a$((1+1))b")
+	// The prefix twice sends Ctrl+B itself: od shows the byte, 002.
+	w.Type("od -c\r")
+	w.Quiet(300 * time.Millisecond)
 	w.Key(CtrlB)
 	w.Key(CtrlB)
-	w.Type("X\r")
-	w.WaitFor("a2Xb", wait)
+	w.Type("\r\x04")
+	w.WaitFor("002  \\n", wait)
 	w.Key(CtrlB)
 	w.Key(emu.Key{Special: emu.KeyLeft})
 	w.WaitUntil("focus on the left", wait, func(sc string) bool { return lastLine(sc, s1.ID+" ") && lastLine(sc, "pane 1/2") })
