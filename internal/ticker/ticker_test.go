@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -308,8 +309,11 @@ func TestAutoResolveOff(t *testing.T) {
 	if len(r.host.resolved) != 0 || len(r.host.prompts) != 0 {
 		t.Fatalf("resolved %v prompts %v", r.host.resolved, r.host.prompts)
 	}
-	if k := r.kinds(); k != "pr-checks-failed,pr-merged,pr-opened" {
-		t.Fatalf("kinds %s", k)
+	// Item ids carry the wall-clock second, so the order isn't fixed.
+	k := strings.Split(r.kinds(), ",")
+	sort.Strings(k)
+	if strings.Join(k, ",") != "pr-checks-failed,pr-merged,pr-opened" {
+		t.Fatalf("kinds %v", k)
 	}
 }
 
