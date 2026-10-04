@@ -20,6 +20,7 @@ const (
 	envTickSweep = "TERMALATOR_TICK_SWEEP"
 	envTickPR    = "TERMALATOR_TICK_PR"
 	envTickNudge = "TERMALATOR_TICK_NUDGE"
+	envTickDay   = "TERMALATOR_TICK_DAY" // the length of an auto-close day
 )
 
 func envDuration(k string) time.Duration {
@@ -68,6 +69,7 @@ func (s *Server) startTicker(ctx context.Context) <-chan struct{} {
 	t := ticker.New(ticker.Options{
 		Host: tickerHost{s, ctx}, Log: s.log, State: ticker.StatePath(s.opts.Paths.Sessions),
 		Sweep: envDuration(envTickSweep), PRPoll: envDuration(envTickPR), Nudge: envDuration(envTickNudge),
+		Day: envDuration(envTickDay),
 	})
 	s.mu.Lock()
 	s.tick = t

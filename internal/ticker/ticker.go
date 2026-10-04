@@ -20,6 +20,7 @@ import (
 	"github.com/theclifmeister/termalator/internal/project"
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/thread"
+	"github.com/theclifmeister/termalator/internal/worktree"
 )
 
 // Defaults of §7.5.
@@ -45,6 +46,9 @@ const (
 	KindPRReview      = "pr-review"
 	KindPRMerged      = "pr-merged"
 	KindPRClosed      = "pr-closed"
+	// KindCloseHeld: auto-close found unsaved work and left the thread
+	// open.
+	KindCloseHeld = "close-held"
 )
 
 // Host is what the ticker needs from the server.
@@ -67,12 +71,17 @@ type Options struct {
 	Sweep  time.Duration
 	PRPoll time.Duration
 	Nudge  time.Duration
+	// Day is how long a day of auto_close_days lasts (tests shorten it).
+	Day time.Duration
 	// State is the file that keeps what the ticker already reported
 	// across server restarts.
 	State string
 	// GH runs gh in dir; nil runs the real one.
 	GH  func(dir string, args ...string) ([]byte, error)
 	Now func() time.Time
+	// Unsaved says what closing a thread would lose ("" for nothing);
+	// pushed is its merged PR's head. nil checks its worktree with git.
+	Unsaved func(r *thread.Record, pushed string) (string, error)
 }
 
 // Ticker is the event loop.
@@ -98,7 +107,8 @@ type threadMemo struct {
 	IdleReport int       `json:"idle_report,omitempty"` // report an idle item was raised for
 	PR         PR        `json:"pr"`
 	PRPolled   time.Time `json:"pr_polled"`
-	Resolving  bool      `json:"resolving,omitempty"` // auto-resolve tried once
+	Resolving  bool      `json:"resolving,omitempty"` // auto-close tried once
+	Held       string    `json:"held,omitempty"`      // unsaved work an item was raised for
 }
 
 type projectMemo struct {
@@ -117,11 +127,17 @@ func New(o Options) *Ticker {
 	if o.Nudge <= 0 {
 		o.Nudge = DefaultNudge
 	}
+	if o.Day <= 0 {
+		o.Day = 24 * time.Hour
+	}
 	if o.Now == nil {
 		o.Now = time.Now
 	}
 	if o.GH == nil {
 		o.GH = runGH
+	}
+	if o.Unsaved == nil {
+		o.Unsaved = unsaved
 	}
 	if o.Log == nil {
 		o.Log = log.New(os.Stderr, "", log.LstdFlags)
@@ -144,6 +160,15 @@ func runGH(dir string, args ...string) ([]byte, error) {
 		return nil, fmt.Errorf("gh %s: %v %s", strings.Join(args, " "), err, strings.TrimSpace(errb.String()))
 	}
 	return out, nil
+}
+
+// unsaved checks a thread's worktree; a thread without a repo has only
+// a folder, which resolve keeps unless it is empty.
+func unsaved(r *thread.Record, pushed string) (string, error) {
+	if r.Repo == "" {
+		return "", nil
+	}
+	return worktree.Unsaved(r.Worktree, pushed)
 }
 
 func (t *Ticker) load() *state {
@@ -375,18 +400,62 @@ func (t *Ticker) sweepThreads(p *project.Project, sessions []proto.SessionInfo, 
 
 		t.pollPR(p, r, m, info, live, safety, now)
 
-		// Auto-resolve after the merge, once the agent rests (§9).
-		if m.PR.State == "MERGED" && safety.AutoResolve && !m.Resolving && (cur == "idle" || cur == "exited" || cur == "stopped") {
-			m.Resolving = true
-			out, err := t.o.Host.Resolve(p.Slug, r.ID)
-			if err != nil {
-				t.o.Log.Printf("ticker: %s: auto-resolve %s: %v %s", p.Slug, r.ID, err, out)
-				t.item(p, KindPRMerged, r.ID, fmt.Sprintf("%s's PR merged but resolving it failed; run tm thread resolve %s", r.ID, r.ID), false)
-			} else {
-				t.o.Log.Printf("ticker: %s: auto-resolved %s", p.Slug, r.ID)
-			}
-		}
+		t.autoClose(p, r, m, cur, safety, now)
 	}
+}
+
+// closeDue reports whether auto-close closes a thread now (§9): its
+// agent rests (idle, exited or stopped) and, by the setting, its PR
+// merged, or it finished (tm done since its last prompt, or its PR
+// merged) at least AutoCloseDays ago.
+func closeDue(s config.Safety, r *thread.Record, pr PR, agent string, now time.Time, day time.Duration) bool {
+	if agent != "idle" && agent != "exited" && agent != "stopped" {
+		return false
+	}
+	merged := pr.State == "MERGED"
+	switch s.AutoClose {
+	case config.CloseMerged:
+		return merged
+	case config.CloseDays:
+		fin := r.DoneSince()
+		if merged && !pr.MergedAt.IsZero() && (fin.IsZero() || pr.MergedAt.Before(fin)) {
+			fin = pr.MergedAt
+		}
+		return !fin.IsZero() && !now.Before(fin.Add(time.Duration(s.AutoCloseDays)*day))
+	}
+	return false
+}
+
+// autoClose resolves a finished thread once closeDue says so, once, as
+// caller ticker under resolve's rules. A thread with uncommitted or
+// unpushed work stays open: an item says so, once per reason.
+func (t *Ticker) autoClose(p *project.Project, r *thread.Record, m *threadMemo, cur string, safety config.Safety, now time.Time) {
+	if m.PR.State == "MERGED" && m.PR.MergedAt.IsZero() {
+		m.PR.MergedAt = now // a merge seen before tm kept the time
+	}
+	if m.Resolving || !closeDue(safety, r, m.PR, cur, now, t.o.Day) {
+		return
+	}
+	why, err := t.o.Unsaved(r, m.PR.Head)
+	if err != nil {
+		t.o.Log.Printf("ticker: %s: auto-close %s: %v", p.Slug, r.ID, err)
+		why = "work that can't be checked"
+	}
+	if why != "" {
+		if m.Held != why {
+			m.Held = why
+			t.item(p, KindCloseHeld, r.ID, fmt.Sprintf("%s finished but was not auto-closed: %s in its worktree; have it commit and push, or resolve it yourself (tm thread resolve %s keeps the worktree)", r.ID, why, r.ID), false)
+		}
+		return
+	}
+	m.Resolving = true
+	out, err := t.o.Host.Resolve(p.Slug, r.ID)
+	if err != nil {
+		t.o.Log.Printf("ticker: %s: auto-close %s: %v %s", p.Slug, r.ID, err, out)
+		t.item(p, KindCloseHeld, r.ID, fmt.Sprintf("%s finished but closing it failed; run tm thread resolve %s", r.ID, r.ID), false)
+		return
+	}
+	t.o.Log.Printf("ticker: %s: auto-closed %s", p.Slug, r.ID)
 }
 
 // pollPR asks gh about a thread's PR every PRPoll and raises items for
@@ -440,6 +509,9 @@ func (t *Ticker) pollPR(p *project.Project, r *thread.Record, m *threadMemo, inf
 			t.item(p, KindPRReview, r.ID, fmt.Sprintf("%s of %s: approved", ref, r.ID), false)
 		}
 	}
+	if pr.State == "MERGED" && pr.MergedAt.IsZero() {
+		m.PR.MergedAt = now // gh didn't say when
+	}
 	if pr.State != old.State {
 		switch pr.State {
 		case "MERGED":
@@ -457,7 +529,7 @@ var verbs = map[string]string{
 	"report": "reported", "thread-done": "done", "thread-resolved": "resolved", "needs-you": "waiting for the user",
 	KindBlocked: "blocked", KindIdle: "idle with a report", KindExited: "exited", KindServerRestart: "server restarted",
 	KindPROpened: "opened a PR", KindPRChecks: "PR checks failed", KindPRReview: "PR reviewed",
-	KindPRMerged: "PR merged", KindPRClosed: "PR closed", project.KindTakeover: "taken over by the user",
+	KindPRMerged: "PR merged", KindPRClosed: "PR closed", KindCloseHeld: "not auto-closed", project.KindTakeover: "taken over by the user",
 }
 
 // NudgeText is the one line an idle coordinator gets (§7.5). It holds

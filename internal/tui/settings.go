@@ -9,6 +9,7 @@ import (
 
 	"github.com/theclifmeister/termalator/internal/config"
 	"github.com/theclifmeister/termalator/internal/proto"
+	"github.com/theclifmeister/termalator/internal/thread"
 )
 
 // Settings (docs/SPEC.md §4, §11.2): plain labels, each with a line on
@@ -28,6 +29,8 @@ type setting struct {
 	value       func(m *dash) string
 	// change runs on enter or space; nil shows the value only.
 	change func(m *dash) tea.Cmd
+	// adjust changes a number by delta, on + and -.
+	adjust func(m *dash, delta int) tea.Cmd
 	// note adds lines under the help (e.g. the running coordinator's
 	// remote control when it differs).
 	note func(m *dash) []string
@@ -48,6 +51,10 @@ func (l *settingsList) key(m *dash, k tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "enter", "space", " ":
 		if l.sel < len(l.rows) && l.rows[l.sel].change != nil && !m.busy {
 			return l.rows[l.sel].change(m), true
+		}
+	case "+", "=", "-":
+		if l.sel < len(l.rows) && l.rows[l.sel].adjust != nil && !m.busy {
+			return l.rows[l.sel].adjust(m, map[bool]int{true: -1, false: 1}[k.String() == "-"]), true
 		}
 	default:
 		return nil, false
@@ -254,6 +261,16 @@ func projectSettings(slug string) []setting {
 		return config.Defaults
 	}
 	table := "projects." + slug
+	// set saves a setting and shows it at once, before the next poll, so
+	// quick presses of + build on each other.
+	set := func(m *dash, key string, value any, msg string, apply func(*config.Safety)) tea.Cmd {
+		if p := m.projectData(slug); p != nil {
+			s := safety(m)
+			apply(&s)
+			p.Safety = &s
+		}
+		return m.setSetting(table, key, value, msg)
+	}
 	toggle := func(key string, get func(config.Safety) bool, what string) func(m *dash) tea.Cmd {
 		return func(m *dash) tea.Cmd {
 			on := !get(safety(m))
@@ -289,9 +306,38 @@ func projectSettings(slug string) []setting {
 		{label: "Coordinator approves", help: "The coordinator may answer its threads' in-scope permission prompts (allow once, never always).",
 			value:  func(m *dash) string { return onOff(safety(m).CoordinatorApproves) },
 			change: toggle("coordinator_approves", func(s config.Safety) bool { return s.CoordinatorApproves }, "coordinator approvals")},
-		{label: "Auto-close finished threads", help: "Close a thread once its pull request merged and its agent is idle; its worktree is removed only when nothing is lost.",
-			value:  func(m *dash) string { return onOff(safety(m).AutoResolve) },
-			change: toggle("auto_resolve", func(s config.Safety) bool { return s.AutoResolve }, "auto-close")},
+		{label: "Parallel threads", help: "The most threads working at once; beyond it the coordinator proposes and waits. Idle and done threads don't count. Enter or + and - change it.",
+			value: func(m *dash) string {
+				return fmt.Sprintf("%d · %d working now", safety(m).ParallelThreads, m.workingThreads(slug))
+			},
+			change: func(m *dash) tea.Cmd {
+				n := nextStep(capSteps, safety(m).ParallelThreads)
+				return set(m, "parallel_threads", n, fmt.Sprintf("up to %d threads of %s work at once", n, slug), func(s *config.Safety) { s.ParallelThreads = n })
+			},
+			adjust: func(m *dash, d int) tea.Cmd {
+				n := min(max(safety(m).ParallelThreads+d, 1), config.MaxParallelThreads)
+				return set(m, "parallel_threads", n, fmt.Sprintf("up to %d threads of %s work at once", n, slug), func(s *config.Safety) { s.ParallelThreads = n })
+			}},
+		{label: "Auto-close finished threads", help: "Close a thread when its pull request merges, or some days after it finishes (done, or its pull request merged); + and - change the days. One with uncommitted or unpushed work stays open, and the coordinator is told.",
+			value: func(m *dash) string { return closeWords(safety(m)) },
+			change: func(m *dash) tea.Cmd {
+				next := map[string]string{config.CloseOff: config.CloseMerged, config.CloseMerged: config.CloseDays}[safety(m).AutoClose]
+				if next == "" {
+					next = config.CloseOff
+				}
+				s := safety(m)
+				s.AutoClose = next
+				return set(m, "auto_close", next, "auto-close for "+slug+": "+closeWords(s), func(x *config.Safety) { x.AutoClose = next })
+			},
+			adjust: func(m *dash, d int) tea.Cmd {
+				s := safety(m)
+				n := min(max(s.AutoCloseDays+d, 1), config.MaxAutoCloseDays)
+				msg := fmt.Sprintf("threads of %s close %s after they finish", slug, days(n))
+				if s.AutoClose != config.CloseDays {
+					msg = fmt.Sprintf("%s once auto-close is set to days after it finishes (enter)", days(n))
+				}
+				return set(m, "auto_close_days", n, msg, func(x *config.Safety) { x.AutoCloseDays = n })
+			}},
 		{label: "Pull request follow-up", help: "Prompt a thread when its pull request's checks fail or a reviewer asks for changes.",
 			value:  func(m *dash) string { return onOff(safety(m).PRFollowup) },
 			change: toggle("pr_followup", func(s config.Safety) bool { return s.PRFollowup }, "pull request follow-up")},
@@ -302,6 +348,51 @@ func projectSettings(slug string) []setting {
 				return remoteNote(safety(m).CoordinatorRemoteControl, m.data.Sessions, slug)
 			}},
 	}
+}
+
+// capSteps are the caps enter steps through; + and - fine-tune.
+var capSteps = []int{1, 2, 3, 5, 10, 15, 20}
+
+// nextStep is the first step above cur, or the first one.
+func nextStep(steps []int, cur int) int {
+	for _, s := range steps {
+		if s > cur {
+			return s
+		}
+	}
+	return steps[0]
+}
+
+// closeWords is the auto-close setting as the popup shows it.
+func closeWords(s config.Safety) string {
+	switch s.AutoClose {
+	case config.CloseOff:
+		return "off"
+	case config.CloseDays:
+		return days(s.AutoCloseDays) + " after it finishes"
+	}
+	return "when its pull request merges"
+}
+
+func days(n int) string {
+	if n == 1 {
+		return "1 day"
+	}
+	return fmt.Sprintf("%d days", n)
+}
+
+// workingThreads counts slug's threads that count toward its cap
+// (thread.IsWorking).
+func (m *dash) workingThreads(slug string) int {
+	p := m.projectData(slug)
+	if p == nil {
+		return 0
+	}
+	recs := make([]*thread.Record, 0, len(p.Threads))
+	for _, t := range p.Threads {
+		recs = append(recs, t.Record)
+	}
+	return thread.Working(recs, m.data.Sessions)
 }
 
 // remoteNote says when the running coordinator's remote control differs
