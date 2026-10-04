@@ -60,9 +60,12 @@ export PKG_CONFIG_PATH := $(GHOSTTY_OUT)/share/pkgconfig$(if $(PKG_CONFIG_PATH),
 export CGO_ENABLED := 1
 # Go's build cache doesn't key on pkg-config output, so a cached cgo package
 # would keep linking the previous library path. CGO_CFLAGS is part of the
-# key: naming the library build here forces a rebuild when it changes.
+# key: naming the library build here forces a rebuild when it changes. The
+# full path, not just the build name: every worktree has its own .build/,
+# and a package cached in another (since removed) worktree would link that
+# worktree's library.
 CGO_CFLAGS ?= -O2 -g
-export CGO_CFLAGS += -DTM_LIBGHOSTTY=$(notdir $(GHOSTTY_OUT))
+export CGO_CFLAGS += -DTM_LIBGHOSTTY=$(GHOSTTY_OUT)
 
 .PHONY: all build run test e2e e2e-smoke fuzz vet ghostty toolchain env clean distclean
 

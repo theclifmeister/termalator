@@ -6,7 +6,9 @@
 //	printer [-lines N] [-delay D]
 //
 // It prints a banner with styles and wide characters, its window size,
-// then N lines "line 1" … "line N" (D apart), then "ready".
+// then N lines "line 1" … "line N" (D apart), then "ready". Every
+// SIGWINCH prints "resized to CxR", so a scenario can tell whether the
+// pane was resized.
 package main
 
 import (
@@ -15,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -27,6 +30,19 @@ func main() {
 	flag.Parse()
 
 	signal.Ignore(syscall.SIGINT)
+	var mu sync.Mutex // one writer at a time
+	winch := make(chan os.Signal, 1)
+	signal.Notify(winch, syscall.SIGWINCH)
+	go func() {
+		for range winch {
+			if ws, err := unix.IoctlGetWinsize(1, unix.TIOCGWINSZ); err == nil {
+				mu.Lock()
+				fmt.Printf("resized to %dx%d\r\n", ws.Col, ws.Row)
+				mu.Unlock()
+			}
+		}
+	}()
+	mu.Lock()
 	w := bufio.NewWriter(os.Stdout)
 	fmt.Fprint(w, "printer: \x1b[1mbold\x1b[0m \x1b[32mgreen\x1b[0m wide:日本語\r\n")
 	if ws, err := unix.IoctlGetWinsize(1, unix.TIOCGWINSZ); err == nil {
@@ -37,11 +53,14 @@ func main() {
 		fmt.Fprintf(w, "line %d\r\n", i)
 		if *delay > 0 {
 			w.Flush()
+			mu.Unlock()
 			time.Sleep(*delay)
+			mu.Lock()
 		}
 	}
 	fmt.Fprint(w, "ready\r\n")
 	w.Flush()
+	mu.Unlock()
 	for {
 		time.Sleep(time.Hour) // a bare select{} would trip the deadlock detector
 	}

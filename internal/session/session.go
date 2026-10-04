@@ -26,6 +26,9 @@ type Config struct {
 	Created time.Time
 	// Xtversion is the terminal name reported to XTVERSION queries.
 	Xtversion string
+	// Scheme is the colour scheme reported to the program until a client
+	// reports its own (SetColorScheme); 0 leaves queries unanswered.
+	Scheme emu.Scheme
 	// Logf receives diagnostics; nil discards them.
 	Logf func(format string, args ...any)
 	// OnExit is called once, after the process has exited and every
@@ -48,6 +51,7 @@ type Session struct {
 	term       *emu.Terminal
 	subs       map[*Subscriber]struct{}
 	cols, rows uint16
+	scheme     emu.Scheme
 	exitStatus string
 }
 
@@ -66,12 +70,13 @@ func Start(cfg Config) (*Session, error) {
 		cfg.Created = time.Now()
 	}
 	s := &Session{
-		cfg:  cfg,
-		in:   newInputQueue(),
-		done: make(chan struct{}),
-		subs: map[*Subscriber]struct{}{},
-		cols: cfg.Cols,
-		rows: cfg.Rows,
+		cfg:    cfg,
+		in:     newInputQueue(),
+		done:   make(chan struct{}),
+		subs:   map[*Subscriber]struct{}{},
+		cols:   cfg.Cols,
+		rows:   cfg.Rows,
+		scheme: cfg.Scheme,
 	}
 	term, err := emu.NewWith(emu.Options{
 		Cols: cfg.Cols, Rows: cfg.Rows,
@@ -79,6 +84,8 @@ func Start(cfg Config) (*Session, error) {
 		// emulator answers; attach mirrors never do.
 		WritePty:  func(b []byte) { s.in.push(b, false) },
 		Xtversion: cfg.Xtversion,
+		// Called from term.Write, with s.mu held.
+		ColorScheme: func() (emu.Scheme, bool) { return s.scheme, s.scheme != 0 },
 	})
 	if err != nil {
 		return nil, err
@@ -188,6 +195,28 @@ func (s *Session) Resize(cols, rows uint16) error {
 	s.cols, s.rows = cols, rows
 	for sub := range s.subs {
 		sub.enqueue(proto.FrameResize, proto.Size(cols, rows))
+	}
+	return nil
+}
+
+// SetColorScheme records the colour scheme of the terminal a client is
+// attached from. A program that asked for scheme reports (mode 2031) gets
+// one when it changes.
+func (s *Session) SetColorScheme(scheme emu.Scheme) error {
+	if scheme != emu.SchemeDark && scheme != emu.SchemeLight {
+		return fmt.Errorf("session: invalid colour scheme %d", scheme)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.term == nil {
+		return ErrExited
+	}
+	if scheme == s.scheme {
+		return nil
+	}
+	s.scheme = scheme
+	if s.term.Modes().ColorSchemeReport {
+		s.in.push(emu.SchemeReport(scheme), false)
 	}
 	return nil
 }

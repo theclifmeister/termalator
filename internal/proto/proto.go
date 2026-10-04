@@ -36,6 +36,7 @@ type Hello struct {
 type MismatchError struct {
 	Reason string
 	ReExec bool
+	Bin    string // the server's executable, when ReExec is set
 }
 
 func (e *MismatchError) Error() string { return e.Reason }
@@ -56,6 +57,7 @@ func Check(client, server Hello) error {
 		return &MismatchError{
 			Reason: fmt.Sprintf("tm server is build %s, this tm is %s", server.Build, client.Build),
 			ReExec: server.Bin != "",
+			Bin:    server.Bin,
 		}
 	}
 	return nil
@@ -78,6 +80,10 @@ const (
 	FrameSetSize   FrameType = 11 // u16 cols, u16 rows: the user really resized the window
 	FrameDigestReq FrameType = 12 // ask for a FrameDigest in the stream
 	FrameDetach    FrameType = 13
+	// FrameColorScheme carries one byte, 1 dark or 2 light: the client's
+	// terminal reported its colour scheme. Programs that enabled mode
+	// 2031 get a report, and CSI ? 996 n is answered with it.
+	FrameColorScheme FrameType = 14
 )
 
 // MaxFrame bounds a frame's payload.

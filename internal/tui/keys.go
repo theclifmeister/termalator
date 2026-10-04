@@ -1,0 +1,138 @@
+package tui
+
+import (
+	"errors"
+	"fmt"
+	"io/fs"
+	"strings"
+	"unicode/utf8"
+
+	"github.com/BurntSushi/toml"
+	uv "github.com/charmbracelet/ultraviolet"
+
+	"github.com/theclifmeister/termalator/internal/config"
+	"github.com/theclifmeister/termalator/internal/emu"
+)
+
+// DefaultDetachKey is Ctrl+\. Outer terminals send it as 0x1c, or as
+// CSI 92;5u once the client has pushed kitty "disambiguate"; ultraviolet
+// decodes both to the same key.
+const DefaultDetachKey = `ctrl+\`
+
+// chord is a Ctrl+<character> key combination.
+type chord struct{ r rune }
+
+func (c chord) match(k uv.Key) bool { return k.Mod == uv.ModCtrl && k.Code == c.r }
+
+func (c chord) String() string { return "ctrl+" + string(c.r) }
+
+// parseChord reads "ctrl+<character>", the form config.toml uses.
+func parseChord(s string) (chord, error) {
+	rest, ok := strings.CutPrefix(strings.ToLower(strings.TrimSpace(s)), "ctrl+")
+	r, n := utf8.DecodeRuneInString(rest)
+	if !ok || n == 0 || n != len(rest) || r < 0x20 || r >= 0x7f {
+		return chord{}, fmt.Errorf("detach key %q: want ctrl+<character>, e.g. %q", s, DefaultDetachKey)
+	}
+	return chord{r}, nil
+}
+
+// detachKey reads [keys] detach from config.toml; a missing file or key
+// gives the default.
+func detachKey() (chord, error) {
+	def, _ := parseChord(DefaultDetachKey)
+	path, err := config.Path()
+	if err != nil {
+		return def, nil
+	}
+	var cfg struct {
+		Keys struct {
+			Detach string `toml:"detach"`
+		} `toml:"keys"`
+	}
+	if _, err := toml.DecodeFile(path, &cfg); errors.Is(err, fs.ErrNotExist) {
+		return def, nil
+	} else if err != nil {
+		return def, fmt.Errorf("%s: %w", path, err)
+	}
+	if cfg.Keys.Detach == "" {
+		return def, nil
+	}
+	c, err := parseChord(cfg.Keys.Detach)
+	if err != nil {
+		return def, fmt.Errorf("%s: %w", path, err)
+	}
+	return c, nil
+}
+
+var specialKeys = map[rune]emu.SpecialKey{
+	uv.KeyEnter: emu.KeyEnter, uv.KeyTab: emu.KeyTab,
+	uv.KeyBackspace: emu.KeyBackspace, uv.KeyEscape: emu.KeyEscape,
+	uv.KeySpace: emu.KeySpace,
+	uv.KeyUp:    emu.KeyUp, uv.KeyDown: emu.KeyDown,
+	uv.KeyLeft: emu.KeyLeft, uv.KeyRight: emu.KeyRight,
+	uv.KeyHome: emu.KeyHome, uv.KeyEnd: emu.KeyEnd,
+	uv.KeyPgUp: emu.KeyPageUp, uv.KeyPgDown: emu.KeyPageDown,
+	uv.KeyInsert: emu.KeyInsert, uv.KeyDelete: emu.KeyDelete,
+	uv.KeyKpEnter: emu.KeyKpEnter,
+	uv.KeyF1:      emu.KeyF1, uv.KeyF2: emu.KeyF2, uv.KeyF3: emu.KeyF3,
+	uv.KeyF4: emu.KeyF4, uv.KeyF5: emu.KeyF5, uv.KeyF6: emu.KeyF6,
+	uv.KeyF7: emu.KeyF7, uv.KeyF8: emu.KeyF8, uv.KeyF9: emu.KeyF9,
+	uv.KeyF10: emu.KeyF10, uv.KeyF11: emu.KeyF11, uv.KeyF12: emu.KeyF12,
+}
+
+func mods(m uv.KeyMod) emu.Mods {
+	var out emu.Mods
+	if m.Contains(uv.ModShift) {
+		out |= emu.ModShift
+	}
+	if m.Contains(uv.ModCtrl) {
+		out |= emu.ModCtrl
+	}
+	if m.Contains(uv.ModAlt) || m.Contains(uv.ModMeta) {
+		out |= emu.ModAlt
+	}
+	if m.Contains(uv.ModSuper) {
+		out |= emu.ModSuper
+	}
+	return out
+}
+
+// toKey translates a key decoded from the outer terminal; ok is false for
+// keys the pane can't receive.
+func toKey(k uv.Key) (emu.Key, bool) {
+	out := emu.Key{Mods: mods(k.Mod), Text: k.Text}
+	if sk, ok := specialKeys[k.Code]; ok {
+		out.Special = sk
+		return out, true
+	}
+	if k.Code >= uv.KeyExtended {
+		return out, false
+	}
+	out.Rune = k.Code
+	return out, true
+}
+
+var mouseButtons = map[uv.MouseButton]emu.MouseButton{
+	uv.MouseLeft: emu.MouseLeft, uv.MouseMiddle: emu.MouseMiddle, uv.MouseRight: emu.MouseRight,
+	uv.MouseWheelUp: emu.MouseWheelUp, uv.MouseWheelDown: emu.MouseWheelDown,
+	uv.MouseWheelLeft: emu.MouseWheelLeft, uv.MouseWheelRight: emu.MouseWheelRight,
+}
+
+// toMouse translates a mouse event; X and Y stay in outer cells.
+func toMouse(ev uv.Event) (emu.Mouse, bool) {
+	var m uv.Mouse
+	action := emu.MousePress
+	switch e := ev.(type) {
+	case uv.MouseClickEvent:
+		m = uv.Mouse(e)
+	case uv.MouseReleaseEvent:
+		m, action = uv.Mouse(e), emu.MouseRelease
+	case uv.MouseMotionEvent:
+		m, action = uv.Mouse(e), emu.MouseMotion
+	case uv.MouseWheelEvent:
+		m = uv.Mouse(e)
+	default:
+		return emu.Mouse{}, false
+	}
+	return emu.Mouse{Action: action, Button: mouseButtons[m.Button], Mods: mods(m.Mod), X: m.X, Y: m.Y}, true
+}
