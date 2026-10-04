@@ -16,12 +16,17 @@
 GHOSTTY_REV  ?= 33da6848d63b3bba2b4f31ab1531d618f2795192
 GHOSTTY_REPO ?= https://github.com/ghostty-org/ghostty.git
 ZIG          ?= zig
+# Zig builds for the host CPU by default, which gives a library that can
+# crash with SIGILL on older CPUs (seen in CI: AVX-512 code restored from
+# cache onto a runner without it). Build for the baseline of the target
+# architecture instead; override with e.g. GHOSTTY_CPU=native for local use.
+GHOSTTY_CPU  ?= baseline
 GO           ?= go
 ZIG_MIN      := 0.16.0
 
 BUILD       := $(abspath .build)
 GHOSTTY_SRC := $(BUILD)/ghostty-src
-GHOSTTY_OUT := $(BUILD)/ghostty-$(shell echo $(GHOSTTY_REV) | cut -c1-12)
+GHOSTTY_OUT := $(BUILD)/ghostty-$(shell echo $(GHOSTTY_REV) | cut -c1-12)-$(GHOSTTY_CPU)
 STAMP       := $(GHOSTTY_OUT)/.built
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -54,7 +59,7 @@ $(STAMP): | toolchain
 	git -C $(GHOSTTY_SRC) fetch -q --depth 1 origin $(GHOSTTY_REV)
 	git -C $(GHOSTTY_SRC) checkout -q --force FETCH_HEAD
 	cd $(GHOSTTY_SRC) && $(ZIG) build -Demit-lib-vt -Demit-xcframework=false \
-		-Doptimize=ReleaseFast --prefix $(GHOSTTY_OUT)
+		-Doptimize=ReleaseFast -Dcpu=$(GHOSTTY_CPU) --prefix $(GHOSTTY_OUT)
 	@test -f $(GHOSTTY_OUT)/share/pkgconfig/libghostty-vt-static.pc || \
 		{ echo "libghostty-vt build produced no pkg-config file" >&2; exit 1; }
 	@touch $@
