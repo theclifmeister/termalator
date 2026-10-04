@@ -46,7 +46,7 @@ var (
 
 // apps are the deterministic programs under internal/e2e/apps/ that
 // sessions can run by name.
-var apps = []string{"printer"}
+var apps = []string{"printer", "fullscreen"}
 
 // build compiles tm and the apps once per test process. E2E_RACE=1 builds
 // tm with the race detector (the smoke set in CI).
@@ -109,6 +109,9 @@ type Env struct {
 	Bin    string // the tm under test
 	Home   string // TERMALATOR_HOME
 	Socket string // TERMALATOR_SOCKET, in a short run dir under /tmp
+	// AttachLog is where attach clients log digest checks and keys
+	// (TERMALATOR_ATTACH_LOG).
+	AttachLog string
 	// Vars is the environment of every tm command and window.
 	Vars []string
 
@@ -139,6 +142,7 @@ func New(t testing.TB) *Env {
 		Socket: filepath.Join(runDir, "tm.sock"),
 		pids:   map[int]string{},
 	}
+	e.AttachLog = filepath.Join(root, "attach.log")
 	home := filepath.Join(root, "home")
 	os.MkdirAll(home, 0o700)
 	e.Vars = append(cleanEnv(os.Environ()),
@@ -150,6 +154,7 @@ func New(t testing.TB) *Env {
 		"SHELL=/bin/sh",
 		"PS1=$ ",
 		"TM="+e.Bin,
+		"TERMALATOR_ATTACH_LOG="+e.AttachLog,
 	)
 	t.Cleanup(func() {
 		e.cleanup()
@@ -352,9 +357,13 @@ func (e *Env) cleanup() {
 	if t.Failed() {
 		e.saveArtifacts()
 	}
-	for _, w := range e.windows {
+	for i, w := range e.windows {
 		w.KillClient()
 		w.CloseWindow()
+		// A race-built tm reports races on its stderr: the window.
+		if bytes.Contains(w.Raw(), []byte("WARNING: DATA RACE")) {
+			t.Errorf("window %d: tm reported a data race:\n%s", i+1, w.Raw())
+		}
 	}
 	if Alive(e.ServerPID()) {
 		// Collect the session processes before stopping, so the check
@@ -403,6 +412,9 @@ func (e *Env) saveArtifacts() {
 	for i, w := range e.windows {
 		os.WriteFile(filepath.Join(dir, fmt.Sprintf("window-%d.txt", i+1)), []byte(w.Screen()+"\n"), 0o644)
 		os.WriteFile(filepath.Join(dir, fmt.Sprintf("window-%d.raw", i+1)), w.Raw(), 0o644)
+	}
+	if b, err := os.ReadFile(e.AttachLog); err == nil {
+		os.WriteFile(filepath.Join(dir, "attach.log"), b, 0o644)
 	}
 	for _, f := range []string{"logs/server.log", "state/sessions.json"} {
 		if b, err := os.ReadFile(filepath.Join(e.Home, f)); err == nil {

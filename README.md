@@ -6,9 +6,10 @@ Claude Code is the first supported agent. Other agents plug in through a manifes
 
 **Status:** pre-alpha; see the [v0.1 specification](docs/SPEC.md). What works:
 - the background server (milestone M1): it hosts shell sessions that survive closing your terminal (`tm server …`, `tm session …`);
+- the attach client (milestone M2): `tm attach` shows a session full-screen; Ctrl+\ detaches and leaves it running;
 - the file layer of projects and tasks (milestone M5): `tm project new|list`, `tm skill`, `tm task …`, `tm context` and `tm inbox list|done`. These work on the files directly; the server takes over writes later.
 
-The attach client and agents come next.
+Agents and the dashboard come next.
 
 ## Try it
 
@@ -16,9 +17,11 @@ The attach client and agents come next.
 make run
 ```
 
-This builds `bin/tm`, starts the background server, starts a session running your shell, types a line into it and prints its screen. The session keeps running after the command returns, and after you close the terminal:
+This builds `bin/tm`, starts the background server, starts a session running your shell, types a line into it and attaches you to it. Press Ctrl+\ to detach. The session keeps running after you detach, and after you close the terminal:
 
 ```sh
+bin/tm attach s-1                      # attach again, from any terminal, at any size
+bin/tm attach                          # the newest session
 bin/tm session list                    # sessions in the server
 bin/tm session keys s-1 --enter 'ls'   # type into one
 bin/tm session read s-1                # print its screen
@@ -26,7 +29,7 @@ bin/tm session stop s-1
 bin/tm server status | stop
 ```
 
-`make run RUN_ARGS=top` runs another command instead of your shell. Until the attach client lands (M2), `tm session read` is how you see a session. The server keeps its state in `~/.termalator`; set `TERMALATOR_HOME` to use somewhere else.
+`make run RUN_ARGS=top` runs another command instead of your shell. Attaching never resizes the session; resizing the window you attached from does. Shift+PgUp/PgDn scroll back through a shell's output; full-screen programs get the mouse wheel. The detach key can be changed in `~/.termalator/config.toml` (`[keys]` `detach = "ctrl+]"`). The server keeps its state in `~/.termalator`; set `TERMALATOR_HOME` to use somewhere else.
 
 ## Try projects and tasks
 
@@ -98,6 +101,8 @@ cmd/tm/              entry point
 internal/server      background server: lifecycle, socket, sessions.json; also the client side
 internal/session     one hosted process: PTY + libghostty-vt emulator + attach subscribers
 internal/proto       wire protocol: handshake, control NDJSON, attach frames
+internal/emu         the libghostty-vt wrapper: emulator, snapshots, renderer, input encoders
+internal/tui         the attach client (tm attach)
 internal/e2e         end-to-end test harness and scenarios
 internal/agent       agent interface, manifests (manifests/claude.toml), registry
 internal/…           see docs/SPEC.md §2.1
