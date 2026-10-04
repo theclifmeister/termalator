@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -14,10 +15,15 @@ import (
 	"github.com/theclifmeister/termalator/internal/emu"
 )
 
-// DefaultDetachKey is Ctrl+\. Outer terminals send it as 0x1c, or as
+// DefaultPrefixKey is Ctrl+\. Outer terminals send it as 0x1c, or as
 // CSI 92;5u once the client has pushed kitty "disambiguate"; ultraviolet
 // decodes both to the same key.
-const DefaultDetachKey = `ctrl+\`
+//
+// The prefix starts a key command, as in tmux (docs/SPEC.md §4): in a
+// session, prefix then d returns to the dashboard, prefix then p, ], [,
+// i, t, , or ? returns and opens that view, and prefix twice sends the
+// prefix itself to the program.
+const DefaultPrefixKey = `ctrl+\`
 
 // chord is a Ctrl+<character> key combination.
 type chord struct{ r rune }
@@ -31,21 +37,23 @@ func parseChord(s string) (chord, error) {
 	rest, ok := strings.CutPrefix(strings.ToLower(strings.TrimSpace(s)), "ctrl+")
 	r, n := utf8.DecodeRuneInString(rest)
 	if !ok || n == 0 || n != len(rest) || r < 0x20 || r >= 0x7f {
-		return chord{}, fmt.Errorf("detach key %q: want ctrl+<character>, e.g. %q", s, DefaultDetachKey)
+		return chord{}, fmt.Errorf("prefix key %q: want ctrl+<character>, e.g. %q", s, DefaultPrefixKey)
 	}
 	return chord{r}, nil
 }
 
-// detachKey reads [keys] detach from config.toml; a missing file or key
-// gives the default.
-func detachKey() (chord, error) {
-	def, _ := parseChord(DefaultDetachKey)
+// prefixKey reads [keys] prefix from config.toml, or the older [keys]
+// detach, which named the same key; a missing file or key gives the
+// default.
+func prefixKey() (chord, error) {
+	def, _ := parseChord(DefaultPrefixKey)
 	path, err := config.Path()
 	if err != nil {
 		return def, nil
 	}
 	var cfg struct {
 		Keys struct {
+			Prefix string `toml:"prefix"`
 			Detach string `toml:"detach"`
 		} `toml:"keys"`
 	}
@@ -54,15 +62,27 @@ func detachKey() (chord, error) {
 	} else if err != nil {
 		return def, fmt.Errorf("%s: %w", path, err)
 	}
-	if cfg.Keys.Detach == "" {
+	key := cmp.Or(cfg.Keys.Prefix, cfg.Keys.Detach)
+	if key == "" {
 		return def, nil
 	}
-	c, err := parseChord(cfg.Keys.Detach)
+	c, err := parseChord(key)
 	if err != nil {
 		return def, fmt.Errorf("%s: %w", path, err)
 	}
 	return c, nil
 }
+
+// ConfigPrefix is the prefix key config.toml sets, for the dashboard;
+// errors are reported by the attach client, which reads the same key.
+func ConfigPrefix() string {
+	c, _ := prefixKey()
+	return c.String()
+}
+
+// prefixCommands are the keys that, after the prefix in a session, return
+// to the dashboard and run there: the same keys as on the dashboard.
+var prefixCommands = map[string]bool{"p": true, "]": true, "[": true, "i": true, "t": true, ",": true, "?": true}
 
 var specialKeys = map[rune]emu.SpecialKey{
 	uv.KeyEnter: emu.KeyEnter, uv.KeyTab: emu.KeyTab,

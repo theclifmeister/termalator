@@ -194,7 +194,8 @@ After the hello the client sends `{"attach":{"session":"s-…","cols":C,"rows":R
 - **Back-pressure.** The PTY reader never blocks on a client. Each client has a byte-bounded queue of 4 MB, with adjacent `OUTPUT` frames merged. Past the limit the backlog is dropped and replaced by a fresh `SNAPSHOT` (resync). macOS PTYs deliver about 68-byte reads, so the server coalesces reads, reading until `EAGAIN` or for a few hundred µs, and avoids allocating per chunk.
 - **Sizing: no resize on attach.**
   - A pane keeps its size when a client attaches. A client whose window is a different size renders the pane cropped or padded. When the window has fewer rows than the pane, the client shows the rows around the cursor.
-  - The PTY is resized (`TIOCSWINSZ` + `SIGWINCH`) only when the user really resizes the window of the client they are typing in (`SET_SIZE`).
+  - The PTY is resized (`TIOCSWINSZ` + `SIGWINCH`) only when the user really resizes the window of the client they are typing in, or changes its split panes (split, close, zoom, resize a divider, switch layout; §4): then every pane whose rectangle changed is resized to it (`SET_SIZE`).
+  - Split panes: each pane is its own attach connection with its own mirror and renderer. A pane's renderer draws into its rectangle of the shared window and erases only up to its edge (`ECH`, never `EL` or `ED`); the client draws the dividers and the status bar and wraps the whole frame in one mode 2026 update, ending with the focused pane's cursor. With one pane the renderer has the window to itself, as before.
   - Reason: in its inline mode, Claude duplicates rows in the scrollback on every resize. Its full-screen mode, the default since 2.1.x, doesn't, but needless resizes still cause full repaints.
 - **Rendering.**
   - The client draws dirty rows from its mirror (cell renderer, not Bubble Tea `View()` strings), capped at 120 Hz and wrapped in mode 2026.
@@ -204,7 +205,7 @@ After the hello the client sends `{"attach":{"session":"s-…","cols":C,"rows":R
 - **Input.**
   - The client pushes kitty "disambiguate" on the outer terminal and decodes its input with ultraviolet. It then re-encodes every key, mouse, focus and paste event with libghostty's encoders against the **mirror's** modes. This is how Shift+Enter (`CSI 13;2u`) reaches Claude intact.
   - Mouse (1000/1002/1003/1006) and focus (1004) modes are mirrored onto the outer terminal only while the app wants them, so native selection works the rest of the time. Claude 2.1.x is full-screen with any-event mouse tracking, so mouse forwarding is required.
-- **Detach key: Ctrl+\\.** The client recognises it as `0x1c` and as `CSI 92;5u`. It is configurable in `config.toml`. Shift+PgUp/PgDn scroll the client's local scrollback for apps on the main screen (inline mode, shells); full-screen apps get the wheel.
+- **Prefix key: Ctrl+\\.** The client recognises it as `0x1c` and as `CSI 92;5u`. It starts a key command, as in tmux: prefix then `d` detaches, and prefix twice sends the prefix itself to the program (§4 lists the commands). It is `[keys] prefix` in `config.toml`; the older `[keys] detach` names the same key. Shift+PgUp/PgDn scroll the client's local scrollback for apps on the main screen (inline mode, shells); full-screen apps get the wheel.
 - **Several clients.** Any number of clients may attach over time and at once, one attached pane per client in v0.1. Two clients MAY attach to the same pane; both receive output and both may type. The pane's size follows the last `SET_SIZE`.
 - **The client's own terminal going away.** SIGHUP, or EOF/EIO on stdin, is a detach: the client exits within about 50 ms, and the server and agent are unaffected. On attach the client paints the snapshot at once, even when the pane is idle.
 - **Fallback considered and rejected.** Replaying the VT formatter's output into a fresh emulator is version-independent, but it loses the inactive screen: primary scrollback and its kitty flags disappear while an app is on the alt screen. It stays a debug aid, not a protocol.
@@ -285,7 +286,13 @@ The processes die with the server, because the PTY master closes and the childre
   - the derived percent, done/total, and the current todo or step after `▸` (§7.3); the self-reported activity appears only when there are no todos or steps;
   - the time since the last change, and the linked task id.
 
-  Selecting a thread row shows its full todo list, its task's steps and its report's `## Next` lines under it. Threads are ordered as in §7.4; a row says `report waiting`, or `ready for review` once the thread called `tm done`, and the PR number from the report.
+  Selecting a thread row shows its full todo list, its task's steps and its report's `## Next` lines: in the details panel beside the list, or under the row when the window is too narrow for the panel. Threads are ordered as in §7.4; a row says `report waiting`, or `ready for review` once the thread called `tm done`, and the PR number from the report.
+- **Details panel.** In a window at least 120 columns wide, a panel right of the list shows everything about the selected row: a thread's state, task, progress, PR, report and the lines above; a task's notes and steps; a session's directory, command and progress; a project's coordinator, counts and inbox. `<` and `>` narrow and widen the list, dragging the divider with the mouse does the same, and `|` hides or shows the panel. The layout is kept in `ui.json` (§5.1), not `config.toml`, which `tm` never writes.
+- **Look.** Colours are the terminal's 16 ANSI colours, so they follow the user's theme; `NO_COLOR` turns them off. Every state also has its own glyph (● working, ▲ blocked, ○ idle, ◌ starting, ◆ needs you, ✓ done), so colour is never the only signal. A row shows a five-cell progress bar when it still fits.
+- **Popups.** Help, the inbox, the task board, the project switcher, prompts and the settings open as bordered boxes over the dimmed dashboard; `esc` closes the topmost. The footer lists the popup's keys and still shows messages.
+- **Settings** (`,`): the prefix key, the selected project's safety settings (§11.2), each marked when it is the default, and the layout. `tm` never writes `config.toml`; `e` opens it in `$VISUAL` or `$EDITOR`, and the popup reloads when the editor exits.
+- **Footer.** It lists only the keys that apply to the selected row: `enter attach`, `enter show` or `enter open`, `a ack` and `1-9 send next` on a thread with a report, `d done` on a task in review. `?` lists every key.
+- **Mouse.** A click selects a row, the wheel moves the selection, and the divider can be dragged. Holding Shift selects text as usual in most terminals.
 - **Keys** (small and fixed in v0.1):
 
   | Key | Action |
@@ -301,14 +308,34 @@ The processes die with the server, because the PTY master closes and the childre
   | `i` | the project's inbox: every unhandled item, `!` on those for the human |
   | `a` | on a thread with an unacknowledged report, acknowledge it (`tm thread ack`) |
   | `1`–`9` | on a thread, send that `## Next` line of its report as its next prompt (`tm thread prompt --next N`) |
+  | `,` | settings |
+  | `<` / `>` | narrow / widen the list beside the details panel |
+  | `\|` | show or hide the details panel |
   | `r` | refresh |
   | `?` | help |
   | `q` | quit the client; the server keeps running |
 
-- **Attaching.** Attaching gives the whole screen to the pane, rendered from the client's mirror emulator (§3.3), with a one-line status bar at the bottom that the client draws. The status bar shows the session, its project and role, state, progress and the detach key; the client polls `session.list` for it. Sessions started from the dashboard get the window's size less that row, so nothing is cropped. Ctrl+\ returns to the dashboard. (`tm attach` keeps the whole window for the pane and has no status bar.)
-- **Project switching.** While attached, Ctrl+\ then `p` opens the project switcher, and Ctrl+\ then `]` or `[` jumps to the next or previous project's coordinator. Ctrl+\ always lands on the dashboard first, so these are the dashboard's own keys and no key is taken from the pane. "Next" is relative to the project last attached to; the status bar always names the current project.
+- **Attaching.** Attaching gives the whole screen to the pane, rendered from the client's mirror emulator (§3.3), with a one-line status bar at the bottom that the client draws. The status bar shows the session, its project and role, state, progress and `ctrl+\ d dashboard`; after the prefix it lists the commands instead. The client polls `session.list` for it. Sessions started from the dashboard get the window's size less that row, so nothing is cropped. (`tm attach` keeps the whole window for the pane and has no status bar.)
+- **Prefix commands.** While attached, the prefix (Ctrl+\) then:
+
+  | Key | Action |
+  |---|---|
+  | `d` | back to the dashboard; the session keeps running |
+  | `p`, `]`, `[`, `i`, `t`, `,`, `?` | back to the dashboard, which runs that key: the switcher, next / previous project, inbox, tasks, settings, help |
+  | `%` / `"` | split the focused pane: a new shell in its directory beside it / below it |
+  | arrows, `o` | focus the pane in that direction / the next pane |
+  | Ctrl+arrows | move the nearest divider that way (2 columns or 1 row); for half a second more Ctrl+arrows need no prefix |
+  | `z` | zoom the focused pane to the whole window, and back |
+  | `x` | close the focused pane; its session keeps running (the last pane detaches) |
+  | Space | switch between all panes side by side and all stacked |
+  | the prefix | send the prefix itself to the program |
+  | anything else | cancel |
+
+  Only `d`, the pane commands and the prefix work in `tm attach` and `tm project open`, which have no dashboard to go back to.
+- **Split panes.** A split attaches the new shell as another pane of the same window; the panes share it with one-cell dividers, those around the focused pane in the accent colour, and the status bar names the focused pane's session with `pane 2/3`. Keys, paste and the cursor go to the focused pane; a click focuses the pane under it (when the outer terminal reports the mouse, i.e. while the focused program tracks it). When a pane's session exits, the pane closes and the status bar says why; when the last one does, the attach ends as before. Detaching (`d`) detaches every pane. Splits last as long as the attach: back on the dashboard, `enter` attaches one session. On the dashboard the prefix then a key is that key, so the same keys do the same things in both places.
+- **Project switching.** While attached, the prefix then `p` opens the project switcher, and the prefix then `]` or `[` jumps to the next or previous project's coordinator. These run on the dashboard, so they are the dashboard's own keys and no key is taken from the pane but the prefix. "Next" is relative to the project last attached to; the status bar always names the current project.
 - **Projects.** A project row with no running coordinator says so; `enter` on it starts the coordinator (as `tm project open` does) and attaches. A done confirmation the coordinator raised (§6.4) is a NEEDS YOU row on which `d` completes it.
-- **Rendering.** The dashboard uses Bubble Tea v2 and Lip Gloss v2. The attached pane bypasses Bubble Tea: a cell renderer draws dirty rows from the mirror (§3.3).
+- **Rendering.** The dashboard uses Bubble Tea v2 and Lip Gloss v2. The attached panes bypass Bubble Tea: a cell renderer per pane draws dirty rows from its mirror (§3.3).
 - **Notifications.** When a session becomes `blocked`, or a thread reports, every client (dashboard or attached) rings the bell on its terminal, and the server sends an OS notification (`osascript` on macOS, `notify-send` on Linux, both optional). The client re-emits a pane's OSC 9/777 notifications and OSC 52 clipboard writes to the outer terminal while attached. OSC 52 reads are denied.
 
 ---
@@ -320,6 +347,7 @@ The processes die with the server, because the PTY master closes and the childre
 ```
 ~/.termalator/                         TERMALATOR_HOME
   config.toml                          user settings: default agent, keys, per-project safety (§11.2)   [human only]
+  ui.json                              the dashboard's layout: details panel on or off, list width (§4)  [tm]
   agents/<name>.toml                   user agent manifests (§8.2)                   [human]
   run/  tm.sock server.lock server.pid                                               [server]
   state/sessions.json                  live sessions, for resume (§3.6)              [server]
@@ -1068,7 +1096,7 @@ All three spikes have reported:
 | Question | Answer | Where |
 |---|---|---|
 | Attach design | Mirror emulator per client: snapshot, then an ordered output/resize stream; input re-encoded against the mirror's modes. Verified with 0 digest mismatches across detach, window close and reattach. Raw passthrough was replaced | 3.3 |
-| Detach key, `TERM` | Ctrl+\\ (legacy and `CSI 92;5u`); `xterm-256color` + `COLORTERM=truecolor` | 3.3 |
+| Prefix key, `TERM` | Ctrl+\\ (legacy and `CSI 92;5u`), then `d` detaches; `xterm-256color` + `COLORTERM=truecolor` | 3.3 |
 | Mode 2026, wide characters, Shift+Enter, bracketed paste | All correct through the mirror; client honours 2026 holds; re-anchor after graphemes | 3.3 |
 | Resize | Never on attach (Claude's inline mode duplicates scrollback rows on resize) | 3.3 |
 | Snapshot compatibility | None between builds, so attach requires an identical build, and the client re-execs the server's binary | 3.3, 3.6 |

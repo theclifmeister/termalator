@@ -1,4 +1,4 @@
- termalator                                                                   server ok · 0 sessions
+ termalator                                                                 ● server ok · 0 sessions
  PROJECTS ──────────────────────────────────────────────────────────────────────────────────────────
   no projects; n creates one
  SESSIONS ──────────────────────────────────────────────────────────────────────────────────────────
@@ -20,4 +20,4 @@
 
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────
- enter attach · t tasks · i inbox · a ack · d done · n project · p projects · ? help · q quit
+ n new project · , settings · ? help · q quit

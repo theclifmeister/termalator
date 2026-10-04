@@ -286,3 +286,64 @@ func TestMirrorResyncMidStream(t *testing.T) {
 		}
 	}
 }
+
+// TestRendererSharedRect: a renderer given a rectangle of a shared
+// window draws there and nowhere else, erases only up to its edge, and
+// leaves the cursor to the caller.
+func TestRendererSharedRect(t *testing.T) {
+	pane, err := New(10, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pane.Close()
+	pane.Write([]byte("abc\r\nde\x1b[31mf\x1b[0m"))
+
+	outer, err := New(30, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer outer.Close()
+	for range 6 {
+		outer.Write([]byte(strings.Repeat("x", 30)))
+	}
+
+	r, err := NewRenderer(30, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	r.SetRect(5, 1, 10, 3)
+	b, err := r.Frame(pane, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(b, []byte("\x1b[2J")) || bytes.Contains(b, []byte("\x1b[K")) || bytes.Contains(b, []byte("\x1b[?2026")) {
+		t.Fatalf("shared frame clears the window or syncs it: %q", b)
+	}
+	outer.Write(b)
+	got, _ := outer.Screen()
+	want := strings.Join([]string{
+		strings.Repeat("x", 30),
+		"xxxxxabc       xxxxxxxxxxxxxxx",
+		"xxxxxdef       xxxxxxxxxxxxxxx",
+		"xxxxx          xxxxxxxxxxxxxxx",
+		strings.Repeat("x", 30),
+		strings.Repeat("x", 30),
+	}, "\n")
+	if got != want {
+		t.Fatalf("outer screen:\n%s\nwant:\n%s", got, want)
+	}
+	// The cursor sits after "def", offset by the rectangle.
+	if c := string(r.Cursor()); !strings.HasPrefix(c, "\x1b[3;9H") {
+		t.Fatalf("cursor %q", c)
+	}
+	// Nothing changed: no frame.
+	if b, _ := r.Frame(pane, false); b != nil {
+		t.Fatalf("idle frame %q", b)
+	}
+	// Back to the whole window: a full frame again.
+	r.SetSize(30, 6)
+	if b, _ := r.Frame(pane, false); !bytes.Contains(b, []byte("\x1b[2J")) {
+		t.Fatalf("full-window frame %q", b)
+	}
+}

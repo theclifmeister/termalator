@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -22,11 +23,17 @@ import (
 	"github.com/theclifmeister/termalator/internal/server"
 )
 
-// The attach client (docs/SPEC.md §3.3). It keeps a mirror of the pane's
-// emulator: restored from the server's snapshot, then fed exactly the
-// bytes and resizes the server's emulator gets, in the same order. It
-// draws the outer terminal from the mirror and encodes input against the
-// mirror's modes, so neither needs a round trip.
+// The attach client (docs/SPEC.md §3.3). For each pane it keeps a mirror
+// of the session's emulator: restored from the server's snapshot, then
+// fed exactly the bytes and resizes the server's emulator gets, in the
+// same order. It draws the outer terminal from the mirrors and encodes
+// input against the focused mirror's modes, so neither needs a round
+// trip.
+//
+// A window starts with one pane, the session attached to. The prefix
+// then % or " splits the focused pane and starts a shell beside or below
+// it (panes.go holds the layout); each pane has its own connection,
+// mirror and renderer.
 
 const (
 	frameInterval = time.Second / 120 // render cap
@@ -64,14 +71,17 @@ type Result struct {
 	Reason string
 	// Detached is true when the session is still running.
 	Detached bool
+	// Then is the dashboard key to run once back on the dashboard: the
+	// key typed after the prefix (p, ], [, i, t, , or ?), or "".
+	Then string
 }
 
 // ErrNotTTY is returned when stdin is not a terminal.
 var ErrNotTTY = errors.New("tm attach needs a terminal")
 
 // Attach attaches to a session and runs until the user detaches, the
-// session ends or the outer terminal goes away. The outer terminal is
-// restored on every path out, panics included.
+// last pane's session ends or the outer terminal goes away. The outer
+// terminal is restored on every path out, panics included.
 func Attach(opts Options) (res Result, err error) {
 	if opts.Log == nil {
 		opts.Log = log.New(io.Discard, "", 0)
@@ -80,46 +90,29 @@ func Attach(opts Options) (res Result, err error) {
 	if !term.IsTerminal(fd) {
 		return res, ErrNotTTY
 	}
-	detach, kerr := detachKey()
+	prefix, kerr := prefixKey()
 	if kerr != nil {
-		fmt.Fprintf(os.Stderr, "tm attach: %v; using %s\n", kerr, DefaultDetachKey)
+		fmt.Fprintf(os.Stderr, "tm attach: %v; using %s\n", kerr, DefaultPrefixKey)
 	}
 	cols, rows, err := term.GetSize(fd)
 	if err != nil || cols <= 0 || rows <= 0 {
 		cols, rows = 80, 24
 	}
-	paneRows := rows
-	if opts.StatusBar {
-		paneRows = max(rows-1, 1)
-	}
-	conn, info, err := server.Attach(opts.Paths, proto.AttachParams{
-		Session: opts.Session, Cols: uint16(cols), Rows: uint16(paneRows)})
-	if err != nil {
-		return res, err
-	}
-	defer conn.Close()
-
-	c, err := newClient(conn, opts.Log, uint16(cols), uint16(paneRows))
+	c, err := newClient(opts.Paths, opts.Log)
 	if err != nil {
 		return res, err
 	}
 	defer c.close()
-	c.detach = detach
-	c.statusBar, c.cols, c.paneRows = opts.StatusBar, cols, paneRows
-	if c.statusBar {
-		c.r.SetStatus(statusLine(*info, detach, cols))
-	}
-	// The stream starts with the pane's snapshot.
-	typ, payload, err := conn.ReadFrame()
+	c.prefix, c.statusBar = prefix, opts.StatusBar
+	c.setWindow(cols, rows)
+	p, err := c.open(opts.Session, cols, c.paneRows)
 	if err != nil {
-		return res, fmt.Errorf("attach %s: %w", info.ID, err)
-	}
-	if typ != proto.FrameSnapshot {
-		return res, fmt.Errorf("attach %s: stream starts with frame %d, not a snapshot", info.ID, typ)
-	}
-	if err := c.loadSnapshot(payload); err != nil {
 		return res, err
 	}
+	c.mu.Lock()
+	c.root, c.focus = &node{leaf: p}, p
+	c.relayout(false) // attaching never resizes the session (§3.3)
+	c.mu.Unlock()
 
 	old, err := term.MakeRaw(fd)
 	if err != nil {
@@ -152,10 +145,10 @@ func Attach(opts Options) (res Result, err error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go c.readLoop()
+	go c.readLoop(p)
 	go c.inputLoop(ctx, opts.In)
 	if c.statusBar {
-		go c.pollState(ctx, opts.Paths, *info)
+		go c.pollState(ctx)
 	}
 	c.poke() // paint the snapshot now, even if the pane is idle
 	res = c.renderLoop(opts.Out)
@@ -163,30 +156,59 @@ func Attach(opts Options) (res Result, err error) {
 	return res, nil
 }
 
-// client is one attached pane.
-type client struct {
+// pane is one session in the window.
+type pane struct {
 	conn *server.Client
-	log  *log.Logger
 	wmu  sync.Mutex // serialises frames to the server
 
-	mu       sync.Mutex // guards everything below
+	// Guarded by client.mu.
 	mirror   *emu.Terminal
 	r        *emu.Renderer
-	enc      *emu.Encoder
 	held     bool // inside the program's 2026 hold
 	heldAt   time.Time
 	scrolled bool // the local viewport is scrolled back
-	outer    map[int]bool
-	detach   chord
+	info     proto.SessionInfo
+	rect     rect // where it is in the window (panes.go)
+	gone     bool // closed or ended: its goroutines stop
+}
 
-	statusBar      bool
-	cols, paneRows int  // the window's columns and the rows given to the pane
-	bell           bool // ring the outer terminal's bell with the next frame
+// client is the attached window: its panes and everything they share.
+type client struct {
+	paths server.Paths
+	log   *log.Logger
+	enc   *emu.Encoder
+
+	mu       sync.Mutex // guards everything below, and the panes' state
+	root     *node      // the layout
+	focus    *pane      // keys, paste and the cursor go here
+	zoomed   bool       // the focused pane fills the window
+	dividers []divider
+	single   bool // one pane shown: its renderer has the window to itself
+	full     bool // the next frame repaints the whole window
+	closed   bool
+
+	prefix      chord
+	pending     bool      // the prefix was typed: the next key is a command
+	repeatUntil time.Time // until then, a resize key repeats without the prefix
+	flash       string    // a note for the status bar until the next key
+
+	statusBar   bool
+	cols, rows  int // the window
+	paneRows    int // the rows above the status bar
+	statusText  string
+	statusDrawn string
+	lastCursor  string
+	title       string
+	outer       map[int]bool
+	bell        bool // ring the outer terminal's bell with the next frame
+	buf         []byte
 
 	// detaching is set before DETACH is written. The server may hang up
 	// as soon as it reads it, so from then on a failed write or a closed
-	// stream is the detach completing, not a lost server.
+	// stream is the detach completing, not a lost server. then, set
+	// before detaching, is the dashboard key that detach carries.
 	detaching atomic.Bool
+	then      string
 
 	wake    chan struct{}
 	endOnce sync.Once
@@ -194,38 +216,88 @@ type client struct {
 	result  Result
 }
 
-func newClient(conn *server.Client, l *log.Logger, cols, rows uint16) (*client, error) {
-	r, err := emu.NewRenderer(cols, rows)
-	if err != nil {
-		return nil, err
-	}
+func newClient(p server.Paths, l *log.Logger) (*client, error) {
 	enc, err := emu.NewEncoder()
 	if err != nil {
-		r.Close()
 		return nil, err
 	}
-	return &client{conn: conn, log: l, r: r, enc: enc, outer: map[int]bool{},
+	return &client{paths: p, log: l, enc: enc, outer: map[int]bool{},
 		wake: make(chan struct{}, 1), end: make(chan struct{})}, nil
 }
 
-// close frees the mirror. Goroutines still running see a nil mirror
-// through lock and stop.
+// setWindow records the window's size. c.mu held, or no other goroutine
+// running.
+func (c *client) setWindow(cols, rows int) {
+	c.cols, c.rows, c.paneRows = cols, rows, rows
+	if c.statusBar {
+		c.paneRows = max(rows-1, 1)
+	}
+}
+
+// open attaches to session id as a new pane of cols×rows, its snapshot
+// loaded. The pane isn't in the layout yet.
+func (c *client) open(id string, cols, rows int) (*pane, error) {
+	conn, info, err := server.Attach(c.paths, proto.AttachParams{Session: id, Cols: uint16(cols), Rows: uint16(rows)})
+	if err != nil {
+		return nil, err
+	}
+	r, err := emu.NewRenderer(uint16(cols), uint16(rows))
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+	p := &pane{conn: conn, r: r, info: *info}
+	// The stream starts with the pane's snapshot.
+	typ, payload, err := conn.ReadFrame()
+	if err == nil && typ != proto.FrameSnapshot {
+		err = fmt.Errorf("stream starts with frame %d, not a snapshot", typ)
+	}
+	if err == nil {
+		c.mu.Lock()
+		err = c.loadSnapshot(p, payload)
+		c.mu.Unlock()
+	}
+	if err != nil {
+		conn.Close()
+		r.Close()
+		return nil, fmt.Errorf("attach %s: %w", info.ID, err)
+	}
+	return p, nil
+}
+
+// close frees every pane. Goroutines still running see c.closed through
+// lock and stop.
 func (c *client) close() {
-	c.conn.Close()
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.mirror != nil {
-		c.mirror.Close()
-		c.mirror = nil
+	c.closed = true
+	ps := c.root.leaves(nil)
+	for _, p := range ps {
+		c.free(p)
 	}
 	c.enc.Close()
-	c.r.Close()
+	c.mu.Unlock()
+	for _, p := range ps {
+		p.conn.Close()
+	}
+}
+
+// free releases p's mirror and renderer. c.mu held.
+func (c *client) free(p *pane) {
+	p.gone = true
+	if p.mirror != nil {
+		p.mirror.Close()
+		p.mirror = nil
+	}
+	if p.r != nil {
+		p.r.Close()
+		p.r = nil
+	}
 }
 
 // lock takes c.mu unless the client is closed.
 func (c *client) lock() bool {
 	c.mu.Lock()
-	if c.mirror == nil {
+	if c.closed {
 		c.mu.Unlock()
 		return false
 	}
@@ -241,21 +313,27 @@ func (c *client) finish(res Result) {
 	})
 }
 
-func (c *client) send(typ proto.FrameType, payload []byte) {
-	c.wmu.Lock()
-	defer c.wmu.Unlock()
-	if err := c.conn.WriteFrame(typ, payload); err != nil {
-		c.lost(err)
+func (c *client) send(p *pane, typ proto.FrameType, payload []byte) {
+	p.wmu.Lock()
+	defer p.wmu.Unlock()
+	if err := p.conn.WriteFrame(typ, payload); err != nil {
+		c.lost(p, err)
 	}
 }
 
-// lost ends the attach after the connection failed with err.
-func (c *client) lost(err error) {
+// lost handles p's connection failing with err: the detach completing,
+// a pane closed on purpose, or the server gone.
+func (c *client) lost(p *pane, err error) {
 	if c.detaching.Load() {
-		c.finish(detached)
+		c.finish(c.detachResult())
 		return
 	}
-	c.finish(Result{Reason: "lost the server: " + errString(err)})
+	c.mu.Lock()
+	gone := p.gone || c.closed
+	c.mu.Unlock()
+	if !gone {
+		c.finish(Result{Reason: "lost the server: " + errString(err)})
+	}
 }
 
 var detached = Result{Reason: "detached", Detached: true}
@@ -267,55 +345,59 @@ func (c *client) poke() {
 	}
 }
 
-// loadSnapshot replaces the mirror (on attach, and when the server resyncs
-// a client that fell behind). c.mu held, or no other goroutine running.
-func (c *client) loadSnapshot(payload []byte) error {
+// loadSnapshot replaces p's mirror (on attach, and when the server
+// resyncs a client that fell behind). c.mu held.
+func (c *client) loadSnapshot(p *pane, payload []byte) error {
 	mirror, err := emu.Decode(payload)
 	if err != nil {
 		return err
 	}
-	if c.mirror != nil {
-		c.mirror.Close()
-		c.log.Printf("resync: new snapshot of %d bytes", len(payload))
+	if p.mirror != nil {
+		p.mirror.Close()
+		c.log.Printf("resync %s: new snapshot of %d bytes", p.info.ID, len(payload))
 	}
-	c.mirror = mirror
-	c.held, c.scrolled = false, false
-	c.r.Invalidate()
+	p.mirror = mirror
+	p.held, p.scrolled = false, false
+	p.r.Invalidate()
 	// Runs inside mirror.Write with c.mu held. At hold start the terminal
 	// still shows the last complete frame: capture it and keep drawing it.
 	mirror.OnRenderHold(func(held bool) {
-		if held {
-			c.r.Capture(mirror)
-			c.heldAt = time.Now()
+		if held && p.r != nil {
+			p.r.Capture(mirror)
+			p.heldAt = time.Now()
 		}
-		c.held = held
+		p.held = held
 	})
 	return nil
 }
 
-func (c *client) readLoop() {
+func (c *client) readLoop(p *pane) {
 	for {
-		typ, payload, err := c.conn.ReadFrame()
+		typ, payload, err := p.conn.ReadFrame()
 		if err != nil {
-			c.lost(err)
+			c.lost(p, err)
 			return
 		}
 		if !c.lock() {
 			return
 		}
+		if p.gone {
+			c.mu.Unlock()
+			return
+		}
 		switch typ {
 		case proto.FrameSnapshot:
-			err = c.loadSnapshot(payload)
+			err = c.loadSnapshot(p, payload)
 		case proto.FrameOutput:
-			c.mirror.Write(payload)
+			p.mirror.Write(payload)
 		case proto.FrameResize:
 			var cols, rows uint16
 			if cols, rows, err = proto.ParseSize(payload); err == nil {
-				err = c.mirror.Resize(cols, rows)
-				c.r.Invalidate()
+				err = p.mirror.Resize(cols, rows)
+				p.r.Invalidate()
 			}
 		case proto.FrameDigest:
-			mine, derr := c.mirror.Digest()
+			mine, derr := p.mirror.Digest()
 			if derr == nil && mine == string(payload) {
 				c.log.Printf("digest ok %s", mine)
 			} else {
@@ -323,23 +405,103 @@ func (c *client) readLoop() {
 			}
 		case proto.FrameClosed:
 			c.mu.Unlock()
-			c.finish(Result{Reason: string(payload)})
+			c.ended(p, string(payload))
 			return
 		}
 		c.mu.Unlock()
 		if err != nil {
-			c.finish(Result{Reason: err.Error()})
+			c.ended(p, err.Error())
 			return
 		}
 		c.poke()
 	}
 }
 
+// ended handles p's session ending (or its stream failing) with reason:
+// the attach ends with the last pane; otherwise the pane goes and the
+// status bar says why.
+func (c *client) ended(p *pane, reason string) {
+	if !c.lock() {
+		return
+	}
+	if c.root.leaf == p {
+		c.mu.Unlock()
+		c.finish(Result{Reason: reason})
+		return
+	}
+	c.flash = p.info.ID + ": " + reason
+	sizes := c.remove(p)
+	c.mu.Unlock()
+	p.conn.Close()
+	c.sendSizes(sizes)
+	c.poke()
+}
+
+// remove takes p out of the layout and frees it; the sizes to send
+// follow. c.mu held.
+func (c *client) remove(p *pane) []resize {
+	c.root = removeLeaf(c.root, p)
+	c.free(p)
+	if c.focus == p {
+		c.focus = c.root.leaves(nil)[0]
+	}
+	c.zoomed = false
+	return c.relayout(true)
+}
+
+// resize is a pane whose session must take its new size.
+type resize struct {
+	p          *pane
+	cols, rows uint16
+}
+
+// relayout places the panes in the window after a change and returns the
+// sessions to resize, when send is set. The caller sends them once c.mu
+// is released (sendSizes). c.mu held.
+func (c *client) relayout(send bool) []resize {
+	area := rect{0, 0, c.cols, c.paneRows}
+	vis := c.visible()
+	if c.zoomed {
+		c.focus.rect, c.dividers = area, nil
+	} else {
+		c.dividers = c.root.layout(area, nil)
+	}
+	c.single = len(vis) == 1
+	var out []resize
+	for _, p := range vis {
+		if c.single {
+			p.r.SetSize(uint16(area.w), uint16(area.h))
+		} else {
+			p.r.SetRect(p.rect.x, p.rect.y, p.rect.w, p.rect.h)
+		}
+		if cols, rows := p.mirror.Size(); send && (int(cols) != p.rect.w || int(rows) != p.rect.h) {
+			out = append(out, resize{p, uint16(p.rect.w), uint16(p.rect.h)})
+		}
+	}
+	c.full = true
+	c.status()
+	return out
+}
+
+func (c *client) sendSizes(sizes []resize) {
+	for _, s := range sizes {
+		c.send(s.p, proto.FrameSetSize, proto.Size(s.cols, s.rows))
+	}
+}
+
+// visible are the panes drawn: all, or the zoomed one. c.mu held.
+func (c *client) visible() []*pane {
+	if c.zoomed {
+		return []*pane{c.focus}
+	}
+	return c.root.leaves(nil)
+}
+
 func (c *client) signals(sigs <-chan os.Signal, fd int) {
 	for sig := range sigs {
 		switch sig {
 		case syscall.SIGWINCH:
-			// The user really resized the window: only now does the pane
+			// The user really resized the window: only now do the panes
 			// follow (no resize on attach, docs/SPEC.md §3.3).
 			cols, rows, err := term.GetSize(fd)
 			if err != nil || cols <= 0 || rows <= 0 {
@@ -348,18 +510,19 @@ func (c *client) signals(sigs <-chan os.Signal, fd int) {
 			if !c.lock() {
 				return
 			}
-			if c.statusBar {
-				rows = max(rows-1, 1)
-			}
-			c.cols, c.paneRows = cols, rows
-			c.r.SetSize(uint16(cols), uint16(rows))
+			c.setWindow(cols, rows)
+			sizes := c.relayout(true)
 			c.mu.Unlock()
-			c.send(proto.FrameSetSize, proto.Size(uint16(cols), uint16(rows)))
+			c.sendSizes(sizes)
 			c.poke()
 		case syscall.SIGUSR1:
 			// Consistency check: the server puts its digest into the
 			// stream, readLoop compares it with the mirror's.
-			c.send(proto.FrameDigestReq, nil)
+			if c.lock() {
+				p := c.focus
+				c.mu.Unlock()
+				c.send(p, proto.FrameDigestReq, nil)
+			}
 		default:
 			c.finish(Result{Reason: "detached (" + sig.String() + ")", Detached: true})
 		}
@@ -383,6 +546,15 @@ func (c *client) inputLoop(ctx context.Context, in *os.File) {
 	}
 }
 
+// focused is the focused pane, nil once closed.
+func (c *client) focused() *pane {
+	if !c.lock() {
+		return nil
+	}
+	defer c.mu.Unlock()
+	return c.focus
+}
+
 func (c *client) handle(ev uv.Event) {
 	switch e := ev.(type) {
 	case uv.KeyPressEvent:
@@ -390,107 +562,428 @@ func (c *client) handle(ev uv.Event) {
 	case uv.MouseClickEvent, uv.MouseReleaseEvent, uv.MouseMotionEvent, uv.MouseWheelEvent:
 		c.mouse(ev)
 	case uv.FocusEvent:
-		c.focus(true)
+		c.focusReport(true)
 	case uv.BlurEvent:
-		c.focus(false)
+		c.focusReport(false)
 	case uv.PasteEvent:
 		if !c.lock() {
 			return
 		}
-		b, err := emu.Paste(c.mirror, []byte(e.Content))
+		p := c.focus
+		b, err := emu.Paste(p.mirror, []byte(e.Content))
 		c.mu.Unlock()
 		if err == nil {
-			c.send(proto.FrameInput, b)
+			c.send(p, proto.FrameInput, b)
 		}
-	case uv.DarkColorSchemeEvent:
-		c.send(proto.FrameColorScheme, []byte{byte(emu.SchemeDark)})
-	case uv.LightColorSchemeEvent:
-		c.send(proto.FrameColorScheme, []byte{byte(emu.SchemeLight)})
+	case uv.DarkColorSchemeEvent, uv.LightColorSchemeEvent:
+		scheme := emu.SchemeDark
+		if _, ok := e.(uv.LightColorSchemeEvent); ok {
+			scheme = emu.SchemeLight
+		}
+		if !c.lock() {
+			return
+		}
+		ps := c.root.leaves(nil)
+		c.mu.Unlock()
+		for _, p := range ps {
+			c.send(p, proto.FrameColorScheme, []byte{byte(scheme)})
+		}
 	}
 }
 
+// key handles a key from the outer terminal: the prefix and the command
+// after it (docs/SPEC.md §4), or a key for the focused program.
 func (c *client) key(k uv.Key) {
-	if c.detach.match(k) {
-		c.detaching.Store(true)
-		c.send(proto.FrameDetach, nil)
-		c.finish(detached)
+	if !c.lock() {
+		return
+	}
+	pending := c.pending
+	do := prefixStep(c.prefix, pending, time.Now().Before(c.repeatUntil), k, c.statusBar)
+	c.pending = do.arm
+	redraw := pending || do.arm || c.flash != ""
+	c.flash = ""
+	if redraw {
+		c.status()
+	}
+	c.mu.Unlock()
+	if redraw {
+		c.poke()
+	}
+	switch {
+	case do.input:
+		c.input(k)
+	case do.detach:
+		c.detachThen(do.then)
+	case do.pane != "":
+		c.paneCommand(do.pane)
+	}
+}
+
+// prefixDo is what a key does given whether the prefix came before it.
+type prefixDo struct {
+	arm    bool   // it is the prefix: the next key is a command
+	input  bool   // the program gets it
+	detach bool   // detach, then run then on the dashboard
+	then   string //
+	pane   string // a split-pane command (paneCommands)
+}
+
+// paneCommands are the keys that, after the prefix, act on the window's
+// panes: split beside (%) or below ("), focus (arrows, o), resize
+// (ctrl+arrows), zoom (z), close (x) and switch layout (space).
+var paneCommands = map[string]bool{
+	"%": true, `"`: true, "o": true, "z": true, "x": true, "space": true,
+	"left": true, "right": true, "up": true, "down": true,
+	"ctrl+left": true, "ctrl+right": true, "ctrl+up": true, "ctrl+down": true,
+}
+
+// keyName names k as paneCommands does.
+func keyName(k uv.Key) string {
+	switch {
+	case k.Code == uv.KeySpace || k.Text == " ":
+		return "space"
+	case k.Text != "":
+		return k.Text
+	}
+	return k.String()
+}
+
+// prefixStep decides what k does. After the prefix: d detaches, a
+// dashboard key detaches and runs there (only when there is a dashboard
+// to go back to), a pane command acts on the panes, the prefix again
+// goes to the program, and anything else cancels. While repeat holds (just
+// after a resize) a resize key needs no prefix.
+func prefixStep(prefix chord, pending, repeat bool, k uv.Key, dashboard bool) prefixDo {
+	name := keyName(k)
+	switch {
+	case !pending && prefix.match(k):
+		return prefixDo{arm: true}
+	case !pending && repeat && strings.HasPrefix(name, "ctrl+") && paneCommands[name]:
+		return prefixDo{pane: name}
+	case !pending, prefix.match(k):
+		return prefixDo{input: true}
+	case name == "d":
+		return prefixDo{detach: true}
+	case prefixCommands[name] && dashboard:
+		return prefixDo{detach: true, then: name}
+	case paneCommands[name]:
+		return prefixDo{pane: name}
+	}
+	return prefixDo{}
+}
+
+// detachThen detaches every pane; then is the dashboard key to run
+// afterwards.
+func (c *client) detachThen(then string) {
+	c.then = then
+	c.detaching.Store(true) // publishes then to lost
+	var ps []*pane
+	if c.lock() {
+		ps = c.root.leaves(nil)
+		c.mu.Unlock()
+	}
+	for _, p := range ps {
+		c.send(p, proto.FrameDetach, nil)
+	}
+	c.finish(c.detachResult())
+}
+
+// detachResult is how a detach ends. c.then is read only once detaching
+// is set.
+func (c *client) detachResult() Result {
+	res := detached
+	res.Then = c.then
+	return res
+}
+
+// paneCommand runs a split-pane command.
+func (c *client) paneCommand(cmd string) {
+	switch cmd {
+	case "%", `"`:
+		c.split(cmd == "%")
+		return
+	case "x":
+		c.closePane()
 		return
 	}
 	if !c.lock() {
 		return
 	}
-	// Shift+PgUp/PgDn scroll this client's own scrollback, for programs on
-	// the main screen (shells, inline apps). Full-screen apps get the key.
-	if k.Mod == uv.ModShift && (k.Code == uv.KeyPgUp || k.Code == uv.KeyPgDown) && !c.mirror.Modes().AltScreen {
-		_, rows := c.mirror.Size()
-		d := int(rows) / 2
-		if k.Code == uv.KeyPgUp {
-			d = -d
+	var sizes []resize
+	switch cmd {
+	case "left", "right", "up", "down":
+		d := directions[cmd]
+		if c.zoomed {
+			c.zoomed = false
+			sizes = c.relayout(true)
 		}
-		c.mirror.ScrollViewport(d)
-		c.scrolled = true
+		if n := neighbour(c.root.leaves(nil), c.focus, d[0], d[1]); n != nil {
+			c.setFocus(n)
+		}
+	case "o":
+		ps := c.root.leaves(nil)
+		for i, p := range ps {
+			if p == c.focus {
+				c.setFocus(ps[(i+1)%len(ps)])
+				break
+			}
+		}
+		if c.zoomed {
+			sizes = c.relayout(true)
+		}
+	case "z":
+		if c.root.leaf == nil {
+			c.zoomed = !c.zoomed
+			sizes = c.relayout(true)
+		}
+	case "space":
+		if c.root.leaf == nil {
+			c.root = even(c.root.leaves(nil), !c.root.side)
+			c.zoomed = false
+			sizes = c.relayout(true)
+		}
+	case "ctrl+left", "ctrl+right", "ctrl+up", "ctrl+down":
+		side := cmd == "ctrl+left" || cmd == "ctrl+right"
+		cells := map[string]int{"ctrl+left": -2, "ctrl+right": 2, "ctrl+up": -1, "ctrl+down": 1}[cmd]
+		if !c.zoomed && resizeTowards(c.focus, c.root, side, cells) {
+			sizes = c.relayout(true)
+		}
+		c.repeatUntil = time.Now().Add(resizeRepeat)
+	}
+	c.mu.Unlock()
+	c.sendSizes(sizes)
+	c.poke()
+}
+
+// directions are the focus keys' (dx, dy).
+var directions = map[string][2]int{"left": {-1, 0}, "right": {1, 0}, "up": {0, -1}, "down": {0, 1}}
+
+// resizeRepeat is how long a resize key keeps working without the
+// prefix, as tmux's repeat-time.
+const resizeRepeat = 500 * time.Millisecond
+
+// setFocus moves the focus to p. c.mu held.
+func (c *client) setFocus(p *pane) {
+	if p != c.focus {
+		c.focus = p
+		c.full = true // the dividers' colours, the cursor, the title
+		c.status()
+	}
+}
+
+// split starts a shell in the focused pane's directory and shows it
+// beside (side) or below the focused pane, which shrinks to make room.
+// Starting and attaching run in the background; the panes change once
+// the new one is ready.
+func (c *client) split(side bool) {
+	if !c.lock() {
+		return
+	}
+	if c.zoomed {
+		c.zoomed = false
+		sizes := c.relayout(true)
+		defer c.sendSizes(sizes)
+	}
+	at := c.focus
+	r := at.rect
+	cols, rows := r.w, r.h
+	if side {
+		_, cols = splitSizes(r.w, 0.5)
+	} else {
+		_, rows = splitSizes(r.h, 0.5)
+	}
+	cwd := at.info.Cwd
+	if cols < 2 || rows < 1 {
+		c.flash = "no room to split"
+		c.status()
 		c.mu.Unlock()
 		c.poke()
 		return
 	}
-	if c.scrolled {
-		c.mirror.ScrollViewportBottom()
-		c.scrolled = false
+	c.mu.Unlock()
+	go func() {
+		p, err := c.startPane(cwd, cols, rows)
+		if err != nil {
+			if c.lock() {
+				c.flash = "split: " + err.Error()
+				c.status()
+				c.mu.Unlock()
+				c.poke()
+			}
+			return
+		}
+		if !c.lock() { // the window closed meanwhile
+			p.conn.Close()
+			p.mirror.Close()
+			p.r.Close()
+			return
+		}
+		if c.root.find(at) == nil {
+			at = c.focus // closed meanwhile: split what has the focus now
+		}
+		c.root = splitLeaf(c.root, at, p, side)
+		c.focus = p
+		sizes := c.relayout(true)
+		c.mu.Unlock()
+		c.sendSizes(sizes)
+		go c.readLoop(p)
+		c.poke()
+	}()
+}
+
+// startPane starts a shell of cols×rows in cwd and attaches to it.
+func (c *client) startPane(cwd string, cols, rows int) (*pane, error) {
+	ctl, err := server.Connect(c.paths, false)
+	if err != nil {
+		return nil, err
+	}
+	var res proto.SessionStartResult
+	err = ctl.Call(proto.MethodSessionStart, proto.SessionStartParams{Cwd: cwd, Cols: uint16(cols), Rows: uint16(rows)}, &res)
+	ctl.Close()
+	if err != nil {
+		return nil, err
+	}
+	return c.open(res.Session.ID, cols, rows)
+}
+
+// closePane detaches the focused pane; its session keeps running. The
+// last pane detaches the window.
+func (c *client) closePane() {
+	if !c.lock() {
+		return
+	}
+	p := c.focus
+	if c.root.leaf == p {
+		c.mu.Unlock()
+		c.detachThen("")
+		return
+	}
+	sizes := c.remove(p)
+	c.mu.Unlock()
+	c.send(p, proto.FrameDetach, nil)
+	p.conn.Close()
+	c.sendSizes(sizes)
+	c.poke()
+}
+
+// status redraws the status bar. c.mu held.
+func (c *client) status() {
+	if !c.statusBar || c.focus == nil {
+		return
+	}
+	where := ""
+	if ps := c.root.leaves(nil); len(ps) > 1 {
+		for i, p := range ps {
+			if p == c.focus {
+				where = fmt.Sprintf("pane %d/%d", i+1, len(ps))
+			}
+		}
+		if c.zoomed {
+			where += " zoomed"
+		}
+	}
+	if c.flash != "" {
+		where = strings.TrimPrefix(where+" · "+c.flash, " · ")
+	}
+	line := statusLine(c.focus.info, c.prefix, c.pending, c.cols, where)
+	if c.single {
+		c.focus.r.SetStatus(line)
+	}
+	c.statusText = line
+}
+
+// input sends a key to the focused program.
+func (c *client) input(k uv.Key) {
+	if !c.lock() {
+		return
+	}
+	p := c.focus
+	// Shift+PgUp/PgDn scroll this client's own scrollback, for programs on
+	// the main screen (shells, inline apps). Full-screen apps get the key.
+	if k.Mod == uv.ModShift && (k.Code == uv.KeyPgUp || k.Code == uv.KeyPgDown) && !p.mirror.Modes().AltScreen {
+		_, rows := p.mirror.Size()
+		d := int(rows) / 2
+		if k.Code == uv.KeyPgUp {
+			d = -d
+		}
+		p.mirror.ScrollViewport(d)
+		p.scrolled = true
+		c.mu.Unlock()
+		c.poke()
+		return
+	}
+	if p.scrolled {
+		p.mirror.ScrollViewportBottom()
+		p.scrolled = false
 		c.poke()
 	}
 	ek, ok := toKey(k)
 	var b []byte
 	var err error
 	if ok {
-		b, err = c.enc.Key(c.mirror, ek)
+		b, err = c.enc.Key(p.mirror, ek)
 	}
 	c.mu.Unlock()
 	c.log.Printf("key %s -> %q %v", k, b, err)
 	if err == nil && len(b) > 0 {
-		c.send(proto.FrameInput, b)
+		c.send(p, proto.FrameInput, b)
 	}
 }
 
-// mouse forwards a mouse event to the program. The outer terminal only
-// reports the mouse while the program tracks it (see outerModes).
+// mouse forwards a mouse event to the program under it; a click on
+// another pane focuses that pane first. The outer terminal only reports
+// the mouse while the focused program tracks it (see outerModes).
 func (c *client) mouse(ev uv.Event) {
 	m, ok := toMouse(ev)
 	if !ok || !c.lock() {
 		return
 	}
-	if m.Y >= c.paneRows { // the status bar
+	var p *pane
+	for _, q := range c.visible() {
+		if r := q.rect; m.X >= r.x && m.X < r.x+r.w && m.Y >= r.y && m.Y < r.y+r.h {
+			p = q
+		}
+	}
+	if p == nil { // the status bar or a divider
 		c.mu.Unlock()
 		return
 	}
-	m.Y += c.r.Top()
-	cols, rows := c.mirror.Size()
+	if _, click := ev.(uv.MouseClickEvent); click && p != c.focus {
+		c.setFocus(p)
+		c.poke()
+	}
+	m.X -= p.rect.x
+	m.Y -= p.rect.y
+	m.Y += p.r.Top()
+	cols, rows := p.mirror.Size()
 	var b []byte
 	var err error
-	if m.X < int(cols) && m.Y < int(rows) && c.mirror.Modes().MouseTracking() {
-		b, err = c.enc.Mouse(c.mirror, m)
+	if m.X < int(cols) && m.Y < int(rows) && p.mirror.Modes().MouseTracking() {
+		b, err = c.enc.Mouse(p.mirror, m)
 	}
 	c.mu.Unlock()
 	if err == nil && len(b) > 0 {
-		c.send(proto.FrameInput, b)
+		c.send(p, proto.FrameInput, b)
 	}
 }
 
-func (c *client) focus(gained bool) {
+func (c *client) focusReport(gained bool) {
 	if !c.lock() {
 		return
 	}
-	b := emu.Focus(c.mirror, gained)
+	p := c.focus
+	b := emu.Focus(p.mirror, gained)
 	c.mu.Unlock()
 	if b != nil {
-		c.send(proto.FrameInput, b)
+		c.send(p, proto.FrameInput, b)
 	}
 }
 
 // outerModes turns mouse tracking and focus reports on the outer terminal
-// on or off to match the program, so native selection works whenever the
-// program doesn't want the mouse. c.mu held.
+// on or off to match the focused program, so native selection works
+// whenever the program doesn't want the mouse. c.mu held.
 func (c *client) outerModes() []byte {
-	m := c.mirror.Modes()
+	m := c.focus.mirror.Modes()
 	want := map[int]bool{1000: m.NormalMouse, 1002: m.ButtonMouse, 1003: m.AnyMouse, 1004: m.Focus,
 		1006: m.MouseTracking()} // always SGR coordinates from the outer terminal
 	var b []byte
@@ -524,11 +1017,25 @@ func (c *client) renderLoop(out io.Writer) Result {
 			return c.result
 		case <-tick.C:
 		}
-		c.mu.Lock()
-		if c.held && time.Since(c.heldAt) > maxHold {
-			c.held = false // the program never ended its update; draw anyway
+		if !c.lock() {
+			continue
 		}
-		b, err := c.r.Frame(c.mirror, c.held)
+		vis := c.visible()
+		held := false
+		for _, p := range vis {
+			if p.held && time.Since(p.heldAt) > maxHold {
+				p.held = false // the program never ended its update; draw anyway
+			}
+			held = held || p.held
+		}
+		var b []byte
+		var err error
+		if c.single {
+			c.full = false // the renderer repaints after SetSize
+			b, err = vis[0].r.Frame(vis[0].mirror, vis[0].held)
+		} else {
+			b, err = c.frameSplit(vis)
+		}
 		if err == nil {
 			b = append(c.outerModes(), b...)
 			if c.bell {
@@ -536,7 +1043,6 @@ func (c *client) renderLoop(out io.Writer) Result {
 				c.bell = false
 			}
 		}
-		held := c.held
 		c.mu.Unlock()
 		if err != nil {
 			c.finish(Result{Reason: "render: " + err.Error()})
@@ -554,6 +1060,76 @@ func (c *client) renderLoop(out io.Writer) Result {
 	}
 }
 
+// frameSplit draws a window of several panes: the dividers, each pane's
+// changes, the status bar, then the focused pane's cursor, all in one
+// synchronised update; nil when nothing changed. c.mu held.
+func (c *client) frameSplit(vis []*pane) ([]byte, error) {
+	b := append(c.buf[:0], "\x1b[?2026h\x1b[?25l"...)
+	wrote := false
+	if c.full {
+		b = append(b, "\x1b[0m\x1b[H\x1b[2J"...)
+		for _, p := range vis {
+			p.r.Invalidate()
+		}
+		b = c.appendDividers(b)
+		c.statusDrawn, c.full, wrote = "", false, true
+	}
+	for _, p := range vis {
+		part, err := p.r.Frame(p.mirror, p.held)
+		if err != nil {
+			return nil, err
+		}
+		if len(part) > 0 {
+			b, wrote = append(b, part...), true
+		}
+	}
+	if c.statusBar && c.statusText != c.statusDrawn {
+		b = append(b, fmt.Sprintf("\x1b[%d;1H\x1b[0m\x1b[2K", c.rows)...)
+		b = append(b, c.statusText...)
+		b = append(b, "\x1b[0m"...)
+		c.statusDrawn, wrote = c.statusText, true
+	}
+	cur := string(c.focus.r.Cursor())
+	title := oneLine(c.focus.mirror.Title())
+	if !wrote && cur == c.lastCursor && title == c.title {
+		c.buf = b
+		return nil, nil
+	}
+	b = append(b, cur...)
+	c.lastCursor = cur
+	if title != c.title {
+		c.title = title
+		b = append(b, "\x1b]2;"...)
+		b = append(b, title...)
+		b = append(b, '\a')
+	}
+	b = append(b, "\x1b[?2026l"...)
+	c.buf = b
+	return b, nil
+}
+
+// appendDividers draws the lines between panes; those of the splits
+// holding the focused pane in the accent colour. c.mu held.
+func (c *client) appendDividers(b []byte) []byte {
+	for _, d := range c.dividers {
+		st := styleFaint
+		if d.n.contains(c.focus) {
+			st = styleAccent
+		}
+		if d.side {
+			cell := st.Render("│")
+			for y := range d.at.h {
+				b = append(b, fmt.Sprintf("\x1b[%d;%dH", d.at.y+y+1, d.at.x+1)...)
+				b = append(b, cell...)
+			}
+			continue
+		}
+		b = append(b, fmt.Sprintf("\x1b[%d;%dH", d.at.y+1, d.at.x+1)...)
+		b = append(b, st.Render(strings.Repeat("─", d.at.w))...)
+	}
+	return b
+}
+
 func errString(err error) string {
 	if err == nil || errors.Is(err, io.EOF) {
 		return "EOF"
@@ -566,9 +1142,9 @@ const statePoll = 500 * time.Millisecond
 
 // pollState keeps the status bar current and rings the bell when the
 // server sent a notification (a session blocked, a thread reported;
-// docs/SPEC.md §4). It polls session.list; a
-// lost server is noticed by the attach stream itself.
-func (c *client) pollState(ctx context.Context, p server.Paths, info proto.SessionInfo) {
+// docs/SPEC.md §4). It polls session.list; a lost server is noticed by
+// the attach streams themselves.
+func (c *client) pollState(ctx context.Context) {
 	var ctl *server.Client
 	defer func() {
 		if ctl != nil {
@@ -581,7 +1157,7 @@ func (c *client) pollState(ctx context.Context, p server.Paths, info proto.Sessi
 	defer tick.Stop()
 	for {
 		if ctl == nil {
-			ctl, _ = server.Connect(p, false)
+			ctl, _ = server.Connect(c.paths, false)
 		}
 		var res proto.SessionListResult
 		if ctl != nil {
@@ -591,17 +1167,19 @@ func (c *client) pollState(ctx context.Context, p server.Paths, info proto.Sessi
 			}
 		}
 		ring := false
-		for _, s := range res.Sessions {
-			if s.ID == info.ID {
-				info = s
-			}
-		}
 		if ctl != nil {
 			ring = !first && res.Alerts > alerts
 			alerts, first = res.Alerts, false
 		}
 		if c.lock() {
-			c.r.SetStatus(statusLine(info, c.detach, c.cols))
+			for _, p := range c.root.leaves(nil) {
+				for _, s := range res.Sessions {
+					if s.ID == p.info.ID {
+						p.info = s
+					}
+				}
+			}
+			c.status()
 			c.bell = c.bell || ring
 			c.mu.Unlock()
 			c.poke()

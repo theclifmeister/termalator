@@ -22,29 +22,71 @@ func TestParseChord(t *testing.T) {
 			t.Errorf("parseChord(%q) accepted", in)
 		}
 	}
-	c, _ := parseChord(DefaultDetachKey)
+	c, _ := parseChord(DefaultPrefixKey)
 	if !c.match(uv.Key{Code: '\\', Mod: uv.ModCtrl}) {
 		t.Error("ctrl+\\ does not match its key")
 	}
 	if c.match(uv.Key{Code: '\\', Mod: uv.ModCtrl | uv.ModShift}) || c.match(uv.Key{Code: '\\'}) {
-		t.Error("detach key matches other modifiers")
+		t.Error("prefix key matches other modifiers")
 	}
 }
 
-func TestDetachKeyFromConfig(t *testing.T) {
+func TestPrefixKeyFromConfig(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("TERMALATOR_HOME", home)
-	if c, err := detachKey(); err != nil || c.r != '\\' {
+	if c, err := prefixKey(); err != nil || c.r != '\\' {
 		t.Fatalf("no config: %q %v", c.r, err)
 	}
 	path := filepath.Join(home, "config.toml")
+	// detach is the older name of the same key.
 	os.WriteFile(path, []byte("[keys]\ndetach = \"ctrl+]\"\n"), 0o600)
-	if c, err := detachKey(); err != nil || c.r != ']' {
-		t.Fatalf("configured: %q %v", c.r, err)
+	if c, err := prefixKey(); err != nil || c.r != ']' {
+		t.Fatalf("detach: %q %v", c.r, err)
 	}
-	os.WriteFile(path, []byte("[keys]\ndetach = \"F12\"\n"), 0o600)
-	if c, err := detachKey(); err == nil || c.r != '\\' {
+	os.WriteFile(path, []byte("[keys]\nprefix = \"ctrl+b\"\ndetach = \"ctrl+]\"\n"), 0o600)
+	if c, err := prefixKey(); err != nil || c.r != 'b' || ConfigPrefix() != "ctrl+b" {
+		t.Fatalf("prefix wins: %q %v", c.r, err)
+	}
+	os.WriteFile(path, []byte("[keys]\nprefix = \"F12\"\n"), 0o600)
+	if c, err := prefixKey(); err == nil || c.r != '\\' {
 		t.Fatalf("bad key: %q %v (want the default and an error)", c.r, err)
+	}
+}
+
+func TestPrefixStep(t *testing.T) {
+	p := chord{'\\'}
+	pk := uv.Key{Code: '\\', Mod: uv.ModCtrl}
+	key := func(s string) uv.Key { return uv.Key{Code: rune(s[0]), Text: s} }
+	ctrlRight := uv.Key{Code: uv.KeyRight, Mod: uv.ModCtrl}
+	cases := []struct {
+		name            string
+		pending, repeat bool
+		k               uv.Key
+		dashboard       bool
+		want            prefixDo
+	}{
+		{"a key goes to the program", false, false, key("x"), true, prefixDo{input: true}},
+		{"the prefix arms", false, false, pk, true, prefixDo{arm: true}},
+		{"prefix twice sends it", true, false, pk, true, prefixDo{input: true}},
+		{"prefix d detaches", true, false, key("d"), false, prefixDo{detach: true}},
+		{"prefix p detaches to the switcher", true, false, key("p"), true, prefixDo{detach: true, then: "p"}},
+		{"prefix ] without a dashboard cancels", true, false, key("]"), false, prefixDo{}},
+		{"prefix x closes the pane", true, false, key("x"), true, prefixDo{pane: "x"}},
+		{"prefix q cancels", true, false, key("q"), true, prefixDo{}},
+		{"d alone is typed", false, false, key("d"), true, prefixDo{input: true}},
+		{"prefix % splits", true, false, key("%"), false, prefixDo{pane: "%"}},
+		{`prefix " splits`, true, false, key(`"`), false, prefixDo{pane: `"`}},
+		{"prefix space switches layout", true, false, uv.Key{Code: uv.KeySpace, Text: " "}, false, prefixDo{pane: "space"}},
+		{"prefix → moves the focus", true, false, uv.Key{Code: uv.KeyRight}, false, prefixDo{pane: "right"}},
+		{"prefix ctrl+→ resizes", true, false, ctrlRight, false, prefixDo{pane: "ctrl+right"}},
+		{"ctrl+→ repeats without the prefix", false, true, ctrlRight, false, prefixDo{pane: "ctrl+right"}},
+		{"ctrl+→ without the repeat is typed", false, false, ctrlRight, false, prefixDo{input: true}},
+		{"→ never repeats", false, true, uv.Key{Code: uv.KeyRight}, false, prefixDo{input: true}},
+	}
+	for _, c := range cases {
+		if got := prefixStep(p, c.pending, c.repeat, c.k, c.dashboard); got != c.want {
+			t.Errorf("%s: %+v, want %+v", c.name, got, c.want)
+		}
 	}
 }
 

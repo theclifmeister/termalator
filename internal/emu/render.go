@@ -18,6 +18,11 @@ import (
 // The outer window may differ in size from the pane: the pane is cropped
 // or padded, never resized. When the pane has more rows than the window,
 // the renderer scrolls its view so the cursor stays visible.
+//
+// With SetRect the renderer draws into one rectangle of a window it
+// shares with other panes (split panes): it never clears or erases
+// outside that rectangle, and leaves the frame's synchronisation, the
+// cursor and the title to the caller (Cursor gives the cursor).
 type Renderer struct {
 	rs *libghostty.RenderState
 	ri *libghostty.RenderStateRowIterator
@@ -32,6 +37,13 @@ type Renderer struct {
 	top              int // first pane row shown
 	lastCursor       string
 	title            string
+
+	// shared is set by SetRect: the pane is drawn at outer cell (ox, oy)
+	// of a window other panes share. cursor is the last frame's cursor
+	// sequence then, for the caller.
+	shared bool
+	ox, oy int
+	cursor []byte
 
 	// status is a line the client draws below the pane (the attach
 	// status bar), at outer row outRows+1; drawn is what is on screen.
@@ -66,9 +78,30 @@ func (r *Renderer) Close() {
 }
 
 // SetSize changes the outer window size; the next frame repaints all.
+// The renderer has the window to itself again.
 func (r *Renderer) SetSize(cols, rows uint16) {
 	r.outCols, r.outRows = int(cols), int(rows)
+	r.shared, r.ox, r.oy = false, 0, 0
 	r.full = true
+}
+
+// SetRect makes the renderer draw into the cols×rows rectangle at outer
+// cell (x, y), 0-based, of a window it shares; the next frame repaints
+// the rectangle.
+func (r *Renderer) SetRect(x, y, cols, rows int) {
+	r.outCols, r.outRows = max(cols, 1), max(rows, 1)
+	r.shared, r.ox, r.oy = true, x, y
+	r.full = true
+}
+
+// Cursor is the sequence that puts the outer cursor where the pane's is,
+// with its shape, or hides it: for a shared window, whose caller places
+// the focused pane's cursor last.
+func (r *Renderer) Cursor() []byte {
+	if len(r.cursor) == 0 {
+		return []byte("\x1b[?25l")
+	}
+	return r.cursor
 }
 
 // SetStatus sets the line drawn below the pane's outRows rows: styled
@@ -110,9 +143,19 @@ func (r *Renderer) Frame(t *Terminal, held bool) ([]byte, error) {
 		r.top, r.full = top, true
 	}
 
-	b := append(r.buf[:0], "\x1b[?2026h\x1b[?25l"...)
+	b := r.buf[:0]
+	if !r.shared {
+		b = append(b, "\x1b[?2026h\x1b[?25l"...)
+	}
 	wrote := false
-	if r.full {
+	switch {
+	case r.full && r.shared:
+		for y := range r.outRows {
+			b = appendCUP(b, r.oy+y+1, r.ox+1)
+			b = appendECH(append(b, "\x1b[0m"...), r.outCols)
+		}
+		wrote = true
+	case r.full:
 		b = append(b, "\x1b[0m\x1b[H\x1b[2J"...)
 		wrote = true
 	}
@@ -135,7 +178,7 @@ func (r *Renderer) Frame(t *Terminal, held bool) ([]byte, error) {
 		}
 	}
 	r.rs.SetDirty(libghostty.RenderStateDirtyFalse)
-	if r.status != "" && (r.full || r.status != r.drawn) {
+	if r.status != "" && !r.shared && (r.full || r.status != r.drawn) {
 		b = appendCUP(b, r.outRows+1, 1)
 		b = append(b, "\x1b[0m\x1b[2K"...)
 		b = append(b, r.status...)
@@ -149,7 +192,7 @@ func (r *Renderer) Frame(t *Terminal, held bool) ([]byte, error) {
 	var cb []byte
 	if cy := int(cur.ViewportY) - r.top; cur.Visible && cur.ViewportHasValue &&
 		int(cur.ViewportX) < r.outCols && cy >= 0 && cy < r.outRows {
-		cb = appendCUP(cb, cy+1, int(cur.ViewportX)+1)
+		cb = appendCUP(cb, r.oy+cy+1, r.ox+int(cur.ViewportX)+1)
 		shape := 2
 		switch cur.VisualStyle {
 		case libghostty.CursorVisualStyleBar:
@@ -163,6 +206,14 @@ func (r *Renderer) Frame(t *Terminal, held bool) ([]byte, error) {
 		cb = append(cb, "\x1b["...)
 		cb = strconv.AppendInt(cb, int64(shape), 10)
 		cb = append(cb, " q\x1b[?25h"...)
+	}
+	if r.shared {
+		r.cursor = append(r.cursor[:0], cb...)
+		r.buf = b
+		if !wrote {
+			return nil, nil
+		}
+		return b, nil
 	}
 	title, _ := t.t.Title()
 	if !wrote && string(cb) == r.lastCursor && title == r.title {
@@ -201,9 +252,9 @@ func (r *Renderer) viewTop(paneRows int, cur *libghostty.RenderStateCursor) int 
 	return min(max(top, 0), paneRows-r.outRows)
 }
 
-// row draws the iterator's current row at outer row oy.
+// row draws the iterator's current row at pane row oy of the window.
 func (r *Renderer) row(b []byte, oy int) ([]byte, error) {
-	b = appendCUP(b, oy+1, 1)
+	b = appendCUP(b, r.oy+oy+1, r.ox+1)
 	b = append(b, "\x1b[0m"...)
 	r.last = append(r.last[:0], "\x1b[0m"...)
 	if err := r.ri.Cells(r.rc); err != nil {
@@ -261,17 +312,32 @@ func (r *Renderer) row(b []byte, oy int) ([]byte, error) {
 			// flags, skin tones and VS16: re-anchor the cursor so one
 			// disagreement can't shift the rest of the row.
 			if len(g) > 1 {
-				b = appendCUP(b, oy+1, x+w+1)
+				b = appendCUP(b, r.oy+oy+1, r.ox+x+w+1)
 			}
 		}
 		x += w
 	}
-	// Trailing default blanks: erase instead of printing spaces.
+	// Trailing default blanks: erase instead of printing spaces; in a
+	// shared window only up to the pane's edge.
 	if pendingBlank > 0 || x < r.outCols {
-		b = append(b, "\x1b[0m\x1b[K"...)
+		if r.shared {
+			b = appendECH(append(b, "\x1b[0m"...), r.outCols-x+pendingBlank)
+		} else {
+			b = append(b, "\x1b[0m\x1b[K"...)
+		}
 		r.last = r.last[:0]
 	}
 	return b, nil
+}
+
+// appendECH erases n cells from the cursor on, without moving it.
+func appendECH(b []byte, n int) []byte {
+	if n <= 0 {
+		return b
+	}
+	b = append(b, "\x1b["...)
+	b = strconv.AppendInt(b, int64(n), 10)
+	return append(b, 'X')
 }
 
 func appendCUP(b []byte, row, col int) []byte {

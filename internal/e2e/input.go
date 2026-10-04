@@ -20,6 +20,16 @@ var (
 	ShiftPageUp   = emu.Key{Special: emu.KeyPageUp, Mods: emu.ModShift}
 )
 
+// Prefix presses the prefix key, Ctrl+\ by default (docs/SPEC.md §4);
+// then key types the command after it.
+func (w *Window) Prefix(key string) {
+	w.Key(CtrlBackslash)
+	w.Type(key)
+}
+
+// Detach is prefix d: back to the dashboard, or out of tm attach.
+func (w *Window) Detach() { w.Prefix("d") }
+
 // Attach opens a window of cols×rows running `tm attach id` (the newest
 // session when id is empty).
 func (e *Env) Attach(cols, rows uint16, id string) *Window {

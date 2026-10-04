@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/theclifmeister/termalator/internal/caller"
+	"github.com/theclifmeister/termalator/internal/home"
 	"github.com/theclifmeister/termalator/internal/project"
 	"github.com/theclifmeister/termalator/internal/tui"
 )
@@ -16,7 +18,8 @@ import (
 const defaultAgent = "claude"
 
 // dashboardCmd is `tm` with no arguments: the dashboard, and the attach
-// view in between (docs/SPEC.md §4). Ctrl+\ in a session comes back here.
+// view in between (docs/SPEC.md §4). The prefix (Ctrl+\) then d in a
+// session comes back here.
 func (e *Env) dashboardCmd() int {
 	if !isTTY(os.Stdin) || !isTTY(os.Stdout) {
 		fmt.Fprintln(e.Stderr, "tm: the dashboard needs a terminal; see tm session list")
@@ -38,10 +41,14 @@ func (e *Env) dashboardCmd() int {
 	}
 	src := &tui.ServerSource{Paths: p, Agent: defaultAgent, Caller: who, Run: e.quietRun(who)}
 	defer src.Close()
+	var uiFile string // ui.json: the dashboard's layout (docs/SPEC.md §5.1)
+	if d, err := home.Dir(); err == nil {
+		uiFile = filepath.Join(d, "ui.json")
+	}
 	var st tui.DashState
 	for {
 		res, err := tui.Dashboard(tui.DashOptions{Source: src, In: os.Stdin, Out: os.Stdout,
-			Cwd: e.Cwd, AgentName: defaultAgent, State: st})
+			Cwd: e.Cwd, AgentName: defaultAgent, State: st, UIFile: uiFile, Prefix: tui.ConfigPrefix()})
 		if err != nil {
 			return e.srvFail("dashboard", err)
 		}
@@ -54,6 +61,7 @@ func (e *Env) dashboardCmd() int {
 			return code
 		}
 		st.Message = res.Attach + ": " + ares.Reason
+		st.Then = ares.Then // prefix then p, ], [, … in the session
 	}
 }
 

@@ -1,0 +1,29 @@
+ termalator                                                                                                          ● server ok · 1 session
+ NEEDS YOU 1 ───────────────────────────────────────────────────────────────────────│ t-0001 Fix the login
+ ? demo         t-0001 Fix the login           ◆ report    unacknowledged report · …│ ○ idle
+ PROJECTS 1 ────────────────────────────────────────────────────────────────────────│ ─────────────────────────────────────────────────────
+  demo         coordinator                    —           enter starts the coordina…│ project   demo
+                 t-0001 Fix the login           ○ idle      T1  50% 1/2 ▸ Fix  <duration>  …│ task      T1
+    tasks: 0 needs you · 1 in motion · 0 on deck                                    │ session   <session>
+ SESSIONS ──────────────────────────────────────────────────────────────────────────│ progress  ▰▰▰▱▱ 50% 1/2
+  no sessions; s starts a shell, c an agent                                         │ now       ▸ Fix
+                                                                                    │ updated   <duration> ago
+                                                                                    │ PR        https://github.com/o/r/pull/7
+                                                                                    │ report    1, new · a acks it
+                                                                                    │
+                                                                                    │ T1 steps:
+                                                                                    │   ✓ 1 Reproduce
+                                                                                    │   ○ 2 Fix
+                                                                                    │ report 1 (new) next:  a acks it
+                                                                                    │   1 Merge the PR
+                                                                                    │   2 Remove the worktree
+                                                                                    │   1-9 sends that line to the thread
+                                                                                    │
+                                                                                    │
+                                                                                    │
+                                                                                    │
+                                                                                    │
+                                                                                    │
+                                                                                    │
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ enter attach · t tasks · i inbox · a ack · 1-9 send next · , settings · ? help · q quit

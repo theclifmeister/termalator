@@ -215,7 +215,7 @@ func TestRealThreadAccess(t *testing.T) {
 
 // TestRealFirstLocalRun is M4's "Try it" against Claude: c in the
 // dashboard starts Claude in a chosen directory and attaches; a prompt
-// typed there blocks on a permission dialog; Ctrl+\ shows it under NEEDS
+// typed there blocks on a permission dialog; Ctrl+\ d shows it under NEEDS
 // YOU; enter attaches again to approve; the session survives the window.
 func TestRealFirstLocalRun(t *testing.T) {
 	env := realEnv(t)
@@ -230,7 +230,7 @@ func TestRealFirstLocalRun(t *testing.T) {
 	w.Type(dir)
 	w.Key(Enter)
 	s := agentSession(env)
-	w.WaitUntil("attached", realWait, func(sc string) bool { return lastLine(sc, `ctrl+\ dashboard`) })
+	w.WaitUntil("attached", realWait, func(sc string) bool { return lastLine(sc, `ctrl+\ d dashboard`) })
 	if !Poll(realWait, func() bool {
 		i, _ := env.Info(s)
 		return i.State == "idle" || i.Reason == "trust"
@@ -252,17 +252,17 @@ func TestRealFirstLocalRun(t *testing.T) {
 	env.WaitState(s, "blocked/permission", realWait)
 	w.WaitUntil("blocked in the status bar", wait, func(sc string) bool { return lastLine(sc, "blocked permission") })
 
-	w.Key(CtrlBackslash)
+	w.Detach()
 	w.WaitFor("NEEDS YOU", wait)
 	w.Key(Enter)
-	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, `ctrl+\ dashboard`) })
+	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, `ctrl+\ d dashboard`) })
 	time.Sleep(time.Second)
 	w.Type("1")
 	env.WaitState(s, "idle", realWait)
 	if _, err := os.Stat(filepath.Join(dir, "a.txt")); err != nil {
 		t.Errorf("approved write: %v", err)
 	}
-	w.Key(CtrlBackslash)
+	w.Detach()
 	w.WaitUntil("NEEDS YOU gone", wait, func(sc string) bool { return !strings.Contains(sc, "NEEDS YOU") })
 
 	w.CloseWindow()
