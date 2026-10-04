@@ -260,7 +260,7 @@ func hasBell(cmd tea.Cmd) bool {
 func TestStatusLine(t *testing.T) {
 	info := proto.SessionInfo{ID: "s-4", Role: proto.RoleCoordinator, Project: "termalator", Agent: "claude",
 		State: "working", TodosDone: 2, TodosTotal: 5, Current: "Write §8"}
-	got := statusLine(info, false, 80, "")
+	got := statusLine(info, nil, false, 80, "")
 	want := "\x1b[7m s-4 · termalator coordinator · working 40% 2/5 ▸ Write §8"
 	if !strings.HasPrefix(got, want) || !strings.HasSuffix(got, `prefix+d dashboard `+"\x1b[27m") {
 		t.Fatalf("status line %q", got)
@@ -269,11 +269,11 @@ func TestStatusLine(t *testing.T) {
 		t.Fatalf("status line is %d cells, want 80", w)
 	}
 	// Split panes: where the focused one is.
-	if got := statusLine(info, false, 120, "pane 2/3"); !strings.Contains(got, "▸ Write §8 · pane 2/3 ") {
+	if got := statusLine(info, nil, false, 120, "pane 2/3"); !strings.Contains(got, "▸ Write §8 · pane 2/3 ") {
 		t.Fatalf("status line with panes %q", got)
 	}
 	// After the prefix: the commands.
-	got = statusLine(info, true, 160, "")
+	got = statusLine(info, nil, true, 160, "")
 	if !strings.Contains(got, `d dashboard · p ] [ projects · i t , ? · % " split`) || !strings.Contains(got, `prefix again sends it`) {
 		t.Fatalf("pending status line %q", got)
 	}

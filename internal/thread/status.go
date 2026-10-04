@@ -117,40 +117,12 @@ func (st *Status) Derive(steps []tasks.Step, now time.Time) {
 		}
 	}
 	st.StepsDone, st.StepsTotal, st.TodosDone, st.TodosTotal, st.Current = s, S, c, T, current
-	var pct float64
-	switch {
-	case S > 0 && T > 0:
-		// Steps set the scale; todos fill in the current step. An agent
-		// that keeps one list for the whole job can push this past the
-		// checked steps by at most one step's worth.
-		pct = (float64(s) + float64(c)/float64(T)) / float64(S) * 100
-		if s == S {
-			pct = 100
-		}
-		st.PercentSource = "steps+todos"
-	case S > 0:
-		pct = float64(s) / float64(S) * 100
-		st.PercentSource = "steps"
-	case T > 0:
-		pct = float64(c) / float64(T) * 100
-		st.PercentSource = "todos"
-	case st.SelfPercent >= 0 && now.Sub(st.SelfAt) < SelfReportTTL:
-		pct = float64(st.SelfPercent)
-		st.PercentSource = "self"
-	default:
-		st.PercentSource = ""
+	self := -1
+	if st.SelfPercent >= 0 && now.Sub(st.SelfAt) < SelfReportTTL {
+		self = st.SelfPercent
 	}
-	p := int(pct) / 5 * 5
-	if p > 95 {
-		p = 95
-	}
-	if p < 0 {
-		p = 0
-	}
-	if st.Done {
-		p, st.PercentSource = 100, "done"
-	}
-	st.Percent = p
+	pr := DeriveProgress(ProgressInput{StepsDone: s, StepsTotal: S, TodosDone: c, TodosTotal: T, Self: self, Done: st.Done})
+	st.Percent, st.PercentSource = max(pr.Percent, 0), pr.Source
 }
 
 // ReadStatus reads a thread's STATUS.md; a missing file is an empty
