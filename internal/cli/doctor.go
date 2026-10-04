@@ -2,14 +2,17 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"flag"
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/theclifmeister/termalator/internal/doctor"
 	"github.com/theclifmeister/termalator/internal/emu"
 	"github.com/theclifmeister/termalator/internal/server"
+	"github.com/theclifmeister/termalator/internal/update"
 	"github.com/theclifmeister/termalator/internal/version"
 )
 
@@ -37,6 +40,15 @@ func doctorCmd(e *Env, args []string) int {
 	}
 	d := doctor.DefaultDeps(p, version.Version, version.BuildID())
 	d.Selftest = libghosttySelftest
+	exe, _ := os.Executable()
+	in := update.Detect(exe, version.Channel)
+	d.Install = &in
+	d.Latest = func() (string, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		r, err := update.NewClient(e.Getenv).Latest(ctx)
+		return r.Tag, err
+	}
 	checks := doctor.Run(d)
 	fixes := doctor.Fixes(checks)
 	code := ExitOK

@@ -144,6 +144,14 @@ func Run(ctx context.Context, opts Options) error {
 		return err
 	}
 
+	if opts.Bin != "" {
+		if bin, err := pinBinary(p.Home, opts.Bin, version.BuildID()); err != nil {
+			logger.Printf("pin %s: %v; an upgrade in place will break attach re-exec and hooks until restart", opts.Bin, err)
+		} else {
+			opts.Bin = bin
+		}
+	}
+
 	s := &Server{
 		opts:     opts,
 		log:      logger,

@@ -13,6 +13,7 @@ import (
 	"github.com/theclifmeister/termalator/internal/project"
 	"github.com/theclifmeister/termalator/internal/server"
 	"github.com/theclifmeister/termalator/internal/thread"
+	"github.com/theclifmeister/termalator/internal/update"
 	"github.com/theclifmeister/termalator/internal/worktree"
 )
 
@@ -281,5 +282,31 @@ func TestThreadID(t *testing.T) {
 		if got := threadID(in); got != want {
 			t.Errorf("threadID(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestInstall(t *testing.T) {
+	d := Deps{Version: "v0.1.0"}
+	if got := Install(d); got != nil {
+		t.Fatalf("no install info: %+v", got)
+	}
+	d.Install = &update.Install{Method: update.Homebrew, Path: "/opt/homebrew/Cellar/termalator/0.1.0/bin/tm", Upgrade: "brew upgrade termalator"}
+	d.Latest = func() (string, error) { return "v0.2.0", nil }
+	got := Install(d)
+	if len(got) != 2 || got[0].Detail != "homebrew, /opt/homebrew/Cellar/termalator/0.1.0/bin/tm" ||
+		got[1].Status != Warn || got[1].Detail != "v0.2.0 is available: brew upgrade termalator" {
+		t.Fatalf("newer release: %+v", got)
+	}
+	d.Latest = func() (string, error) { return "v0.1.0", nil }
+	if got := Install(d); got[1].Status != OK || got[1].Detail != "up to date (v0.1.0)" {
+		t.Fatalf("current: %+v", got)
+	}
+	d.Latest = func() (string, error) { return "", update.ErrOff }
+	if got := Install(d); len(got) != 1 {
+		t.Fatalf("checks off: %+v", got)
+	}
+	d.Latest = func() (string, error) { return "", errors.New("dial tcp: no route") }
+	if got := Install(d); got[1].Status != Warn || !strings.Contains(got[1].Detail, "couldn't check") {
+		t.Fatalf("offline: %+v", got)
 	}
 }

@@ -4,18 +4,32 @@ How to install, run, check, upgrade and remove `tm`. The design behind all of th
 
 ## Install
 
-Release archives for macOS and Linux on arm64 and x86_64 are on the [releases page](https://github.com/theclifmeister/termalator/releases). Each holds one static `tm` binary (plus this file, the README and the licence); `checksums.txt` lists their sha256. To install the latest into `~/.local/bin`:
+On macOS 13+ or Linux with glibc 2.28+, on arm64 or x86_64.
+
+**Homebrew** (macOS and Linux):
+
+```sh
+brew tap theclifmeister/termalator https://github.com/theclifmeister/termalator
+brew install termalator
+tm doctor
+```
+
+The two-argument `brew tap` is needed because the formula lives in this repository (`Formula/termalator.rb`), not in a `homebrew-termalator` one. `brew upgrade termalator` (or `tm update`, which suggests it) picks up new releases.
+
+**Direct download.** Release archives are on the [releases page](https://github.com/theclifmeister/termalator/releases). Each holds one static `tm` binary (plus this file, the README and the licence); `checksums.txt` lists their sha256. To install the latest into `~/.local/bin`:
 
 ```sh
 mkdir -p ~/.local/bin && curl -fsSL "https://github.com/theclifmeister/termalator/releases/latest/download/tm_$(uname -s | tr A-Z a-z)_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar -xz -C ~/.local/bin tm
 tm doctor
 ```
 
-- **macOS:** 13 or later. The binary links only system libraries (libSystem, libresolv and, depending on the Go release, CoreFoundation). It is signed ad hoc, not notarised: installed with curl it runs as is; downloaded with a browser, clear the quarantine flag first (`xattr -d com.apple.quarantine tm`).
+`tm update` keeps a direct install up to date.
+
+- **macOS:** the binary links only system libraries (libSystem, libresolv and, depending on the Go release, CoreFoundation). It is signed with a Developer ID (hardened runtime) and notarised. A bare binary can't carry a stapled ticket, so Gatekeeper checks the notarisation online the first time it meets a quarantined copy (one a browser downloaded); with no network that first run is refused. curl and Homebrew set no quarantine flag, so they never ask.
 - **Linux:** glibc 2.28 or later (Debian 10, Ubuntu 18.10, RHEL 8 and newer); musl is not supported.
 - **Runtime:** git, and the agents you use (Claude Code). For threads' sandbox Claude needs `bwrap` and `socat` on Linux. `tm doctor` checks all of these.
 
-To build from source instead, see the [README](../README.md#build). Releases are cut by pushing a `v*` tag: `.github/workflows/release.yml` runs goreleaser (`.goreleaser.yaml`, cross-compiling every target with `zig cc` against its own libghostty-vt) and creates a draft release to review and publish. `make release-snapshot` builds the same archives into `dist/` locally, without a tag.
+To build from source instead, see the [README](../README.md#build). How releases are made: [Releasing](#releasing).
 
 ## Where state lives
 
@@ -70,6 +84,7 @@ Any `tm` command starts the server when needed, so you don't need a service. If 
 
 `tm doctor` checks your installation and changes nothing:
 - the `tm` build and libghostty-vt, git and gh;
+- how `tm` was installed (Homebrew, a direct download, or built from source) and whether a newer release exists, with the command that updates it;
 - the server: running and answering, the same build as this `tm`, a previous crash, stale `tm.sock`, `server.pid` and session runtime dirs (it never starts a server);
 - each agent's installed version against its manifest's `tested_versions`. An untested Claude still works, but termalator stops trusting its undocumented status file and messaging socket;
 - the sandbox tools Claude needs for threads: `sandbox-exec` on macOS, `bwrap` and `socat` on Linux;
@@ -87,10 +102,22 @@ It exits 1 only when a check fails; warnings don't count. `--json` prints the re
 
 ## Upgrading
 
-1. Install the new `tm` over the old one (the same command as installing).
-2. `tm server restart`. Until then the old server keeps running the old build: attach still works, because the client re-runs the server's own binary, but `tm doctor` warns that the builds differ and a newer control protocol asks you to restart.
+```sh
+tm update            # asks, then installs the latest release
+tm update --check    # only says whether there is one
+```
 
-Restart resumes the agents, so an upgrade costs only the turns running at that moment. On a terminal it asks before stopping running agents (`--yes` skips that).
+- **Direct install:** `tm update` downloads the archive for your platform, checks it against `checksums.txt` and, on macOS, checks its Developer ID signature with `codesign`, then replaces `tm` in one rename. It needs to write to the directory `tm` is in. `--yes` skips the question (and is needed without a terminal).
+- **Homebrew:** `tm update` never touches Homebrew's files: it shows `brew upgrade termalator` and runs it if you say yes.
+- **Built from source:** `tm update` refuses; `git pull && make`.
+
+The running server keeps the old build until it restarts, and keeps working meanwhile: it runs from its own copy of its binary (`~/.termalator/server-bin/`), so attaching and agent hooks are unaffected. Restarting switches it to the new build but stops every session: agents are resumed and lose only the turn they are in, shells are lost. So `tm update` asks before restarting (or restarts with `--restart`), and otherwise leaves it to you:
+
+```sh
+tm server restart
+```
+
+On a terminal the restart asks again before stopping agents that are mid-turn (`--yes` skips that).
 
 ## Uninstalling
 
@@ -102,3 +129,39 @@ rm -rf ~/.termalator          # all projects, tasks, reports and thread worktree
 ```
 
 Thread branches (`tm/<project>/…`) live in your repositories and are not removed by this; `tm doctor --fix` before uninstalling deletes the merged ones.
+
+## Releasing
+
+Push a `v*` tag (`git tag v0.2.0 && git push origin v0.2.0`). `.github/workflows/release.yml` then, on one macOS runner:
+
+1. imports the Developer ID certificate into a temporary keychain;
+2. builds and checks a snapshot (`make release-snapshot`, `scripts/release/check.sh`), unsigned;
+3. runs goreleaser (`make release`): every target cross-compiled with `zig cc`, each darwin binary signed (hardened runtime) and notarised by `scripts/release/sign.sh`, archives and `checksums.txt` uploaded to a draft release;
+4. checks the archives again with `--signed` (Developer ID, hardened runtime, Gatekeeper says `Notarized Developer ID`), and only then publishes the release;
+5. rewrites `Formula/termalator.rb` from `checksums.txt` (`scripts/release/formula.sh`) and merges it through a pull request. Prereleases (`v1.2.0-rc1`) skip this step.
+
+`make release-snapshot` runs the same build locally without a tag, signing nothing: `sign: TM_SIGN_IDENTITY not set; … stays ad-hoc signed` in the log. To try signing locally, set `TM_SIGN_IDENTITY` to a Developer ID identity in your keychain; add `TM_NOTARY_KEY` (path to the .p8), `TM_NOTARY_KEY_ID` and `TM_NOTARY_ISSUER` to notarise.
+
+### Secrets
+
+The same Apple credentials as toe. Put them in the `release` environment (Settings → Environments → release), not as repository secrets, and limit that environment to `v*` tags (Deployment branches and tags → Selected → tag pattern `v*`): then only the release job can read them.
+
+| Secret | What |
+|---|---|
+| `SIGNING_CERT_P12_BASE64` | the "Developer ID Application" certificate and its private key as .p12, base64; include the Developer ID Certification Authority intermediate |
+| `SIGNING_CERT_PASSWORD` | the .p12's password |
+| `KEYCHAIN_PASSWORD` | any random string, for the job's temporary keychain |
+| `APPLE_TEAM_ID` | the team id in the certificate's name, e.g. `ABCDE12345` |
+| `NOTARY_KEY_P8_BASE64` | an App Store Connect API key (.p8, role Developer), base64 |
+| `NOTARY_KEY_ID` | that key's id |
+| `NOTARY_ISSUER_ID` | the App Store Connect issuer id |
+
+`GITHUB_TOKEN` is provided by Actions.
+
+### Repository settings
+
+- **Settings → Actions → General → Workflow permissions:** allow GitHub Actions to create and approve pull requests, or the formula pull request can't be opened.
+- **Rules on `main`:** the formula pull request carries `[skip ci]` and merges at once, as toe's cask bump does. A ruleset that requires pull requests is fine; one that also requires status checks or approvals blocks it. Then the job turns on auto-merge (if Settings → General allows auto-merge) and warns; merge it by hand, or add GitHub Actions as a bypass actor of that rule.
+- **Forks:** no workflow uses `pull_request_target` or `workflow_run`, and the only one that sees secrets runs on tags, which only people with write access can push. For a public repository keep Settings → Actions → "Fork pull request workflows" at requiring approval for outside contributors.
+- **Self-hosted runners:** none. On a public repository any fork pull request can target a self-hosted runner's labels from a workflow of its own and run code on that machine, so don't register one for this repository (the real-Claude suite runs by hand, `make test-claude`).
+

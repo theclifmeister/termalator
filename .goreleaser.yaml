@@ -28,9 +28,20 @@ builds:
       - -s -w
       - -X github.com/theclifmeister/termalator/internal/version.Version={{ if .IsSnapshot }}v{{ .Version }}{{ else }}{{ .Tag }}{{ end }}
       - -X github.com/theclifmeister/termalator/internal/version.LibGhostty={{ .Env.TM_GHOSTTY_REV }}
+      # Marks a binary built here, so `tm update` can tell it from a
+      # source build (internal/update).
+      - -X github.com/theclifmeister/termalator/internal/version.Channel={{ if .IsSnapshot }}snapshot{{ else }}release{{ end }}
+      # The signing team, which `tm update` requires of the next binary.
+      - -X github.com/theclifmeister/termalator/internal/version.TeamID={{ envOrDefault "TM_TEAM_ID" "" }}
     env:
       - CGO_ENABLED=1
       - CC={{ .Env.TM_ROOT }}/scripts/release/cc.sh
+    # Signs and notarises the darwin binaries before they are archived
+    # (scripts/release/sign.sh); without TM_SIGN_IDENTITY it only says so.
+    hooks:
+      post:
+        - cmd: '{{ .Env.TM_ROOT }}/scripts/release/sign.sh "{{ .Path }}" {{ .Os }}'
+          output: true
     overrides:
       - goos: darwin
         goarch: arm64
@@ -58,12 +69,10 @@ builds:
           - PKG_CONFIG_PATH={{ .Env.TM_ROOT }}/.build/release/ghostty-{{ .Env.TM_GHOSTTY_REV }}-{{ .Env.TM_GHOSTTY_CPU }}-x86_64-linux-gnu.2.28/share/pkgconfig
           - CGO_CFLAGS=-O2 -g -DTM_LIBGHOSTTY={{ .Env.TM_ROOT }}/.build/release/ghostty-{{ .Env.TM_GHOSTTY_REV }}-{{ .Env.TM_GHOSTTY_CPU }}-x86_64-linux-gnu.2.28
 
-# Signing and notarisation of the macOS binaries are not set up: they need
-# an Apple Developer ID certificate and a notary API key as repository
-# secrets. zig's linker signs ad hoc, which is enough to run a binary that
-# curl downloaded (curl sets no quarantine attribute); a browser download
-# needs `xattr -d com.apple.quarantine tm`. When the credentials exist,
-# add a `notarize.macos` section here (goreleaser's quill integration).
+# The darwin binaries are signed with a Developer ID (hardened runtime)
+# and notarised by the build hook above when the release workflow
+# provides the credentials (TM_SIGN_IDENTITY, TM_NOTARY_*). Snapshots are
+# left ad-hoc signed, as zig's linker made them.
 
 archives:
   - id: tm
@@ -94,6 +103,8 @@ release:
   github:
     owner: theclifmeister
     name: termalator
-  # A human reviews and publishes the release.
+  # Created as a draft; the release workflow publishes it once the
+  # uploaded archives pass scripts/release/check.sh --signed, then bumps
+  # Formula/termalator.rb.
   draft: true
   prerelease: auto

@@ -12,18 +12,24 @@ Claude Code is the first supported agent. Other agents plug in through a manifes
 - server-owned views: every `tm` you open, in any terminal, shows the same screen, as tmux's sessions do. Open a session, split, focus, zoom or move the sidebar in one, and the others follow; `tm --own` opens one that keeps to itself;
 - projects and tasks (milestone M5): `tm project new|list|open`, `tm skill`, `tm task …`, `tm context` and `tm inbox list|done`;
 - threads (milestone M6): `tm thread start|prompt|restart|resolve`, agents in git worktrees reporting through `tm`;
-- hardening (milestone M8): agents resume after a server crash or restart, `tm doctor [--fix]`, an optional login service (`tm server service install`), and release archives.
+- hardening (milestone M8): agents resume after a server crash or restart, `tm doctor [--fix]`, an optional login service (`tm server service install`), signed release archives, a Homebrew formula and `tm update`.
 
 ## Install
 
-Once a release is published (none yet), on macOS 13+ or Linux with glibc 2.28+:
+On macOS 13+ or Linux with glibc 2.28+, with Homebrew:
+
+```sh
+brew tap theclifmeister/termalator https://github.com/theclifmeister/termalator
+brew install termalator
+```
+
+or directly, into `~/.local/bin`:
 
 ```sh
 mkdir -p ~/.local/bin && curl -fsSL "https://github.com/theclifmeister/termalator/releases/latest/download/tm_$(uname -s | tr A-Z a-z)_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar -xz -C ~/.local/bin tm
-tm doctor
 ```
 
-Where state lives, logs, the login service, upgrading and uninstalling: [docs/OPERATIONS.md](docs/OPERATIONS.md). Until then, build from source (below).
+Then `tm doctor`. macOS binaries are signed with a Developer ID and notarised. `tm update` installs new releases (with Homebrew it runs `brew upgrade termalator`). Where state lives, logs, the login service, upgrading and uninstalling: [docs/OPERATIONS.md](docs/OPERATIONS.md). To build from source, see below.
 
 ## Try it
 
@@ -129,7 +135,8 @@ internal/…           see docs/SPEC.md §2.1
 scripts/run.sh       what `make run` does
 docs/SPEC.md         the v0.1 specification and milestone plan
 docs/OPERATIONS.md   installing, state, logs, doctor, service, upgrading, uninstalling
-scripts/release/     release builds: per-target libghostty-vt, zig cc wrapper, archive checks
+scripts/release/     release builds: per-target libghostty-vt, zig cc wrapper, signing, archive checks, formula
+Formula/             the Homebrew formula (rewritten by each release)
 spikes/              throwaway experiments, each with its own go.mod and FINDINGS.md
 ```
 
