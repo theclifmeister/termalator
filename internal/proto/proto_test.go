@@ -49,3 +49,13 @@ func TestFrames(t *testing.T) {
 		t.Fatalf("oversized frame: %v", err)
 	}
 }
+
+func TestAppendFrameMatchesWriteFrame(t *testing.T) {
+	var b bytes.Buffer
+	WriteFrame(&b, FrameOutput, []byte("abc"))
+	WriteFrame(&b, FrameDetach, nil)
+	got := AppendFrame(AppendFrame(nil, FrameOutput, []byte("abc")), FrameDetach, nil)
+	if !bytes.Equal(got, b.Bytes()) {
+		t.Fatalf("AppendFrame %x, WriteFrame %x", got, b.Bytes())
+	}
+}

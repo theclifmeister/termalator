@@ -453,3 +453,10 @@ state = "working"
 		t.Fatal("built-ins must still load next to user manifests")
 	}
 }
+
+func TestBuiltinUnsetEnv(t *testing.T) {
+	got := FilterEnv([]string{"CLAUDECODE=1", "CLAUDE_CODE_SESSION_ID=x", "CLAUDE_CODE_USE_BEDROCK=1", "PATH=/bin"}, BuiltinUnsetEnv())
+	if len(got) != 2 || got[0] != "CLAUDE_CODE_USE_BEDROCK=1" || got[1] != "PATH=/bin" {
+		t.Fatalf("FilterEnv with the built-in unset list = %q", got)
+	}
+}

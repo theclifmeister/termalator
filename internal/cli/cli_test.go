@@ -65,7 +65,7 @@ var (
 
 func TestNotHandled(t *testing.T) {
 	e := &Env{}
-	if _, ok := e.Run([]string{"server"}); ok {
+	if _, ok := e.Run([]string{"no-such-command"}); ok {
 		t.Fatal("handled a foreign command")
 	}
 }
@@ -286,4 +286,15 @@ func TestSafetySettingsInContext(t *testing.T) {
 	}
 	os.WriteFile(cfg, []byte("[projects.demo]\nstart_threads = \"yes\"\n"), 0o600)
 	h.expect(3, "start_threads must be", human, "context", "--project", "demo")
+}
+
+func TestServerAndSessionDispatch(t *testing.T) {
+	for _, cmd := range []string{"server", "session"} {
+		var out, errs strings.Builder
+		e := &Env{Stdout: &out, Stderr: &errs}
+		code, ok := e.Run([]string{cmd, "bogus"})
+		if !ok || code != ExitUsage || !strings.Contains(errs.String(), "usage: tm "+cmd) {
+			t.Fatalf("tm %s bogus: handled=%v exit %d stderr %q", cmd, ok, code, errs.String())
+		}
+	}
 }

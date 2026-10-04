@@ -29,7 +29,7 @@ func main() {
 		os.Exit(code)
 	}
 	fmt.Fprintln(os.Stderr, "tm: not implemented yet; see docs/SPEC.md")
-	fmt.Fprintln(os.Stderr, "usage: tm version | tm selftest | tm project | tm task | tm context | tm skill | tm inbox")
+	fmt.Fprintln(os.Stderr, "usage: tm version | selftest | server | session | project | task | context | skill | inbox")
 	os.Exit(2)
 }
 
