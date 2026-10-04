@@ -293,7 +293,6 @@ func (s *Server) agentChanged(sess *session.Session) {
 	if !ok {
 		return
 	}
-	info := sess.Info()
 	s.mu.Lock()
 	r, ok := s.records[sess.ID()]
 	s.mu.Unlock()
@@ -310,7 +309,6 @@ func (s *Server) agentChanged(sess *session.Session) {
 		if blocked {
 			s.blocked[sess.ID()] = true
 			s.alerts.Add(1)
-			go notify(s.log, blockedMessage(info, st.Reason))
 		} else {
 			delete(s.blocked, sess.ID())
 		}

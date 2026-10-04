@@ -19,7 +19,7 @@ import (
 type fakeHost struct {
 	sessions []proto.SessionInfo
 	prompts  []string // "<session> <text>"
-	notes    []string
+	alerts   []string
 	resolved []string
 	resolve  func(slug, id string) error
 }
@@ -31,7 +31,7 @@ func (h *fakeHost) Prompt(id, text string) error {
 	h.prompts = append(h.prompts, id+" "+text)
 	return nil
 }
-func (h *fakeHost) Notify(msg string) { h.notes = append(h.notes, msg) }
+func (h *fakeHost) Alert(msg string) { h.alerts = append(h.alerts, msg) }
 func (h *fakeHost) Resolve(slug, id string) (string, error) {
 	h.resolved = append(h.resolved, slug+"/"+id)
 	if h.resolve != nil {
@@ -157,15 +157,15 @@ func TestThreadStateItems(t *testing.T) {
 	}
 }
 
-func TestReportNotifiesAndIdle(t *testing.T) {
+func TestReportAlertsAndIdle(t *testing.T) {
 	r := newRig(t)
 	r.sweep(0)
 	// tm report stores report 1 and raises its own item.
 	thread.Update(r.p, "t-0001", func(x *thread.Record) error { x.Reports = 1; x.ReportAt = r.now; return nil })
 	r.p.AddItem("report", "t-0001", "t-0001 handed in report 1", false)
 	r.sweep(time.Second)
-	if len(r.host.notes) != 1 || !strings.Contains(r.host.notes[0], "demo t-0001 handed in report 1") {
-		t.Fatalf("notes %v", r.host.notes)
+	if len(r.host.alerts) != 1 || !strings.Contains(r.host.alerts[0], "demo t-0001 handed in report 1") {
+		t.Fatalf("alerts %v", r.host.alerts)
 	}
 	r.host.set("s-2", "idle", "")
 	r.sweep(time.Second)
