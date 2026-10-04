@@ -151,7 +151,12 @@ func statusBar(s proto.SessionInfo, ts *thread.Status, pending bool, cols int, w
 	if pending {
 		left = pendingHead + `d dashboard · a project · p ] [ projects · i t , ? · % " split · arrows focus · ctrl+arrows resize · z zoom · x close · { } b sidebar · u take over · r remote control`
 	}
-	right, rh := statusRight(pending, cols)
+	// The pane buttons only when the line still fits: the session's own
+	// words come first.
+	right, rh := statusRight(pending, true)
+	if ansi.StringWidth(left)+1+ansi.StringWidth(right) > cols {
+		right, rh = statusRight(pending, false)
+	}
 	w := cols - ansi.StringWidth(right) - 1
 	if w < 1 {
 		return "\x1b[7m" + fit(left, cols) + "\x1b[27m", nil
@@ -181,9 +186,9 @@ var paneButtons = []struct{ glyph, key string }{
 }
 
 // statusRight is the status bar's right end and its buttons: the pane
-// buttons (in a bar 48 columns or wider; the ≡ menu always) and
-// "prefix+d dashboard", or after the prefix "prefix again sends it".
-func statusRight(pending bool, cols int) (string, []hint) {
+// buttons (with panes set; the ≡ menu always) and "prefix+d dashboard",
+// or after the prefix "prefix again sends it".
+func statusRight(pending, panes bool) (string, []hint) {
 	if pending {
 		return "prefix again sends it ", []hint{{0, 21, "prefix"}}
 	}
@@ -191,7 +196,7 @@ func statusRight(pending bool, cols int) (string, []hint) {
 	var hs []hint
 	x := 0 // in cells: the glyphs are one cell, several bytes
 	for _, pb := range paneButtons {
-		if cols < 48 && pb.key != "menu" {
+		if !panes && pb.key != "menu" {
 			continue
 		}
 		hs = append(hs, hint{x, x + 2, pb.key})

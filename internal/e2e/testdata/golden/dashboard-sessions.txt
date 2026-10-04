@@ -20,5 +20,5 @@
                        │
                        │
                        │────────────────────────────────────────────────────────────────────────────
-                       │ enter open · a project · t tasks · i inbox · , settings · ? help · q quit
+                       │ ≡ menu · enter open · a project · t tasks · i inbox · , settings · ? help …
                        │

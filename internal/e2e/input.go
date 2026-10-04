@@ -186,11 +186,39 @@ func (w *Window) Click(x, y int) {
 // releases it there.
 func (w *Window) Drag(x, to, y int) {
 	w.env.T.Helper()
+	w.DragTo(x, y, to, y)
+}
+
+// DragTo presses the left button at cell (x, y), moves it to (tx, ty)
+// and releases it there.
+func (w *Window) DragTo(x, y, tx, ty int) {
+	w.env.T.Helper()
 	ms := []emu.Mouse{{Action: emu.MousePress, Button: emu.MouseLeft, X: x, Y: y}}
-	if to != x {
-		ms = append(ms, emu.Mouse{Action: emu.MouseMotion, Button: emu.MouseLeft, X: to, Y: y})
+	if tx != x || ty != y {
+		ms = append(ms, emu.Mouse{Action: emu.MouseMotion, Button: emu.MouseLeft, X: tx, Y: ty})
 	}
-	ms = append(ms, emu.Mouse{Action: emu.MouseRelease, Button: emu.MouseLeft, X: to, Y: y})
+	ms = append(ms, emu.Mouse{Action: emu.MouseRelease, Button: emu.MouseLeft, X: tx, Y: ty})
+	w.Mouse(ms...)
+}
+
+// DoubleClick clicks the left button twice at cell (x, y).
+func (w *Window) DoubleClick(x, y int) {
+	w.env.T.Helper()
+	w.Click(x, y)
+	w.Click(x, y)
+}
+
+// RightClick clicks the right button at cell (x, y).
+func (w *Window) RightClick(x, y int) {
+	w.env.T.Helper()
+	w.Mouse(emu.Mouse{Action: emu.MousePress, Button: emu.MouseRight, X: x, Y: y},
+		emu.Mouse{Action: emu.MouseRelease, Button: emu.MouseRight, X: x, Y: y})
+}
+
+// Mouse sends mouse events, encoded as the window's terminal reports
+// them: only while the program in the window tracks the mouse.
+func (w *Window) Mouse(ms ...emu.Mouse) {
+	w.env.T.Helper()
 	for _, m := range ms {
 		w.mu.Lock()
 		enc, err := w.encoder()
@@ -201,4 +229,29 @@ func (w *Window) Drag(x, to, y int) {
 		w.mu.Unlock()
 		w.send(fmt.Sprintf("mouse %+v", m), b, err)
 	}
+}
+
+// ClickText clicks the first cell of the first place text shows on the
+// screen, searching the rows from row from; it fails the test when it
+// doesn't show.
+func (w *Window) ClickText(text string, from int) {
+	w.env.T.Helper()
+	x, y := w.TextAt(text, from)
+	w.Click(x, y)
+}
+
+// TextAt is the cell where text first shows at or below row from.
+func (w *Window) TextAt(text string, from int) (int, int) {
+	w.env.T.Helper()
+	sc := w.Screen()
+	for y, l := range strings.Split(sc, "\n") {
+		if y < from {
+			continue
+		}
+		if i := strings.Index(l, text); i >= 0 {
+			return len([]rune(l[:i])), y
+		}
+	}
+	w.env.T.Fatalf("%q isn't on the screen:\n%s", text, sc)
+	return 0, 0
 }

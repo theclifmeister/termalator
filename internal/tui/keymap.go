@@ -46,6 +46,20 @@ var popupKeys = []keyHelp{
 	{"esc", "close"},
 }
 
+// mouseKeys are the mouse's ways, in the help beside the keys: every
+// key has one (TestEveryKeyHasMousePath).
+var mouseKeys = []keyHelp{
+	{"click", "a row selects it; a footer hint presses its key; a popup's tab, row or setting picks it; outside a popup, or its ×, closes it"},
+	{"double-click", "a row opens it: a coordinator attaches, a thread watches, a task shows; in a session, a pane whose program doesn't take the mouse zooms, and back"},
+	{"right-click", "a row of the list or the sidebar: a menu of its actions (open, watch, take over, its popup, …); in a session, the status bar or a pane that doesn't take the mouse: the session's menu"},
+	{menuButton + " menu", "every action, first in the footer; in a session, every prefix command, on the status bar"},
+	{"status bar", "│ ─ split beside / below, ⤢ zoom, × close the pane (its session keeps running; these four when the bar has room), prefix+d dashboard, prefix+u takes over, y yes"},
+	{"sidebar", "▸ ▾ open or close a project; a project shows its dashboard, its coordinator attaches, a thread watches it"},
+	{"wheel", "moves through a list; scrolls the details panel and long popups"},
+	{"drag", "the divider beside the details panel, the sidebar's border, a divider between panes"},
+	{"shift+drag", "select text, as usual; a pane whose program takes the mouse (Claude Code does) gets its clicks"},
+}
+
 // keyGroups is every key, grouped.
 func keyGroups() []keyGroup {
 	var dash []keyHelp
@@ -56,11 +70,7 @@ func keyGroups() []keyGroup {
 	}
 	return []keyGroup{
 		{"On the dashboard", dash},
-		{"With the mouse", []keyHelp{
-			{"click", "a row selects it; in the sidebar ▸ ▾ open or close a project, a project shows its dashboard, its coordinator attaches, a thread watches it"},
-			{"drag", "the divider beside the details panel, or the sidebar's border"},
-			{"shift+drag", "select text, as usual"},
-		}},
+		{"With the mouse", mouseKeys},
 		{"In a session", sessionKeys},
 		{"In the project popup", popupKeys},
 	}
