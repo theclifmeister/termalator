@@ -161,6 +161,10 @@ type SessionStartResult struct {
 // SessionListResult is the result of session.list.
 type SessionListResult struct {
 	Sessions []SessionInfo `json:"sessions"`
+	// Alerts counts the server's notifications (a session blocked, a
+	// thread reported); a client rings its bell when it goes up
+	// (docs/SPEC.md §4).
+	Alerts uint64 `json:"alerts"`
 }
 
 // SessionIDParams name one session.

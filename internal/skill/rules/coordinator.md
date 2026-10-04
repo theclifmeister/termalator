@@ -9,6 +9,10 @@ decide what they do and keep the project's state.
    and the recent journal. It is your memory: you keep nothing else, so
    clearing your context loses nothing.
 2. Handle each inbox item, then mark it done with `tm inbox done <id>`.
+   A prompt starting with `[tm]` is the server telling you that new items
+   arrived (a nudge): it is not the user speaking. Work from the inbox,
+   not from the nudge's words. The server also resolves a thread by
+   itself once its PR merged, and tells threads about failing checks.
 3. Answer the user's message in one of three ways:
    - answer it yourself, from the project files;
    - forward it to the existing thread that owns that work;

@@ -20,6 +20,9 @@ import (
 type Data struct {
 	ServerOK bool
 	Sessions []proto.SessionInfo
+	// Alerts is the server's notification count; the bell rings when it
+	// goes up (docs/SPEC.md §4).
+	Alerts   uint64
 	Projects []ProjectData
 	Err      string // why the poll failed, shown in the header
 }
@@ -33,8 +36,10 @@ type ProjectData struct {
 	NeedsYou []*tasks.Task
 	// Inbox are the unhandled items marked needs_user.
 	Inbox []InboxRow
-	// Unread counts every unhandled inbox item.
+	// Unread counts every unhandled inbox item; Items are all of them,
+	// for the inbox view.
 	Unread int
+	Items  []project.Item
 	// Threads are the project's unresolved threads (M6).
 	Threads []ThreadRow
 	Err     string
@@ -45,6 +50,10 @@ type ProjectData struct {
 type ThreadRow struct {
 	*thread.Record
 	Status *thread.Status
+	// Report is the latest report (its PR line and ## Next), nil
+	// without one; TaskRec is the linked task, for its steps.
+	Report  *thread.Report
+	TaskRec *tasks.Task
 }
 
 // InboxRow is an inbox item; Task is set for a done confirmation (§6.4),
@@ -67,6 +76,10 @@ type Source interface {
 	OpenProject(slug string, cols, rows int) (string, error)
 	// MarkDone sets a task done: the human's acceptance (§6.4).
 	MarkDone(slug string, id int) error
+	// Ack acknowledges a thread's latest report; PromptNext sends line n
+	// of its ## Next to the thread as its next prompt (§7.2).
+	Ack(slug, threadID string) error
+	PromptNext(slug, threadID string, n int) error
 }
 
 // ServerSource is the real Source: the control socket plus the project
@@ -77,6 +90,9 @@ type ServerSource struct {
 	Agent string
 	// Caller is who acts: the human, unless tm runs inside an agent.
 	Caller caller.Caller
+	// Run runs a tm command as Caller (set by package cli), for the
+	// actions that are CLI commands: ack and prompt.
+	Run func(args ...string) error
 
 	mu  sync.Mutex
 	ctl *server.Client
@@ -120,7 +136,7 @@ func (s *ServerSource) Load() Data {
 	if err := s.call(proto.MethodSessionList, nil, &res); err != nil {
 		d.Err = err.Error()
 	} else {
-		d.ServerOK, d.Sessions = true, res.Sessions
+		d.ServerOK, d.Sessions, d.Alerts = true, res.Sessions, res.Alerts
 	}
 	list, err := project.List()
 	if err != nil && d.Err == "" {
@@ -130,7 +146,9 @@ func (s *ServerSource) Load() Data {
 		pd := ProjectData{Slug: sum.Slug, Name: sum.Name, Counts: sum.Counts, Err: sum.Error}
 		if p, err := project.Open(sum.Slug); err == nil {
 			b, err := p.Tasks().Load()
-			if err == nil {
+			if err != nil {
+				b = nil
+			} else {
 				for _, t := range b.Tasks {
 					if tasks.GroupOf(t.Status) == tasks.NeedsYou {
 						pd.NeedsYou = append(pd.NeedsYou, t)
@@ -142,11 +160,16 @@ func (s *ServerSource) Load() Data {
 				if r.State == thread.Resolved {
 					continue
 				}
-				st, _ := thread.ReadStatus(p, r.ID)
-				pd.Threads = append(pd.Threads, ThreadRow{Record: r, Status: st})
+				tr := ThreadRow{Record: r}
+				tr.Status, _ = thread.ReadStatus(p, r.ID)
+				tr.Report, _ = thread.ReadReport(p, r.ID)
+				if b != nil && r.TaskID() > 0 {
+					tr.TaskRec = b.Find(r.TaskID())
+				}
+				pd.Threads = append(pd.Threads, tr)
 			}
 			items, _ := p.Inbox()
-			pd.Unread = len(items)
+			pd.Unread, pd.Items = len(items), items
 			for _, it := range items {
 				if !it.NeedsUser {
 					continue
@@ -245,4 +268,19 @@ func (s *ServerSource) MarkDone(slug string, id int) error {
 	}
 	_, err = p.Tasks().SetStatus(s.Caller, id, tasks.Done, "")
 	return err
+}
+
+func (s *ServerSource) run(args ...string) error {
+	if s.Run == nil {
+		return errors.New("not available here")
+	}
+	return s.Run(args...)
+}
+
+func (s *ServerSource) Ack(slug, id string) error {
+	return s.run("thread", "ack", id, "--project", slug)
+}
+
+func (s *ServerSource) PromptNext(slug, id string, n int) error {
+	return s.run("thread", "prompt", id, "--next", fmt.Sprint(n), "--project", slug)
 }

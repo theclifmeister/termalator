@@ -17,6 +17,10 @@ const (
 	Human       Kind = "human"
 	Coordinator Kind = "coordinator"
 	Thread      Kind = "thread"
+	// Ticker is the server's own ticker acting on the human's settings,
+	// e.g. resolving a thread after its PR merged (docs/SPEC.md §9). It
+	// has a human's rights and is journaled as "ticker".
+	Ticker Kind = "ticker"
 )
 
 // Caller is one tm invocation's identity.

@@ -564,8 +564,9 @@ func errString(err error) string {
 // statePoll is how often the status bar asks the server for state.
 const statePoll = 500 * time.Millisecond
 
-// pollState keeps the status bar current and rings the bell when any
-// session becomes blocked (docs/SPEC.md §4). It polls session.list; a
+// pollState keeps the status bar current and rings the bell when the
+// server sent a notification (a session blocked, a thread reported;
+// docs/SPEC.md §4). It polls session.list; a
 // lost server is noticed by the attach stream itself.
 func (c *client) pollState(ctx context.Context, p server.Paths, info proto.SessionInfo) {
 	var ctl *server.Client
@@ -574,7 +575,7 @@ func (c *client) pollState(ctx context.Context, p server.Paths, info proto.Sessi
 			ctl.Close()
 		}
 	}()
-	blocked := map[string]bool{}
+	var alerts uint64
 	first := true
 	tick := time.NewTicker(statePoll)
 	defer tick.Stop()
@@ -594,12 +595,11 @@ func (c *client) pollState(ctx context.Context, p server.Paths, info proto.Sessi
 			if s.ID == info.ID {
 				info = s
 			}
-			if s.State == "blocked" && !blocked[s.ID] && !first {
-				ring = true
-			}
-			blocked[s.ID] = s.State == "blocked"
 		}
-		first = false
+		if ctl != nil {
+			ring = !first && res.Alerts > alerts
+			alerts, first = res.Alerts, false
+		}
 		if c.lock() {
 			c.r.SetStatus(statusLine(info, c.detach, c.cols))
 			c.bell = c.bell || ring
