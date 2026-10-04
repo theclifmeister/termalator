@@ -201,16 +201,15 @@ func TestCallerRules(t *testing.T) {
 	h.expect(1, "coordinator-only", thr, "task", "delegate", "T1")
 	h.expect(1, "coordinator-only", thr, "inbox", "list")
 
-	// Only the human sets done; the coordinator's request waits in the inbox.
+	// Only the user accepts work: the coordinator sets done only with
+	// --approved-by-user, a thread never.
 	h.ok(coord, "task", "status", "T1", "review")
 	h.expect(1, "human-only", coord, "task", "status", "T1", "done")
-	inbox := h.ok(coord, "inbox", "list")
-	if !strings.Contains(inbox, "confirm-done [needs user]: coordinator asks to mark T1 done") {
-		t.Fatalf("inbox %q", inbox)
-	}
-	h.ok(human, "task", "status", "T1", "done")
+	h.expect(1, "coordinator-only", thr, "task", "status", "T1", "done", "--approved-by-user")
+	h.expect(2, "", coord, "task", "status", "T1", "review", "--approved-by-user")
+	h.ok(coord, "task", "status", "T1", "done", "--approved-by-user")
 	if inbox := h.ok(coord, "inbox", "list"); inbox != "" {
-		t.Fatalf("confirmation not closed: %q", inbox)
+		t.Fatalf("inbox %q", inbox)
 	}
 
 	// Agents can't write another project's tasks.

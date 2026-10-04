@@ -2,7 +2,7 @@
  PROJECTS ──────────────────────────────────────────────────────────────────────────────────────────
   no projects; n creates one
  SESSIONS ──────────────────────────────────────────────────────────────────────────────────────────
-  no sessions; s starts a shell, c an agent
+  no sessions; s starts a shell
 
 
 

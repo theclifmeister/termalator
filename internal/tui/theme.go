@@ -39,7 +39,7 @@ func stateLook(state string) (string, lipgloss.Style) {
 		return "◌", styleInfo
 	case "running":
 		return "●", stylePlain
-	case "review", "confirm", "report", "waiting", "inbox":
+	case "review":
 		return "◆", styleWarn
 	case "done":
 		return "✓", styleGood

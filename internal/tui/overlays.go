@@ -90,7 +90,7 @@ type helpView struct{}
 func (helpView) key(m *dash, _ tea.KeyPressMsg) tea.Cmd { m.pop(); return nil }
 
 func (helpView) render(m *dash) string {
-	return m.popup(box{title: "keys", body: helpLines(m.agentName, m.prefix), sel: -1, keys: "any key returns", width: 96})
+	return m.popup(box{title: "keys", body: helpLines(m.prefix), sel: -1, keys: "any key returns", width: 96})
 }
 
 // inputView reads a line of text.
@@ -153,8 +153,9 @@ func wrapInput(label, text string, w int) []string {
 	return lines
 }
 
-// boardView is a project's task board: its live tasks in board order
-// (needs you, in motion, on deck), or one of them when open.
+// boardView is a project's task board, read-only: its live tasks in
+// board order (needs you, in motion, on deck), or one of them when open.
+// The coordinator changes tasks (tm task).
 type boardView struct {
 	slug  string
 	board *tasks.Board
@@ -217,10 +218,6 @@ func (b *boardView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 		if len(b.list) > 0 {
 			b.open = true
 		}
-	case "d":
-		if b.board != nil && b.sel < len(b.list) && !m.busy {
-			return m.markDone(b.slug, b.list[b.sel], false)
-		}
 	case "r":
 		return m.loadBoard(b.slug)
 	}
@@ -235,11 +232,11 @@ func (b *boardView) render(m *dash) string {
 	if b.open && b.sel < len(b.list) {
 		t := b.list[b.sel]
 		d := &panel{w: m.inner(88) + 1} // panel lines start with a space
-		taskPanel(d, t, "")
+		taskPanel(d, t)
 		for i, l := range d.lines {
 			d.lines[i] = strings.TrimPrefix(l, " ")
 		}
-		return m.popup(box{title: b.slug + " " + t.Ref(), body: d.lines, sel: -1, keys: "d mark done (review) · esc back", width: 88})
+		return m.popup(box{title: b.slug + " " + t.Ref(), body: d.lines, sel: -1, keys: "esc back", width: 88})
 	}
 	w := m.inner(popupWidth)
 	var lines []string
@@ -274,7 +271,7 @@ func (b *boardView) render(m *dash) string {
 		lines = append(lines, styleFaint.Render("no open tasks"))
 	}
 	lines = append(lines, styleFaint.Render(fmt.Sprintf("done: %d", done)))
-	return m.popup(box{title: title, body: lines, sel: sel, keys: "enter show · d mark done (review) · r refresh · esc back", width: popupWidth})
+	return m.popup(box{title: title, body: lines, sel: sel, keys: "enter show · r refresh · esc back", width: popupWidth})
 }
 
 // switchView is the project switcher: enter opens the selected
@@ -317,7 +314,8 @@ func (sw *switchView) render(m *dash) string {
 	return m.popup(box{title: "projects", body: lines, sel: sw.sel, keys: "enter open its coordinator · esc back", width: popupWidth})
 }
 
-// inboxView is a project's unhandled inbox items.
+// inboxView is a project's unhandled inbox items, read-only: the
+// coordinator handles them.
 type inboxView struct {
 	slug string
 	sel  int
@@ -353,23 +351,19 @@ func (in *inboxView) render(m *dash) string {
 	sel := -1
 	now := time.Now()
 	for i, it := range items {
-		flag := " "
-		if it.NeedsUser {
-			flag = "!"
-		}
 		when := fmt.Sprintf("%-6s", age(now.Sub(it.Created)))
 		if i == in.sel {
 			sel = len(lines)
-			lines = append(lines, styleSel.Render(fit(fmt.Sprintf("%s %s %s %s", flag, fit(it.Kind, 16), when, oneLine(it.Summary)), w)))
+			lines = append(lines, styleSel.Render(fit(fmt.Sprintf("%s %s %s", fit(it.Kind, 16), when, oneLine(it.Summary)), w)))
 			continue
 		}
-		lines = append(lines, fit(fmt.Sprintf("%s %s %s %s", styleBad.Bold(true).Render(flag), styleWarn.Render(fit(it.Kind, 16)),
+		lines = append(lines, fit(fmt.Sprintf("%s %s %s", styleWarn.Render(fit(it.Kind, 16)),
 			styleFaint.Render(when), oneLine(it.Summary)), w)+reset)
 	}
 	if len(items) == 0 {
 		lines = append(lines, styleFaint.Render("inbox empty"))
 	}
-	lines = append(lines, "", styleFaint.Render("The coordinator handles these (tm inbox done); ! marks the ones for you."))
+	lines = append(lines, "", styleFaint.Render("The coordinator handles these (tm inbox done)."))
 	return m.popup(box{title: in.slug + " inbox", body: lines, sel: sel, keys: "r refresh · esc back", width: popupWidth})
 }
 

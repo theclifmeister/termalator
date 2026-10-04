@@ -17,6 +17,8 @@ const taskUsage = `usage: tm task <command> [--project <slug>] [--json]
   list [--status a,b] [--needs-you] [--archived]
   show T12
   status T12 <open|ready|started|blocked|review|done> [--note "…"]
+  status T12 done --approved-by-user
+                                the coordinator, once the user accepted the work
   edit T12 [--title "…"] [--notes "…" | --notes-file F] [--owner O]
   steps T12 add "text" | check N | uncheck N | rename N "text" | remove N
   archive T12 | unarchive T12
@@ -67,7 +69,7 @@ func runTask(e *Env, args []string) error {
 			return err
 		}
 	case "status":
-		note := f.String("note")
+		note, approved := f.String("note"), f.Bool("approved-by-user")
 		run = func(p *project.Project, s *tasks.Store, pos []string) error {
 			if len(pos) != 2 {
 				return usagef("usage: tm task status T12 <status> [--note \"…\"]")
@@ -80,7 +82,15 @@ func runTask(e *Env, args []string) error {
 			if !ok {
 				return &tasks.Error{Code: "invalid-status", Msg: fmt.Sprintf("%q is not one of open, ready, started, blocked, review, done", pos[1])}
 			}
-			res, err := s.SetStatus(e.Caller, id, st, *note)
+			var res tasks.Result
+			switch {
+			case *approved && st != tasks.Done:
+				return usagef("--approved-by-user only goes with done")
+			case *approved:
+				res, err = s.SetDoneApproved(e.Caller, id, *note)
+			default:
+				res, err = s.SetStatus(e.Caller, id, st, *note)
+			}
 			return e.done(res, err, *asJSON, string(st))
 		}
 	case "edit":

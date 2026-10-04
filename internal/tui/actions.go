@@ -5,8 +5,6 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-
-	"github.com/theclifmeister/termalator/internal/tasks"
 )
 
 // Actions: the list's keys. One table drives the key handling, the help
@@ -16,7 +14,7 @@ import (
 type action struct {
 	keys []string
 	// label and help are its line in the help; an empty label leaves it
-	// out. {agent} in help is the agent's name.
+	// out.
 	label, help string
 	// foot is its word in the footer for the selected row (ok is false
 	// without one), "" to leave it out there.
@@ -48,13 +46,13 @@ func init() {
 	actions = []action{
 		{keys: []string{"up", "k"}, run: func(m *dash, _ string) tea.Cmd { m.move(-1); return nil }},
 		{keys: []string{"down", "j"}, run: func(m *dash, _ string) tea.Cmd { m.move(1); return nil }},
-		{keys: []string{"enter"}, label: "enter", help: "attach to the selected session; on a project, open its coordinator; on a task, show it",
+		{keys: []string{"enter"}, label: "enter", help: "attach to the selected session; on a project, open its coordinator; a thread opens watch-only",
 			foot: func(_ *dash, r row, ok bool) string {
 				switch {
 				case !ok:
 					return ""
-				case r.task != nil:
-					return "show"
+				case r.thread != nil && r.session != "":
+					return "watch"
 				case r.session != "":
 					return "attach"
 				case r.thread == nil && r.project != "":
@@ -65,8 +63,6 @@ func init() {
 			run: (*dash).enter},
 		{keys: []string{"s"}, label: "s", help: "new shell session (in the directory tm was started in)",
 			run: (*dash).startShell},
-		{keys: []string{"c"}, label: "c", help: "new {agent} session in a directory you choose",
-			run: (*dash).startAgent},
 		{keys: []string{"n"}, label: "n", help: "new project",
 			foot: func(m *dash, _ row, _ bool) string {
 				if len(m.data.Projects) == 0 {
@@ -75,34 +71,10 @@ func init() {
 				return ""
 			},
 			run: (*dash).newProject},
-		{keys: []string{"t"}, label: "t", help: "the project's tasks; enter shows one, d marks a task in review done",
+		{keys: []string{"t"}, label: "t", help: "the project's tasks, read-only; enter shows one",
 			foot: withProject("tasks"), run: (*dash).taskBoard},
-		{keys: []string{"d"}, label: "d", help: "mark the selected task done (tasks in review)",
-			foot: func(_ *dash, r row, ok bool) string {
-				if ok && r.task != nil && (r.confirm || r.task.Status == tasks.Review) {
-					return "done"
-				}
-				return ""
-			},
-			run: (*dash).done},
-		{keys: []string{"i"}, label: "i", help: "the project's inbox: what the coordinator is told about",
+		{keys: []string{"i"}, label: "i", help: "the project's inbox, read-only: what the coordinator is told about",
 			foot: withProject("inbox"), run: (*dash).inbox},
-		{keys: []string{"a"}, label: "a", help: "acknowledge the selected thread's report",
-			foot: func(_ *dash, r row, ok bool) string {
-				if ok && r.thread != nil && r.thread.ReportState() == "new" {
-					return "ack"
-				}
-				return ""
-			},
-			run: (*dash).ack},
-		{keys: strings.Split("1 2 3 4 5 6 7 8 9", " "), label: "1-9", help: "send that ## Next line of the thread's report as its next prompt",
-			foot: func(_ *dash, r row, ok bool) string {
-				if ok && r.thread != nil && r.thread.Report != nil && len(r.thread.Report.Next) > 0 {
-					return "send next"
-				}
-				return ""
-			},
-			run: (*dash).sendNext},
 		{keys: []string{"p"}, label: "p", help: "project switcher; enter opens that project's coordinator",
 			foot: func(m *dash, _ row, _ bool) string {
 				if len(m.data.Projects) > 1 {
@@ -161,11 +133,11 @@ func (m *dash) footKeys() string {
 	return strings.Join(out, " · ")
 }
 
-func helpLines(agentName, prefix string) []string {
+func helpLines(prefix string) []string {
 	var out []string
 	for _, a := range actions {
 		if a.label != "" {
-			out = append(out, fmt.Sprintf("%-9s %s", a.label, strings.ReplaceAll(a.help, "{agent}", agentName)))
+			out = append(out, fmt.Sprintf("%-9s %s", a.label, a.help))
 		}
 	}
 	return append(out,
@@ -176,7 +148,10 @@ func helpLines(agentName, prefix string) []string {
 		fmt.Sprintf("%-9s %s", "i t , ?", "back here with the inbox, tasks, settings or help open"),
 		fmt.Sprintf("%-9s %s", `% "`, "split the window: a new shell beside / below"),
 		fmt.Sprintf("%-9s %s", "arrows o", "focus another pane;  ctrl+arrows resize, z zooms, x closes, space switches the layout"),
+		fmt.Sprintf("%-9s %s", "u", "take over a watch-only thread pane and type into it (asks first; its coordinator is told)"),
 		fmt.Sprintf("%-9s %s", prefix, "send "+prefix+" itself to the program"),
+		"",
+		styleFaint.Render("You talk to coordinators; they run the threads, their reports and the tasks (tm thread, tm task)."),
 		styleFaint.Render("Here, the prefix then a key is that key. The prefix is [keys] prefix in config.toml."),
 	)
 }
@@ -185,8 +160,6 @@ func (m *dash) enter(string) tea.Cmd {
 	r, ok := m.selected()
 	switch {
 	case !ok:
-	case r.task != nil:
-		return m.openBoard(r.project, r.task.ID)
 	case r.session != "":
 		return m.act(func() actionMsg { return actionMsg{attach: r.session, current: r.project} })
 	case r.thread != nil:
@@ -204,18 +177,6 @@ func (m *dash) startShell(string) tea.Cmd {
 		id, err := m.src.StartShell(cwd, cols, rows)
 		return actionMsg{attach: id, sel: "s:" + id, err: err}
 	})
-}
-
-func (m *dash) startAgent(string) tea.Cmd {
-	m.prompt(m.agentName+" session in directory: ", m.cwd, func(dir string) tea.Cmd {
-		dir = expandDir(dir, m.cwd)
-		cols, rows := m.paneSize()
-		return m.act(func() actionMsg {
-			id, err := m.src.StartAgent(dir, cols, rows)
-			return actionMsg{attach: id, sel: "s:" + id, err: err}
-		})
-	})
-	return nil
 }
 
 func (m *dash) newProject(string) tea.Cmd {
@@ -265,50 +226,6 @@ func (m *dash) switcher(string) tea.Cmd {
 	}
 	m.push(sw)
 	return nil
-}
-
-func (m *dash) done(string) tea.Cmd {
-	r, ok := m.selected()
-	if !ok || r.task == nil {
-		m.msg = "d marks a task in review done; select one (t shows the tasks)"
-		return nil
-	}
-	return m.markDone(r.project, r.task, r.confirm)
-}
-
-func (m *dash) ack(string) tea.Cmd {
-	r, ok := m.selected()
-	if !ok || r.thread == nil {
-		m.msg = "a acknowledges a thread's report; select the thread"
-		return nil
-	}
-	if r.thread.ReportState() != "new" {
-		m.msg = r.thread.ID + " has no unacknowledged report"
-		return nil
-	}
-	slug, id, n := r.project, r.thread.ID, r.thread.Reports
-	return m.act(func() actionMsg {
-		err := m.src.Ack(slug, id)
-		return actionMsg{msg: fmt.Sprintf("%s report %d acknowledged", id, n), err: err}
-	})
-}
-
-func (m *dash) sendNext(key string) tea.Cmd {
-	r, ok := m.selected()
-	if !ok || r.thread == nil {
-		return nil
-	}
-	n := int(key[0] - '0')
-	if r.thread.Report == nil || n > len(r.thread.Report.Next) {
-		m.msg = fmt.Sprintf("%s's report has no ## Next line %d", r.thread.ID, n)
-		return nil
-	}
-	slug, id := r.project, r.thread.ID
-	line := r.thread.Report.Next[n-1]
-	return m.act(func() actionMsg {
-		err := m.src.PromptNext(slug, id, n)
-		return actionMsg{msg: id + " ← " + oneLine(line), err: err}
-	})
 }
 
 func (m *dash) resize(key string) tea.Cmd {

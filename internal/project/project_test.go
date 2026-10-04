@@ -134,32 +134,27 @@ func TestResolve(t *testing.T) {
 	}
 }
 
-func TestDoneConfirmation(t *testing.T) {
+func TestDoneApproved(t *testing.T) {
 	setup(t)
 	p, _ := New(Options{Name: "demo app"})
 	s := p.Tasks()
-	s.Add(coord, []tasks.NewTask{{Title: "Ship"}})
+	s.Add(coord, []tasks.NewTask{{Title: "Ship"}, {Title: "Docs"}})
 	_, err := s.SetStatus(coord, 1, tasks.Done, "")
 	if err == nil || !strings.Contains(err.Error(), "human-only") {
 		t.Fatalf("err %v", err)
 	}
-	s.SetStatus(coord, 1, tasks.Done, "")
-	items, _ := p.Inbox()
-	if len(items) != 1 || items[0].Kind != kindConfirm || items[0].Subject != "T1" || !items[0].NeedsUser {
-		t.Fatalf("items %+v", items)
+	if items, _ := p.Inbox(); len(items) != 0 {
+		t.Fatalf("a refused done raised items: %+v", items)
 	}
-	if _, err := s.SetStatus(human, 1, tasks.Done, ""); err != nil {
+	if _, err := s.SetDoneApproved(coord, 1, ""); err != nil {
 		t.Fatal(err)
 	}
-	if items, _ := p.Inbox(); len(items) != 0 {
-		t.Fatalf("confirmation still open: %+v", items)
-	}
-	if _, err := os.Stat(p.Path("inbox", "done")); err != nil {
+	if _, err := s.SetStatus(human, 2, tasks.Done, ""); err != nil {
 		t.Fatal(err)
 	}
 	lines, _, _ := p.JournalTail(20)
 	j := strings.Join(lines, "\n")
-	for _, want := range []string{"human project.new demo-app", "coordinator task.add T1 Ship", "coordinator task.request-done T1", "human task.status T1 done"} {
+	for _, want := range []string{"human project.new demo-app", "coordinator task.add T1 Ship", "coordinator task.status T1 done (approved by the user)", "human task.status T2 done"} {
 		if !strings.Contains(j, want) {
 			t.Errorf("journal lacks %q:\n%s", want, j)
 		}

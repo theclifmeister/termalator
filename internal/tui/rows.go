@@ -10,7 +10,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/theclifmeister/termalator/internal/proto"
-	"github.com/theclifmeister/termalator/internal/tasks"
 )
 
 // Rows: what the dashboard list shows, as data. Layout and styling
@@ -34,8 +33,6 @@ type row struct {
 
 	session string
 	project string
-	task    *tasks.Task
-	confirm bool // a done confirmation: d completes it whatever the status
 	thread  *ThreadRow
 }
 
@@ -99,12 +96,14 @@ func cols(prefix, who, what, state, rest string) string {
 // Row markers.
 const (
 	markBlocked = " ! "
-	markAsk     = " ? "
 	markTop     = "  "
 	markNested  = "    "
 )
 
-// buildRows lays out NEEDS YOU, PROJECTS and SESSIONS.
+// buildRows lays out NEEDS YOU, PROJECTS and SESSIONS. NEEDS YOU holds
+// only what waits on the user: blocked coordinators, and blocked sessions
+// of the user's own outside the projects. Everything about threads goes
+// to their coordinator, the user's single point of contact (§4).
 func buildRows(d Data) []row {
 	var needs, projs, other []row
 	bySlug := map[string]bool{}
@@ -113,7 +112,7 @@ func buildRows(d Data) []row {
 	}
 	now := time.Now()
 	for _, s := range d.Sessions {
-		if s.State == "blocked" {
+		if s.State == "blocked" && s.Role != proto.RoleThread {
 			who := s.Project
 			if who == "" {
 				who = s.ID
@@ -123,25 +122,6 @@ func buildRows(d Data) []row {
 		}
 	}
 	for _, p := range d.Projects {
-		for _, t := range p.NeedsYou {
-			rest := ""
-			if t.Thread != "" {
-				rest = "← " + t.Thread
-			}
-			needs = append(needs, row{key: fmt.Sprintf("t:%s:%d", p.Slug, t.ID), project: p.Slug, task: t,
-				mark: markAsk, who: p.Slug, what: t.Ref() + " " + oneLine(t.Title), state: string(t.Status), rest: rest, pct: -1})
-		}
-		for _, it := range p.Inbox {
-			r := row{key: "i:" + p.Slug + ":" + it.ID, project: p.Slug,
-				mark: markAsk, who: p.Slug, what: oneLine(it.Summary), state: "inbox", rest: it.Kind, pct: -1}
-			if it.Task != nil {
-				r.task, r.confirm = it.Task, true
-				r.what, r.state = it.Task.Ref()+" "+oneLine(it.Task.Title), "confirm"
-				r.rest = "d marks it done · " + oneLine(it.Summary)
-			}
-			needs = append(needs, r)
-		}
-
 		var coord *proto.SessionInfo
 		var members []proto.SessionInfo
 		byID := map[string]proto.SessionInfo{}
@@ -214,16 +194,6 @@ func buildRows(d Data) []row {
 			}
 			tr.what, tr.state, tr.rest = what, state, rest
 			projs = append(projs, tr)
-			ask := row{key: "nt:" + p.Slug + ":" + t.ID, project: p.Slug, session: tr.session, thread: t,
-				mark: markAsk, who: p.Slug, what: what, pct: -1}
-			switch {
-			case t.ReportState() == "new":
-				ask.state, ask.rest = "report", "unacknowledged report · a acks"
-				needs = append(needs, ask)
-			case t.Status != nil && t.Status.NeedsYou != "":
-				ask.state, ask.rest = "waiting", oneLine(t.Status.NeedsYou)
-				needs = append(needs, ask)
-			}
 		}
 		sort.SliceStable(members, func(i, j int) bool { return members[i].Thread < members[j].Thread })
 		for _, s := range members {
@@ -258,7 +228,7 @@ func buildRows(d Data) []row {
 	rows = append(rows, projs...)
 	rows = append(rows, row{head: "SESSIONS", count: len(other)})
 	if len(other) == 0 {
-		other = []row{{note: "  no sessions; s starts a shell, c an agent"}}
+		other = []row{{note: "  no sessions; s starts a shell"}}
 	}
 	return append(rows, other...)
 }
@@ -294,7 +264,7 @@ func prRef(url string) string {
 
 // threadDetail is what shows under a selected thread row (§4): its full
 // todo list, its task's steps and its report's ## Next lines, styled and
-// indented by ind.
+// indented by ind. The coordinator acts on them; the user only reads.
 func threadDetail(t *ThreadRow, ind string) []string {
 	var out []string
 	if t.Status != nil && len(t.Status.Todos) > 0 {
@@ -310,18 +280,10 @@ func threadDetail(t *ThreadRow, ind string) []string {
 		}
 	}
 	if t.Report != nil && len(t.Report.Next) > 0 {
-		head := fmt.Sprintf("report %d (%s) next:", t.Reports, t.ReportState())
-		if t.ReportState() == "new" {
-			head += "  a acks it"
-		}
-		out = append(out, ind+styleFaint.Render(head))
+		out = append(out, ind+styleFaint.Render(fmt.Sprintf("report %d (%s) next:", t.Reports, t.ReportState())))
 		for i, n := range t.Report.Next {
-			if i == 9 {
-				break
-			}
 			out = append(out, fmt.Sprintf("%s  %s %s", ind, styleAccent.Render(fmt.Sprint(i+1)), oneLine(n)))
 		}
-		out = append(out, ind+styleFaint.Render("  1-9 sends that line to the thread"))
 	}
 	if len(out) == 0 {
 		out = append(out, ind+styleFaint.Render("no todos, steps or report yet"))

@@ -12,7 +12,6 @@ import (
 
 	"github.com/theclifmeister/termalator/internal/caller"
 	"github.com/theclifmeister/termalator/internal/mdfile"
-	"github.com/theclifmeister/termalator/internal/tasks"
 )
 
 var now = time.Now
@@ -76,6 +75,19 @@ func (p *Project) AddItem(kind, subject, summary string, needsUser bool) (*Item,
 		return nil, err
 	}
 	return it, nil
+}
+
+// KindTakeover is the inbox item that tells the coordinator the user took
+// over a thread's watch-only pane and may type into it (§4).
+const KindTakeover = "takeover"
+
+// TookOver records that the user took over thread id's pane: an inbox
+// item for the coordinator and a journal line.
+func (p *Project) TookOver(c caller.Caller, id string) error {
+	if _, err := p.AddItem(KindTakeover, id, "the user took over "+id+"'s pane and may type into it", false); err != nil {
+		return err
+	}
+	return p.Journal(c, "thread.takeover", id, "")
 }
 
 // Inbox lists the unhandled items, oldest first.
@@ -171,54 +183,9 @@ func (p *Project) DoneItem(id string) error {
 	return err
 }
 
-// events connects a task store to the project's journal and inbox.
+// events connects a task store to the project's journal.
 type events struct{ p *Project }
 
 func (e events) Journal(c caller.Caller, action, ref, detail string) error {
 	return e.p.Journal(c, action, ref, detail)
-}
-
-// KindConfirmDone is the kind of the inbox item that asks the human to
-// confirm a task as done (§6.4); its subject is the task ref.
-const KindConfirmDone = kindConfirm
-
-const kindConfirm = "confirm-done"
-
-// RequestDone raises one NEEDS YOU confirmation per task; asking again
-// returns the open one.
-func (e events) RequestDone(c caller.Caller, t *tasks.Task) (string, error) {
-	items, err := e.p.Inbox()
-	if err != nil {
-		return "", err
-	}
-	for _, it := range items {
-		if it.Kind == kindConfirm && it.Subject == t.Ref() {
-			return it.ID, nil
-		}
-	}
-	summary := fmt.Sprintf("%s asks to mark %s done; confirm with: tm task status %s done", c.String(), t.Ref(), t.Ref())
-	it, err := e.p.AddItem(kindConfirm, t.Ref(), summary, true)
-	if err != nil {
-		return "", err
-	}
-	if err := e.p.Journal(c, "task.request-done", t.Ref(), it.ID); err != nil {
-		return "", err
-	}
-	return it.ID, nil
-}
-
-// Confirmed closes the task's open confirmations once the human set done.
-func (e events) Confirmed(t *tasks.Task) error {
-	items, err := e.p.Inbox()
-	if err != nil {
-		return err
-	}
-	for _, it := range items {
-		if it.Kind == kindConfirm && it.Subject == t.Ref() {
-			if err := e.p.DoneItem(it.ID); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }

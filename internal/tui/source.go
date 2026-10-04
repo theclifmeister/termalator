@@ -2,8 +2,6 @@ package tui
 
 import (
 	"errors"
-	"fmt"
-	"os"
 	"sync"
 
 	"github.com/theclifmeister/termalator/internal/caller"
@@ -32,10 +30,6 @@ type ProjectData struct {
 	Slug   string
 	Name   string
 	Counts map[string]int
-	// NeedsYou are the tasks in review or blocked.
-	NeedsYou []*tasks.Task
-	// Inbox are the unhandled items marked needs_user.
-	Inbox []InboxRow
 	// Unread counts every unhandled inbox item; Items are all of them,
 	// for the inbox view.
 	Unread int
@@ -56,43 +50,28 @@ type ThreadRow struct {
 	TaskRec *tasks.Task
 }
 
-// InboxRow is an inbox item; Task is set for a done confirmation (§6.4),
-// which d completes.
-type InboxRow struct {
-	project.Item
-	Task *tasks.Task
-}
-
-// Source is the dashboard's view of the world; tests use a fake.
+// Source is the dashboard's view of the world; tests use a fake. It
+// only reads, starts shells and opens projects: what happens to threads
+// and tasks is the coordinator's (docs/SPEC.md §4).
 type Source interface {
 	Load() Data
 	Board(slug string) (*tasks.Board, error)
-	// StartShell and StartAgent start a session of cols×rows in cwd.
+	// StartShell starts a shell of cols×rows in cwd.
 	StartShell(cwd string, cols, rows int) (string, error)
-	StartAgent(cwd string, cols, rows int) (string, error)
 	NewProject(name string) (string, error)
 	// OpenProject returns the project's coordinator session, started
 	// first if none runs.
 	OpenProject(slug string, cols, rows int) (string, error)
-	// MarkDone sets a task done: the human's acceptance (§6.4).
-	MarkDone(slug string, id int) error
-	// Ack acknowledges a thread's latest report; PromptNext sends line n
-	// of its ## Next to the thread as its next prompt (§7.2).
-	Ack(slug, threadID string) error
-	PromptNext(slug, threadID string, n int) error
 }
 
 // ServerSource is the real Source: the control socket plus the project
 // folders.
 type ServerSource struct {
 	Paths server.Paths
-	// Agent is the agent of coordinators and of the c key.
+	// Agent is the agent of coordinators.
 	Agent string
 	// Caller is who acts: the human, unless tm runs inside an agent.
 	Caller caller.Caller
-	// Run runs a tm command as Caller (set by package cli), for the
-	// actions that are CLI commands: ack and prompt.
-	Run func(args ...string) error
 
 	mu  sync.Mutex
 	ctl *server.Client
@@ -148,12 +127,6 @@ func (s *ServerSource) Load() Data {
 			b, err := p.Tasks().Load()
 			if err != nil {
 				b = nil
-			} else {
-				for _, t := range b.Tasks {
-					if tasks.GroupOf(t.Status) == tasks.NeedsYou {
-						pd.NeedsYou = append(pd.NeedsYou, t)
-					}
-				}
 			}
 			recs, _ := thread.List(p)
 			for _, r := range recs {
@@ -170,16 +143,6 @@ func (s *ServerSource) Load() Data {
 			}
 			items, _ := p.Inbox()
 			pd.Unread, pd.Items = len(items), items
-			for _, it := range items {
-				if !it.NeedsUser {
-					continue
-				}
-				r := InboxRow{Item: it}
-				if id, ok := tasks.ParseRef(it.Subject); ok && it.Kind == project.KindConfirmDone && b != nil {
-					r.Task = b.Find(id)
-				}
-				pd.Inbox = append(pd.Inbox, r)
-			}
 		}
 		d.Projects = append(d.Projects, pd)
 	}
@@ -204,14 +167,6 @@ func (s *ServerSource) start(p proto.SessionStartParams) (string, error) {
 
 func (s *ServerSource) StartShell(cwd string, cols, rows int) (string, error) {
 	return s.start(proto.SessionStartParams{Cwd: cwd, Cols: uint16(cols), Rows: uint16(rows)})
-}
-
-func (s *ServerSource) StartAgent(cwd string, cols, rows int) (string, error) {
-	fi, err := os.Stat(cwd)
-	if err != nil || !fi.IsDir() {
-		return "", fmt.Errorf("%s is not a directory", cwd)
-	}
-	return s.start(proto.SessionStartParams{Agent: s.Agent, Cwd: cwd, Cols: uint16(cols), Rows: uint16(rows)})
 }
 
 func (s *ServerSource) NewProject(name string) (string, error) {
@@ -259,28 +214,4 @@ func OpenCoordinator(call func(method string, params, result any) error, slug, a
 		return "", err
 	}
 	return started.Session.ID, nil
-}
-
-func (s *ServerSource) MarkDone(slug string, id int) error {
-	p, err := project.Open(slug)
-	if err != nil {
-		return err
-	}
-	_, err = p.Tasks().SetStatus(s.Caller, id, tasks.Done, "")
-	return err
-}
-
-func (s *ServerSource) run(args ...string) error {
-	if s.Run == nil {
-		return errors.New("not available here")
-	}
-	return s.Run(args...)
-}
-
-func (s *ServerSource) Ack(slug, id string) error {
-	return s.run("thread", "ack", id, "--project", slug)
-}
-
-func (s *ServerSource) PromptNext(slug, id string, n int) error {
-	return s.run("thread", "prompt", id, "--next", fmt.Sprint(n), "--project", slug)
 }

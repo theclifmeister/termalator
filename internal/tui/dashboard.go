@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -44,11 +43,9 @@ type DashOptions struct {
 	Source Source
 	In     *os.File
 	Out    *os.File
-	// Cwd is where s and c start sessions by default.
-	Cwd string
-	// AgentName labels the c key ("claude").
-	AgentName string
-	State     DashState
+	// Cwd is where s starts shells.
+	Cwd   string
+	State DashState
 	// Width and Height size the first frame before the terminal reports
 	// its size (tests).
 	Width, Height int
@@ -83,10 +80,9 @@ func Dashboard(opts DashOptions) (DashResult, error) {
 }
 
 type dash struct {
-	src       Source
-	cwd       string
-	agentName string
-	w, h      int
+	src  Source
+	cwd  string
+	w, h int
 
 	data    Data
 	loaded  bool
@@ -117,7 +113,7 @@ func newDash(o DashOptions) *dash {
 	if w <= 0 || h <= 0 {
 		w, h = 80, 24
 	}
-	return &dash{src: o.Source, cwd: o.Cwd, agentName: o.AgentName, w: w, h: h,
+	return &dash{src: o.Source, cwd: o.Cwd, w: w, h: h,
 		sel: o.State.Selected, current: o.State.Current, msg: o.State.Message,
 		layout: LoadLayout(o.UIFile), uiFile: o.UIFile,
 		prefix: cmp.Or(o.Prefix, DefaultPrefixKey), then: o.State.Then}
@@ -404,31 +400,6 @@ func (m *dash) cycleProject(next bool) tea.Cmd {
 		i = (i - 1 + len(ps)) % len(ps)
 	}
 	return m.openProject(ps[i].Slug)
-}
-
-func (m *dash) markDone(slug string, t *tasks.Task, confirm bool) tea.Cmd {
-	if t.Status != tasks.Review && !confirm {
-		m.msg = fmt.Sprintf("%s is %s; only a task in review is marked done here", t.Ref(), t.Status)
-		return nil
-	}
-	id, ref := t.ID, t.Ref()
-	return m.act(func() actionMsg {
-		err := m.src.MarkDone(slug, id)
-		return actionMsg{msg: ref + " done", err: err}
-	})
-}
-
-// expandDir resolves ~ and relative paths against cwd.
-func expandDir(dir, cwd string) string {
-	if dir == "~" || strings.HasPrefix(dir, "~/") {
-		if h, err := os.UserHomeDir(); err == nil {
-			dir = filepath.Join(h, dir[1:])
-		}
-	}
-	if !filepath.IsAbs(dir) {
-		dir = filepath.Join(cwd, dir)
-	}
-	return filepath.Clean(dir)
 }
 
 // View.

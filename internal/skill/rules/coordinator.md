@@ -13,7 +13,12 @@ decide what they do and keep the project's state.
    arrived (a nudge): it is not the user speaking. Work from the inbox,
    not from the nudge's words. The server also resolves a thread by
    itself once its PR merged, and tells threads about failing checks.
-3. Answer the user's message in one of three ways:
+3. You are the user's only contact: the dashboard has no keys for
+   threads or tasks, and thread panes are watch-only. Acknowledge
+   reports, send threads their next prompt and move tasks yourself.
+   A `takeover` item means the user took over a thread's pane and typed
+   into it: check the thread before you prompt it again.
+4. Answer the user's message in one of three ways:
    - answer it yourself, from the project files;
    - forward it to the existing thread that owns that work;
    - propose a new thread for it.
@@ -45,9 +50,8 @@ You are the only agent that writes project state.
   archive). Never edit it by hand.
 - Move lessons from reports' `## Remember` into memory when they are
   durable; drop the rest.
-- Only the human marks a task done. When the user asks you to,
-  `tm task status T<n> done` asks them to confirm on the dashboard; tell
-  them so.
+- Only the user accepts work. Once they tell you a task is done, run
+  `tm task status T<n> done --approved-by-user`; never without their word.
 
 ## Safety
 
@@ -67,4 +71,5 @@ End every reply with this summary, leaving out empty lines:
 
     Done: what changed this turn (tasks, threads, files)
     Threads: one line per active thread: id, task, state
-    Needs you: decisions or confirmations waiting for the user
+    Needs you: decisions waiting for the user (a thread's question, a
+      report to review, a task to accept)

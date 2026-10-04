@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/theclifmeister/termalator/internal/project"
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/server"
 	"github.com/theclifmeister/termalator/internal/tui"
@@ -83,6 +84,16 @@ func attachCmd(e *Env, args []string) int {
 	return ExitOK
 }
 
+// tookOver tells a thread's coordinator that the user took over the
+// thread's pane (docs/SPEC.md §4): an inbox item and a journal line.
+func (e *Env) tookOver(s proto.SessionInfo) error {
+	p, err := project.Open(s.Project)
+	if err != nil {
+		return err
+	}
+	return p.TookOver(e.Caller, s.Thread)
+}
+
 // attach runs the attach view on this terminal until the user detaches
 // or the session ends. On a build mismatch it re-execs the server's
 // binary with args (docs/SPEC.md §3.3) and doesn't return.
@@ -94,7 +105,8 @@ func (e *Env) attach(p server.Paths, id string, statusBar bool, args []string) (
 			logger = log.New(f, fmt.Sprintf("attach %s pid %d: ", id, os.Getpid()), log.Lmicroseconds)
 		}
 	}
-	res, err := tui.Attach(tui.Options{Paths: p, Session: id, In: os.Stdin, Out: os.Stdout, Log: logger, StatusBar: statusBar})
+	res, err := tui.Attach(tui.Options{Paths: p, Session: id, In: os.Stdin, Out: os.Stdout, Log: logger, StatusBar: statusBar,
+		Takeover: e.tookOver})
 	var verr *proto.MismatchError
 	if errors.As(err, &verr) && verr.ReExec && e.Getenv(reexecEnv) == "" {
 		// The snapshot format is only stable within one build: become the

@@ -9,6 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/theclifmeister/termalator/internal/mdfile"
+	"github.com/theclifmeister/termalator/internal/project"
 )
 
 // TestSmokeProjectOpenAndSwitch: tm project open starts a project's
@@ -96,15 +99,15 @@ func (e *Env) scripts(files map[string]string) {
 
 // TestSmokeServerCallerCheck: the server decides who calls tm task from
 // the process tree (docs/SPEC.md §11.1). A coordinator that drops the
-// session variables is still a coordinator and can't set done; a hosted
-// shell session is the human and can.
+// session variables is still a coordinator and can't set done without
+// the user's approval; a hosted shell session is the human and can.
 func TestSmokeServerCallerCheck(t *testing.T) {
 	env := New(t)
 	env.FakeClaude()
 	env.scripts(map[string]string{"sneak": `
 [[step]]
 do = "run"
-cmd = 'env -u TERMALATOR_SESSION -u TERMALATOR_ROLE -u TERMALATOR_PROJECT "$TERMALATOR_BIN" task status T1 done --project demo; echo "exit=$?"'
+cmd = 'env -u TERMALATOR_SESSION -u TERMALATOR_ROLE -u TERMALATOR_PROJECT "$TERMALATOR_BIN" task status T1 done --project demo 2>&1; echo "exit=$?"'
 `})
 	slug, dir := newProject(env, "Demo")
 	env.Trust(dir)
@@ -113,11 +116,9 @@ cmd = 'env -u TERMALATOR_SESSION -u TERMALATOR_ROLE -u TERMALATOR_PROJECT "$TERM
 	env.WaitState(s, "idle", agentWait)
 	env.Prompt(s, "run sneak")
 	env.WaitFor(s, "exit=1", agentWait)
+	env.WaitFor(s, "human-only", agentWait)
 	if out := env.MustCLI("task", "show", "T1", "--project", slug, "--json"); strings.Contains(out, `"status": "done"`) {
 		t.Fatalf("a coordinator without its variables set done:\n%s", out)
-	}
-	if out := env.MustCLI("inbox", "list", "--project", slug); !strings.Contains(out, "confirm-done") {
-		t.Fatalf("no confirmation raised:\n%s", out)
 	}
 
 	// The human, from a shell session inside termalator.
@@ -131,8 +132,8 @@ cmd = 'env -u TERMALATOR_SESSION -u TERMALATOR_ROLE -u TERMALATOR_PROJECT "$TERM
 }
 
 // TestSmokeClearLosesNothing is the invariant of docs/SPEC.md §16.6: a
-// coordinator works (tasks, a done request, inbox handling, journal
-// lines); after /clear its SessionStart re-injection is the role rules
+// coordinator works (tasks, a done the user approved, inbox handling,
+// journal lines); after /clear its SessionStart re-injection is the role rules
 // plus tm context, byte for byte as captured before, and no inbox item
 // was lost or handled twice.
 func TestSmokeClearLosesNothing(t *testing.T) {
@@ -150,23 +151,36 @@ cmd = '` + tm + `task status T1 started && ` + tm + `task steps T1 check 1 && ` 
 
 [[step]]
 do = "run"
-cmd = '` + tm + `task status T2 done; ` + tm + `task status T3 done; ` + tm + `inbox list'
+cmd = '` + tm + `task status T2 done --approved-by-user; ` + tm + `task status T3 done; ` + tm + `inbox list'
 
 [[step]]
 do = "run"
-cmd = '` + tm + `inbox done "$(` + tm + `inbox list | grep T3 | cut -d" " -f1)" && echo WORK-DONE'
+cmd = '` + tm + `inbox done "$(` + tm + `inbox list | grep t-0003 | cut -d" " -f1)" && echo WORK-DONE'
 `})
 	slug, dir := newProject(env, "Demo")
 	env.Trust(dir)
+	// Two items from threads, as the ticker writes them.
+	for _, it := range []project.Item{
+		{ID: "20261004T120000Z-report-t-0002", Kind: "report", Subject: "t-0002", Summary: "t-0002 handed in report 1"},
+		{ID: "20261004T120001Z-report-t-0003", Kind: "report", Subject: "t-0003", Summary: "t-0003 handed in report 1"},
+	} {
+		os.MkdirAll(filepath.Join(dir, "inbox"), 0o755)
+		if err := mdfile.Write(filepath.Join(dir, "inbox", it.ID+".md"), it, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
 	s := env.StartAgent("claude", dir, "--role", "coordinator", "--project", slug)
 	env.WaitState(s, "idle", agentWait)
 	env.Prompt(s, "run work")
 	env.WaitFor(s, "WORK-DONE", agentWait)
+	// The server nudges the idle coordinator about the items once; let
+	// that turn end before /clear.
+	env.WaitFake("prompt", agentWait, func(r FakeRecord) bool { return strings.HasPrefix(r.Str("text"), "[tm] ") })
 	env.WaitState(s, "idle", agentWait)
 
 	inboxBefore := env.MustCLI("inbox", "list", "--project", slug)
 	doneBefore := listDir(t, filepath.Join(dir, "inbox", "done"))
-	if !strings.Contains(inboxBefore, "T2") || strings.Contains(inboxBefore, "T3") || len(doneBefore) != 1 {
+	if !strings.Contains(inboxBefore, "t-0002") || strings.Contains(inboxBefore, "t-0003") || len(doneBefore) != 1 {
 		t.Fatalf("after the work: inbox\n%s\ndone %v", inboxBefore, doneBefore)
 	}
 	want := env.MustCLI("skill", "coordinator") + "\n\n" + env.MustCLI("context", "--project", slug)
