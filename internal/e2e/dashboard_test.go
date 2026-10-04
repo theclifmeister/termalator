@@ -77,7 +77,7 @@ func TestSmokeDashboard(t *testing.T) {
 // TestSmokeFirstLocalRun is M4's "Try it" with the fake agent: an agent
 // session of the user's own, outside any project, shows on the dashboard
 // and enter attaches; a prompt typed there blocks on a permission dialog;
-// Ctrl+\ d shows the session under NEEDS YOU; enter attaches again to
+// Ctrl+B d shows the session under NEEDS YOU; enter attaches again to
 // answer it; closing the terminal loses nothing, and a new dashboard
 // shows the session idle.
 func TestSmokeFirstLocalRun(t *testing.T) {

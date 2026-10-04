@@ -46,7 +46,7 @@ const (
 )
 
 // Outer terminal setup: alternate screen, bracketed paste, kitty keyboard
-// "disambiguate" (so Shift+Enter and Ctrl+\ are unambiguous), colour
+// "disambiguate" (so Shift+Enter and the prefix are unambiguous), colour
 // scheme updates (2031) plus a query for the current scheme.
 const (
 	outerSetup   = "\x1b[?1049h\x1b[?2004h\x1b[>1u\x1b[?2031h\x1b[?996n"

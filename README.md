@@ -6,9 +6,9 @@ Claude Code is the first supported agent. Other agents plug in through a manifes
 
 **Status:** pre-alpha; see the [v0.1 specification](docs/SPEC.md). What works:
 - the background server (milestone M1): it hosts shell sessions that survive closing your terminal (`tm server …`, `tm session …`);
-- the attach client (milestone M2): `tm attach` shows a session full-screen; Ctrl+\ then `d` detaches and leaves it running;
+- the attach client (milestone M2): `tm attach` shows a session full-screen; Ctrl+B then `d` detaches and leaves it running;
 - agent sessions (milestone M3): `tm session start --agent claude` runs Claude Code with its live state (working / blocked / idle), todos and resume;
-- the dashboard (milestone M4): `tm` lists every session and project with live state, attaches with `enter` and comes back with Ctrl+\ then `d`;
+- the dashboard (milestone M4): `tm` lists every session and project with live state, attaches with `enter` and comes back with Ctrl+B then `d`; a projects sidebar on the left of every screen shows which project you are in, and a click on another opens its coordinator;
 - projects and tasks (milestone M5): `tm project new|list|open`, `tm skill`, `tm task …`, `tm context` and `tm inbox list|done`;
 - threads (milestone M6): `tm thread start|prompt|restart|resolve`, agents in git worktrees reporting through `tm`;
 - hardening (milestone M8): agents resume after a server crash or restart, `tm doctor [--fix]`, an optional login service (`tm server service install`), and release archives.
@@ -30,7 +30,7 @@ Where state lives, logs, the login service, upgrading and uninstalling: [docs/OP
 make run
 ```
 
-This builds `bin/tm`, starts the background server and opens the dashboard. Press `n` to create a project, then `enter` on it to start its coordinator (Claude Code), or `s` for a shell; either attaches right away, with a status bar at the bottom. You talk to the coordinator; it runs the threads, whose panes you can watch (`enter` on a thread) but not type into unless you take one over (Ctrl+\ then `u`). Ctrl+\ is the prefix key, as in tmux: Ctrl+\ then `d` brings you back to the dashboard (then `p`, `]` or `[` switches project, `i` opens the inbox), where a session that waits for you (a permission dialog, say) shows under NEEDS YOU; `enter` attaches again. `?` lists the keys, `q` quits the dashboard. Sessions keep running after you quit, and after you close the terminal:
+This builds `bin/tm`, starts the background server and opens the dashboard. Press `n` to create a project, then `enter` on it to start its coordinator (Claude Code), or `s` for a shell; either attaches right away, with a status bar at the bottom. You talk to the coordinator; it runs the threads, whose panes you can watch (`enter` on a thread) but not type into unless you take one over (Ctrl+B then `u`). Ctrl+B is the prefix key, as in tmux (the UI writes it `prefix+<key>`, e.g. `prefix+d`): Ctrl+B then `d` brings you back to the dashboard (then `p`, `]` or `[` switches project, `i` opens the inbox), where a session that waits for you (a permission dialog, say) shows under NEEDS YOU; `enter` attaches again. `?` lists the keys, `q` quits the dashboard. Sessions keep running after you quit, and after you close the terminal:
 
 ```sh
 bin/tm                                 # the dashboard again
@@ -43,7 +43,7 @@ bin/tm session stop s-1
 bin/tm server status | stop
 ```
 
-`make run RUN_ARGS=top` also starts a session running `top`. Attaching never resizes the session; resizing the window you attached from does. Ctrl+\ then `%` or `"` splits the window and starts a shell beside or below (Ctrl+\ then an arrow moves between panes, Ctrl+arrows resize, `z` zooms, `x` closes a pane and leaves its session running). Shift+PgUp/PgDn scroll back through a shell's output; full-screen programs get the mouse wheel. The prefix key can be changed in `~/.termalator/config.toml` (`[keys]` `prefix = "ctrl+b"`); Ctrl+\ twice sends Ctrl+\ to the program. In a window 120 columns or wider the dashboard shows the selected row's details beside the list (`<` `>` resize it, `|` hides it, `,` shows the settings). The server keeps its state in `~/.termalator`; set `TERMALATOR_HOME` to use somewhere else.
+`make run RUN_ARGS=top` also starts a session running `top`. Attaching never resizes the session; resizing the window you attached from does. Ctrl+B then `%` or `"` splits the window and starts a shell beside or below (Ctrl+B then an arrow moves between panes, Ctrl+arrows resize, `z` zooms, `x` closes a pane and leaves its session running). Shift+PgUp/PgDn scroll back through a shell's output; full-screen programs get the mouse wheel. The prefix key can be changed in `~/.termalator/config.toml` (`[keys]` `prefix = "ctrl+a"`); do that when you run `tm` inside tmux, which takes Ctrl+B itself. Ctrl+B twice sends Ctrl+B to the program (Claude Code uses it to background a running task). The projects sidebar is resizable: drag its border, or `{` `}` (Ctrl+B then `{` `}` in a session); `b` makes it a slim strip. When the dashboard has 120 columns or more beside the sidebar the dashboard shows the selected row's details beside the list (`<` `>` resize it, `|` hides it, `,` shows the settings). The server keeps its state in `~/.termalator`; set `TERMALATOR_HOME` to use somewhere else.
 
 ## Try projects and tasks
 

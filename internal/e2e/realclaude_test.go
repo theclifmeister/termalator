@@ -214,7 +214,7 @@ func TestRealThreadAccess(t *testing.T) {
 
 // TestRealFirstLocalRun is M4's "Try it" against Claude: a Claude
 // session of the user's own shows on the dashboard and enter attaches; a prompt
-// typed there blocks on a permission dialog; Ctrl+\ d shows it under NEEDS
+// typed there blocks on a permission dialog; Ctrl+B d shows it under NEEDS
 // YOU; enter attaches again to approve; the session survives the window.
 func TestRealFirstLocalRun(t *testing.T) {
 	env := realEnv(t)

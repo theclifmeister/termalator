@@ -15,7 +15,7 @@ import (
 const defaultAgent = "claude"
 
 // dashboardCmd is `tm` with no arguments: the dashboard, and the attach
-// view in between (docs/SPEC.md §4). The prefix (Ctrl+\) then d in a
+// view in between (docs/SPEC.md §4). The prefix (Ctrl+B) then d in a
 // session comes back here.
 func (e *Env) dashboardCmd() int {
 	if !isTTY(os.Stdin) || !isTTY(os.Stdout) {

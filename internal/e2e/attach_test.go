@@ -36,7 +36,7 @@ func assertPaneSize(t *testing.T, env *Env, s *Session, cols, rows uint16) {
 }
 
 // TestSmokeAttachDetachReattach is M2's first "Try it": attach while a
-// program streams, detach with Ctrl+\ d, reattach from another window at
+// program streams, detach with Ctrl+B d, reattach from another window at
 // another size, close that window mid-stream. The pane is never resized
 // by attaching, nothing is lost, and every mirror equals the server.
 func TestSmokeAttachDetachReattach(t *testing.T) {
@@ -346,7 +346,7 @@ func TestAttachLocalScrollback(t *testing.T) {
 }
 
 // TestRunScript runs scripts/run.sh (`make run`) in a window: it opens
-// the dashboard; s starts a shell and attaches; Ctrl+\ d comes back to the
+// the dashboard; s starts a shell and attaches; Ctrl+B d comes back to the
 // dashboard and q leaves the shell running.
 func TestRunScript(t *testing.T) {
 	env := New(t)

@@ -196,7 +196,7 @@ After the hello the client sends `{"attach":{"session":"s-…","cols":C,"rows":R
 - **Sizing: the console you type in.** A pane's PTY has one size, kept by the server. Each console lays out its own split panes, and the pane follows the console that last typed into it, as tmux's `window-size latest` does.
   - **Attaching never resizes.** A console whose window is a different size shows the pane cropped or padded, and when it has fewer rows than the pane it shows the rows around the cursor. A console that only watches never resizes anything, and neither does a watch-only thread pane (§4) until it is taken over.
   - **Typing claims the size.** A key, a paste, a mouse click or the wheel sent from a console first resizes every pane that console shows to its rectangle there (`CLAIM_SIZE`, only for panes whose size differs and wasn't already asked for). Focus reports and mouse motion don't count. The pane then keeps that size until another console claims it.
-  - **Window resizes and split changes always resize.** When the user really resizes a console's window, or changes its split panes (split, close, zoom, resize a divider, switch layout; §4), every pane whose rectangle changed is resized to it (`SET_SIZE`), whichever console typed last.
+  - **Window resizes and split changes always resize.** When the user really resizes a console's window, or changes its split panes (split, close, zoom, resize a divider, switch layout; §4) or its projects sidebar's width (§4), every pane whose rectangle changed is resized to it (`SET_SIZE`), whichever console typed last. The panes' area is the window less the sidebar and the status bar.
   - **Coalescing.** The server resizes a session at most once per 250 ms (`TIOCSWINSZ` + `SIGWINCH`). A request inside that time waits until it is over, and later requests replace it. Two consoles typed into in turn, or a window being dragged, can't flood the program with SIGWINCH.
   - **Inline renderers opt out.** An agent whose manifest says `[screen] resize = "explicit"` (§8.2) ignores `CLAIM_SIZE`: its panes change size only on a window resize or a split change. Inline renderers duplicate or tear rows in their scrollback on every resize. Claude's inline mode does this, while its full-screen mode, the default since 2.1.x, only repaints once.
   - Split panes: each pane is its own attach connection with its own mirror and renderer. A pane's renderer draws into its rectangle of the shared window and erases only up to its edge (`ECH`, never `EL` or `ED`); the client draws the dividers and the status bar and wraps the whole frame in one mode 2026 update, ending with the focused pane's cursor. With one pane the renderer has the window to itself, as before.
@@ -208,7 +208,7 @@ After the hello the client sends `{"attach":{"session":"s-…","cols":C,"rows":R
 - **Input.**
   - The client pushes kitty "disambiguate" on the outer terminal and decodes its input with ultraviolet. It then re-encodes every key, mouse, focus and paste event with libghostty's encoders against the **mirror's** modes. This is how Shift+Enter (`CSI 13;2u`) reaches Claude intact.
   - Mouse (1000/1002/1003/1006) and focus (1004) modes are mirrored onto the outer terminal only while the app wants them, so native selection works the rest of the time. Claude 2.1.x is full-screen with any-event mouse tracking, so mouse forwarding is required.
-- **Prefix key: Ctrl+\\.** The client recognises it as `0x1c` and as `CSI 92;5u`. It starts a key command, as in tmux: prefix then `d` detaches, and prefix twice sends the prefix itself to the program (§4 lists the commands). It is `[keys] prefix` in `config.toml`; the older `[keys] detach` names the same key. Shift+PgUp/PgDn scroll the client's local scrollback for apps on the main screen (inline mode, shells); full-screen apps get the wheel.
+- **Prefix key: Ctrl+B,** tmux's default. The client recognises it as `0x02` and as `CSI 98;5u`. It starts a key command, as in tmux: prefix then `d` detaches, and prefix twice sends the prefix itself to the program, so Claude Code's own Ctrl+B (background a running task) still works (§4 lists the commands). It is `[keys] prefix` in `config.toml`; the older `[keys] detach` names the same key. Inside tmux, which takes Ctrl+B itself, users set another one (e.g. `ctrl+a`). Hints in the UI never show the key: they read `prefix+d`, `prefix+u` and so on; only the help popup's header (`prefix = ctrl+b`) and the settings popup name the configured key. Shift+PgUp/PgDn scroll the client's local scrollback for apps on the main screen (inline mode, shells); full-screen apps get the wheel.
 - **Several clients.** Any number of clients may attach over time and at once, one attached pane per client in v0.1. Two clients MAY attach to the same pane; both receive output and both may type. The pane's size follows the console that last typed into it, resized its window or changed its split panes (sizing, above). Each console's split layout is its own.
 - **The client's own terminal going away.** SIGHUP, or EOF/EIO on stdin, is a detach: the client exits within about 50 ms, and the server and agent are unaffected. On attach the client paints the snapshot at once, even when the pane is idle.
 - **Fallback considered and rejected.** Replaying the VT formatter's output into a fresh emulator is version-independent, but it loses the inactive screen: primary scrollback and its kitty flags disappear while an app is on the alt screen. It stays a debug aid, not a protocol.
@@ -287,12 +287,28 @@ The processes die with the server, because the PTY master closes and the childre
   - the time since the last change, and the linked task id.
 
   Selecting a thread row shows its full todo list, its task's steps and its report's `## Next` lines, to read: in the details panel beside the list, or under the row when the window is too narrow for the panel. Threads are ordered as in §7.4; a row says `report waiting`, or `ready for review` once the thread called `tm done`, and the PR number from the report.
-- **Details panel.** In a window at least 120 columns wide, a panel right of the list shows everything about the selected row: a thread's state, task, progress, PR, report and the lines above; a task's notes and steps; a session's directory, command and progress; a project's coordinator, counts and inbox. `<` and `>` narrow and widen the list, dragging the divider with the mouse does the same, and `|` hides or shows the panel. The layout is kept in `ui.json` (§5.1), not `config.toml`, which `tm` never writes.
+- **Details panel.** When the dashboard (the window less the sidebar) is at least 120 columns wide, a panel right of the list shows everything about the selected row: a thread's state, task, progress, PR, report and the lines above; a task's notes and steps; a session's directory, command and progress; a project's coordinator, counts and inbox. `<` and `>` narrow and widen the list, dragging the divider with the mouse does the same, and `|` hides or shows the panel. The layout is kept in `ui.json` (§5.1), not `config.toml`, which `tm` never writes.
 - **Look.** Colours are the terminal's 16 ANSI colours, so they follow the user's theme; `NO_COLOR` turns them off. Every state also has its own glyph (● working, ▲ blocked, ○ idle, ◌ starting, ◆ needs you, ✓ done), so colour is never the only signal. A row shows a five-cell progress bar when it still fits.
+- **Help** (`?`) lists every key; its header names the configured prefix (`prefix = ctrl+b`), the one place besides the settings that shows it.
 - **Popups.** Help, the inbox, the task board, the project switcher, prompts and the settings open as bordered boxes over the dimmed dashboard; `esc` closes the topmost. The footer lists the popup's keys and still shows messages.
-- **Settings** (`,`): the prefix key, the selected project's safety settings (§11.2), each marked when it is the default, and the layout. `tm` never writes `config.toml`; `e` opens it in `$VISUAL` or `$EDITOR`, and the popup reloads when the editor exits.
+- **Settings** (`,`): the prefix key (with a note to pick another inside tmux, which takes Ctrl+B), the selected project's safety settings (§11.2), each marked when it is the default, and the layout. `tm` never writes `config.toml`; `e` opens it in `$VISUAL` or `$EDITOR`, and the popup reloads when the editor exits.
+- **Projects sidebar.** A column on the left of every screen, the dashboard, an attached session and split layouts alike, lists every project with its coordinator's state glyph (`·` when none runs) and its count of open (unresolved) threads:
+
+  ```
+   PROJECTS 2            │ termalator                               ● server ok · 3 sessions
+  ▸● termalator        2 │ PROJECTS 2 ─────────────────────────────────────────────────────
+   ▲ foodperfect       0 │  termalator   coordinator   ● working  ...
+  ```
+
+  - The current project is marked `▸` and drawn in reverse video: on the dashboard the project last attached to (else the selected row's); while attached, the focused pane's project (else the dashboard's). The status bar names the project too (`s-4 · termalator coordinator · …`), so the context is never lost.
+  - A click on a project opens its coordinator (started if none runs), from the dashboard, under a popup, or while attached, split panes included: the attach view detaches and the dashboard opens it at once. The prefix then `p`, `]` and `[` and the switcher do the same from the keys.
+  - It is 24 columns wide by default (its border included), 14 to 48. Dragging its border, `{` and `}` (2 columns) on the dashboard, or the prefix then `{` or `}` while attached, change the width; `b` (prefix then `b` while attached) turns it into the slim strip and back. The width is kept in `ui.json` (§5.1).
+  - When a full sidebar would leave less than 60 columns, it shrinks to the slim strip, 7 columns of a marker, the glyph and the slug's first four letters (`▸●term`). It never disappears.
+  - Panes and the dashboard get the window less the sidebar. A width change is a layout change: it resizes the panes it touches (`SET_SIZE`, §3.3). Watch-only thread panes stay watch-only and never claim a size.
+  - While a sidebar is shown, the attach view keeps the outer terminal's mouse reporting on (button events and drags) so the sidebar can be clicked whatever the focused program wants; the program still only gets mouse events it asked for. Selecting text natively in a pane then needs Shift, as on the dashboard.
+  - Its state (width, slim) is `SidebarLayout`, kept apart from the rest of the layout so it can move into a server-owned view later.
 - **Footer.** It lists only the keys that apply to the selected row: `enter attach`, `enter watch` on a thread, `enter show` or `enter open`. `?` lists every key.
-- **Mouse.** A click selects a row, the wheel moves the selection, and the divider can be dragged. Holding Shift selects text as usual in most terminals.
+- **Mouse.** A click selects a row, the wheel moves the selection, and the divider and the sidebar's border can be dragged; a click on the sidebar opens a project. Holding Shift selects text as usual in most terminals.
 - **Keys** (small and fixed in v0.1):
 
   | Key | Action |
@@ -307,12 +323,14 @@ The processes die with the server, because the PTY master closes and the childre
   | `,` | settings |
   | `<` / `>` | narrow / widen the list beside the details panel |
   | `\|` | show or hide the details panel |
+  | `{` / `}` | narrow / widen the projects sidebar |
+  | `b` | the sidebar as a slim strip, and back |
   | `r` | refresh |
   | `?` | help |
   | `q` | quit the client; the server keeps running |
 
-- **Attaching.** Attaching gives the whole screen to the pane, rendered from the client's mirror emulator (§3.3), with a one-line status bar at the bottom that the client draws. The status bar shows the session, its project and role, state, progress and `ctrl+\ d dashboard`; after the prefix it lists the commands instead. The client polls `session.list` for it. Sessions started from the dashboard get the window's size less that row, so nothing is cropped. (`tm attach` keeps the whole window for the pane and has no status bar.)
-- **Prefix commands.** While attached, the prefix (Ctrl+\) then:
+- **Attaching.** Attaching gives the whole screen to the pane, rendered from the client's mirror emulator (§3.3), with a one-line status bar at the bottom that the client draws. The projects sidebar stays on the left, and the status bar runs under the panes, right of it. The status bar shows the session, its project and role, state, progress and `prefix+d dashboard`; after the prefix it lists the commands instead. The client polls `session.list` for it, and the project folders for the sidebar. Sessions started from the dashboard get the window's size less the sidebar and that row, so nothing is cropped. (`tm attach` and `tm project open` keep the whole window for the pane and have no sidebar; `tm attach` has no status bar either.)
+- **Prefix commands.** While attached, the prefix (Ctrl+B by default; hints write `prefix+<key>`) then:
 
   | Key | Action |
   |---|---|
@@ -324,12 +342,14 @@ The processes die with the server, because the PTY master closes and the childre
   | `z` | zoom the focused pane to the whole window, and back |
   | `x` | close the focused pane; its session keeps running (the last pane detaches) |
   | Space | switch between all panes side by side and all stacked |
+  | `{` / `}` | narrow / widen the projects sidebar; the panes follow |
+  | `b` | the sidebar as a slim strip, and back |
   | `u` | take over the focused watch-only pane (see below) |
   | the prefix | send the prefix itself to the program |
   | anything else | cancel |
 
   Only `d`, the pane commands, `u` and the prefix work in `tm attach` and `tm project open`, which have no dashboard to go back to.
-- **Watch-only threads.** A pane whose session is a thread's is watch-only, in the dashboard's attach, in split panes and in `tm attach` (which then shows the status bar too): keys, paste, the mouse and focus reports don't reach it, and the status bar says `watch-only, ctrl+\ u takes over`. Shift+PgUp/PgDn still scroll the local scrollback. The prefix then `u` asks in the status bar whether to take the thread over; `y` unlocks typing in that pane for the rest of the attach, and the status bar says `taken over`; any other key keeps watching. Taking over adds a `takeover` inbox item for the thread's coordinator and a journal line (`human thread.takeover t-0004`), so the coordinator learns that the user intervened. The next attach is watch-only again.
+- **Watch-only threads.** A pane whose session is a thread's is watch-only, in the dashboard's attach, in split panes and in `tm attach` (which then shows the status bar too): keys, paste, the mouse and focus reports don't reach it, and the status bar says `watch-only, prefix+u takes over`. Shift+PgUp/PgDn still scroll the local scrollback. The prefix then `u` asks in the status bar whether to take the thread over; `y` unlocks typing in that pane for the rest of the attach, and the status bar says `taken over`; any other key keeps watching. Taking over adds a `takeover` inbox item for the thread's coordinator and a journal line (`human thread.takeover t-0004`), so the coordinator learns that the user intervened. The next attach is watch-only again.
 - **Split panes.** A split attaches the new shell as another pane of the same window; the panes share it with one-cell dividers, those around the focused pane in the accent colour, and the status bar names the focused pane's session with `pane 2/3`. Keys, paste and the cursor go to the focused pane; a click focuses the pane under it (when the outer terminal reports the mouse, i.e. while the focused program tracks it). When a pane's session exits, the pane closes and the status bar says why; when the last one does, the attach ends as before. Detaching (`d`) detaches every pane. Splits last as long as the attach: back on the dashboard, `enter` attaches one session. On the dashboard the prefix then a key is that key, so the same keys do the same things in both places.
 - **Project switching.** While attached, the prefix then `p` opens the project switcher, and the prefix then `]` or `[` jumps to the next or previous project's coordinator. These run on the dashboard, so they are the dashboard's own keys and no key is taken from the pane but the prefix. "Next" is relative to the project last attached to; the status bar always names the current project.
 - **Projects.** A project row with no running coordinator says so; `enter` on it starts the coordinator (as `tm project open` does) and attaches.
@@ -345,7 +365,7 @@ The processes die with the server, because the PTY master closes and the childre
 ```
 ~/.termalator/                         TERMALATOR_HOME
   config.toml                          user settings: default agent, keys, per-project safety (§11.2)   [human only]
-  ui.json                              the dashboard's layout: details panel on or off, list width (§4)  [tm]
+  ui.json                              the layout: details panel on or off, list width, projects sidebar width and slim strip (§4)  [tm]
   agents/<name>.toml                   user agent manifests (§8.2)                   [human]
   run/  tm.sock server.lock server.pid                                               [server]
   state/sessions.json                  live sessions, for resume (§3.6)              [server]
@@ -1096,7 +1116,7 @@ All three spikes have reported:
 | Question | Answer | Where |
 |---|---|---|
 | Attach design | Mirror emulator per client: snapshot, then an ordered output/resize stream; input re-encoded against the mirror's modes. Verified with 0 digest mismatches across detach, window close and reattach. Raw passthrough was replaced | 3.3 |
-| Prefix key, `TERM` | Ctrl+\\ (legacy and `CSI 92;5u`), then `d` detaches; `xterm-256color` + `COLORTERM=truecolor` | 3.3 |
+| Prefix key, `TERM` | Ctrl+B, tmux's default (legacy `0x02` and `CSI 98;5u`), then `d` detaches; hints read `prefix+<key>`; `xterm-256color` + `COLORTERM=truecolor` | 3.3 |
 | Mode 2026, wide characters, Shift+Enter, bracketed paste | All correct through the mirror; client honours 2026 holds; re-anchor after graphemes | 3.3 |
 | Resize | Never on attach (Claude's inline mode duplicates scrollback rows on resize) | 3.3 |
 | Snapshot compatibility | None between builds, so attach requires an identical build, and the client re-execs the server's binary | 3.3, 3.6 |
@@ -1158,15 +1178,15 @@ Sizes: **S** ≤ 2 days, **M** 3–5 days, **L** 1–2 weeks, for one developer 
   - `tm attach <session>`: attach frames, snapshot + ordered stream, the mirror emulator;
   - the cell renderer with dirty rows, 2026 holds and the grapheme re-anchor;
   - input decoding (ultraviolet) and re-encoding with libghostty's key, mouse, focus and paste encoders;
-  - mouse and focus mode mirroring; Ctrl+\\ detach; Shift+PgUp local scrollback;
+  - mouse and focus mode mirroring; the prefix detach; Shift+PgUp local scrollback;
   - no resize on attach, plus `SET_SIZE`; byte-bounded queues with resync;
   - the build check with re-exec; terminal restore on exit and on SIGHUP;
   - a digest check (`DIGEST_REQ`) used by tests.
-- **Try it:** attach to an M1 shell and run `vim` or `htop`. Detach with Ctrl+\\ and reattach from another window, at another size. Close a window while output streams. Run `claude` in the shell by hand: Shift+Enter, paste and the mouse wheel work.
+- **Try it:** attach to an M1 shell and run `vim` or `htop`. Detach with the prefix and reattach from another window, at another size. Close a window while output streams. Run `claude` in the shell by hand: Shift+Enter, paste and the mouse wheel work.
 - **Tests:** e2e scenarios, each with `AssertMirrorsServer`:
   - detach and reattach mid-stream at another size; window close mid-stream; `SIGKILL` of the client;
   - a slow client forced into resync; no resize on attach (an inline redraw app shows no duplicated rows);
-  - keys through the encoders (Shift+Enter, Ctrl+\\, paste, wheel) against the full-screen app; 2026 holds; a grapheme row;
+  - keys through the encoders (Shift+Enter, the prefix, paste, wheel) against the full-screen app; 2026 holds; a grapheme row;
   - the build-mismatch re-exec;
   - golden screens for each.
 - **Depends on:** M1.
@@ -1198,7 +1218,7 @@ Sizes: **S** ≤ 2 days, **M** 3–5 days, **L** 1–2 weeks, for one developer 
 - **Deliverables:**
   - the Bubble Tea dashboard: a session list with state, reason, todo progress and age; NEEDS YOU first (blocked sessions);
   - keys: `enter` attach, `s` new shell, `c` new Claude session in a chosen directory, `?` help, `q` quit (`c` was removed later: the user's agents are coordinators, §4);
-  - hand-off to the M2 attach view and back with Ctrl+\\; the status line;
+  - hand-off to the M2 attach view and back with the prefix; the status line;
   - the bell and OS notification when a session becomes blocked.
 - **Also (user decisions):** the project switcher and `]`/`[` (§4), `tm project open`, the server-side caller check (§11.1), and `make run` opening the dashboard.
 - **Try it:** run `tm`, start Claude in a repo (`c` then; now `tm session start --agent claude --cwd <repo>`), give Claude a task, detach, watch the row go working → blocked (a permission dialog) → idle, with the notification. Attach, answer, detach. Close the terminal, run `tm` again: everything is still there.

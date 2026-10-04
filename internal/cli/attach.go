@@ -17,7 +17,7 @@ import (
 	"github.com/theclifmeister/termalator/internal/tui"
 )
 
-const attachUsage = `usage: tm attach [SESSION]   (the newest session when none is named; Ctrl+\ detaches)`
+const attachUsage = `usage: tm attach [SESSION]   (the newest session when none is named; the prefix, Ctrl+B, then d detaches)`
 
 // reexecEnv marks a tm that was re-executed as the server's binary, so a
 // build mismatch that survives the re-exec fails instead of looping.
