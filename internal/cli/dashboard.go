@@ -1,8 +1,11 @@
 package cli
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/theclifmeister/termalator/internal/caller"
 	"github.com/theclifmeister/termalator/internal/project"
@@ -33,7 +36,7 @@ func (e *Env) dashboardCmd() int {
 			who = caller.Narrower(who, c)
 		}
 	}
-	src := &tui.ServerSource{Paths: p, Agent: defaultAgent, Caller: who}
+	src := &tui.ServerSource{Paths: p, Agent: defaultAgent, Caller: who, Run: e.quietRun(who)}
 	defer src.Close()
 	var st tui.DashState
 	for {
@@ -83,4 +86,22 @@ func (e *Env) openCmd(slug, agentName string) error {
 	}
 	fmt.Fprintf(e.Stdout, "[%s: %s]\n", id, res.Reason)
 	return nil
+}
+
+// quietRun runs tm commands for the dashboard as who, with their output
+// captured: a failure becomes an error with the command's message.
+func (e *Env) quietRun(who caller.Caller) func(args ...string) error {
+	return func(args ...string) error {
+		var out, errb bytes.Buffer
+		sub := *e
+		sub.Stdin, sub.Stdout, sub.Stderr, sub.Caller = strings.NewReader(""), &out, &errb, who
+		if code, _ := sub.Run(args); code != ExitOK {
+			msg := strings.TrimSpace(errb.String())
+			if msg == "" {
+				msg = fmt.Sprintf("tm %s: exit %d", args[0], code)
+			}
+			return errors.New(msg)
+		}
+		return nil
+	}
 }

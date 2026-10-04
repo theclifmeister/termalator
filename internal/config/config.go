@@ -29,15 +29,23 @@ type Safety struct {
 	StartThreads        string `json:"start_threads"`
 	Yolo                bool   `json:"yolo"`
 	CoordinatorApproves bool   `json:"coordinator_approves"`
+	// AutoResolve lets the ticker resolve a thread once its PR merged and
+	// its agent is idle (§9), under resolve's usual rules (never forced).
+	AutoResolve bool `json:"auto_resolve"`
+	// PRFollowup prompts a thread when its PR's checks fail or a reviewer
+	// asks for changes (§7.5).
+	PRFollowup bool `json:"pr_followup"`
 }
 
 // Defaults are the settings of a project that config.toml doesn't name.
-var Defaults = Safety{StartThreads: StartPropose, Yolo: false, CoordinatorApproves: true}
+var Defaults = Safety{StartThreads: StartPropose, Yolo: false, CoordinatorApproves: true, AutoResolve: true, PRFollowup: true}
 
 type rawSafety struct {
 	StartThreads        *string `toml:"start_threads"`
 	Yolo                *bool   `toml:"yolo"`
 	CoordinatorApproves *bool   `toml:"coordinator_approves"`
+	AutoResolve         *bool   `toml:"auto_resolve"`
+	PRFollowup          *bool   `toml:"pr_followup"`
 }
 
 // Config is the parsed file.
@@ -107,6 +115,12 @@ func (c *Config) Safety(slug string) (Safety, error) {
 	}
 	if r.CoordinatorApproves != nil {
 		s.CoordinatorApproves = *r.CoordinatorApproves
+	}
+	if r.AutoResolve != nil {
+		s.AutoResolve = *r.AutoResolve
+	}
+	if r.PRFollowup != nil {
+		s.PRFollowup = *r.PRFollowup
 	}
 	return s, nil
 }

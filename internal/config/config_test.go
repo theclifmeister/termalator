@@ -39,15 +39,17 @@ yolo = true
 
 [projects.other]
 coordinator_approves = false
+auto_resolve = false
+pr_followup = false
 `)
 	c, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s, _ := c.Safety("demo"); s != (Safety{StartThreads: "auto", Yolo: true, CoordinatorApproves: true}) {
+	if s, _ := c.Safety("demo"); s != (Safety{StartThreads: "auto", Yolo: true, CoordinatorApproves: true, AutoResolve: true, PRFollowup: true}) {
 		t.Fatalf("demo %+v", s)
 	}
-	if s, _ := c.Safety("other"); s != (Safety{StartThreads: "propose", CoordinatorApproves: false}) {
+	if s, _ := c.Safety("other"); s != (Safety{StartThreads: "propose"}) {
 		t.Fatalf("other %+v", s)
 	}
 }

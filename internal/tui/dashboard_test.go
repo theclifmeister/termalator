@@ -1,12 +1,14 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/theclifmeister/termalator/internal/agent"
 	"github.com/theclifmeister/termalator/internal/project"
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/tasks"
@@ -19,6 +21,8 @@ type fakeSource struct {
 	done    []string
 	opened  []string
 	started []string
+	acked   []string
+	next    []string
 }
 
 func (f *fakeSource) Load() Data                             { return f.data }
@@ -41,6 +45,15 @@ func (f *fakeSource) MarkDone(slug string, id int) error {
 	return nil
 }
 
+func (f *fakeSource) Ack(slug, id string) error {
+	f.acked = append(f.acked, slug+":"+id)
+	return nil
+}
+func (f *fakeSource) PromptNext(slug, id string, n int) error {
+	f.next = append(f.next, fmt.Sprintf("%s:%s:%d", slug, id, n))
+	return nil
+}
+
 func testData() Data {
 	now := time.Now()
 	review := &tasks.Task{ID: 7, Title: "Pick a licence", Status: tasks.Review}
@@ -57,7 +70,10 @@ func testData() Data {
 				Inbox: []InboxRow{{Item: project.Item{ID: "i1", Kind: project.KindConfirmDone, Subject: "T3", Summary: "coordinator asks to mark T3 done", NeedsUser: true}, Task: started}}},
 			{Slug: "beta", Counts: map[string]int{}, Threads: []ThreadRow{
 				{Record: &thread.Record{ID: "t-0005", Title: "Write docs", Task: "T4", State: thread.Running, Session: "s-5", Reports: 1},
-					Status: &thread.Status{Percent: 60, PercentSource: "steps", StepsDone: 3, StepsTotal: 5, Current: "Draft §2"}},
+					Status: &thread.Status{Percent: 60, PercentSource: "steps", StepsDone: 3, StepsTotal: 5, Current: "Draft §2",
+						Todos: []agent.Todo{{Text: "Outline", Status: agent.TodoCompleted}, {Text: "Draft §2", Status: agent.TodoInProgress}}},
+					Report:  &thread.Report{PR: "https://github.com/o/r/pull/7", Next: []string{"Merge the PR", "Delete the branch"}},
+					TaskRec: &tasks.Task{ID: 4, Title: "Docs", Steps: []tasks.Step{{N: 1, Text: "Plan", Done: true}, {N: 2, Text: "Write"}}}},
 				{Record: &thread.Record{ID: "t-0006", Title: "Old work", State: thread.Stopped}},
 			}},
 		},
@@ -95,7 +111,7 @@ func run(m *dash, cmd tea.Cmd) {
 
 func TestDashboardRows(t *testing.T) {
 	src := &fakeSource{data: testData()}
-	m := newDash(DashOptions{Source: src, AgentName: "claude", Width: 100, Height: 30})
+	m := newDash(DashOptions{Source: src, AgentName: "claude", Width: 120, Height: 30})
 	m.setData(src.data)
 	out := m.render()
 	needs := strings.Index(out, "NEEDS YOU")
@@ -115,9 +131,9 @@ func TestDashboardRows(t *testing.T) {
 		"    s-2          t-0002",
 		"  beta         coordinator                    —         enter starts the coordinator",
 		"  s-3          /bin/zsh -l                    running",
-		"                 t-0005 Write docs              working   T4  60% 3/5 ▸ Draft §2  report waiting",
+		"                 t-0005 Write docs              working   T4  60% 3/5 ▸ Draft §2  report waiting  PR #7",
 		"                 t-0006 Old work                stopped",
-		"? beta         t-0005 Write docs              report    unacknowledged report",
+		"? beta         t-0005 Write docs              report    unacknowledged report · a acks",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in\n%s", want, out)
@@ -176,14 +192,49 @@ func TestDashboardKeys(t *testing.T) {
 
 func TestDashboardBell(t *testing.T) {
 	src := &fakeSource{data: testData()}
+	src.data.Alerts = 3
 	m := newDash(DashOptions{Source: src, Width: 100, Height: 30})
 	if hasBell(m.setData(src.data)) {
-		t.Fatal("bell for a session that was already blocked")
+		t.Fatal("bell for alerts from before the dashboard opened")
+	}
+	if hasBell(m.setData(src.data)) {
+		t.Fatal("bell without a new alert")
 	}
 	d := testData()
-	d.Sessions[0].State = "blocked"
+	d.Alerts = 4
 	if !hasBell(m.setData(d)) {
-		t.Fatal("no bell when the coordinator became blocked")
+		t.Fatal("no bell for a new alert")
+	}
+}
+
+// TestDashboardThreadRow: a selected thread row shows its todos, its
+// task's steps and its report's Next lines; a acks the report and a
+// digit sends a Next line; i opens the project's inbox.
+func TestDashboardThreadRow(t *testing.T) {
+	src := &fakeSource{data: testData()}
+	src.data.Projects[1].Items = []project.Item{{ID: "x", Kind: "report", Subject: "t-0005", Summary: "t-0005 handed in report 1"}}
+	m := newDash(DashOptions{Source: src, Width: 100, Height: 40})
+	m.setData(src.data)
+	m.sel = "th:beta:t-0005"
+	out := m.render()
+	for _, want := range []string{"[x] Outline", "[~] Draft §2", "T4 steps:", "[x] 1 Plan", "[ ] 2 Write",
+		"report 1 (new) next:  a acks it", "1 Merge the PR", "2 Delete the branch"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("thread detail lacks %q:\n%s", want, out)
+		}
+	}
+	run(m, press(m, "a"))
+	run(m, press(m, "2"))
+	if strings.Join(src.acked, ",") != "beta:t-0005" || strings.Join(src.next, ",") != "beta:t-0005:2" {
+		t.Fatalf("acked %v next %v", src.acked, src.next)
+	}
+	press(m, "3")
+	if !strings.Contains(m.msg, "no ## Next line 3") {
+		t.Fatalf("msg %q", m.msg)
+	}
+	press(m, "i")
+	if m.mode != modeInbox || !strings.Contains(m.render(), "t-0005 handed in report 1") {
+		t.Fatalf("inbox view:\n%s", m.render())
 	}
 }
 

@@ -216,3 +216,42 @@ func TestContextDeterministicAndCapped(t *testing.T) {
 		t.Log(out)
 	}
 }
+
+// FuzzParseItem: an inbox file, whatever it holds, parses or fails
+// without panicking, and a parsed item's fields are single lines.
+func FuzzParseItem(f *testing.F) {
+	f.Add([]byte("+++\nid = \"x\"\nkind = \"report\"\nsubject = \"t-0001\"\nsummary = \"t-0001 handed in report 1\"\nneeds_user = false\n+++\n"))
+	f.Add([]byte("+++\nsummary = \"a\\nb\\rc\"\n+++\nbody"))
+	f.Add([]byte("no front matter"))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		it, err := ParseItem("id", data)
+		if err != nil {
+			return
+		}
+		for _, s := range []string{it.Kind, it.Subject, it.Summary} {
+			if strings.ContainsAny(s, "\n\r") {
+				t.Fatalf("multi-line field %q", s)
+			}
+		}
+	})
+}
+
+func TestPruneDone(t *testing.T) {
+	t.Setenv("TERMALATOR_HOME", t.TempDir())
+	p, err := New(Options{Name: "Prune"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	old, _ := p.AddItem("report", "t-0001", "old", false)
+	fresh, _ := p.AddItem("report", "t-0002", "fresh", false)
+	p.DoneItem(old.ID)
+	p.DoneItem(fresh.ID)
+	past := time.Now().Add(-31 * 24 * time.Hour)
+	os.Chtimes(p.Path("inbox", "done", old.ID+".md"), past, past)
+	if n, err := p.PruneDone(30 * 24 * time.Hour); err != nil || n != 1 {
+		t.Fatalf("pruned %d, %v", n, err)
+	}
+	if _, err := os.Stat(p.Path("inbox", "done", fresh.ID+".md")); err != nil {
+		t.Fatal("fresh item pruned")
+	}
+}

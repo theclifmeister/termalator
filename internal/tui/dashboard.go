@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/theclifmeister/termalator/internal/project"
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/tasks"
 )
@@ -79,6 +80,7 @@ const (
 	modeTasks
 	modeTask
 	modeSwitch
+	modeInbox
 )
 
 // row is one dashboard line.
@@ -90,6 +92,7 @@ type row struct {
 	project string
 	task    *tasks.Task
 	confirm bool // a done confirmation: d completes it whatever the status
+	thread  *ThreadRow
 }
 
 func (r row) selectable() bool { return r.key != "" }
@@ -122,8 +125,12 @@ type dash struct {
 	// project switcher
 	swSel int
 
-	blocked map[string]bool
-	seen    bool // the first poll arrived (no bell for old blocks)
+	// inbox view
+	inboxSlug string
+	inboxSel  int
+
+	alerts uint64
+	seen   bool // the first poll arrived (no bell for old alerts)
 
 	result DashResult
 }
@@ -134,7 +141,7 @@ func newDash(o DashOptions) *dash {
 		w, h = 80, 24
 	}
 	return &dash{src: o.Source, cwd: o.Cwd, agentName: o.AgentName, w: w, h: h,
-		sel: o.State.Selected, current: o.State.Current, msg: o.State.Message, blocked: map[string]bool{}}
+		sel: o.State.Selected, current: o.State.Current, msg: o.State.Message}
 }
 
 type dataMsg Data
@@ -219,7 +226,8 @@ func (m *dash) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // setData takes a poll's result, rebuilds the rows and rings the bell
-// when a session became blocked.
+// when the server sent a notification (a session blocked, a thread
+// reported) since the last poll.
 func (m *dash) setData(d Data) tea.Cmd {
 	m.data, m.loaded = d, true
 	m.rows = buildRows(d)
@@ -233,15 +241,10 @@ func (m *dash) setData(d Data) tea.Cmd {
 		}
 	}
 	ring := false
-	now := map[string]bool{}
-	for _, s := range d.Sessions {
-		b := s.State == "blocked"
-		now[s.ID] = b
-		if b && !m.blocked[s.ID] && m.seen {
-			ring = true
-		}
+	if d.ServerOK {
+		ring = m.seen && d.Alerts > m.alerts
+		m.alerts, m.seen = d.Alerts, true
 	}
-	m.blocked, m.seen = now, true
 	next := tea.Tick(refresh, func(time.Time) tea.Msg { return tickMsg{} })
 	if ring {
 		return tea.Batch(next, tea.Raw("\a"))
@@ -293,6 +296,8 @@ func (m *dash) key(k tea.KeyPressMsg) tea.Cmd {
 		return m.taskKey(key)
 	case modeSwitch:
 		return m.switchKey(key)
+	case modeInbox:
+		return m.inboxKey(key)
 	}
 	if m.busy {
 		return nil
@@ -319,6 +324,8 @@ func (m *dash) key(k tea.KeyPressMsg) tea.Cmd {
 			return m.loadBoard(r.project)
 		case r.session != "":
 			return m.act(func() actionMsg { return actionMsg{attach: r.session, current: r.project} })
+		case r.thread != nil:
+			m.msg = r.thread.ID + " has no running session; the coordinator restarts it (tm thread restart " + r.thread.ID + ")"
 		case r.project != "":
 			return m.openProject(r.project)
 		}
@@ -373,6 +380,68 @@ func (m *dash) key(k tea.KeyPressMsg) tea.Cmd {
 		}
 	case "]", "[":
 		return m.cycleProject(key == "]")
+	case "i":
+		slug := m.projectHere()
+		if slug == "" {
+			m.msg = "no project; n creates one"
+			return nil
+		}
+		m.mode, m.inboxSlug, m.inboxSel = modeInbox, slug, 0
+	case "a":
+		r, ok := m.selected()
+		if !ok || r.thread == nil {
+			m.msg = "a acknowledges a thread's report; select the thread"
+			return nil
+		}
+		if r.thread.ReportState() != "new" {
+			m.msg = r.thread.ID + " has no unacknowledged report"
+			return nil
+		}
+		slug, id, n := r.project, r.thread.ID, r.thread.Reports
+		return m.act(func() actionMsg {
+			err := m.src.Ack(slug, id)
+			return actionMsg{msg: fmt.Sprintf("%s report %d acknowledged", id, n), err: err}
+		})
+	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+		r, ok := m.selected()
+		if !ok || r.thread == nil {
+			return nil
+		}
+		n := int(key[0] - '0')
+		if r.thread.Report == nil || n > len(r.thread.Report.Next) {
+			m.msg = fmt.Sprintf("%s's report has no ## Next line %d", r.thread.ID, n)
+			return nil
+		}
+		slug, id := r.project, r.thread.ID
+		line := r.thread.Report.Next[n-1]
+		return m.act(func() actionMsg {
+			err := m.src.PromptNext(slug, id, n)
+			return actionMsg{msg: id + " ← " + oneLine(line), err: err}
+		})
+	}
+	return nil
+}
+
+// inboxItems are the unhandled items of the inbox view's project.
+func (m *dash) inboxItems() []project.Item {
+	for _, p := range m.data.Projects {
+		if p.Slug == m.inboxSlug {
+			return p.Items
+		}
+	}
+	return nil
+}
+
+func (m *dash) inboxKey(key string) tea.Cmd {
+	switch key {
+	case "esc", "q", "i":
+		m.mode = modeList
+	case "up", "k":
+		m.inboxSel = max(m.inboxSel-1, 0)
+	case "down", "j":
+		m.inboxSel = min(m.inboxSel+1, max(len(m.inboxItems())-1, 0))
+	case "r":
+		return m.load()
 	}
 	return nil
 }
@@ -650,8 +719,13 @@ func buildRows(d Data) []row {
 			r.session = coord.ID
 		}
 		projs = append(projs, r)
-		for _, t := range p.Threads {
-			tr := row{key: "th:" + p.Slug + ":" + t.ID, project: p.Slug}
+		threads := append([]ThreadRow(nil), p.Threads...)
+		sort.SliceStable(threads, func(i, j int) bool {
+			return threadGroup(threads[i], byID) < threadGroup(threads[j], byID)
+		})
+		for i := range threads {
+			t := &threads[i]
+			tr := row{key: "th:" + p.Slug + ":" + t.ID, project: p.Slug, thread: t}
 			state := t.State
 			if s, ok := byID[t.Session]; ok && t.Session != "" {
 				tr.session, state = s.ID, stateWord(s)
@@ -667,17 +741,23 @@ func buildRows(d Data) []row {
 			if t.Status != nil && !t.Status.Updated.IsZero() {
 				rest = joinSp(rest, age(now.Sub(t.Status.Updated)))
 			}
-			if t.ReportState() == "new" {
+			switch {
+			case t.ReportState() == "new" && t.Done:
+				rest = joinSp(rest, "ready for review")
+			case t.ReportState() == "new":
 				rest = joinSp(rest, "report waiting")
+			}
+			if t.Report != nil && t.Report.PR != "" {
+				rest = joinSp(rest, "PR "+prRef(t.Report.PR))
 			}
 			tr.text = cols("    ", "", what, state, rest)
 			projs = append(projs, tr)
 			switch {
 			case t.ReportState() == "new":
-				needs = append(needs, row{key: "nt:" + p.Slug + ":" + t.ID, project: p.Slug, session: tr.session,
-					text: cols(" ? ", p.Slug, what, "report", "unacknowledged report")})
+				needs = append(needs, row{key: "nt:" + p.Slug + ":" + t.ID, project: p.Slug, session: tr.session, thread: t,
+					text: cols(" ? ", p.Slug, what, "report", "unacknowledged report · a acks")})
 			case t.Status != nil && t.Status.NeedsYou != "":
-				needs = append(needs, row{key: "nt:" + p.Slug + ":" + t.ID, project: p.Slug, session: tr.session,
+				needs = append(needs, row{key: "nt:" + p.Slug + ":" + t.ID, project: p.Slug, session: tr.session, thread: t,
 					text: cols(" ? ", p.Slug, what, "waiting", oneLine(t.Status.NeedsYou))})
 			}
 		}
@@ -717,6 +797,77 @@ func buildRows(d Data) []row {
 		other = []row{{text: "  no sessions; s starts a shell, c an agent"}}
 	}
 	return append(rows, other...)
+}
+
+// threadGroup orders a project's threads as §7.4 does: waiting on you,
+// ready for review, working, idle, then the rest.
+func threadGroup(t ThreadRow, byID map[string]proto.SessionInfo) int {
+	s, live := byID[t.Session]
+	live = live && t.Session != ""
+	switch {
+	case live && s.State == "blocked", t.Status != nil && t.Status.NeedsYou != "":
+		return 0
+	case t.ReportState() == "new":
+		return 1
+	case live && s.State == "working":
+		return 2
+	case live:
+		return 3
+	}
+	return 4
+}
+
+// prRef shortens a PR URL to "#12"; anything else is shown cut short.
+func prRef(url string) string {
+	if i := strings.LastIndex(url, "/pull/"); i >= 0 {
+		return "#" + oneLine(url[i+len("/pull/"):])
+	}
+	return fit(oneLine(url), 30)
+}
+
+// threadDetail is what shows under a selected thread row (§4): its full
+// todo list, its task's steps and its report's ## Next lines.
+func threadDetail(t *ThreadRow) []string {
+	const ind = "        "
+	var out []string
+	if t.Status != nil && len(t.Status.Todos) > 0 {
+		out = append(out, ind+"todos:")
+		for _, td := range t.Status.Todos {
+			mark := map[string]string{"completed": "x", "in_progress": "~"}[string(td.Status)]
+			if mark == "" {
+				mark = " "
+			}
+			out = append(out, ind+"  ["+mark+"] "+oneLine(td.Text))
+		}
+	}
+	if t.TaskRec != nil && len(t.TaskRec.Steps) > 0 {
+		out = append(out, ind+t.TaskRec.Ref()+" steps:")
+		for _, st := range t.TaskRec.Steps {
+			box := "[ ]"
+			if st.Done {
+				box = "[x]"
+			}
+			out = append(out, fmt.Sprintf("%s  %s %d %s", ind, box, st.N, oneLine(st.Text)))
+		}
+	}
+	if t.Report != nil && len(t.Report.Next) > 0 {
+		head := fmt.Sprintf("report %d (%s) next:", t.Reports, t.ReportState())
+		if t.ReportState() == "new" {
+			head += "  a acks it"
+		}
+		out = append(out, ind+head)
+		for i, n := range t.Report.Next {
+			if i == 9 {
+				break
+			}
+			out = append(out, fmt.Sprintf("%s  %d %s", ind, i+1, oneLine(n)))
+		}
+		out = append(out, ind+"  1-9 sends that line to the thread")
+	}
+	if len(out) == 0 {
+		out = append(out, ind+"no todos, steps or report yet")
+	}
+	return out
 }
 
 func joinSp(parts ...string) string {
@@ -761,6 +912,8 @@ func (m *dash) render() string {
 		return m.renderTasks()
 	case modeSwitch:
 		return m.renderSwitch()
+	case modeInbox:
+		return m.renderInbox()
 	}
 	var lines []string
 	sel := -1
@@ -771,13 +924,18 @@ func (m *dash) render() string {
 		case r.key != "" && r.key == m.sel:
 			sel = len(lines)
 			lines = append(lines, styleSel.Render(fit(r.text, m.w)))
+			if r.thread != nil && strings.HasPrefix(r.key, "th:") {
+				for _, l := range threadDetail(r.thread) {
+					lines = append(lines, styleFaint.Render(fit(l, m.w)))
+				}
+			}
 		case r.key == "":
 			lines = append(lines, styleFaint.Render(fit(r.text, m.w)))
 		default:
 			lines = append(lines, fit(r.text, m.w))
 		}
 	}
-	keys := "enter attach · s shell · c " + m.agentName + " · n project · t tasks · d done · p projects · ? help · q quit"
+	keys := "enter attach · t tasks · i inbox · a ack · d done · n project · p projects · ? help · q quit"
 	return m.frame("", lines, sel, keys)
 }
 
@@ -917,6 +1075,32 @@ func (m *dash) renderSwitch() string {
 	return m.frame("projects", lines, m.swSel, "enter open its coordinator · esc back")
 }
 
+func (m *dash) renderInbox() string {
+	items := m.inboxItems()
+	var lines []string
+	sel := -1
+	now := time.Now()
+	for i, it := range items {
+		flag := " "
+		if it.NeedsUser {
+			flag = "!"
+		}
+		text := fmt.Sprintf(" %s %-16s %-6s %s", flag, fit(it.Kind, 16), age(now.Sub(it.Created)), oneLine(it.Summary))
+		if i == m.inboxSel {
+			sel = len(lines)
+			text = styleSel.Render(fit(text, m.w))
+		} else {
+			text = fit(text, m.w)
+		}
+		lines = append(lines, text)
+	}
+	if len(items) == 0 {
+		lines = append(lines, " inbox empty")
+	}
+	lines = append(lines, "", styleFaint.Render(fit(" The coordinator handles these (tm inbox done); ! marks the ones for you.", m.w)))
+	return m.frame(m.inboxSlug+" inbox", lines, sel, "r refresh · esc back")
+}
+
 func helpLines(agentName string) []string {
 	return []string{
 		" enter     attach to the selected session; on a project, open its coordinator",
@@ -925,6 +1109,9 @@ func helpLines(agentName string) []string {
 		" n         new project",
 		" t         the project's tasks; enter shows one, d marks a task in review done",
 		" d         mark the selected task done (tasks in review)",
+		" i         the project's inbox: what the coordinator is told about",
+		" a         acknowledge the selected thread's report",
+		" 1-9       send that ## Next line of the thread's report as its next prompt",
 		" p         project switcher; enter opens that project's coordinator",
 		" ] [       next / previous project's coordinator",
 		" r         refresh       ? help       q quit (the server keeps running)",
