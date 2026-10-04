@@ -38,8 +38,12 @@ for a in "$dist"/tm_*.tar.gz; do
 	esac
 	case $desc in "$want"*) ;; *) fail "$name: tm is '$desc', want '$want'" ;; esac
 	if [ "$os" = darwin ] && command -v otool >/dev/null; then
-		libs=$(otool -L "$d/tm" | tail -n +2 | awk '{print $1}' | grep -v -e '^/usr/lib/libSystem\.B\.dylib$' -e '^/usr/lib/libresolv\.9\.dylib$' || true)
-		[ -z "$libs" ] || fail "$name links more than libSystem and libresolv: $libs"
+		# Only libraries every Mac has: /usr/lib and system frameworks.
+		# Which ones depends on the Go release (Go 1.26 on arm64 adds
+		# CoreFoundation and libobjc); anything else (Homebrew, a
+		# dynamic libghostty) would break on a clean machine.
+		libs=$(otool -L "$d/tm" | tail -n +2 | awk '{print $1}' | grep -v -e '^/usr/lib/' -e '^/System/Library/Frameworks/' || true)
+		[ -z "$libs" ] || fail "$name links non-system libraries: $libs"
 	fi
 	if [ "$os" = linux ] && command -v objdump >/dev/null; then
 		max=$(objdump -T "$d/tm" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -t. -k1,1n -k2,2n | tail -1)

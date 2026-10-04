@@ -11,7 +11,7 @@ mkdir -p ~/.local/bin && curl -fsSL "https://github.com/theclifmeister/termalato
 tm doctor
 ```
 
-- **macOS:** 13 or later. The binary links only libSystem and libresolv. It is signed ad hoc, not notarised: installed with curl it runs as is; downloaded with a browser, clear the quarantine flag first (`xattr -d com.apple.quarantine tm`).
+- **macOS:** 13 or later. The binary links only system libraries (libSystem, libresolv and, depending on the Go release, CoreFoundation). It is signed ad hoc, not notarised: installed with curl it runs as is; downloaded with a browser, clear the quarantine flag first (`xattr -d com.apple.quarantine tm`).
 - **Linux:** glibc 2.28 or later (Debian 10, Ubuntu 18.10, RHEL 8 and newer); musl is not supported.
 - **Runtime:** git, and the agents you use (Claude Code). For threads' sandbox Claude needs `bwrap` and `socat` on Linux. `tm doctor` checks all of these.
 
