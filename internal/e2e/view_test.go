@@ -184,7 +184,7 @@ func TestSmokeFirstViewFills(t *testing.T) {
 
 	// Typing claims as before: w2's rectangle, then w1's again.
 	w2.Type("x")
-	waitPaneSize(t, env, co, 76, 26)
+	waitPaneSize(t, env, co, 76, 25) // less the status bar
 	w1.Type("y")
 	waitPaneSize(t, env, co, 112, 39)
 
