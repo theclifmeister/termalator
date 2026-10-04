@@ -9,13 +9,13 @@
 ⏺ <function_calls>
   <invoke name="bash">
   <parameter
-  name="command">/Users/clifford/.config/herdr/plugins/github/herdr-projects-b1278ffb803c/target/release/herdr-projects
-  --root /Users/clifford/.herdr-projects report --unknown --activity 'Assessing task'</parameter>
+  name="command">/Users/username/.config/herdr/plugins/github/herdr-projects-b1278ffb803c/target/release/herdr-projects
+  --root /Users/username/.herdr-projects report --unknown --activity 'Assessing task'</parameter>
   </invoke>
   </function_calls>
   <function_calls>
   <invoke name="read">
-  <parameter name="path">/Users/clifford/.herdr/worktrees/termalator/hp-termalator-t-0003-spike-libghostty-vt-from-go/sp
+  <parameter name="path">/Users/username/.herdr/worktrees/termalator/hp-termalator-t-0003-spike-libghostty-vt-from-go/sp
   ikes/libghostty/.deps/claude-cwd</parameter>
   </invoke>
   </function_calls>
@@ -334,5 +334,5 @@
 ❯ 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Model: Haiku 4.5 | Ctx: 8.4k | ⎇ hp/termalator/t-0003-spike-libghostty-vt-fro...
-  cwd: /Users/clifford/.herdr/worktrees/termalator/hp-termalator-t-0003-spike-l...
+  cwd: /Users/username/.herdr/worktrees/termalator/hp-termalator-t-0003-spike-l...
   ⏸ manual mode on · ← for agents
