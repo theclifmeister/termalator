@@ -77,7 +77,8 @@ The first build fetches Ghostty and compiles libghostty-vt, which takes about 30
 ```sh
 make test       # go test -race ./... (unit, integration, fuzz seed corpora)
 make e2e-smoke  # the core end-to-end scenarios (every PR in CI)
-make e2e        # every end-to-end scenario (nightly in CI)
+make e2e-smoke-race  # the same with tm built with -race (nightly in CI)
+make e2e        # every end-to-end scenario (nightly in CI); E2E_RACE=1 for a race-built tm
 make fuzz       # every fuzz target, FUZZTIME=5m each (nightly in CI); e.g. make fuzz FUZZTIME=20s
 ```
 

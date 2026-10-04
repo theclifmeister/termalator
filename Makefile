@@ -11,6 +11,7 @@
 #   make test       go test -race ./... (unit + integration + fuzz seed corpora)
 #   make e2e        every end-to-end scenario (internal/e2e) against bin/tm
 #   make e2e-smoke  the core scenarios, as on every PR
+#   make e2e-smoke-race  the same with tm built with -race (nightly)
 #   make test-claude  the scenarios against the real claude (needs a login; costs cents)
 #   make fuzz       run every fuzz target for FUZZTIME each (nightly)
 #   make vet        go vet ./...
@@ -68,7 +69,7 @@ export CGO_ENABLED := 1
 CGO_CFLAGS ?= -O2 -g
 export CGO_CFLAGS += -DTM_LIBGHOSTTY=$(GHOSTTY_OUT)
 
-.PHONY: all build run test test-claude e2e e2e-smoke fuzz vet ghostty toolchain env clean distclean
+.PHONY: all build run test test-claude e2e e2e-smoke e2e-smoke-race fuzz vet ghostty toolchain env clean distclean
 
 all: build
 
@@ -94,13 +95,24 @@ fuzz: $(STAMP)
 	done
 
 # End-to-end scenarios (internal/e2e, docs/SPEC.md §16.2). The harness
-# builds tm itself (with -race for the smoke set); E2E_FLAGS=-update
-# rewrites golden screens. The smoke set is every scenario named TestSmoke*.
+# builds tm itself; E2E_FLAGS=-update rewrites golden screens. The smoke
+# set is every scenario named TestSmoke*. E2E_RACE=1 builds tm and the
+# test with -race; the harness then fails a scenario whose tm printed
+# "WARNING: DATA RACE". A race-built tm takes about a second to start, and
+# every agent hook starts one, so PRs run the smoke set without -race
+# (`go test -race ./...` still covers the code) and nightly runs
+# e2e-smoke-race.
+E2E_RACE ?=
+E2E_GOFLAGS := $(if $(filter 1,$(E2E_RACE)),-race)
+
 e2e: $(STAMP)
-	E2E=1 $(GO) test -count=1 ./internal/e2e $(E2E_FLAGS)
+	E2E=1 E2E_RACE=$(E2E_RACE) $(GO) test $(E2E_GOFLAGS) -count=1 ./internal/e2e $(E2E_FLAGS)
 
 e2e-smoke: $(STAMP)
-	E2E=1 E2E_RACE=1 $(GO) test -race -count=1 -run '^TestSmoke' ./internal/e2e $(E2E_FLAGS)
+	E2E=1 E2E_RACE=$(E2E_RACE) $(GO) test $(E2E_GOFLAGS) -count=1 -run '^TestSmoke' ./internal/e2e $(E2E_FLAGS)
+
+e2e-smoke-race:
+	$(MAKE) e2e-smoke E2E_RACE=1
 
 # The real-Claude suite (docs/SPEC.md §16.4): build tag realclaude, the
 # claude on PATH, Haiku. On demand, and nightly where a login exists.
