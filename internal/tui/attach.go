@@ -183,8 +183,9 @@ type pane struct {
 	scrolled bool // the local viewport is scrolled back
 	watch    bool // a thread's pane, not taken over: no input reaches it
 	info     proto.SessionInfo
-	rect     rect // where it is in the window (panes.go)
-	gone     bool // closed or ended: its goroutines stop
+	rect     rect      // where it is in the window (panes.go)
+	asked    [2]uint16 // the size last sent, until the server's RESIZE
+	gone     bool      // closed or ended: its goroutines stop
 }
 
 // client is the attached window: its panes and everything they share.
@@ -376,6 +377,7 @@ func (c *client) loadSnapshot(p *pane, payload []byte) error {
 	}
 	p.mirror = mirror
 	p.held, p.scrolled = false, false
+	p.asked = [2]uint16{}
 	p.r.Invalidate()
 	// Runs inside mirror.Write with c.mu held. At hold start the terminal
 	// still shows the last complete frame: capture it and keep drawing it.
@@ -413,6 +415,7 @@ func (c *client) readLoop(p *pane) {
 			if cols, rows, err = proto.ParseSize(payload); err == nil {
 				err = p.mirror.Resize(cols, rows)
 				p.r.Invalidate()
+				p.asked = [2]uint16{}
 			}
 		case proto.FrameDigest:
 			mine, derr := p.mirror.Digest()
@@ -471,6 +474,7 @@ func (c *client) remove(p *pane) []resize {
 type resize struct {
 	p          *pane
 	cols, rows uint16
+	claim      bool // from typing (CLAIM_SIZE), not a window or split change
 }
 
 // relayout places the panes in the window after a change and returns the
@@ -493,7 +497,8 @@ func (c *client) relayout(send bool) []resize {
 			p.r.SetRect(p.rect.x, p.rect.y, p.rect.w, p.rect.h)
 		}
 		if cols, rows := p.mirror.Size(); send && (int(cols) != p.rect.w || int(rows) != p.rect.h) {
-			out = append(out, resize{p, uint16(p.rect.w), uint16(p.rect.h)})
+			p.asked = [2]uint16{uint16(p.rect.w), uint16(p.rect.h)}
+			out = append(out, resize{p, p.asked[0], p.asked[1], false})
 		}
 	}
 	c.full = true
@@ -501,9 +506,33 @@ func (c *client) relayout(send bool) []resize {
 	return out
 }
 
+// claimSizes: the console typed in sizes the panes it shows (docs/SPEC.md
+// §3.3). It returns the visible panes, other than watch-only ones, whose
+// session has another size than their rectangle, unless that size was
+// already asked for. c.mu held.
+func (c *client) claimSizes() []resize {
+	var out []resize
+	for _, p := range c.visible() {
+		if p.watch { // watching never resizes
+			continue
+		}
+		want := [2]uint16{uint16(p.rect.w), uint16(p.rect.h)}
+		if cols, rows := p.mirror.Size(); (cols == want[0] && rows == want[1]) || p.asked == want {
+			continue
+		}
+		p.asked = want
+		out = append(out, resize{p, want[0], want[1], true})
+	}
+	return out
+}
+
 func (c *client) sendSizes(sizes []resize) {
 	for _, s := range sizes {
-		c.send(s.p, proto.FrameSetSize, proto.Size(s.cols, s.rows))
+		typ := proto.FrameSetSize
+		if s.claim {
+			typ = proto.FrameClaimSize
+		}
+		c.send(s.p, typ, proto.Size(s.cols, s.rows))
 	}
 }
 
@@ -520,7 +549,7 @@ func (c *client) signals(sigs <-chan os.Signal, fd int) {
 		switch sig {
 		case syscall.SIGWINCH:
 			// The user really resized the window: only now do the panes
-			// follow (no resize on attach, docs/SPEC.md §3.3).
+			// follow; attaching never resizes (docs/SPEC.md §3.3).
 			cols, rows, err := term.GetSize(fd)
 			if err != nil || cols <= 0 || rows <= 0 {
 				continue
@@ -593,7 +622,9 @@ func (c *client) handle(ev uv.Event) {
 			return
 		}
 		b, err := emu.Paste(p.mirror, []byte(e.Content))
+		sizes := c.claimSizes()
 		c.mu.Unlock()
+		c.sendSizes(sizes)
 		if err == nil {
 			c.send(p, proto.FrameInput, b)
 		}
@@ -1028,7 +1059,9 @@ func (c *client) input(k uv.Key) {
 	if ok {
 		b, err = c.enc.Key(p.mirror, ek)
 	}
+	sizes := c.claimSizes()
 	c.mu.Unlock()
+	c.sendSizes(sizes)
 	c.log.Printf("key %s -> %q %v", k, b, err)
 	if err == nil && len(b) > 0 {
 		c.send(p, proto.FrameInput, b)
@@ -1053,13 +1086,18 @@ func (c *client) mouse(ev uv.Event) {
 		c.mu.Unlock()
 		return
 	}
-	if _, click := ev.(uv.MouseClickEvent); click && p != c.focus {
+	_, click := ev.(uv.MouseClickEvent)
+	if click && p != c.focus {
 		c.setFocus(p)
 		c.poke()
 	}
 	if p.watch {
 		c.mu.Unlock()
 		return
+	}
+	var sizes []resize
+	if _, wheel := ev.(uv.MouseWheelEvent); click || wheel {
+		sizes = c.claimSizes()
 	}
 	m.X -= p.rect.x
 	m.Y -= p.rect.y
@@ -1071,6 +1109,7 @@ func (c *client) mouse(ev uv.Event) {
 		b, err = c.enc.Mouse(p.mirror, m)
 	}
 	c.mu.Unlock()
+	c.sendSizes(sizes)
 	if err == nil && len(b) > 0 {
 		c.send(p, proto.FrameInput, b)
 	}

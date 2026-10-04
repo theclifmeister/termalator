@@ -35,7 +35,7 @@ func FuzzReadFrame(f *testing.F) {
 			if err != nil || typ2 != typ || !bytes.Equal(p2, payload) {
 				t.Fatalf("round trip changed the frame")
 			}
-			if typ == FrameResize || typ == FrameSetSize {
+			if typ == FrameResize || typ == FrameSetSize || typ == FrameClaimSize {
 				ParseSize(payload) // must not panic
 			}
 		}

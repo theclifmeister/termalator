@@ -261,17 +261,23 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	// enter on the thread: watch-only.
 	w.Key(Enter)
 	w.WaitUntil("watching", wait, func(sc string) bool { return lastLine(sc, "watch-only") })
+	cols, rows := paneSize(env, th)
+	if cols == 110 && rows == 29 {
+		t.Fatalf("the thread's pane already fits the window: the size checks below prove nothing")
+	}
 	w.Type("zzz")
 	w.Quiet(500 * time.Millisecond)
 	if strings.Contains(w.Screen(), "zzz") {
 		t.Fatalf("keys reached a watch-only thread:\n%s", w.Screen())
 	}
+	assertPaneSize(t, env, th, cols, rows) // watching never claims the size
 	w.Prefix("u")
 	w.WaitUntil("asked", wait, func(sc string) bool { return lastLine(sc, "take over t-0001") })
 	w.Type("y")
 	w.WaitUntil("taken over", wait, func(sc string) bool { return lastLine(sc, "taken over") })
 	w.Type("qqq")
 	w.WaitFor("qqq", wait)
+	waitPaneSize(t, env, th, 110, 29) // taken over: typing claims it
 	waitInbox(t, env, "takeover: the user took over t-0001's pane")
 	if j, _ := os.ReadFile(filepath.Join(projDir, "JOURNAL.md")); !strings.Contains(string(j), "human thread.takeover t-0001") {
 		t.Fatalf("journal:\n%s", j)

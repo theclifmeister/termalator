@@ -77,13 +77,18 @@ const (
 
 	// client → server
 	FrameInput     FrameType = 10 // bytes for the PTY, already encoded for the pane's modes
-	FrameSetSize   FrameType = 11 // u16 cols, u16 rows: the user really resized the window
+	FrameSetSize   FrameType = 11 // u16 cols, u16 rows: the user really resized the window or changed its split panes
 	FrameDigestReq FrameType = 12 // ask for a FrameDigest in the stream
 	FrameDetach    FrameType = 13
 	// FrameColorScheme carries one byte, 1 dark or 2 light: the client's
 	// terminal reported its colour scheme. Programs that enabled mode
 	// 2031 get a report, and CSI ? 996 n is answered with it.
 	FrameColorScheme FrameType = 14
+	// FrameClaimSize is u16 cols, u16 rows: the user typed into this pane
+	// in a console where its rectangle has that size. The console typed
+	// in sizes the pane (docs/SPEC.md §3.3), unless the agent's manifest
+	// says screen.resize = "explicit".
+	FrameClaimSize FrameType = 15
 )
 
 // MaxFrame bounds a frame's payload.
@@ -125,7 +130,8 @@ func ReadFrame(r io.Reader, buf []byte) (FrameType, []byte, error) {
 	return FrameType(hdr[0]), buf, nil
 }
 
-// Size encodes cols and rows for FrameResize and FrameSetSize.
+// Size encodes cols and rows for FrameResize, FrameSetSize and
+// FrameClaimSize.
 func Size(cols, rows uint16) []byte {
 	b := make([]byte, 4)
 	binary.BigEndian.PutUint16(b, cols)
