@@ -308,19 +308,21 @@ func taskList(e *Env, s *tasks.Store, pos []string, asJSON bool, status string, 
 		fmt.Fprintln(e.Stdout, "no tasks")
 		return nil
 	}
+	// One alignment for the whole list, across its groups.
+	lines := tasks.Lines(shown)
 	if archived {
-		for _, t := range shown {
-			fmt.Fprintln(e.Stdout, tasks.Line(t))
+		for _, l := range lines {
+			fmt.Fprintln(e.Stdout, l)
 		}
 		return nil
 	}
 	var g tasks.Group
-	for _, t := range shown {
+	for i, t := range shown {
 		if gg := tasks.GroupOf(t.Status); gg != g {
 			g = gg
 			fmt.Fprintln(e.Stdout, strings.ToUpper(string(g)))
 		}
-		fmt.Fprintln(e.Stdout, "  "+tasks.Line(t))
+		fmt.Fprintln(e.Stdout, "  "+lines[i])
 	}
 	return nil
 }

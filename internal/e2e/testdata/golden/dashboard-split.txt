@@ -1,10 +1,10 @@
- PROJECTS 1            │ termalator                                                                                                          ● server ok · 1 session
+ PROJECTS 1            │ tm dashboard                                                                                                        ● server ok · 1 session
 ▾· demo              1 │ demo ─────────────────────────────────────────────────────────────────────────────────────│ t-0001 Fix the login
   · coordinator        │  coordinator                         —          enter starts the coordinator  1 inbox     │ ○ idle
-  ○ t-0001 Fix the… 50%│  t-0001 Fix the login                ○ idle     report new  T1  50% 1/2 ▸ Fix  <duration>  PR #7  │ ──────────────────────────────────────────────
+  ○ Fix the login   50%│  t-0001 Fix the login                ○ idle     report new  T1  50% 1/2 ▸ Fix  <duration>  PR #7  │ ──────────────────────────────────────────────
                        │  tasks: 0 needs you · 1 in motion · 0 on deck                                             │ project   demo
-                       │ SESSIONS ─────────────────────────────────────────────────────────────────────────────────│ task      T1
-                       │  no sessions; s starts a shell                                                            │ session   <session>
+                       │ OTHER SESSIONS ───────────────────────────────────────────────────────────────────────────│ task      T1
+                       │  none outside the projects (1 in them); s starts a shell                                  │ session   <session>
                        │                                                                                           │ progress  ▰▰▰▱▱ 50% 1/2
                        │                                                                                           │ now       ▸ Fix
                        │                                                                                           │ updated   <duration> ago
@@ -26,5 +26,5 @@
                        │                                                                                           │
                        │                                                                                           │
                        │────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-                       │ enter watch · t tasks · i inbox · , settings · ? help · q quit
+                       │ enter watch · a project · t tasks · i inbox · , settings · ? help · q quit
                        │

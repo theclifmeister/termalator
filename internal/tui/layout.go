@@ -8,9 +8,9 @@ import (
 )
 
 // The layout: whether the dashboard's details panel shows beside the
-// list, how wide the list is, and the projects sidebar (sidebar.go). It is the user's view preference, so it
-// lives in ui.json next to config.toml, never in config.toml, which tm
-// doesn't write (docs/SPEC.md §5.1, §11.2).
+// list, how wide the list is, and the projects sidebar (sidebar.go). It
+// is this console's view preference, so it lives in ui.json next to
+// config.toml, which holds the human's settings (docs/SPEC.md §5.1).
 
 // Layout is ui.json.
 type Layout struct {

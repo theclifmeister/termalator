@@ -18,11 +18,12 @@ import (
 // DefaultPrefixKey is Ctrl+B, as in tmux. Outer terminals send it as
 // 0x02, or as CSI 98;5u once the client has pushed kitty "disambiguate";
 // ultraviolet decodes both to the same key. Inside tmux, which takes
-// Ctrl+B itself, users set another one in config.toml ([keys] prefix).
+// Ctrl+B itself, users set another one in the settings popup (,), which
+// writes [keys] prefix in config.toml.
 //
 // The prefix starts a key command, as in tmux (docs/SPEC.md §4): in a
-// session, prefix then d returns to the dashboard, prefix then p, ], [,
-// i, t, , or ? returns and opens that view, and prefix twice sends the
+// session, prefix then d returns to the dashboard, prefix then a, p, ],
+// [, i, t, , or ? returns and opens that view, and prefix twice sends the
 // prefix itself to the program.
 const DefaultPrefixKey = "ctrl+b"
 
@@ -83,7 +84,7 @@ func ConfigPrefix() string {
 
 // prefixCommands are the keys that, after the prefix in a session, return
 // to the dashboard and run there: the same keys as on the dashboard.
-var prefixCommands = map[string]bool{"p": true, "]": true, "[": true, "i": true, "t": true, ",": true, "?": true}
+var prefixCommands = map[string]bool{"a": true, "p": true, "]": true, "[": true, "i": true, "t": true, ",": true, "?": true}
 
 var specialKeys = map[rune]emu.SpecialKey{
 	uv.KeyEnter: emu.KeyEnter, uv.KeyTab: emu.KeyTab,

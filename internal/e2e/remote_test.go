@@ -133,6 +133,13 @@ func TestSmokeCoordinatorRemoteControl(t *testing.T) {
 	w.Type("q")
 	w.WaitExit(wait)
 
+	// tm attach on the coordinator has the status bar too: its state
+	// and remote control show there.
+	a := env.Attach(120, 30, coord.ID)
+	a.WaitUntil("tm attach status bar", agentWait, func(sc string) bool { return lastLine(sc, coord.ID+" · "+alpha+" coordinator") })
+	a.Detach()
+	a.WaitExit(wait)
+
 	// A project without a running coordinator: nothing to change.
 	beta, _ := newProject(env, "Beta")
 	if r := env.CLI("project", "remote", "on", beta); r.Code != 1 || !strings.Contains(r.Stderr, "open the project first") {

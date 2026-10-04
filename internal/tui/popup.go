@@ -15,8 +15,10 @@ type box struct {
 	title string
 	body  []string // styled lines
 	sel   int      // the line to keep in view, -1 for none
-	keys  string   // the footer's key list
-	width int      // the box's width when the window has room
+	// scroll is the first line shown when sel is -1 (help, the keys).
+	scroll int
+	keys   string // the footer's key list
+	width  int    // the box's width when the window has room
 }
 
 // popup draws b over the list.
@@ -36,6 +38,9 @@ func (m *dash) popup(b box) string {
 	}
 	rows = max(rows, 1)
 	top := scrollTop(b.sel, rows, len(b.body))
+	if b.sel < 0 {
+		top = min(max(b.scroll, 0), max(len(b.body)-rows, 0))
+	}
 
 	border := styleAccent
 	lines := make([]string, 0, rows+2)

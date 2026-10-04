@@ -144,11 +144,8 @@ func (p *Project) taskSection() (Section, error) {
 			}
 		}
 		s.Lines = append(s.Lines, fmt.Sprintf("%s (%d)", g, countGroup(b, g)))
-		for i, t := range ts {
-			if i == limit {
-				break
-			}
-			s.Lines = append(s.Lines, "  "+tasks.Line(t))
+		for _, l := range tasks.Lines(ts[:min(len(ts), limit)]) {
+			s.Lines = append(s.Lines, "  "+l)
 		}
 		if n := countGroup(b, g) - min(len(ts), limit); n > 0 {
 			omitted = append(omitted, fmt.Sprintf("%d %s", n, strings.ToLower(string(g))))

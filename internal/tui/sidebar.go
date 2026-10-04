@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"sort"
@@ -9,6 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/theclifmeister/termalator/internal/config"
 	"github.com/theclifmeister/termalator/internal/emu"
 	"github.com/theclifmeister/termalator/internal/project"
 	"github.com/theclifmeister/termalator/internal/proto"
@@ -213,7 +215,7 @@ func coordLook(state string) (string, lipgloss.Style) {
 //	"▾● termalator   ◆ 2 "   a project: open or closed, its coordinator's
 //	                         glyph, the hint, its open threads
 //	"  ○ coordinator"        its coordinator
-//	"  ● t-0002 Bootstr 40%" a thread, with its progress
+//	"  ● Bootstrap re…  40%" a thread's title, with its progress
 //
 // The slim strip shows projects alone, "▸●term", the current one marked.
 // A coordinator with remote control on gets "⌁" after the project's name,
@@ -286,11 +288,14 @@ func treeLine(r treeRow, cw int, slim bool) string {
 	if g == "" {
 		g = "·"
 	}
-	pct := ""
+	// The percent has a column of its own, the same width on every row,
+	// so titles are cut at the same place; the title gets the room (the
+	// id is in the details and the status bar).
+	pct := strings.Repeat(" ", pctCol)
 	if r.pct >= 0 {
-		pct = fmt.Sprintf(" %d%%", r.pct)
+		pct = fmt.Sprintf("%*d%%", pctCol-1, r.pct)
 	}
-	label := fit(r.thread+" "+r.title, max(cw-4-len(pct), 1))
+	label := clipWord(cmp.Or(r.title, r.thread), max(cw-4-pctCol, 1))
 	if r.here {
 		return sel.Render(fit("  "+g+" "+label+pct, cw))
 	}
@@ -555,7 +560,7 @@ func (c *client) sideGo(t Target) {
 		return
 	}
 	go func() {
-		if err := OpenTarget(c.paths, c.vc, c.side.agent, t); err != nil {
+		if err := OpenTarget(c.paths, c.vc, config.DefaultAgent(c.side.agent), t); err != nil {
 			var perr *proto.Error
 			msg := err.Error()
 			if errors.As(err, &perr) {
@@ -571,4 +576,17 @@ func (c *client) sideGo(t Target) {
 		}
 		c.apply(c.vc.View())
 	}()
+}
+
+// pctCol is the width of a thread row's percent column: " 100%".
+const pctCol = 5
+
+// clipWord fits s in w cells; a cut title ends in "…" right after its
+// last letter, never after a space.
+func clipWord(s string, w int) string {
+	if ansi.StringWidth(s) <= w {
+		return fit(s, w)
+	}
+	cut := strings.TrimRight(ansi.Truncate(s, max(w-1, 0), ""), " ")
+	return fit(cut+"…", w)
 }

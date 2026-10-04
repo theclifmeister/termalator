@@ -1,23 +1,19 @@
 package tui
 
 import (
-	"cmp"
 	"fmt"
-	"os"
-	"os/exec"
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/theclifmeister/termalator/internal/config"
 	"github.com/theclifmeister/termalator/internal/project"
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/tasks"
 )
 
 // Overlays: the views opened on top of the list (help, a prompt, the
-// task board, the project switcher, the inbox, the settings). Each keeps
+// task board, the project switcher, the inbox, the settings, the project
+// popup). Each keeps
 // its own state and draws as a popup (popup.go); keys go to the topmost,
 // and closing it returns to the one below, or to the list.
 type overlay interface {
@@ -84,14 +80,30 @@ func (m *dash) inner(width int) int {
 	return max(min(width, m.w-4)-4, 4)
 }
 
-// helpView lists the keys; any key closes it.
-type helpView struct{}
+// helpView lists the keys (keymap.go) as wide as the window; the arrows
+// scroll, any other key closes it.
+type helpView struct{ scroll int }
 
-func (helpView) key(m *dash, _ tea.KeyPressMsg) tea.Cmd { m.pop(); return nil }
-
-func (helpView) render(m *dash) string {
-	return m.popup(box{title: "keys · prefix = " + m.prefix, body: helpLines(), sel: -1, keys: "any key returns", width: 96})
+func (h *helpView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
+	if d, ok := scrollKeys[k.String()]; ok {
+		h.scroll = clampScroll(h.scroll+d, len(keyLines(m.inner(m.w))))
+		return nil
+	}
+	m.pop()
+	return nil
 }
+
+func (h *helpView) box(m *dash) box {
+	return box{title: "keys · prefix = " + m.prefix, body: keyLines(m.inner(m.w)), sel: -1, scroll: h.scroll,
+		keys: "↑ ↓ scroll · any other key returns", width: m.w}
+}
+
+func (h *helpView) render(m *dash) string { return m.popup(h.box(m)) }
+
+// scrollKeys scroll a long popup: by a line, or by a page.
+var scrollKeys = map[string]int{"up": -1, "k": -1, "down": 1, "j": 1, "pgup": -10, "pgdown": 10}
+
+func clampScroll(s, n int) int { return min(max(s, 0), max(n-1, 0)) }
 
 // inputView reads a line of text.
 type inputView struct {
@@ -345,123 +357,7 @@ func (in *inboxView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 }
 
 func (in *inboxView) render(m *dash) string {
-	w := m.inner(popupWidth)
-	items := in.items(m)
-	var lines []string
-	sel := -1
-	now := time.Now()
-	for i, it := range items {
-		when := fmt.Sprintf("%-6s", age(now.Sub(it.Created)))
-		if i == in.sel {
-			sel = len(lines)
-			lines = append(lines, styleSel.Render(fit(fmt.Sprintf("%s %s %s", fit(it.Kind, 16), when, oneLine(it.Summary)), w)))
-			continue
-		}
-		lines = append(lines, fit(fmt.Sprintf("%s %s %s", styleWarn.Render(fit(it.Kind, 16)),
-			styleFaint.Render(when), oneLine(it.Summary)), w)+reset)
-	}
-	if len(items) == 0 {
-		lines = append(lines, styleFaint.Render("inbox empty"))
-	}
+	lines, sel := inboxLines(in.items(m), in.sel, m.inner(popupWidth))
 	lines = append(lines, "", styleFaint.Render("The coordinator handles these (tm inbox done)."))
 	return m.popup(box{title: in.slug + " inbox", body: lines, sel: sel, keys: "r refresh · esc back", width: popupWidth})
-}
-
-// settingsView shows the settings that apply here: config.toml's keys
-// and the project's safety settings (§11.2), and the layout. tm never
-// writes config.toml; e opens it in the user's editor.
-type settingsView struct {
-	slug  string
-	lines []string
-}
-
-// editedMsg is the editor's exit.
-type editedMsg struct{ err error }
-
-func (m *dash) openSettings(slug string) {
-	sv := &settingsView{slug: slug}
-	sv.load(m)
-	m.push(sv)
-}
-
-func (sv *settingsView) load(m *dash) {
-	var l []string
-	add := func(label, value, note string) {
-		s := styleFaint.Render(fmt.Sprintf("%-22s", label)) + " " + value
-		if note != "" {
-			s += "  " + styleFaint.Render(note)
-		}
-		l = append(l, s)
-	}
-	def := func(isDefault bool) string {
-		if isDefault {
-			return "default"
-		}
-		return ""
-	}
-	path, _ := config.Path()
-	where := path
-	if _, err := os.Stat(path); err != nil {
-		where += styleFaint.Render("  (not created yet)")
-	}
-	l = append(l, styleHead.Render("config.toml"), where, "", styleHead.Render("[keys]"))
-	if _, err := prefixKey(); err != nil {
-		l = append(l, styleBad.Render(oneLine(err.Error())))
-	}
-	add("prefix", m.prefix, def(m.prefix == DefaultPrefixKey))
-	l = append(l, styleFaint.Render("Hints write it as prefix+<key>. Inside tmux, which takes ctrl+b, set another, e.g. ctrl+a."), "")
-
-	cfg, err := config.Load()
-	switch {
-	case err != nil:
-		l = append(l, styleBad.Render(oneLine(err.Error())), "")
-	case sv.slug == "":
-		l = append(l, styleFaint.Render("Select a project to see its safety settings."), "")
-	default:
-		s, err := cfg.Safety(sv.slug)
-		l = append(l, styleHead.Render("[projects."+sv.slug+"]"))
-		if err != nil {
-			l = append(l, styleBad.Render(oneLine(err.Error())))
-		}
-		d := config.Defaults
-		add("start_threads", s.StartThreads, def(s.StartThreads == d.StartThreads))
-		add("yolo", fmt.Sprint(s.Yolo), def(s.Yolo == d.Yolo))
-		add("coordinator_approves", fmt.Sprint(s.CoordinatorApproves), def(s.CoordinatorApproves == d.CoordinatorApproves))
-		add("auto_resolve", fmt.Sprint(s.AutoResolve), def(s.AutoResolve == d.AutoResolve))
-		add("pr_followup", fmt.Sprint(s.PRFollowup), def(s.PRFollowup == d.PRFollowup))
-		l = append(l, "")
-		l = append(l, remoteRow(s.CoordinatorRemoteControl, m.data.Sessions, sv.slug)...)
-		l = append(l, "")
-	}
-
-	l = append(l, styleHead.Render("layout")+styleFaint.Render("  ui.json, changed with < > | and the mouse"))
-	add("details panel", map[bool]string{true: "on", false: "off"}[m.layout.Details], "")
-	add("list width", fmt.Sprintf("%d%%", int(m.layout.Split*100+0.5)), "")
-	l = append(l, "", styleFaint.Render("tm never writes config.toml; e opens it in $VISUAL or $EDITOR."))
-	sv.lines = l
-}
-
-func (sv *settingsView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
-	switch k.String() {
-	case "esc", "q", ",":
-		m.pop()
-	case "e":
-		path, err := config.Path()
-		if err != nil {
-			m.fail(err)
-			return nil
-		}
-		args := strings.Fields(cmp.Or(os.Getenv("VISUAL"), os.Getenv("EDITOR"), "vi"))
-		cmd := exec.Command(args[0], append(args[1:], path)...)
-		return tea.ExecProcess(cmd, func(err error) tea.Msg { return editedMsg{err} })
-	}
-	return nil
-}
-
-func (sv *settingsView) render(m *dash) string {
-	title := "settings"
-	if sv.slug != "" {
-		title += " · " + sv.slug
-	}
-	return m.popup(box{title: title, body: sv.lines, sel: -1, keys: "e edit config.toml · esc back", width: 88})
 }

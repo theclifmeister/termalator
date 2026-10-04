@@ -3,26 +3,65 @@ package tasks
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
-// Line is a task's one-line form, used by `tm task list` and `tm context`:
-// "T12  started  Fix login redirect   t-0005  owner:claude  2/3".
-func Line(t *Task) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "%-4s %-8s %s", t.Ref(), t.Status, t.Title)
-	if t.Thread != "" {
-		b.WriteString("   " + t.Thread)
+// Line is a task's one-line form: "T12  started  Fix login redirect
+// 2/3  t-0005  owner:claude". Lines aligns several.
+func Line(t *Task) string { return Lines([]*Task{t})[0] }
+
+// maxTitle caps the title column; longer titles end in "…".
+const maxTitle = 60
+
+// Lines are the tasks' one-line forms with their columns aligned, for
+// `tm task list` and `tm context`: id, status, title, steps, thread,
+// owner. A column no task has takes no room.
+func Lines(ts []*Task) []string {
+	// The id and status keep their old minimum widths, so a short list
+	// reads as it always did.
+	wRef, wStatus := 3, 7
+	var wTitle, wSteps, wThread int
+	steps := make([]string, len(ts))
+	for i, t := range ts {
+		wRef = max(wRef, width(t.Ref()))
+		wStatus = max(wStatus, width(string(t.Status)))
+		wTitle = max(wTitle, min(width(t.Title), maxTitle))
+		if len(t.Steps) > 0 {
+			steps[i] = fmt.Sprintf("%d/%d", t.StepsDone(), len(t.Steps))
+		}
+		wSteps = max(wSteps, width(steps[i]))
+		wThread = max(wThread, width(t.Thread))
 	}
-	if t.Owner != "" {
-		b.WriteString("  owner:" + t.Owner)
+	out := make([]string, len(ts))
+	for i, t := range ts {
+		cols := []string{pad(t.Ref(), wRef), pad(string(t.Status), wStatus), pad(clip(t.Title, maxTitle), wTitle)}
+		if wSteps > 0 {
+			cols = append(cols, strings.Repeat(" ", wSteps-width(steps[i]))+steps[i])
+		}
+		if wThread > 0 {
+			cols = append(cols, pad(t.Thread, wThread))
+		}
+		if t.Owner != "" {
+			cols = append(cols, "owner:"+t.Owner)
+		}
+		if t.Archived {
+			cols = append(cols, "(archived)")
+		}
+		out[i] = strings.TrimRight(strings.Join(cols, "  "), " ")
 	}
-	if len(t.Steps) > 0 {
-		fmt.Fprintf(&b, "  %d/%d", t.StepsDone(), len(t.Steps))
+	return out
+}
+
+func width(s string) int { return utf8.RuneCountInString(s) }
+
+func pad(s string, w int) string { return s + strings.Repeat(" ", max(w-width(s), 0)) }
+
+// clip cuts s to w runes, the last one "…".
+func clip(s string, w int) string {
+	if width(s) <= w {
+		return s
 	}
-	if t.Archived {
-		b.WriteString("  (archived)")
-	}
-	return b.String()
+	return string([]rune(s)[:w-1]) + "…"
 }
 
 // Detail is a task in full, for `tm task show`.

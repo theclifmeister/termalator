@@ -278,22 +278,22 @@ The processes die with the server, because the PTY master closes and the childre
 **The coordinator owns all communication.** The user talks only to coordinators, and threads talk only to their coordinator. The dashboard shows threads, tasks and the inbox so the user can see where things stand, but it has no keys that act on them: acknowledging a report, sending a thread its next prompt and marking a task done are the coordinator's `tm` commands (§10), which it runs when the user asks. A thread's pane opens watch-only.
 
 ```
- PROJECTS 2            │ termalator                                          ● server ok · 6 sessions
+ PROJECTS 2            │ tm dashboard                                        ● server ok · 6 sessions
 ▾○ termalator        3 │ NEEDS YOU 1 ──────────────────────────────────────────────────────────────
   ○ coordinator        │ ! foodperfect  coordinator           ▲ blocked  question
-  ● t-0002 Bootstr… 60%│ termalator ───────────────────────────────────────────────────────────────
-  ● t-0003 libghos… 30%│  coordinator                         ○ idle     2 inbox
-  ▲ t-0004 Claude s…   │  t-0002 Bootstrap repo + spec        ● working  T3  60% 3/5 ▸ Write SPEC §8  4m
+  ● Bootstrap re…  60%│ termalator ───────────────────────────────────────────────────────────────
+  ● libghostty s…  30%│  coordinator                         ○ idle     2 inbox
+  ▲ Claude spike       │  t-0002 Bootstrap repo + spec        ● working  T3  60% 3/5 ▸ Write SPEC §8  4m
 ▸▲ foodperfect       0 │  t-0003 libghostty spike             ● working  T4  30% 2/7 ▸ Build the lib  1m
                        │  t-0004 Claude spike                 ▲ blocked  permission  T5  0m
                        │  t-0005 Docs pass                    ✓ done     report new  T6  PR #12
                        │  tasks: 2 needs you · 3 in motion · 4 on deck
-                       │ SESSIONS 1 ───────────────────────────────────────────────────────────────
+                       │ OTHER SESSIONS 1 ───────────────────────────────────────────────────────────────
                        │────────────────────────────────────────────────────────────────────────────
                        │ enter attach · t tasks · i inbox · p projects · ? help · q quit
 ```
 
-- **Rows.** There are three sections. NEEDS YOU comes first, across every project. Then the current project's own section (headed by its slug): its coordinator, its threads, its other sessions and its task counts; the sidebar's tree lists every project, so the list has no section of all projects. A click on a project in the tree shows its section. Shell sessions are listed last.
+- **Rows.** There are three sections. NEEDS YOU comes first, across every project. Then the current project's own section (headed by its slug): its coordinator, its threads, its other sessions and its task counts; the sidebar's tree lists every project, so the list has no section of all projects. A click on a project in the tree shows its section. OTHER SESSIONS, last, lists the sessions outside the projects (shells, the user's own agents); when there are none but the header counts some, it says how many are in the projects. The header names the app (`tm dashboard`), never a project, so a project called `termalator` isn't named twice.
 - **NEEDS YOU** lists only what waits on the user: coordinators that are `blocked` (a question or a permission dialog), and blocked sessions of the user's own outside the projects (an agent started with `tm session start`, which has no coordinator). Everything about threads (a blocked thread, an unacknowledged report, a `Waiting for you` self-report) and tasks in `review` or `blocked` goes to the coordinator's inbox; the coordinator asks the user when it needs them.
 - **Per-row data.** Each row shows:
   - the state from the server's arbitration (§8.4);
@@ -301,23 +301,30 @@ The processes die with the server, because the PTY master closes and the childre
   - the time since the last change, and the linked task id.
 
   Selecting a thread row shows its full todo list, its task's steps and its report's `## Next` lines, to read: in the details panel beside the list, or under the row when the window is too narrow for the panel. Threads are ordered as in §7.4. A thread that called `tm done` shows `✓ done` (unless it is working or blocked); a row with an unacknowledged report says `report new`, and a blocked row its reason, first after the state, so neither is cut off; then the progress and the PR number from the report.
-- **Details panel.** When the dashboard (the window less the sidebar) is at least 120 columns wide, a panel right of the list shows everything about the selected row: a thread's state, task, progress, PR, report and the lines above; a task's notes and steps; a session's directory, command and progress; a project's coordinator, counts and inbox. `<` and `>` narrow and widen the list, dragging the divider with the mouse does the same, and `|` hides or shows the panel. This layout is each console's own, kept in `ui.json` (§5.1), not `config.toml`, which `tm` never writes.
+- **Details panel.** When the dashboard (the window less the sidebar) is at least 120 columns wide, a panel right of the list shows everything about the selected row: a thread's state, task, progress, PR, report and the lines above; a task's notes and steps; a session's directory, command and progress; a project's coordinator, counts and inbox. `<` and `>` narrow and widen the list, dragging the divider with the mouse does the same, and `|` hides or shows the panel. This layout is each console's own, kept in `ui.json` (§5.1).
 - **Look.** Colours are the terminal's 16 ANSI colours, so they follow the user's theme; `NO_COLOR` turns them off. Every state also has its own glyph (● working, ▲ blocked, ○ idle, ◌ starting, ◆ needs you, ✓ done), so colour is never the only signal. A row shows a five-cell progress bar when it still fits. The list's columns adapt to its width: the title column takes a share of the room (20 to 40 cells), rows of the project's own section have no project column, and the state column is the glyph and word only. With the details panel the list takes 65% of the dashboard by default.
-- **Help** (`?`) lists every key; its header names the configured prefix (`prefix = ctrl+b`), the one place besides the settings that shows it.
-- **Popups.** Help, the inbox, the task board, the project switcher, prompts and the settings open as bordered boxes over the dimmed dashboard; `esc` closes the topmost. The footer lists the popup's keys and still shows messages.
-- **Settings** (`,`): the prefix key (with a note to pick another inside tmux, which takes Ctrl+B), the selected project's safety settings (§11.2), each marked when it is the default, and the layout. `tm` never writes `config.toml`; `e` opens it in `$VISUAL` or `$EDITOR`, and the popup reloads when the editor exits.
+- **Help** (`?`) lists every key, grouped (the dashboard, the mouse, a session's `prefix+<key>` commands, the project popup), as wide as the window, each line wrapped so nothing is cut off; the arrows scroll it, any other key closes it. Its header names the configured prefix (`prefix = ctrl+b`), the one place besides the settings and the project popup that shows it. The project popup's Keys tab is the same list: both draw from one table (`internal/tui/keymap.go`, the dashboard's part from the actions table), so they can't drift.
+- **Popups.** Help, the project popup, the inbox, the task board, the project switcher, prompts and the settings open as bordered boxes over the dimmed dashboard; `esc` closes the topmost. The footer lists the popup's keys and still shows messages. Which popup is open is each console's own (overlays are per client, §3.3): opening one never opens it on the other consoles of the view.
+- **Project popup** (`a` on the dashboard, the prefix then `a` in a session): the selected (else the current) project in five tabs; `tab` / `shift+tab`, `←` `→` or `1`–`5` switch, `esc` closes.
+  1. **Overview**: the name, the goal, the repositories (`+` adds one from a typed path, `x` removes the selected one after a `y`; the coordinator can do the same with `tm project repo`), the machines (this one in v0.1), the coordinator's agent and state (or the agent a new one runs), the threads' agents, and the task counts.
+  2. **Inbox**: what waits for the coordinator, read-only.
+  3. **Tasks**: NEEDS YOU, IN MOTION and ON DECK, each task with its steps; read-only, since the coordinator changes tasks.
+  4. **Settings**: the project's settings (§11.2) as plain labels, each with a line on what it does, changed in place with `enter` or `space`: Start threads (ask first / automatically), Yolo mode (turning it on asks first), Coordinator approves, Auto-close finished threads, Pull request follow-up, Remote control (with the running coordinator's state when `prefix+r` changed it since). A change is saved at once and shows on every console's next poll.
+  5. **Keys**: the help's list.
+- **Settings** (`,`): the settings of every project, changed in place the same way: the prefix key (`enter`, then press the new `ctrl+<key>`; inside tmux, which takes Ctrl+B, pick another), the default agent (the agent new coordinators run; `enter` steps through the agents `tm` knows), the details panel and list width (this console's, `ui.json`) and the sidebar's slim strip (the view's). A project's own settings are in its popup.
+- **No files in the UI.** No screen, popup, hint or message names the settings file, TOML, a setting's key, a path under `~/.termalator` or an editor; settings have plain labels. A broken settings file is reported by line (`the settings can't be read: line 3 is broken`). This document and `tm context` (for agents) name the file.
 - **Projects sidebar.** A column on the left of every screen, the dashboard, an attached session, split layouts, `tm attach` and `tm project open` alike, holds the project tree. A `⌁` after a project's name and after its coordinator, in both widths, means the coordinator's remote control is on (§11.2):
 
   ```
    PROJECTS 2            │
   ▾○ termalator        2 │   a project: ▾ open / ▸ closed, its coordinator's glyph, its open threads
     ○ coordinator        │   its coordinator (· when none runs)
-    ● t-0002 Bootstr… 60%│   each open thread: state glyph, id and title, progress
-    ▲ t-0004 Claude s…   │
+    ● Bootstrap re…  60%│   each open thread: state glyph, title, progress
+    ▲ Claude spike       │
   ▸○ foodperfect     ◆ 1 │   ◆: a thread is blocked or waiting, even with an idle coordinator
   ```
 
-  - Every project has a row with its coordinator's state glyph (`·` when none runs), `◆` when one of its threads is blocked or waiting on someone (a `Waiting for you` self-report), and its count of open (unresolved) threads. Under an open project come its coordinator and each open thread with its state glyph (`✓` once done) and percent; resolved threads disappear.
+  - Every project has a row with its coordinator's state glyph (`·` when none runs), `◆` when one of its threads is blocked or waiting on someone (a `Waiting for you` self-report), and its count of open (unresolved) threads. Under an open project come its coordinator and each open thread with its state glyph (`✓` once done), its title (the id is in the details and the status bar) and its percent, in a column of its own so every title is cut at the same place; resolved threads disappear.
   - The current project is always open: on the dashboard the one it lists (the view's current project, else the first); while attached, the focused pane's project (else the view's). Others open and close with a click on their `▸` / `▾` (the first two columns). Which projects are open is part of the view (`view.expand`), so every console of `main` shows the same tree; `--own` views keep their own.
   - The row you are on is drawn in reverse video: the current project's row on the dashboard, the focused session's coordinator or thread row while attached. The current project's name is bold, and the status bar names the project too (`s-4 · termalator coordinator · …`), so the context is never lost.
   - A click on a project row shows that project's dashboard (`view.project`); on a coordinator row attaches its coordinator (started if none runs); on a thread row watches the thread's pane (watch-only; a thread without a running session says so). This works from the dashboard, under a popup, and while attached, split panes included: the view changes on every console. In `tm attach` and `tm project open` a click hands the console over to a full one of view `main` (§3.3). The prefix then `p`, `]` and `[` and the switcher open coordinators from the keys.
@@ -339,7 +346,8 @@ The processes die with the server, because the PTY master closes and the childre
   | `p` | project switcher: every project with its coordinator's state; `enter` opens that project's coordinator (started if none runs) |
   | `]` / `[` | open the next / previous project's coordinator |
   | `i` | the project's inbox, read-only: every unhandled item, which the coordinator handles |
-  | `,` | settings |
+  | `a` | the project popup: overview, inbox, tasks, settings, keys |
+  | `,` | settings for every project |
   | `<` / `>` | narrow / widen the list beside the details panel |
   | `\|` | show or hide the details panel |
   | `{` / `}` | narrow / widen the projects sidebar |
@@ -348,13 +356,13 @@ The processes die with the server, because the PTY master closes and the childre
   | `?` | help |
   | `q` | quit the client; the server keeps running |
 
-- **Attaching.** `enter` shows the selected session in the view (`view.attach`), on every console of the view. Attaching gives the whole screen to the pane, rendered from the client's mirror emulator (§3.3), with a one-line status bar at the bottom that the client draws. The projects sidebar stays on the left, and the status bar runs under the panes, right of it. The status bar shows the session, its project and role, state, progress, `remote control on` while a coordinator's is, and `prefix+d dashboard`; after the prefix it lists the commands instead. The client polls `session.list` for it, and the project folders for the sidebar. Sessions started from the dashboard get the window's size less the sidebar and that row, so nothing is cropped. (`tm attach` and `tm project open` show the pane beside the sidebar in a view of their own; `tm attach` has no status bar, except on a thread's pane.)
+- **Attaching.** `enter` shows the selected session in the view (`view.attach`), on every console of the view. Attaching gives the whole screen to the pane, rendered from the client's mirror emulator (§3.3), with a one-line status bar at the bottom that the client draws. The projects sidebar stays on the left, and the status bar runs under the panes, right of it. The status bar shows the session, its project and role, state, progress, `remote control on` while a coordinator's is, and `prefix+d dashboard`; after the prefix it lists the commands instead. The client polls `session.list` for it, and the project folders for the sidebar. Sessions started from the dashboard get the window's size less the sidebar and that row, so nothing is cropped. (`tm attach` and `tm project open` show the pane beside the sidebar in a view of their own; `tm attach` has the status bar on a thread's or a coordinator's pane, and none on other sessions.)
 - **Prefix commands.** While attached, the prefix (Ctrl+B by default; hints write `prefix+<key>`) then:
 
   | Key | Action |
   |---|---|
   | `d` | back to the dashboard, on every console of the view; the session keeps running |
-  | `p`, `]`, `[`, `i`, `t`, `,`, `?` | back to the dashboard, which runs that key: the switcher, next / previous project, inbox, tasks, settings, help |
+  | `a`, `p`, `]`, `[`, `i`, `t`, `,`, `?` | back to the dashboard, which runs that key: the project popup, the switcher, next / previous project, inbox, tasks, settings, help |
   | `%` / `"` | split the focused pane: a new shell in its directory beside it / below it |
   | arrows, `o` | focus the pane in that direction / the next pane |
   | Ctrl+arrows | move the nearest divider that way (2 columns or 1 row); for half a second more Ctrl+arrows need no prefix |
@@ -384,7 +392,7 @@ The processes die with the server, because the PTY master closes and the childre
 
 ```
 ~/.termalator/                         TERMALATOR_HOME
-  config.toml                          user settings: default agent, keys, per-project safety (§11.2)   [human only]
+  config.toml                          user settings: default agent, keys, per-project safety (§11.2)   [human; tm only from the TUI's settings popups]
   ui.json                              this console's layout: details panel on or off, list width; the projects sidebar new views start with (§4)  [tm]
   agents/<name>.toml                   user agent manifests (§8.2)                   [human]
   run/  tm.sock server.lock server.pid                                               [server]
@@ -413,6 +421,7 @@ The processes die with the server, because the PTY master closes and the childre
 ```
 
 - **Writer discipline.** Every write is a write to a temp file followed by `rename`, under a per-file lock (a hidden `.<file>.lock`, `flock`). Files marked `[tm]` are only ever rewritten by `tm`. A human hand-editing `TASKS.md` is tolerated: `tm` re-parses the file, and if it can't, it refuses to write and reports the line number.
+- **`config.toml` is the human's.** Besides the projects' tables (§11.2) it holds `default_agent` (the agent new coordinators run; `claude` when unset) and `[keys] prefix`. People edit it by hand, and `tm` writes it only when the human changes a setting in the TUI's settings popups (§4, §11.2). That write edits the one line (or appends the table and the line), so comments, order and formatting stay as they were; it keeps the file's mode, parses the result and checks it says what was meant before the atomic rename, under the file's lock. A setting written in another form (a dotted key, an inline table) is left alone, and the popup says it can't change it there; a file that doesn't parse is never written over.
 - **Front matter** is TOML between `+++` lines, as in herdr-projects.
 - **Worktrees live outside the project folder.** Claude Code loads `CLAUDE.md` from parent directories, so a worktree under the project folder would inherit the coordinator's role file.
 
@@ -1074,7 +1083,7 @@ A thread call is further limited to its own thread: `tm status`, `tm report`, `t
 
 Human-only operations:
 - `task status … done` (§6.4), which the coordinator relays with `--approved-by-user` once the user accepted the work;
-- changing safety settings. These live in `~/.termalator/config.toml` under `[projects.<slug>]`, not in `PROJECT.md`, so the coordinator editing `PROJECT.md` can't touch them;
+- changing safety settings. These live in `~/.termalator/config.toml` under `[projects.<slug>]`, not in `PROJECT.md`, so the coordinator editing `PROJECT.md` can't touch them. `tm` writes them only from the TUI's settings popups, on the human's keypress: there is no CLI command or socket method that changes them, the dashboard refuses (`human-only`) when it runs inside an agent's session, and coordinators keep their `Edit` deny rule on the file;
 - `tm server stop|restart`;
 - `--fix` in `tm doctor`;
 - approving proposed threads.
@@ -1082,6 +1091,8 @@ Human-only operations:
 File access is enforced separately, by the agent's own permission rules and sandbox (§5.2). The two layers back each other up: an agent that gets around `tm`'s caller check still can't write the project folder, and one that gets around a file rule still can't change tasks without `tm`.
 
 ### 11.2 Settings and approvals
+
+The human changes these in the project popup's Settings tab (§4), where they have plain labels and a line each on what they do, or by editing `config.toml` (§5.1). Each change from the popup is journaled in the project's `JOURNAL.md` (`human settings.yolo <slug> true`). The table names the keys for the file; the UI never does.
 
 | Setting | Values | Default | Meaning |
 |---|---|---|---|
@@ -1092,7 +1103,7 @@ File access is enforced separately, by the agent's own permission rules and sand
 | `pr_followup` | bool | `true` | the ticker prompts a thread when its PR's checks fail or a reviewer requests changes (§7.5) |
 | `coordinator_remote_control` | bool | `false` | a new coordinator starts with the agent's remote control on (`[remote_control] args`, §8.2), named after the project, so the agent's own apps (the Claude desktop and mobile apps) list it by project. An agent without remote control starts without it, and the toggle says it has none. Threads never get it: they stay watch-only and are reached through the coordinator |
 
-**Remote control, live.** `tm project remote on|off [<slug>]` (human only) and the prefix then `r` on a coordinator's pane (asks first, in the status bar) change the running coordinator, not `config.toml`: through the manifest's in-session text when it has one, else by resuming the agent with or without the flag (refused unless it is idle). The change lasts until the coordinator is started anew, also across a server restart, which resumes it with the state it had; the setting decides again for a new coordinator. When the manifest names a `status_field`, the agent's own word wins, so a toggle made inside the agent (Claude's `/remote-control`) shows too. The settings popup shows it as a plain row, `Remote control: on/off` with what it does, and the running coordinator's state when that differs; the UI never names the key or the file. The protocol call is `session.remote {id, on}` → `{remote_control, how}` (`how`: `unchanged`, `prompted`, `restarted`).
+**Remote control, live.** `tm project remote on|off [<slug>]` (human only) and the prefix then `r` on a coordinator's pane (asks first, in the status bar) change the running coordinator, not `config.toml`: through the manifest's in-session text when it has one, else by resuming the agent with or without the flag (refused unless it is idle). The change lasts until the coordinator is started anew, also across a server restart, which resumes it with the state it had; the setting decides again for a new coordinator. When the manifest names a `status_field`, the agent's own word wins, so a toggle made inside the agent (Claude's `/remote-control`) shows too. The project popup's Settings tab shows it as a plain row, `Remote control  on/off` with what it does, changed with `enter`, and the running coordinator's state when that differs; the UI never names the key or the file. The protocol call is `session.remote {id, on}` → `{remote_control, how}` (`how`: `unchanged`, `prompted`, `restarted`).
 
 Rules for `tm thread approve`. It acts only when:
 - the thread's state is `blocked` with reason `permission`;

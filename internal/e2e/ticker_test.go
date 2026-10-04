@@ -246,12 +246,13 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	wide.Type("q")
 	wide.WaitExit(wait)
 
-	// a is no key any more; the coordinator acks.
+	// a opens the project popup and acks nothing; the coordinator acks.
 	w.Type("a")
-	w.Quiet(500 * time.Millisecond)
+	w.WaitFor("1 Overview", wait)
 	if r := env.MustCLI("thread", "show", "t-0001", "--project", "demo"); !strings.Contains(r, "report: new") {
 		t.Fatalf("a acked:\n%s", r)
 	}
+	w.Key(keyEsc)
 	env.MustCLI("thread", "ack", "t-0001", "--project", "demo")
 	w.WaitFor("report 1 (acked) next:", wait)
 	w.Type("i")
