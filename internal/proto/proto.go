@@ -8,8 +8,9 @@ import (
 )
 
 // Protocol is the version of the control API and the attach framing. It
-// goes up when a method's meaning or the attach framing changes.
-const Protocol = 1
+// goes up when a method's meaning or the attach framing changes. 2: the
+// server-owned views (view.*), which consoles need.
+const Protocol = 2
 
 // Kind is what a connection is for.
 type Kind string
