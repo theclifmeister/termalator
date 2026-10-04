@@ -69,7 +69,7 @@ type Server struct {
 	mu       sync.Mutex
 	sessions map[string]*session.Session
 	records  map[string]SessionRecord
-	blocked  map[string]bool // sessions whose agent is blocked, for notifications
+	blocked  map[string]bool // sessions whose agent is blocked, for alerts
 	nextID   int
 	stopping bool
 	prevShut string
@@ -80,8 +80,8 @@ type Server struct {
 	// project, for the restart inbox items.
 	prevProject map[string]string
 
-	// tick is the ticker (docs/SPEC.md §7.5); alerts counts the
-	// notifications sent, so clients know when to ring.
+	// tick is the ticker (docs/SPEC.md §7.5); alerts counts the alerts
+	// raised, so clients know when to ring.
 	tick   *ticker.Ticker
 	alerts atomic.Uint64
 

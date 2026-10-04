@@ -156,7 +156,6 @@ func New(t testing.TB) *Env {
 		"PS1=$ ",
 		"TM="+e.Bin,
 		"TERMALATOR_ATTACH_LOG="+e.AttachLog,
-		"TERMALATOR_NOTIFY=0", // no OS notifications from test servers
 	)
 	t.Cleanup(func() {
 		e.cleanup()
