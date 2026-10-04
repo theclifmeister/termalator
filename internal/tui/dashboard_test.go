@@ -180,10 +180,11 @@ func TestDashboardKeys(t *testing.T) {
 	// c asks for a directory, relative to the dashboard's.
 	m.result = DashResult{}
 	press(m, "c")
-	if m.mode != modeInput || m.text != "/work" {
-		t.Fatalf("c: mode %d text %q", m.mode, m.text)
+	in, ok := m.top().(*inputView)
+	if !ok || in.text != "/work" {
+		t.Fatalf("c: overlay %T", m.top())
 	}
-	m.text = "sub"
+	in.text = "sub"
 	run(m, press(m, "enter"))
 	if got := src.started[len(src.started)-1]; got != "agent /work/sub" || m.result.Attach != "s-9" {
 		t.Fatalf("started %q attach %q", got, m.result.Attach)
@@ -233,7 +234,7 @@ func TestDashboardThreadRow(t *testing.T) {
 		t.Fatalf("msg %q", m.msg)
 	}
 	press(m, "i")
-	if m.mode != modeInbox || !strings.Contains(m.render(), "t-0005 handed in report 1") {
+	if _, ok := m.top().(*inboxView); !ok || !strings.Contains(m.render(), "t-0005 handed in report 1") {
 		t.Fatalf("inbox view:\n%s", m.render())
 	}
 }
@@ -262,5 +263,58 @@ func TestStatusLine(t *testing.T) {
 	}
 	if w := len([]rune(strings.TrimSuffix(strings.TrimPrefix(got, "\x1b[7m"), "\x1b[27m"))); w != 80 {
 		t.Fatalf("status line is %d cells, want 80", w)
+	}
+}
+
+// TestDashboardOverlays: views open on top of the list and close back
+// to the one below; the help lists every labelled action.
+func TestDashboardOverlays(t *testing.T) {
+	src := &fakeSource{data: testData()}
+	m := newDash(DashOptions{Source: src, AgentName: "claude", Width: 100, Height: 30})
+	m.setData(src.data)
+	m.sel = "p:alpha"
+
+	m.Update(boardMsg{}) // no board open: ignored
+	m.Update(boardMsg{slug: "alpha", board: &tasks.Board{}})
+	press(m, "t")
+	b, ok := m.top().(*boardView)
+	if !ok || b.slug != "alpha" {
+		t.Fatalf("t: overlay %T", m.top())
+	}
+	m.Update(boardMsg{slug: "alpha", board: &tasks.Board{Tasks: []*tasks.Task{{ID: 1, Title: "One", Status: tasks.Review}}}})
+	press(m, "enter")
+	if !b.open || !strings.Contains(m.render(), "alpha T1") {
+		t.Fatalf("enter on the board:\n%s", m.render())
+	}
+	press(m, "?") // the board takes its own keys; ? isn't one
+	if m.top() != b {
+		t.Fatalf("? on the board opened %T", m.top())
+	}
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if b.open || m.top() != b {
+		t.Fatal("esc on a task returns to the board")
+	}
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if m.top() != nil {
+		t.Fatalf("esc on the board returns to the list, have %T", m.top())
+	}
+
+	press(m, "?")
+	out := m.render()
+	for _, a := range actions {
+		if a.label != "" && !strings.Contains(out, " "+a.label+" ") {
+			t.Errorf("help lacks %q:\n%s", a.label, out)
+		}
+	}
+	press(m, "x")
+	if m.top() != nil {
+		t.Fatal("any key closes the help")
+	}
+
+	// A failed board load closes the board and says why.
+	press(m, "t")
+	m.Update(boardMsg{slug: "alpha", err: fmt.Errorf("no TASKS.md")})
+	if m.top() != nil || m.msg != "no TASKS.md" {
+		t.Fatalf("board error: overlay %T msg %q", m.top(), m.msg)
 	}
 }
