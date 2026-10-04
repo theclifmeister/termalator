@@ -185,17 +185,13 @@ func TestBinaryCallerChecks(t *testing.T) {
 
 	coord.want(1, "human-only", "project", "new", "x")
 	coord.want(1, "human-only", "task", "status", "T1", "done")
-	if out := coord.ok("inbox", "list"); !strings.Contains(out, "confirm-done [needs user]") {
-		t.Fatalf("no confirmation: %q", out)
-	}
+	thread.want(1, "coordinator-only", "task", "status", "T1", "done", "--approved-by-user")
+	coord.ok("task", "status", "T1", "done", "--approved-by-user")
 	// A shell session inside termalator counts as the human.
 	shell := tm.as("shell", "demo", "")
-	shell.ok("task", "status", "T1", "done")
-	if out := coord.ok("inbox", "list"); out != "" {
-		t.Fatalf("confirmation left open: %q", out)
-	}
+	shell.ok("task", "status", "T2", "done")
 	journal, _ := os.ReadFile(filepath.Join(tm.home, "tm", "projects", "demo", "JOURNAL.md"))
-	for _, w := range []string{"t-0001 task.steps.add T1 2 Build", "coordinator task.request-done T1", "human task.status T1 done"} {
+	for _, w := range []string{"t-0001 task.steps.add T1 2 Build", "coordinator task.status T1 done (approved by the user)", "human task.status T2 done"} {
 		if !strings.Contains(string(journal), w) {
 			t.Errorf("journal lacks %q:\n%s", w, journal)
 		}
@@ -219,7 +215,7 @@ func TestBinaryContextDeterministic(t *testing.T) {
 
 	first := coord.ok("context")
 	firstJSON := coord.ok("context", "--json")
-	for _, w := range []string{"Goal: Ship v1", "Plan: login first.", "Needs you (1)\n  T2   blocked  Docs", "confirm-done [needs user]", "coordinator task.add T1 Fix login"} {
+	for _, w := range []string{"Goal: Ship v1", "Plan: login first.", "Needs you (1)\n  T2   blocked  Docs", "coordinator task.add T1 Fix login"} {
 		if !strings.Contains(first, w) {
 			t.Errorf("context lacks %q:\n%s", w, first)
 		}

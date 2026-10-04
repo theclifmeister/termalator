@@ -22,24 +22,12 @@ func (m *dash) details(r row, w int) []string {
 	switch {
 	case r.thread != nil:
 		m.threadPanel(d, r)
-	case r.task != nil:
-		ask := ""
-		for _, p := range m.data.Projects {
-			for _, it := range p.Inbox {
-				if r.key == "i:"+p.Slug+":"+it.ID {
-					ask = it.Summary
-				}
-			}
-		}
-		taskPanel(d, r.task, ask)
 	case strings.HasPrefix(r.key, "p:"):
 		m.projectPanel(d, r)
 	case r.session != "":
 		if s, ok := m.session(r.session); ok {
 			sessionPanel(d, s)
 		}
-	case strings.HasPrefix(r.key, "i:"):
-		m.inboxPanel(d, r)
 	}
 	return d.lines
 }
@@ -138,7 +126,7 @@ func (m *dash) threadPanel(d *panel, r row) {
 	if t.Reports > 0 {
 		rs := fmt.Sprintf("%d, %s", t.Reports, t.ReportState())
 		if t.ReportState() == "new" {
-			rs = styleWarn.Render(rs) + styleFaint.Render(" · a acks it")
+			rs = styleWarn.Render(rs) + styleFaint.Render(" · for the coordinator")
 		}
 		d.field("report", rs)
 	}
@@ -146,16 +134,18 @@ func (m *dash) threadPanel(d *panel, r row) {
 	for _, l := range threadDetail(t, "") {
 		d.add(l)
 	}
+	d.gap()
+	if r.session != "" {
+		d.add(styleFaint.Render("enter watches it; the coordinator acts on it"))
+	} else {
+		d.add(styleFaint.Render("the coordinator acts on it"))
+	}
 }
 
-// taskPanel shows a task; ask is the coordinator's done confirmation
-// (§6.4), if it raised one.
-func taskPanel(d *panel, t *tasks.Task, ask string) {
+// taskPanel shows a task.
+func taskPanel(d *panel, t *tasks.Task) {
 	d.title(t.Ref()+" "+t.Title, string(t.Status))
 	d.field("thread", t.Thread)
-	if ask != "" {
-		d.wrap(styleWarn.Render("the coordinator asks: ") + oneLine(ask))
-	}
 	if len(t.Steps) > 0 {
 		d.field("steps", progressLine(pctOf(t.StepsDone(), len(t.Steps)), t.StepsDone(), len(t.Steps)))
 	}
@@ -170,15 +160,6 @@ func taskPanel(d *panel, t *tasks.Task, ask string) {
 		for _, s := range t.Steps {
 			d.add(fmt.Sprintf("%s %d %s", todoGlyph(map[bool]string{true: "done"}[s.Done]), s.N, oneLine(s.Text)))
 		}
-	}
-	d.gap()
-	switch {
-	case ask != "":
-		d.add(styleFaint.Render("d marks it done"))
-	case t.Status == tasks.Review:
-		d.add(styleFaint.Render("d marks it done · enter opens the board"))
-	default:
-		d.add(styleFaint.Render("enter opens the board"))
 	}
 }
 
@@ -250,24 +231,4 @@ func sessionPanel(d *panel, s proto.SessionInfo) {
 	}
 	d.gap()
 	d.add(styleFaint.Render("enter attaches"))
-}
-
-func (m *dash) inboxPanel(d *panel, r row) {
-	for _, p := range m.data.Projects {
-		for _, it := range p.Inbox {
-			if r.key != "i:"+p.Slug+":"+it.ID {
-				continue
-			}
-			d.title(it.Kind, "inbox")
-			d.field("project", p.Slug)
-			d.field("about", it.Subject)
-			if !it.Created.IsZero() {
-				d.field("raised", age(time.Since(it.Created))+" ago")
-			}
-			d.gap()
-			d.wrap(oneLine(it.Summary))
-			d.gap()
-			d.add(styleFaint.Render("the coordinator handles it (tm inbox done)"))
-		}
-	}
 }

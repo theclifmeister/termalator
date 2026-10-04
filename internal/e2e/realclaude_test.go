@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/theclifmeister/termalator/internal/agent"
-	"github.com/theclifmeister/termalator/internal/emu"
 )
 
 const realWait = 90 * time.Second
@@ -213,23 +212,20 @@ func TestRealThreadAccess(t *testing.T) {
 	}
 }
 
-// TestRealFirstLocalRun is M4's "Try it" against Claude: c in the
-// dashboard starts Claude in a chosen directory and attaches; a prompt
+// TestRealFirstLocalRun is M4's "Try it" against Claude: a Claude
+// session of the user's own shows on the dashboard and enter attaches; a prompt
 // typed there blocks on a permission dialog; Ctrl+\ d shows it under NEEDS
 // YOU; enter attaches again to approve; the session survives the window.
 func TestRealFirstLocalRun(t *testing.T) {
 	env := realEnv(t)
-	env.Setenv("ANTHROPIC_MODEL", "haiku") // the c key passes no --model
+	env.Setenv("ANTHROPIC_MODEL", "haiku") // tm session start passes no --model
 	dir := env.Workdir()
 
 	w := env.Window(120, 40)
 	w.WaitFor("no sessions", wait)
-	w.Type("c")
-	w.WaitFor("claude session in directory:", wait)
-	w.Key(emu.Key{Rune: 'u', Mods: emu.ModCtrl})
-	w.Type(dir)
+	s := env.StartAgent("claude", dir)
+	w.WaitFor(s.ID+" ", wait)
 	w.Key(Enter)
-	s := agentSession(env)
 	w.WaitUntil("attached", realWait, func(sc string) bool { return lastLine(sc, `ctrl+\ d dashboard`) })
 	if !Poll(realWait, func() bool {
 		i, _ := env.Info(s)

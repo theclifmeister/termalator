@@ -1,19 +1,19 @@
  termalator                                                                            ● server ok · 1 session
- NEEDS YOU 1 ─────────────────────────────────────────────────────────────────────────────────────────────────
- ? demo         t-0001 Fix the login           ◆ report    unacknowledged report · a acks
  PROJECTS 1 ──────────────────────────────────────────────────────────────────────────────────────────────────
   demo         coordinator                    —           enter starts the coordinator  1 inbox
                  t-0001 Fix the login           ○ idle      T1  50% 1/2 ▸ Fix  <duration>  report waiting  PR #7
         T1 steps:
           ✓ 1 Reproduce
           ○ 2 Fix
-        report 1 (new) next:  a acks it
+        report 1 (new) next:
           1 Merge the PR
           2 Remove the worktree
-          1-9 sends that line to the thread
     tasks: 0 needs you · 1 in motion · 0 on deck
  SESSIONS ────────────────────────────────────────────────────────────────────────────────────────────────────
-  no sessions; s starts a shell, c an agent
+  no sessions; s starts a shell
+
+
+
 
 
 
@@ -26,4 +26,4 @@
 
 
 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
- enter attach · t tasks · i inbox · a ack · 1-9 send next · , settings · ? help · q quit
+ enter watch · t tasks · i inbox · , settings · ? help · q quit

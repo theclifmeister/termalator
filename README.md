@@ -30,7 +30,7 @@ Where state lives, logs, the login service, upgrading and uninstalling: [docs/OP
 make run
 ```
 
-This builds `bin/tm`, starts the background server and opens the dashboard. Press `c` to start Claude Code in a directory (the current one by default) or `s` for a shell; either attaches right away, with a status bar at the bottom. Ctrl+\ is the prefix key, as in tmux: Ctrl+\ then `d` brings you back to the dashboard (then `p`, `]` or `[` switches project, `i` opens the inbox), where a session that waits for you (a permission dialog, say) shows under NEEDS YOU; `enter` attaches again. `?` lists the keys, `q` quits the dashboard. Sessions keep running after you quit, and after you close the terminal:
+This builds `bin/tm`, starts the background server and opens the dashboard. Press `n` to create a project, then `enter` on it to start its coordinator (Claude Code), or `s` for a shell; either attaches right away, with a status bar at the bottom. You talk to the coordinator; it runs the threads, whose panes you can watch (`enter` on a thread) but not type into unless you take one over (Ctrl+\ then `u`). Ctrl+\ is the prefix key, as in tmux: Ctrl+\ then `d` brings you back to the dashboard (then `p`, `]` or `[` switches project, `i` opens the inbox), where a session that waits for you (a permission dialog, say) shows under NEEDS YOU; `enter` attaches again. `?` lists the keys, `q` quits the dashboard. Sessions keep running after you quit, and after you close the terminal:
 
 ```sh
 bin/tm                                 # the dashboard again

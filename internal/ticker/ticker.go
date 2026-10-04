@@ -457,7 +457,7 @@ var verbs = map[string]string{
 	"report": "reported", "thread-done": "done", "thread-resolved": "resolved", "needs-you": "waiting for the user",
 	KindBlocked: "blocked", KindIdle: "idle with a report", KindExited: "exited", KindServerRestart: "server restarted",
 	KindPROpened: "opened a PR", KindPRChecks: "PR checks failed", KindPRReview: "PR reviewed",
-	KindPRMerged: "PR merged", KindPRClosed: "PR closed",
+	KindPRMerged: "PR merged", KindPRClosed: "PR closed", project.KindTakeover: "taken over by the user",
 }
 
 // NudgeText is the one line an idle coordinator gets (§7.5). It holds
@@ -510,10 +510,6 @@ func (t *Ticker) nudge(p *project.Project, sessions []proto.SessionInfo, now tim
 	for _, it := range items {
 		if told[it.ID] {
 			keep = append(keep, it.ID)
-			continue
-		}
-		// A done confirmation is the human's, raised by the coordinator.
-		if it.Kind == project.KindConfirmDone {
 			continue
 		}
 		fresh = append(fresh, it)

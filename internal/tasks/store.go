@@ -23,17 +23,11 @@ func (e *Error) Error() string { return e.Code + ": " + e.Msg }
 
 func refuse(code, msg string) error { return &Error{Code: code, Msg: msg} }
 
-// Events lets the project layer journal changes and raise confirmations
-// without this package knowing the project folder's other files. Any
-// method may be a no-op.
+// Events lets the project layer journal changes without this package
+// knowing the project folder's other files.
 type Events interface {
 	// Journal records one applied change (§5.1 JOURNAL.md).
 	Journal(c caller.Caller, action, ref, detail string) error
-	// RequestDone records an agent's request to mark t done, for the
-	// human to confirm (§6.4). It returns the confirmation's id.
-	RequestDone(c caller.Caller, t *Task) (string, error)
-	// Confirmed is called after the human marked t done.
-	Confirmed(t *Task) error
 }
 
 // Store applies task commands to one project folder.
@@ -41,7 +35,7 @@ type Store struct {
 	Dir    string           // the project folder
 	Slug   string           // the project's slug, for the caller check
 	Now    func() time.Time // nil means time.Now
-	Events Events           // nil means no journal or confirmations
+	Events Events           // nil means no journal
 }
 
 // TasksPath is <project>/TASKS.md.
@@ -299,13 +293,28 @@ func (s *Store) addOne(c caller.Caller, b *Board, it NewTask) (AddResult, *Task)
 	return AddResult{Title: title, ID: t.Ref(), Result: "created"}, t
 }
 
-// SetStatus moves a task. Only the human sets done: a coordinator's
-// request raises a confirmation and is refused with human-only (§6.4).
-// note, if given, is appended to the notes and journaled.
+// SetStatus moves a task. Only the human sets done (§6.4): an agent's
+// call is refused with human-only, and the coordinator relays the user's
+// acceptance with SetDoneApproved. note, if given, is appended to the
+// notes and journaled.
 func (s *Store) SetStatus(c caller.Caller, id int, st Status, note string) (Result, error) {
 	if st == Done && c.IsAgent() {
-		return s.requestDone(c, id)
+		return s.refuseDone(c, id)
 	}
+	return s.setStatus(c, id, st, note, "")
+}
+
+// SetDoneApproved marks a task done on the coordinator's call once the
+// user accepted the work and told it so (tm task status T12 done
+// --approved-by-user); the journal says the user approved it.
+func (s *Store) SetDoneApproved(c caller.Caller, id int, note string) (Result, error) {
+	if c.IsAgent() && c.Kind != caller.Coordinator {
+		return Result{}, refuse("coordinator-only", "threads report through tm done; the coordinator moves the task")
+	}
+	return s.setStatus(c, id, Done, note, " (approved by the user)")
+}
+
+func (s *Store) setStatus(c caller.Caller, id int, st Status, note, approved string) (Result, error) {
 	res, err := s.edit(c, id, opWrite, func(t *Task) (bool, error) {
 		changed := t.Status != st
 		t.Status = st
@@ -322,16 +331,12 @@ func (s *Store) SetStatus(c caller.Caller, id int, st Status, note string) (Resu
 	if err != nil || !res.Changed {
 		return res, err
 	}
-	if err := s.journal(c, "task.status", res.Task, joinDetail(string(st), note)); err != nil {
-		return res, err
-	}
-	if st == Done && s.Events != nil {
-		return res, s.Events.Confirmed(res.Task)
-	}
-	return res, nil
+	return res, s.journal(c, "task.status", res.Task, joinDetail(string(st), note)+approved)
 }
 
-func (s *Store) requestDone(c caller.Caller, id int) (Result, error) {
+// refuseDone answers an agent's plain request to set done: refused, or
+// already true.
+func (s *Store) refuseDone(c caller.Caller, id int) (Result, error) {
 	if c.Kind != caller.Coordinator {
 		return Result{}, refuse("coordinator-only", "threads report through tm done; the coordinator moves the task")
 	}
@@ -348,15 +353,7 @@ func (s *Store) requestDone(c caller.Caller, id int) (Result, error) {
 	if t.Status == Done {
 		return Result{Task: t}, nil
 	}
-	msg := fmt.Sprintf("only the human marks %s done", t.Ref())
-	if s.Events != nil {
-		cid, err := s.Events.RequestDone(c, t)
-		if err != nil {
-			return Result{}, err
-		}
-		msg += fmt.Sprintf("; asked them to confirm (inbox %s)", cid)
-	}
-	return Result{}, refuse("human-only", msg)
+	return Result{}, refuse("human-only", fmt.Sprintf("only the user accepts work: once they tell you %s is done, run tm task status %s done --approved-by-user", t.Ref(), t.Ref()))
 }
 
 // Edit changes title, notes or owner; nil fields are left alone.

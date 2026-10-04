@@ -21,11 +21,8 @@ import (
 // fakeSource records the dashboard's actions.
 type fakeSource struct {
 	data    Data
-	done    []string
 	opened  []string
 	started []string
-	acked   []string
-	next    []string
 }
 
 func (f *fakeSource) Load() Data                             { return f.data }
@@ -35,45 +32,26 @@ func (f *fakeSource) StartShell(cwd string, c, r int) (string, error) {
 	f.started = append(f.started, "shell "+cwd)
 	return "s-9", nil
 }
-func (f *fakeSource) StartAgent(cwd string, c, r int) (string, error) {
-	f.started = append(f.started, "agent "+cwd)
-	return "s-9", nil
-}
 func (f *fakeSource) OpenProject(slug string, c, r int) (string, error) {
 	f.opened = append(f.opened, slug)
 	return "s-" + slug, nil
 }
-func (f *fakeSource) MarkDone(slug string, id int) error {
-	f.done = append(f.done, slug+":"+(&tasks.Task{ID: id}).Ref())
-	return nil
-}
-
-func (f *fakeSource) Ack(slug, id string) error {
-	f.acked = append(f.acked, slug+":"+id)
-	return nil
-}
-func (f *fakeSource) PromptNext(slug, id string, n int) error {
-	f.next = append(f.next, fmt.Sprintf("%s:%s:%d", slug, id, n))
-	return nil
-}
 
 func testData() Data {
 	now := time.Now()
-	review := &tasks.Task{ID: 7, Title: "Pick a licence", Status: tasks.Review}
-	started := &tasks.Task{ID: 3, Title: "Build it", Status: tasks.Started}
 	return Data{ServerOK: true,
 		Sessions: []proto.SessionInfo{
-			{ID: "s-1", Role: proto.RoleCoordinator, Project: "alpha", Agent: "claude", State: "idle", Created: now},
+			{ID: "s-1", Role: proto.RoleCoordinator, Project: "alpha", Agent: "claude", State: "blocked", Reason: "question", Created: now},
 			{ID: "s-2", Role: proto.RoleThread, Project: "alpha", Thread: "t-0002", Agent: "claude", State: "blocked", Reason: "permission", Created: now},
 			{ID: "s-5", Role: proto.RoleThread, Project: "beta", Thread: "t-0005", Agent: "claude", State: "working", Created: now},
 			{ID: "s-3", Role: proto.RoleShell, Argv: []string{"/bin/zsh", "-l"}, State: "", Cwd: "/x", Created: now},
+			{ID: "s-4", Role: proto.RoleShell, Agent: "claude", State: "blocked", Reason: "permission", Cwd: "/y", Created: now},
 		},
 		Projects: []ProjectData{
-			{Slug: "alpha", Counts: map[string]int{"needs_you": 1, "in_motion": 1}, NeedsYou: []*tasks.Task{review},
-				Inbox: []InboxRow{{Item: project.Item{ID: "i1", Kind: project.KindConfirmDone, Subject: "T3", Summary: "coordinator asks to mark T3 done", NeedsUser: true}, Task: started}}},
+			{Slug: "alpha", Counts: map[string]int{"needs_you": 1, "in_motion": 1}},
 			{Slug: "beta", Counts: map[string]int{}, Threads: []ThreadRow{
 				{Record: &thread.Record{ID: "t-0005", Title: "Write docs", Task: "T4", State: thread.Running, Session: "s-5", Reports: 1},
-					Status: &thread.Status{Percent: 60, PercentSource: "steps", StepsDone: 3, StepsTotal: 5, Current: "Draft §2",
+					Status: &thread.Status{Percent: 60, PercentSource: "steps", StepsDone: 3, StepsTotal: 5, Current: "Draft §2", NeedsYou: "Which licence?",
 						Todos: []agent.Todo{{Text: "Outline", Status: agent.TodoCompleted}, {Text: "Draft §2", Status: agent.TodoInProgress}}},
 					Report:  &thread.Report{PR: "https://github.com/o/r/pull/7", Next: []string{"Merge the PR", "Delete the branch"}},
 					TaskRec: &tasks.Task{ID: 4, Title: "Docs", Steps: []tasks.Step{{N: 1, Text: "Plan", Done: true}, {N: 2, Text: "Write"}}}},
@@ -117,7 +95,7 @@ func run(m *dash, cmd tea.Cmd) {
 
 func TestDashboardRows(t *testing.T) {
 	src := &fakeSource{data: testData()}
-	m := newDash(DashOptions{Source: src, AgentName: "claude", Width: 120, Height: 30})
+	m := newDash(DashOptions{Source: src, Width: 120, Height: 30})
 	m.layout.Details = false // one column: the rows at full width
 	m.setData(src.data)
 	out := screen(m)
@@ -130,52 +108,75 @@ func TestDashboardRows(t *testing.T) {
 	if strings.Contains(out, "s-5 ") {
 		t.Errorf("thread session listed besides its thread row:\n%s", out)
 	}
+	// NEEDS YOU: the blocked coordinator and the user's own blocked
+	// session; nothing of the threads (a blocked one, a report, a
+	// question), which are their coordinator's.
 	for _, want := range []string{
-		"NEEDS YOU 4 ─",
-		"! alpha        t-0002                         ▲ blocked   permission",
-		"? alpha        T7 Pick a licence              ◆ review",
-		"? alpha        T3 Build it                    ◆ confirm   d marks it done",
-		"  alpha        coordinator                    ○ idle",
+		"NEEDS YOU 2 ─",
+		"! alpha        coordinator                    ▲ blocked   question",
+		"! s-4          claude                         ▲ blocked   permission",
+		"  alpha        coordinator                    ▲ blocked",
 		"    s-2          t-0002",
 		"  beta         coordinator                    —           enter starts the coordinator",
 		"  s-3          /bin/zsh -l                    ● running",
 		"                 t-0005 Write docs              ● working   ▰▰▰▱▱  T4  60% 3/5 ▸ Draft §2  report waiting  PR #7",
 		"                 t-0006 Old work                · stopped",
-		"? beta         t-0005 Write docs              ◆ report    unacknowledged report · a acks",
 		"PROJECTS 2 ─",
-		"● server ok · 4 sessions",
+		"● server ok · 5 sessions",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in\n%s", want, out)
 		}
 	}
-	// The first selectable row is the blocked session.
-	if r, _ := m.selected(); r.session != "s-2" {
+	needsYou := out[needs:projs]
+	for _, not := range []string{"t-0002", "t-0005", "report", "Which licence?"} {
+		if strings.Contains(needsYou, not) {
+			t.Errorf("NEEDS YOU shows %q:\n%s", not, needsYou)
+		}
+	}
+	// The first selectable row is the blocked coordinator.
+	if r, _ := m.selected(); r.session != "s-1" {
 		t.Errorf("selected %+v", r)
 	}
 }
 
 func TestDashboardKeys(t *testing.T) {
 	src := &fakeSource{data: testData()}
-	m := newDash(DashOptions{Source: src, AgentName: "claude", Cwd: "/work", Width: 100, Height: 30})
+	m := newDash(DashOptions{Source: src, Cwd: "/work", Width: 100, Height: 30})
 	m.setData(src.data)
 
-	// enter on the blocked session attaches to it.
+	// enter on the blocked coordinator attaches to it.
 	run(m, press(m, "enter"))
-	if m.result.Attach != "s-2" {
+	if m.result.Attach != "s-1" {
 		t.Fatalf("attach %q", m.result.Attach)
 	}
 
-	// d on a task in review, and on a confirmation of a started task.
-	m.result = DashResult{}
-	run(m, press(m, "down", "d"))
-	run(m, press(m, "down", "d"))
-	if got := strings.Join(src.done, ","); got != "alpha:T7,alpha:T3" {
-		t.Fatalf("done %q", got)
+	// The keys that acted on threads and tasks are gone: c, d, a, 1-9
+	// do nothing on any row.
+	for _, sel := range []string{"n:s-1", "th:beta:t-0005", "p:alpha"} {
+		m.sel, m.result = sel, DashResult{}
+		for _, k := range []string{"c", "d", "a", "1", "2"} {
+			if cmd := press(m, k); cmd != nil || m.top() != nil {
+				t.Fatalf("%s on %s did something: overlay %T", k, sel, m.top())
+			}
+		}
 	}
-	// d on a started task in the task view is refused.
-	if cmd := m.markDone("alpha", &tasks.Task{ID: 3, Status: tasks.Started}, false); cmd != nil || !strings.Contains(m.msg, "only a task in review") {
-		t.Fatalf("started task marked done: %q", m.msg)
+	if len(src.started)+len(src.opened) != 0 {
+		t.Fatalf("started %v opened %v", src.started, src.opened)
+	}
+
+	// enter on a thread watches its session.
+	m.sel = "th:beta:t-0005"
+	run(m, press(m, "enter"))
+	if m.result.Attach != "s-5" {
+		t.Fatalf("watch %q", m.result.Attach)
+	}
+
+	// s starts a shell where the dashboard was started.
+	m.sel, m.result = "p:alpha", DashResult{}
+	run(m, press(m, "s"))
+	if got := strings.Join(src.started, ","); got != "shell /work" || m.result.Attach != "s-9" {
+		t.Fatalf("started %q attach %q", got, m.result.Attach)
 	}
 
 	// ] from alpha opens beta's coordinator; [ from beta wraps to alpha.
@@ -185,19 +186,6 @@ func TestDashboardKeys(t *testing.T) {
 	run(m, press(m, "["))
 	if got := strings.Join(src.opened, ","); got != "beta,alpha" {
 		t.Fatalf("opened %q", got)
-	}
-
-	// c asks for a directory, relative to the dashboard's.
-	m.result = DashResult{}
-	press(m, "c")
-	in, ok := m.top().(*inputView)
-	if !ok || in.text != "/work" {
-		t.Fatalf("c: overlay %T", m.top())
-	}
-	in.text = "sub"
-	run(m, press(m, "enter"))
-	if got := src.started[len(src.started)-1]; got != "agent /work/sub" || m.result.Attach != "s-9" {
-		t.Fatalf("started %q attach %q", got, m.result.Attach)
 	}
 }
 
@@ -219,8 +207,8 @@ func TestDashboardBell(t *testing.T) {
 }
 
 // TestDashboardThreadRow: a selected thread row shows its todos, its
-// task's steps and its report's Next lines; a acks the report and a
-// digit sends a Next line; i opens the project's inbox.
+// task's steps and its report's Next lines, to read: the coordinator
+// acts on them. i opens the project's inbox.
 func TestDashboardThreadRow(t *testing.T) {
 	src := &fakeSource{data: testData()}
 	src.data.Projects[1].Items = []project.Item{{ID: "x", Kind: "report", Subject: "t-0005", Summary: "t-0005 handed in report 1"}}
@@ -229,19 +217,15 @@ func TestDashboardThreadRow(t *testing.T) {
 	m.sel = "th:beta:t-0005"
 	out := screen(m)
 	for _, want := range []string{"✓ Outline", "◐ Draft §2", "T4 steps:", "✓ 1 Plan", "○ 2 Write",
-		"report 1 (new) next:  a acks it", "1 Merge the PR", "2 Delete the branch"} {
+		"report 1 (new) next:", "1 Merge the PR", "2 Delete the branch"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("thread detail lacks %q:\n%s", want, out)
 		}
 	}
-	run(m, press(m, "a"))
-	run(m, press(m, "2"))
-	if strings.Join(src.acked, ",") != "beta:t-0005" || strings.Join(src.next, ",") != "beta:t-0005:2" {
-		t.Fatalf("acked %v next %v", src.acked, src.next)
-	}
-	press(m, "3")
-	if !strings.Contains(m.msg, "no ## Next line 3") {
-		t.Fatalf("msg %q", m.msg)
+	for _, not := range []string{"a acks", "1-9"} {
+		if strings.Contains(out, not) {
+			t.Errorf("thread detail offers %q:\n%s", not, out)
+		}
 	}
 	press(m, "i")
 	if _, ok := m.top().(*inboxView); !ok || !strings.Contains(screen(m), "t-0005 handed in report 1") {
@@ -289,7 +273,7 @@ func TestStatusLine(t *testing.T) {
 // to the one below; the help lists every labelled action.
 func TestDashboardOverlays(t *testing.T) {
 	src := &fakeSource{data: testData()}
-	m := newDash(DashOptions{Source: src, AgentName: "claude", Width: 100, Height: 30})
+	m := newDash(DashOptions{Source: src, Width: 100, Height: 30})
 	m.setData(src.data)
 	m.sel = "p:alpha"
 
@@ -344,13 +328,14 @@ func TestDashboardOverlays(t *testing.T) {
 func TestDashboardSplit(t *testing.T) {
 	src := &fakeSource{data: testData()}
 	ui := filepath.Join(t.TempDir(), "ui.json")
-	m := newDash(DashOptions{Source: src, AgentName: "claude", Width: 140, Height: 40, UIFile: ui})
+	m := newDash(DashOptions{Source: src, Width: 140, Height: 40, UIFile: ui})
 	m.setData(src.data)
 
 	m.sel = "th:beta:t-0005"
 	out := screen(m)
 	for _, want := range []string{"│ t-0005 Write docs", "● working", "task      T4", "progress  ▰▰▰▱▱ 60% 3/5",
-		"PR        https://github.com/o/r/pull/7", "report    1, new · a acks it", "✓ Outline", "1 Merge the PR"} {
+		"PR        https://github.com/o/r/pull/7", "report    1, new · for the coordinator", "✓ Outline", "1 Merge the PR",
+		"enter watches it; the coordinator acts on it"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("details lack %q:\n%s", want, out)
 		}
@@ -361,10 +346,6 @@ func TestDashboardSplit(t *testing.T) {
 	m.sel = "p:beta"
 	if out := screen(m); !strings.Contains(out, "no coordinator; enter starts it") {
 		t.Errorf("project details:\n%s", out)
-	}
-	m.sel = "i:alpha:i1"
-	if out := screen(m); !strings.Contains(out, "│ the coordinator asks: coordinator asks to mark T3") {
-		t.Errorf("confirmation details:\n%s", out)
 	}
 
 	// < narrows the list and saves the layout; | hides the panel.
@@ -384,7 +365,7 @@ func TestDashboardSplit(t *testing.T) {
 
 	// A click selects the row under it; dragging the divider resizes.
 	m.Update(tea.MouseClickMsg{X: 3, Y: 3, Button: tea.MouseLeft}) // NEEDS YOU's second row
-	if m.sel != "t:alpha:7" {
+	if m.sel != "n:s-4" {
 		t.Fatalf("click selected %q", m.sel)
 	}
 	_, lw := m.split()
@@ -463,9 +444,8 @@ func TestDashboardFooter(t *testing.T) {
 	m := newDash(DashOptions{Source: src, Width: 100, Height: 30})
 	m.setData(src.data)
 	for sel, want := range map[string]string{
-		"n:s-2":          "enter attach · t tasks · i inbox · p projects · , settings · ? help · q quit",
-		"t:alpha:7":      "enter show · t tasks · d done · i inbox",
-		"th:beta:t-0005": "enter attach · t tasks · i inbox · a ack · 1-9 send next",
+		"n:s-1":          "enter attach · t tasks · i inbox · p projects · , settings · ? help · q quit",
+		"th:beta:t-0005": "enter watch · t tasks · i inbox · p projects",
 		"th:beta:t-0006": "t tasks · i inbox · p projects",
 		"p:beta":         "enter open · t tasks",
 	} {
@@ -541,10 +521,11 @@ func TestPromptWraps(t *testing.T) {
 		}
 	}
 	src := &fakeSource{data: testData()}
-	m := newDash(DashOptions{Source: src, AgentName: "claude", Cwd: long, Width: 100, Height: 30})
+	m := newDash(DashOptions{Source: src, Width: 100, Height: 30})
 	m.setData(src.data)
-	press(m, "c")
-	if out := screen(m); !strings.Contains(out, "claude session in directory: /var/folders") {
+	press(m, "n")
+	m.top().(*inputView).text = long
+	if out := screen(m); !strings.Contains(out, "new project name: /var/folders") {
 		t.Fatalf("prompt:\n%s", out)
 	}
 }
