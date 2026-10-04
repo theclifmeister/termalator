@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -90,6 +91,9 @@ type Server struct {
 	// scheme is the colour scheme a client last reported; new sessions
 	// start with it.
 	scheme emu.Scheme
+
+	// views are what consoles show (views.go).
+	views *views
 }
 
 // Run runs a server until ctx is cancelled or a client calls server.stop.
@@ -150,6 +154,7 @@ func Run(ctx context.Context, opts Options) error {
 
 		prevProject: map[string]string{},
 	}
+	s.views = newViews(s, filepath.Join(filepath.Dir(p.Sessions), "views.json"), logger.Printf)
 	s.loadAgents()
 	toResume, lost := s.loadPrevious()
 	if err := s.saveLocked(""); err != nil {
@@ -173,6 +178,8 @@ func Run(ctx context.Context, opts Options) error {
 	if outs := s.resume(toResume); s.prevShut != "" {
 		s.logRestart(s.prevShut, append(lost, outs...))
 	}
+	// The views come back with the sessions that did.
+	s.views.load()
 	tctx, stopTicker := context.WithCancel(context.Background())
 	tickerDone := s.startTicker(tctx)
 
@@ -360,6 +367,10 @@ func (s *Server) serveControl(c net.Conn, br *bufio.Reader, peerPID int) {
 		if err := readJSONLine(br, &req); err != nil {
 			return
 		}
+		if req.Method == proto.MethodViewSubscribe {
+			s.serveViewStream(c, br, req)
+			return
+		}
 		result, perr := s.dispatch(req, peerPID)
 		resp := proto.Response{ID: req.ID, Error: perr}
 		if perr == nil {
@@ -381,6 +392,13 @@ func (s *Server) serveControl(c net.Conn, br *bufio.Reader, peerPID int) {
 }
 
 func (s *Server) dispatch(req proto.Request, peerPID int) (any, *proto.Error) {
+	if strings.HasPrefix(req.Method, "view.") {
+		var p proto.ViewParams
+		if err := decodeParams(req.Params, &p); err != nil {
+			return nil, err
+		}
+		return s.views.do(req.Method, p)
+	}
 	switch req.Method {
 	case proto.MethodCallerWho:
 		return s.whoIs(peerPID), nil
@@ -644,7 +662,15 @@ func (s *Server) startSession(p proto.SessionStartParams) (any, *proto.Error) {
 
 func (s *Server) sessionExited(sess *session.Session) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	stopping := s.stopping
+	defer func() {
+		s.mu.Unlock()
+		// The views keep the panes of a stopping server: they come back
+		// with the resumed sessions.
+		if !stopping {
+			s.views.sessionGone(sess.ID())
+		}
+	}()
 	delete(s.sessions, sess.ID())
 	delete(s.blocked, sess.ID())
 	if s.tick != nil {
