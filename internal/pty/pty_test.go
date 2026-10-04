@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestStartAndResize(t *testing.T) {
@@ -28,7 +29,16 @@ func TestProcArgs(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { cmd.Process.Kill(); cmd.Wait() }()
-	argv, err := ProcArgs(cmd.Process.Pid)
+	// Start returns before the child has exec'd; until then its argv
+	// is empty (Linux) or the parent's.
+	var argv []string
+	var err error
+	for i := 0; i < 100; i++ {
+		if argv, err = ProcArgs(cmd.Process.Pid); err == nil && len(argv) == 2 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
