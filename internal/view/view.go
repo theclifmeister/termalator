@@ -183,6 +183,7 @@ func (v *View) Valid() error {
 func (v *View) Normalize() {
 	v.Sidebar = v.Sidebar.Clamp()
 	if len(v.Expanded) > 0 {
+		v.Expanded = slices.DeleteFunc(v.Expanded, func(p string) bool { return p == "" })
 		slices.Sort(v.Expanded)
 		v.Expanded = slices.Compact(v.Expanded)
 		if len(v.Expanded) > MaxExpanded {

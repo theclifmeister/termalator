@@ -117,7 +117,7 @@ func TestSmokeCoordinatorRemoteControl(t *testing.T) {
 
 	w := env.Window(120, 30)
 	w.WaitFor(alpha+"⌁", wait) // the dashboard's sidebar
-	w.Click(3, sideRow(t, w.Screen(), alpha))
+	clickCoordinator(t, w, alpha)
 	w.WaitUntil("status bar marker", agentWait, func(sc string) bool { return lastLine(sc, "remote control on") })
 	w.WaitFor(alpha+"⌁", wait) // the attached view's sidebar
 	w.Prefix("r")
@@ -169,7 +169,7 @@ func TestSmokeRemoteControlRestart(t *testing.T) {
 	// On from the attached pane, which reattaches across the restart.
 	w := env.Window(120, 30)
 	w.WaitFor("SESSIONS", wait)
-	w.Click(3, sideRow(t, w.Screen(), alpha))
+	clickCoordinator(t, w, alpha)
 	w.WaitUntil("attached", agentWait, func(sc string) bool { return lastLine(sc, alpha+" coordinator") })
 	w.Prefix("r")
 	w.WaitFor("turn remote control on for "+alpha, wait)
