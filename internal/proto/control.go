@@ -302,3 +302,16 @@ type CLIRunResult struct {
 	Stderr string `json:"stderr"`
 	Code   int    `json:"code"`
 }
+
+// MethodCallerWho asks the server who the calling process is (M4,
+// docs/SPEC.md §11.1): the server walks the peer pid's ancestors to a
+// hosted session.
+const MethodCallerWho = "caller.who"
+
+// CallerInfo is the result of caller.who. Kind is "human", "coordinator"
+// or "thread".
+type CallerInfo struct {
+	Kind    string `json:"kind"`
+	Project string `json:"project,omitempty"`
+	Thread  string `json:"thread,omitempty"`
+}

@@ -261,8 +261,9 @@ func TestAttachLocalScrollback(t *testing.T) {
 	w.WaitFor("ready", wait)
 }
 
-// TestRunScript runs scripts/run.sh (`make run`) in a window: it starts a
-// shell session and attaches to it; Ctrl+\ leaves it running.
+// TestRunScript runs scripts/run.sh (`make run`) in a window: it opens
+// the dashboard; s starts a shell and attaches; Ctrl+\ comes back to the
+// dashboard and q leaves the shell running.
 func TestRunScript(t *testing.T) {
 	env := New(t)
 	root, err := moduleRoot()
@@ -270,15 +271,18 @@ func TestRunScript(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := env.WindowCmd(100, 30, filepath.Join(root, "scripts", "run.sh"))
-	w.WaitFor("hello from termalator session s-", wait)
-	if !Poll(wait, func() bool { return w.Modes().AltScreen }) {
-		t.Fatal("run.sh did not attach")
-	}
+	w.WaitFor("no sessions; s starts a shell", wait)
+	w.Type("s")
+	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, `ctrl+\ dashboard`) && strings.Contains(sc, "$") })
+	w.Type("echo hello-$((6*7))\r")
+	w.WaitFor("hello-42", wait)
 	w.Key(CtrlBackslash)
-	w.WaitFor("keeps running in the background server", wait)
+	w.WaitFor("SESSIONS", wait)
+	w.Type("q")
+	w.WaitFor("keep running in the background server", wait)
 	w.WaitExit(wait)
 	if list := env.Sessions(); len(list) != 1 {
-		t.Fatalf("sessions after detach: %+v", list)
+		t.Fatalf("sessions after quitting the dashboard: %+v", list)
 	}
 }
 
@@ -329,9 +333,12 @@ func TestRunScriptLoginShellQueries(t *testing.T) {
 	}
 	env.MustCLI("server", "stop")
 
-	// make run, in a window the size of the user's.
+	// make run, in a window the size of the user's: s starts the login
+	// shell at the window's size, less the status bar, and attaches.
 	w := env.WindowCmd(76, 53, filepath.Join(root, "scripts", "run.sh"))
-	w.WaitFor("hello from termalator session s-", wait)
+	w.WaitFor("no sessions; s starts a shell", wait)
+	w.Type("s")
+	w.WaitFor("prompt$", wait)
 	if !Poll(wait, func() bool { return w.Modes().AltScreen }) {
 		t.Fatal("run.sh did not attach")
 	}
@@ -341,7 +348,7 @@ func TestRunScriptLoginShellQueries(t *testing.T) {
 	}
 	s := &Session{ID: list[0].ID, PID: list[0].PID}
 	env.track(s.PID, "session "+s.ID)
-	assertPaneSize(t, env, s, 76, 53)
+	assertPaneSize(t, env, s, 76, 52)
 	// mirrored: w runs tm attach itself (not run.sh), so it can be asked
 	// for a digest check.
 	check := func(w *Window, marker string, mirrored bool) {
@@ -357,17 +364,18 @@ func TestRunScriptLoginShellQueries(t *testing.T) {
 		}
 	}
 	check(w, "first", false)
+	w.Key(CtrlBackslash)
+	w.WaitFor("SESSIONS", wait)
+	w.Type("q")
+	w.WaitExit(wait)
 
 	for i := range 4 {
+		w = env.Window(76, 53, "attach", s.ID)
+		w.WaitFor("prompt$", wait)
+		check(w, fmt.Sprintf("cycle%d", i), true)
 		w.Key(CtrlBackslash)
 		w.WaitFor("[detached from "+s.ID+"]", wait)
 		w.WaitExit(wait)
 		env.AssertAlive(s)
-		w = env.Window(76, 53, "attach", s.ID)
-		w.WaitFor("prompt$", wait)
-		check(w, fmt.Sprintf("cycle%d", i), true)
 	}
-	w.Key(CtrlBackslash)
-	w.WaitExit(wait)
-	env.AssertAlive(s)
 }

@@ -15,7 +15,7 @@ import (
 const projectUsage = `usage: tm project new <name> [--goal "…"] [--repo PATH]... [--json]
        tm project list [--json]
        tm project repo add|remove PATH [--project <slug>]
-       tm project open <slug>        (needs the server; not yet)`
+       tm project open <slug> [--agent NAME]   (start or attach its coordinator)`
 
 func runProject(e *Env, args []string) error {
 	if len(args) == 0 {
@@ -29,13 +29,22 @@ func runProject(e *Env, args []string) error {
 	case "repo", "repos":
 		return projectRepo(e, args[1:])
 	case "open":
-		if len(args) != 2 {
-			return usagef("%s", projectUsage)
-		}
-		if _, err := project.Open(args[1]); err != nil {
+		f := newFlags()
+		agentName := f.String("agent")
+		pos, err := f.Parse(args[1:])
+		if err != nil {
 			return err
 		}
-		return &project.Error{Code: "not-implemented", Msg: "starting the coordinator session needs the server (M1) and Claude sessions (M3); for now run claude in " + mustDir(args[1])}
+		if len(pos) != 1 {
+			return usagef("%s", projectUsage)
+		}
+		if *agentName == "" {
+			*agentName = defaultAgent
+		}
+		if e.Caller.IsAgent() {
+			return &project.Error{Code: "human-only", Msg: "the human opens projects"}
+		}
+		return e.openCmd(pos[0], *agentName)
 	}
 	return usagef("unknown subcommand %q\n%s", args[0], projectUsage)
 }
@@ -196,11 +205,6 @@ func runInbox(e *Env, args []string) error {
 		return failed
 	}
 	return usagef("unknown subcommand %q\n%s", args[0], inboxUsage)
-}
-
-func mustDir(slug string) string {
-	d, _ := project.Dir(slug)
-	return d
 }
 
 const skillUsage = `usage: tm skill coordinator|thread`

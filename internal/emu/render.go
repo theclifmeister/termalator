@@ -32,6 +32,10 @@ type Renderer struct {
 	top              int // first pane row shown
 	lastCursor       string
 	title            string
+
+	// status is a line the client draws below the pane (the attach
+	// status bar), at outer row outRows+1; drawn is what is on screen.
+	status, drawn string
 }
 
 // NewRenderer returns a renderer for an outer window of cols×rows.
@@ -66,6 +70,11 @@ func (r *Renderer) SetSize(cols, rows uint16) {
 	r.outCols, r.outRows = int(cols), int(rows)
 	r.full = true
 }
+
+// SetStatus sets the line drawn below the pane's outRows rows: styled
+// text that fits one row, or "" for none. The caller sizes the renderer
+// one row short of the window to make room.
+func (r *Renderer) SetStatus(line string) { r.status = line }
 
 // Invalidate makes the next frame repaint everything (after a new
 // snapshot, or when the outer screen may have been disturbed).
@@ -126,6 +135,14 @@ func (r *Renderer) Frame(t *Terminal, held bool) ([]byte, error) {
 		}
 	}
 	r.rs.SetDirty(libghostty.RenderStateDirtyFalse)
+	if r.status != "" && (r.full || r.status != r.drawn) {
+		b = appendCUP(b, r.outRows+1, 1)
+		b = append(b, "\x1b[0m\x1b[2K"...)
+		b = append(b, r.status...)
+		b = append(b, "\x1b[0m"...)
+		r.drawn = r.status
+		wrote = true
+	}
 	r.full = false
 
 	// Cursor: position, visibility and shape.

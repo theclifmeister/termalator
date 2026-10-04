@@ -264,8 +264,9 @@ func TestSkillAndOpen(t *testing.T) {
 	h.expect(2, "usage", human, "skill")
 
 	h.ok(human, "project", "new", "demo")
-	h.expect(1, "not-implemented", human, "project", "open", "demo")
+	// Opening needs the server (the e2e scenarios); refusals come first.
 	h.expect(1, "unknown-project", human, "project", "open", "nope")
+	h.expect(1, "human-only", coord, "project", "open", "demo")
 }
 
 func TestSafetySettingsInContext(t *testing.T) {
