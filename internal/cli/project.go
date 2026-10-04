@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
 
@@ -13,6 +14,7 @@ import (
 
 const projectUsage = `usage: tm project new <name> [--goal "…"] [--repo PATH]... [--json]
        tm project list [--json]
+       tm project repo add|remove PATH [--project <slug>]
        tm project open <slug>        (needs the server; not yet)`
 
 func runProject(e *Env, args []string) error {
@@ -24,6 +26,8 @@ func runProject(e *Env, args []string) error {
 		return projectNew(e, args[1:])
 	case "list", "ls":
 		return projectList(e, args[1:])
+	case "repo", "repos":
+		return projectRepo(e, args[1:])
 	case "open":
 		if len(args) != 2 {
 			return usagef("%s", projectUsage)
@@ -212,4 +216,47 @@ func runSkill(e *Env, args []string) error {
 	}
 	_, err := fmt.Fprint(e.Stdout, text)
 	return err
+}
+
+// projectRepo changes the project's repo list in PROJECT.md: the human
+// or the coordinator.
+func projectRepo(e *Env, args []string) error {
+	f := newFlags()
+	slug := f.String("project")
+	pos, err := f.Parse(args)
+	if err != nil {
+		return err
+	}
+	if len(pos) != 2 || (pos[0] != "add" && pos[0] != "remove" && pos[0] != "rm") {
+		return usagef("usage: tm project repo add|remove PATH [--project <slug>]")
+	}
+	p, err := e.openProject(*slug)
+	if err != nil {
+		return err
+	}
+	if err := e.coordinatorOnly(p, "the repo list"); err != nil {
+		return err
+	}
+	path := e.abs(pos[1])
+	if r, err := filepath.EvalSymlinks(path); err == nil {
+		path = r
+	}
+	add := pos[0] == "add"
+	changed, err := p.SetRepo(path, add)
+	if err != nil {
+		return err
+	}
+	verb := "added"
+	if !add {
+		verb = "removed"
+	}
+	if !changed {
+		fmt.Fprintf(e.Stdout, "%s unchanged (already %s)\n", path, verb)
+		return nil
+	}
+	if err := p.Journal(e.Caller, "project.repo."+pos[0], p.Slug, path); err != nil {
+		return err
+	}
+	fmt.Fprintf(e.Stdout, "%s %s\n", verb, path)
+	return nil
 }

@@ -24,3 +24,21 @@ func ProcArgs(pid int) ([]string, error) {
 	}
 	return out, nil
 }
+
+// ParentPID returns a process's parent pid, from /proc/<pid>/stat (the
+// field after the parenthesised command name, which may contain spaces).
+func ParentPID(pid int) (int, error) {
+	b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+	if err != nil {
+		return 0, err
+	}
+	i := bytes.LastIndexByte(b, ')')
+	if i < 0 {
+		return 0, fmt.Errorf("pty: bad stat for pid %d", pid)
+	}
+	f := bytes.Fields(b[i+1:])
+	if len(f) < 2 {
+		return 0, fmt.Errorf("pty: bad stat for pid %d", pid)
+	}
+	return strconv.Atoi(string(f[1]))
+}

@@ -58,9 +58,9 @@ func (h *harness) expect(wantCode int, wantErr string, c caller.Caller, args ...
 }
 
 var (
-	human  = caller.Caller{Kind: caller.Human}
-	coord  = caller.Caller{Kind: caller.Coordinator, Project: "demo"}
-	thread = caller.Caller{Kind: caller.Thread, Project: "demo", Thread: "t-0001"}
+	human = caller.Caller{Kind: caller.Human}
+	coord = caller.Caller{Kind: caller.Coordinator, Project: "demo"}
+	thr   = caller.Caller{Kind: caller.Thread, Project: "demo", Thread: "t-0001"}
 )
 
 func TestNotHandled(t *testing.T) {
@@ -168,7 +168,7 @@ func TestTaskWorkflow(t *testing.T) {
 		t.Fatalf("archived list %q", out)
 	}
 	h.ok(coord, "task", "unarchive", "T2")
-	h.expect(1, "not-implemented", coord, "task", "delegate", "T1")
+	h.expect(1, "needs-approval", coord, "task", "delegate", "T1")
 
 	raw, _ := os.ReadFile(filepath.Join(h.root, "projects", "demo", "TASKS.md"))
 	if !strings.Contains(string(raw), "### T1 Fix login redirect after OAuth\nstatus: started · owner: claude") {
@@ -188,18 +188,18 @@ func TestCallerRules(t *testing.T) {
 	os.WriteFile(raw, []byte(strings.Replace(string(data), "### T1 Mine\nstatus: open", "### T1 Mine\nstatus: open · thread: t-0001", 1)), 0o644)
 
 	// A thread reads everything and adds/ticks steps on its own task only.
-	h.ok(thread, "task", "list")
-	h.ok(thread, "task", "show", "T2")
-	h.ok(thread, "task", "steps", "T1", "add", "Build")
-	h.ok(thread, "task", "steps", "T1", "check", "2")
-	h.expect(1, "coordinator-only", thread, "task", "steps", "T2", "add", "x")
-	h.expect(1, "coordinator-only", thread, "task", "steps", "T1", "remove", "1")
-	h.expect(1, "coordinator-only", thread, "task", "status", "T1", "review")
-	h.expect(1, "coordinator-only", thread, "task", "add", "New")
-	h.expect(1, "coordinator-only", thread, "task", "edit", "T1", "--title", "x")
-	h.expect(1, "coordinator-only", thread, "task", "archive", "T1")
-	h.expect(1, "coordinator-only", thread, "task", "delegate", "T1")
-	h.expect(1, "coordinator-only", thread, "inbox", "list")
+	h.ok(thr, "task", "list")
+	h.ok(thr, "task", "show", "T2")
+	h.ok(thr, "task", "steps", "T1", "add", "Build")
+	h.ok(thr, "task", "steps", "T1", "check", "2")
+	h.expect(1, "coordinator-only", thr, "task", "steps", "T2", "add", "x")
+	h.expect(1, "coordinator-only", thr, "task", "steps", "T1", "remove", "1")
+	h.expect(1, "coordinator-only", thr, "task", "status", "T1", "review")
+	h.expect(1, "coordinator-only", thr, "task", "add", "New")
+	h.expect(1, "coordinator-only", thr, "task", "edit", "T1", "--title", "x")
+	h.expect(1, "coordinator-only", thr, "task", "archive", "T1")
+	h.expect(1, "coordinator-only", thr, "task", "delegate", "T1")
+	h.expect(1, "coordinator-only", thr, "inbox", "list")
 
 	// Only the human sets done; the coordinator's request waits in the inbox.
 	h.ok(coord, "task", "status", "T1", "review")
@@ -253,7 +253,7 @@ func TestBrokenTasksFileExits3(t *testing.T) {
 
 func TestSkillAndOpen(t *testing.T) {
 	h := newHarness(t)
-	out := h.ok(thread, "skill", "thread")
+	out := h.ok(thr, "skill", "thread")
 	if !strings.HasPrefix(out, "tm skill thread v") || !strings.Contains(out, "Stay in your worktree") {
 		t.Fatalf("skill thread: %q", out[:min(len(out), 80)])
 	}

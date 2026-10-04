@@ -79,7 +79,7 @@ func serverRun(e *Env, args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), sigs...)
 	defer stop()
 	bin, _ := os.Executable()
-	err = server.Run(ctx, server.Options{Paths: p, Log: logger, Bin: bin})
+	err = server.Run(ctx, server.Options{Paths: p, Log: logger, Bin: bin, RunCLI: RunInServer})
 	var running *server.AlreadyRunningError
 	if errors.As(err, &running) {
 		logger.Printf("%v", err)

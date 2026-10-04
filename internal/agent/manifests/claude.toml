@@ -79,14 +79,16 @@ template = '''
 # Access policy (docs/SPEC.md §5.2). Rules name real paths, because Claude
 # resolves symlinks first. Only Edit(...) deny rules: they cover Write, Edit
 # and NotebookEdit, while Write(...) rules aren't matched by file checks.
+# Edit(...) allow rules also open the Bash sandbox for writing (a thread's
+# commits go to the main repo's git dir).
 # Never put statusLine here: --settings would replace the user's own.
 [[launch.files]]
 path = "claude-settings.json"
 template = '''
 {
   "permissions": {
-    "allow": {{json (rules "Read(/%s/**)" .Access.Read)}},
-    "deny": {{json (rules "Edit(/%s/**)" .Access.NoWrite)}}
+    "allow": {{json (concat (rules "Read(/%s/**)" .Access.Read) (rules "Edit(/%s/**)" .Access.Write))}},
+    "deny": {{json (concat (rules "Edit(/%s/**)" .Access.NoWrite) (rules "Edit(/%s)" .Access.NoWriteFiles))}}
   },
   "sandbox": {
     {{- if eq .Role "thread"}}

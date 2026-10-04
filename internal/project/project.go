@@ -320,3 +320,42 @@ func Resolve(flag string, getenv func(string) string, cwd string) (string, error
 	}
 	return "", nil
 }
+
+// SetRepo adds (or removes) a repo in PROJECT.md's repo list. An added
+// path must be a directory. changed is false when it was already so.
+func (p *Project) SetRepo(path string, add bool) (changed bool, err error) {
+	if add {
+		if fi, err := os.Stat(path); err != nil || !fi.IsDir() {
+			return false, refuse("invalid-repo", "%s is not a directory", path)
+		}
+	}
+	err = mdfile.Update(p.Path("PROJECT.md"), func(old []byte) ([]byte, error) {
+		var m Meta
+		body, err := mdfile.Decode(old, &m)
+		if err != nil {
+			return nil, err
+		}
+		var repos []string
+		found := false
+		for _, r := range m.Repos {
+			if r == path {
+				found = true
+				if !add {
+					continue
+				}
+			}
+			repos = append(repos, r)
+		}
+		if add && !found {
+			repos = append(repos, path)
+		}
+		changed = found != add
+		if !changed {
+			return old, nil
+		}
+		m.Repos = repos
+		p.Meta = m
+		return mdfile.Join(m, body)
+	})
+	return changed, err
+}

@@ -72,6 +72,7 @@ type agentRT struct {
 	prompts    []string
 	lastState  agent.Merged
 	lastSID    string
+	lastTodos  []agent.Todo
 	emptyBox   bool // the empty-box rule matched at the last evaluation
 	blocker    bool // a blocked rule matched at the last evaluation
 }
@@ -370,14 +371,15 @@ func (s *Session) evalScreen(rt *agentRT) {
 	rt.tr.Screen(sig, names)
 }
 
-// agentChanged notifies the owner when the state or the agent's session
-// id moved.
+// agentChanged notifies the owner when the state, the agent's session
+// id or the todo list moved.
 func (s *Session) agentChanged(rt *agentRT) {
 	st := rt.tr.State()
 	sid := rt.tr.AgentSID()
+	todos := rt.tr.Todos()
 	rt.mu.Lock()
-	changed := st != rt.lastState || sid != rt.lastSID
-	rt.lastState, rt.lastSID = st, sid
+	changed := st != rt.lastState || sid != rt.lastSID || !slices.Equal(todos, rt.lastTodos)
+	rt.lastState, rt.lastSID, rt.lastTodos = st, sid, todos
 	rt.mu.Unlock()
 	if changed {
 		s.notifyState()
