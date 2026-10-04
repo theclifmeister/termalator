@@ -74,10 +74,12 @@ func attachCmd(e *Env, args []string) int {
 			return ExitRefused
 		}
 	}
-	// A thread's pane is watch-only, and the status bar says so.
-	thread := false
+	// A thread's pane is watch-only, and the status bar says so; a
+	// coordinator's shows its state and remote control there. Other
+	// sessions get the whole window.
+	bar := false
 	for _, s := range list.Sessions {
-		thread = thread || s.ID == id && s.Role == proto.RoleThread
+		bar = bar || s.ID == id && (s.Role == proto.RoleThread || s.Role == proto.RoleCoordinator)
 	}
 	cols, rows, ok := termSize()
 	if !ok {
@@ -85,7 +87,7 @@ func attachCmd(e *Env, args []string) int {
 	}
 	uiFile := uiFile()
 	side := tui.LoadLayout(uiFile).Sidebar
-	vc, err := tui.JoinView(p, proto.ViewSubscribeParams{Own: true, Bare: true, StatusBar: thread, Session: id,
+	vc, err := tui.JoinView(p, proto.ViewSubscribeParams{Own: true, Bare: true, StatusBar: bar, Session: id,
 		Cols: cols, Rows: rows, Sidebar: &side})
 	if err != nil {
 		return e.srvFail("attach", err)

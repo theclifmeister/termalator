@@ -114,7 +114,7 @@ func TestSmokeSidebar(t *testing.T) {
 	both := []*Window{w, w2}
 	w.Click(0, sideRow(t, w.Screen(), demo))
 	for _, x := range both {
-		x.WaitUntil("demo open", wait, func(sc string) bool { return treeRow(sc, demo, "t-0001 Small fix") >= 0 })
+		x.WaitUntil("demo open", wait, func(sc string) bool { return treeRow(sc, demo, "Small fix") >= 0 })
 	}
 	w2.Click(0, sideRow(t, w2.Screen(), demo))
 	for _, x := range both {
@@ -149,8 +149,8 @@ func TestSmokeSidebar(t *testing.T) {
 	// From the split: ▸ opens demo in place, and its thread's row watches
 	// the thread, still in the attach view.
 	w.Click(0, sideRow(t, w.Screen(), demo))
-	w.WaitUntil("demo open", wait, func(sc string) bool { return treeRow(sc, demo, "t-0001") >= 0 && lastLine(sc, "pane 2/2") })
-	w.Click(5, treeRow(w.Screen(), demo, "t-0001"))
+	w.WaitUntil("demo open", wait, func(sc string) bool { return treeRow(sc, demo, "Small fix") >= 0 && lastLine(sc, "pane 2/2") })
+	w.Click(5, treeRow(w.Screen(), demo, "Small fix"))
 	for _, x := range both {
 		x.WaitUntil("watching t-0001", wait, func(sc string) bool { return lastLine(sc, "watch-only") && !lastLine(sc, "pane ") })
 	}

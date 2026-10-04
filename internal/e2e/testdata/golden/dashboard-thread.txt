@@ -1,7 +1,7 @@
- PROJECTS 1            │ termalator                                                                            ● server ok · 1 session
+ PROJECTS 1            │ tm dashboard                                                                          ● server ok · 1 session
 ▾· demo              1 │ demo ────────────────────────────────────────────────────────────────────────────────────────────────────────
   · coordinator        │  coordinator                              —          enter starts the coordinator  1 inbox
-  ○ t-0001 Fix the… 50%│  t-0001 Fix the login                     ○ idle     report new  ▰▰▰▱▱  T1  50% 1/2 ▸ Fix  <duration>  PR #7
+  ○ Fix the login   50%│  t-0001 Fix the login                     ○ idle     report new  ▰▰▰▱▱  T1  50% 1/2 ▸ Fix  <duration>  PR #7
                        │        T1 steps:
                        │          ✓ 1 Reproduce
                        │          ○ 2 Fix
@@ -9,8 +9,8 @@
                        │          1 Merge the PR
                        │          2 Remove the worktree
                        │  tasks: 0 needs you · 1 in motion · 0 on deck
-                       │ SESSIONS ────────────────────────────────────────────────────────────────────────────────────────────────────
-                       │  no sessions; s starts a shell
+                       │ OTHER SESSIONS ──────────────────────────────────────────────────────────────────────────────────────────────
+                       │  none outside the projects (1 in them); s starts a shell
                        │
                        │
                        │

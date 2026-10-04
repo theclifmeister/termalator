@@ -1,8 +1,8 @@
- PROJECTS 1            │ termalator                                                             ● server ok · 0 sessions
+ PROJECTS 1            │ tm dashboard                                                           ● server ok · 0 sessions
 ▾· demo              0 │ demo ──────────────────────────────────────────────────────────────────────────────────────────
   · coordinator        │  coordinator                           —          enter starts the coordinator
                        │  tasks: 0 needs you · 1 in motion · 1 on deck
-                       │ SESSIONS ──────────────────────────────────────────────────────────────────────────────────────
+                       │ OTHER SESSIONS ────────────────────────────────────────────────────────────────────────────────
                        │  no sessions; s starts a shell
                        │  ╭─ demo · prefix = ctrl+b ─────────────────────────────────────────────────────────────────╮
                        │  │  1 Overview   2 Inbox   3 Tasks   4 Settings   5 Keys                                    │

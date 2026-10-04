@@ -783,7 +783,9 @@ func (m *dash) frame(title string, body []string, sel int, keys string) string {
 		n := len(m.data.Sessions)
 		right = styleGood.Render("●") + " server ok" + styleFaint.Render(fmt.Sprintf(" · %d session%s", n, map[bool]string{true: "s"}[n != 1]))
 	}
-	left := styleTitle.Render(" termalator")
+	// The app, not a project: the project's own section is headed by its
+	// slug, which may well be "termalator".
+	left := styleTitle.Render(" tm") + styleFaint.Render(" dashboard")
 	if title != "" {
 		left += styleFaint.Render(" · ") + styleHead.Render(title)
 	}

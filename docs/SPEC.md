@@ -278,22 +278,22 @@ The processes die with the server, because the PTY master closes and the childre
 **The coordinator owns all communication.** The user talks only to coordinators, and threads talk only to their coordinator. The dashboard shows threads, tasks and the inbox so the user can see where things stand, but it has no keys that act on them: acknowledging a report, sending a thread its next prompt and marking a task done are the coordinator's `tm` commands (§10), which it runs when the user asks. A thread's pane opens watch-only.
 
 ```
- PROJECTS 2            │ termalator                                          ● server ok · 6 sessions
+ PROJECTS 2            │ tm dashboard                                        ● server ok · 6 sessions
 ▾○ termalator        3 │ NEEDS YOU 1 ──────────────────────────────────────────────────────────────
   ○ coordinator        │ ! foodperfect  coordinator           ▲ blocked  question
-  ● t-0002 Bootstr… 60%│ termalator ───────────────────────────────────────────────────────────────
-  ● t-0003 libghos… 30%│  coordinator                         ○ idle     2 inbox
-  ▲ t-0004 Claude s…   │  t-0002 Bootstrap repo + spec        ● working  T3  60% 3/5 ▸ Write SPEC §8  4m
+  ● Bootstrap re…  60%│ termalator ───────────────────────────────────────────────────────────────
+  ● libghostty s…  30%│  coordinator                         ○ idle     2 inbox
+  ▲ Claude spike       │  t-0002 Bootstrap repo + spec        ● working  T3  60% 3/5 ▸ Write SPEC §8  4m
 ▸▲ foodperfect       0 │  t-0003 libghostty spike             ● working  T4  30% 2/7 ▸ Build the lib  1m
                        │  t-0004 Claude spike                 ▲ blocked  permission  T5  0m
                        │  t-0005 Docs pass                    ✓ done     report new  T6  PR #12
                        │  tasks: 2 needs you · 3 in motion · 4 on deck
-                       │ SESSIONS 1 ───────────────────────────────────────────────────────────────
+                       │ OTHER SESSIONS 1 ───────────────────────────────────────────────────────────────
                        │────────────────────────────────────────────────────────────────────────────
                        │ enter attach · t tasks · i inbox · p projects · ? help · q quit
 ```
 
-- **Rows.** There are three sections. NEEDS YOU comes first, across every project. Then the current project's own section (headed by its slug): its coordinator, its threads, its other sessions and its task counts; the sidebar's tree lists every project, so the list has no section of all projects. A click on a project in the tree shows its section. Shell sessions are listed last.
+- **Rows.** There are three sections. NEEDS YOU comes first, across every project. Then the current project's own section (headed by its slug): its coordinator, its threads, its other sessions and its task counts; the sidebar's tree lists every project, so the list has no section of all projects. A click on a project in the tree shows its section. OTHER SESSIONS, last, lists the sessions outside the projects (shells, the user's own agents); when there are none but the header counts some, it says how many are in the projects. The header names the app (`tm dashboard`), never a project, so a project called `termalator` isn't named twice.
 - **NEEDS YOU** lists only what waits on the user: coordinators that are `blocked` (a question or a permission dialog), and blocked sessions of the user's own outside the projects (an agent started with `tm session start`, which has no coordinator). Everything about threads (a blocked thread, an unacknowledged report, a `Waiting for you` self-report) and tasks in `review` or `blocked` goes to the coordinator's inbox; the coordinator asks the user when it needs them.
 - **Per-row data.** Each row shows:
   - the state from the server's arbitration (§8.4);
@@ -319,12 +319,12 @@ The processes die with the server, because the PTY master closes and the childre
    PROJECTS 2            │
   ▾○ termalator        2 │   a project: ▾ open / ▸ closed, its coordinator's glyph, its open threads
     ○ coordinator        │   its coordinator (· when none runs)
-    ● t-0002 Bootstr… 60%│   each open thread: state glyph, id and title, progress
-    ▲ t-0004 Claude s…   │
+    ● Bootstrap re…  60%│   each open thread: state glyph, title, progress
+    ▲ Claude spike       │
   ▸○ foodperfect     ◆ 1 │   ◆: a thread is blocked or waiting, even with an idle coordinator
   ```
 
-  - Every project has a row with its coordinator's state glyph (`·` when none runs), `◆` when one of its threads is blocked or waiting on someone (a `Waiting for you` self-report), and its count of open (unresolved) threads. Under an open project come its coordinator and each open thread with its state glyph (`✓` once done) and percent; resolved threads disappear.
+  - Every project has a row with its coordinator's state glyph (`·` when none runs), `◆` when one of its threads is blocked or waiting on someone (a `Waiting for you` self-report), and its count of open (unresolved) threads. Under an open project come its coordinator and each open thread with its state glyph (`✓` once done), its title (the id is in the details and the status bar) and its percent, in a column of its own so every title is cut at the same place; resolved threads disappear.
   - The current project is always open: on the dashboard the one it lists (the view's current project, else the first); while attached, the focused pane's project (else the view's). Others open and close with a click on their `▸` / `▾` (the first two columns). Which projects are open is part of the view (`view.expand`), so every console of `main` shows the same tree; `--own` views keep their own.
   - The row you are on is drawn in reverse video: the current project's row on the dashboard, the focused session's coordinator or thread row while attached. The current project's name is bold, and the status bar names the project too (`s-4 · termalator coordinator · …`), so the context is never lost.
   - A click on a project row shows that project's dashboard (`view.project`); on a coordinator row attaches its coordinator (started if none runs); on a thread row watches the thread's pane (watch-only; a thread without a running session says so). This works from the dashboard, under a popup, and while attached, split panes included: the view changes on every console. In `tm attach` and `tm project open` a click hands the console over to a full one of view `main` (§3.3). The prefix then `p`, `]` and `[` and the switcher open coordinators from the keys.
@@ -356,7 +356,7 @@ The processes die with the server, because the PTY master closes and the childre
   | `?` | help |
   | `q` | quit the client; the server keeps running |
 
-- **Attaching.** `enter` shows the selected session in the view (`view.attach`), on every console of the view. Attaching gives the whole screen to the pane, rendered from the client's mirror emulator (§3.3), with a one-line status bar at the bottom that the client draws. The projects sidebar stays on the left, and the status bar runs under the panes, right of it. The status bar shows the session, its project and role, state, progress, `remote control on` while a coordinator's is, and `prefix+d dashboard`; after the prefix it lists the commands instead. The client polls `session.list` for it, and the project folders for the sidebar. Sessions started from the dashboard get the window's size less the sidebar and that row, so nothing is cropped. (`tm attach` and `tm project open` show the pane beside the sidebar in a view of their own; `tm attach` has no status bar, except on a thread's pane.)
+- **Attaching.** `enter` shows the selected session in the view (`view.attach`), on every console of the view. Attaching gives the whole screen to the pane, rendered from the client's mirror emulator (§3.3), with a one-line status bar at the bottom that the client draws. The projects sidebar stays on the left, and the status bar runs under the panes, right of it. The status bar shows the session, its project and role, state, progress, `remote control on` while a coordinator's is, and `prefix+d dashboard`; after the prefix it lists the commands instead. The client polls `session.list` for it, and the project folders for the sidebar. Sessions started from the dashboard get the window's size less the sidebar and that row, so nothing is cropped. (`tm attach` and `tm project open` show the pane beside the sidebar in a view of their own; `tm attach` has the status bar on a thread's or a coordinator's pane, and none on other sessions.)
 - **Prefix commands.** While attached, the prefix (Ctrl+B by default; hints write `prefix+<key>`) then:
 
   | Key | Action |
