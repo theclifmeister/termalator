@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.289
+▝▜██████▀  Haiku 4.5 · Claude Max
+ ▝▝   ▝▝   ~/…/termalator/hp-termalator-t-0003-spike-libghostty-vt-from-go/spikes/libghostty/.deps/claude-cwd
+
+
+❯ first line
+  second line
+
+⏺ I'm not sure what task you'd like me to help with—could you tell me what you'd like to work on? For example, are you:
+
+  - Exploring the libghostty VT integration from Go?
+  - Debugging or implementing something specific?
+  - Setting up the project?
+  - Something else?
+
+  Once I understand what you're after, I can dive in.
+
+✻ Cogitated for 4s · done 11:33 AM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                                  auto mode unavailable for this model
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 漢字テスト 👋 🇳 👨‍ café
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Model: Haiku 4.5 | Ctx: 7.7k | ⎇ hp/termalator/t-0003-spike-libghostty-vt-fro...
+  cwd: /Users/clifford/.herdr/worktrees/termalator/hp-termalator-t-0003-spike-l...
+  ⏸ manual mode on

@@ -1,0 +1,7 @@
+  2000000 lines (~14.9 MB) through server+client in ~2.138s
+  server CPU 3.31s (155% of wall), client CPU 1.39s (65% of wall)
+[PASS] bench-final: outer screen == server screen
+  client: frames=231 frameBytes=353162 outMsgs=305647 outBytes=20777793 resyncs=0
+    output_to_frame: n=230 p50=8319us p95=8617us p99=8780us max=10190us
+    render_time: n=231 p50=1487us p95=1703us p99=2029us max=3706us
+    client_maxrss: 16 MB
