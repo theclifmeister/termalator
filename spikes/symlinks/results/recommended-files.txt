@@ -1,0 +1,10 @@
+TASKS.md: - [ ] T1 spike
+library
+REPORT-off.md
+REPORT-on.md
+
+/Users/clifford/.termalator-spike/projects/demo/threads/t1/out/library:
+x-off.txt
+x-on.txt
+?? notes-off.md
+?? notes-on.md
