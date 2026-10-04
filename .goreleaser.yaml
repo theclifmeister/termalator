@@ -1,0 +1,99 @@
+# Release builds (docs/OPERATIONS.md). Run through make, which builds the
+# per-target libghostty-vt libraries and sets TM_GHOSTTY_REV/CPU:
+#
+#   make release-snapshot   archives in dist/, no tag, nothing uploaded
+#   make release            what .github/workflows/release.yml runs on a tag
+#
+# tm needs cgo (libghostty-vt), so every target is cross-compiled with
+# zig cc (scripts/release/cc.sh) against its own static libghostty-vt in
+# .build/release/. Linux binaries link glibc dynamically with a floor of
+# 2.28; macOS binaries link only libSystem and libresolv, whose stubs come
+# from the macOS SDK, so the whole release runs on a macOS host.
+version: 2
+
+project_name: tm
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: tm
+    main: ./cmd/tm
+    binary: tm
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w
+      - -X github.com/theclifmeister/termalator/internal/version.Version={{ if .IsSnapshot }}v{{ .Version }}{{ else }}{{ .Tag }}{{ end }}
+      - -X github.com/theclifmeister/termalator/internal/version.LibGhostty={{ .Env.TM_GHOSTTY_REV }}
+    env:
+      - CGO_ENABLED=1
+      - CC={{ .Env.TM_ROOT }}/scripts/release/cc.sh
+    overrides:
+      - goos: darwin
+        goarch: arm64
+        env:
+          - TM_ZIG_TARGET=aarch64-macos
+          - PKG_CONFIG_PATH={{ .Env.TM_ROOT }}/.build/release/ghostty-{{ .Env.TM_GHOSTTY_REV }}-{{ .Env.TM_GHOSTTY_CPU }}-aarch64-macos/share/pkgconfig
+          # Names the library build in Go's cache key (see the Makefile).
+          - CGO_CFLAGS=-O2 -g -DTM_LIBGHOSTTY={{ .Env.TM_ROOT }}/.build/release/ghostty-{{ .Env.TM_GHOSTTY_REV }}-{{ .Env.TM_GHOSTTY_CPU }}-aarch64-macos
+      - goos: darwin
+        goarch: amd64
+        env:
+          - TM_ZIG_TARGET=x86_64-macos
+          - PKG_CONFIG_PATH={{ .Env.TM_ROOT }}/.build/release/ghostty-{{ .Env.TM_GHOSTTY_REV }}-{{ .Env.TM_GHOSTTY_CPU }}-x86_64-macos/share/pkgconfig
+          - CGO_CFLAGS=-O2 -g -DTM_LIBGHOSTTY={{ .Env.TM_ROOT }}/.build/release/ghostty-{{ .Env.TM_GHOSTTY_REV }}-{{ .Env.TM_GHOSTTY_CPU }}-x86_64-macos
+      - goos: linux
+        goarch: arm64
+        env:
+          - TM_ZIG_TARGET=aarch64-linux-gnu.2.28
+          - PKG_CONFIG_PATH={{ .Env.TM_ROOT }}/.build/release/ghostty-{{ .Env.TM_GHOSTTY_REV }}-{{ .Env.TM_GHOSTTY_CPU }}-aarch64-linux-gnu.2.28/share/pkgconfig
+          - CGO_CFLAGS=-O2 -g -DTM_LIBGHOSTTY={{ .Env.TM_ROOT }}/.build/release/ghostty-{{ .Env.TM_GHOSTTY_REV }}-{{ .Env.TM_GHOSTTY_CPU }}-aarch64-linux-gnu.2.28
+      - goos: linux
+        goarch: amd64
+        env:
+          - TM_ZIG_TARGET=x86_64-linux-gnu.2.28
+          - PKG_CONFIG_PATH={{ .Env.TM_ROOT }}/.build/release/ghostty-{{ .Env.TM_GHOSTTY_REV }}-{{ .Env.TM_GHOSTTY_CPU }}-x86_64-linux-gnu.2.28/share/pkgconfig
+          - CGO_CFLAGS=-O2 -g -DTM_LIBGHOSTTY={{ .Env.TM_ROOT }}/.build/release/ghostty-{{ .Env.TM_GHOSTTY_REV }}-{{ .Env.TM_GHOSTTY_CPU }}-x86_64-linux-gnu.2.28
+
+# Signing and notarisation of the macOS binaries are not set up: they need
+# an Apple Developer ID certificate and a notary API key as repository
+# secrets. zig's linker signs ad hoc, which is enough to run a binary that
+# curl downloaded (curl sets no quarantine attribute); a browser download
+# needs `xattr -d com.apple.quarantine tm`. When the credentials exist,
+# add a `notarize.macos` section here (goreleaser's quill integration).
+
+archives:
+  - id: tm
+    formats: [tar.gz]
+    # No version in the name, so releases/latest/download/tm_<os>_<arch>.tar.gz
+    # is a stable install URL (README.md).
+    name_template: "tm_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - docs/OPERATIONS.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot-{{ .ShortCommit }}"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^Merge branch"
+
+release:
+  github:
+    owner: theclifmeister
+    name: termalator
+  # A human reviews and publishes the release.
+  draft: true
+  prerelease: auto

@@ -1084,7 +1084,7 @@ All three spikes have reported:
 | 3 | Claude edge cases: auto-compaction, `async` hooks, `PermissionDenied`/`StopFailure`/MCP elicitation, the status file after a Claude crash, Ctrl+U, `skipDangerousModePermissionPrompt`, the `deleted` task status | 8.6 | Fixtures in M3; the dead-pid rule covers the crash case |
 | 4 | The undocumented status file and `uds-messaging` socket can change in any Claude release | 8.6 | `tested_versions` guard and fallbacks (in place); `tm doctor` warns |
 | 5 | Live server upgrade (PTY handoff over `SCM_RIGHTS` + snapshots) | 3.6 | Later spike; v0.1 resumes agents instead |
-| 6 | Release binaries: glibc floor or musl on Linux; macOS signing and notarisation | 12 | M8 |
+| 6 | Release binaries: macOS signing and notarisation. (Settled in M8: `zig cc` builds with a glibc 2.28 floor, checked on Debian 10; see `.goreleaser.yaml` and docs/OPERATIONS.md) | 12 | Needs an Apple Developer ID; ad hoc signed until then |
 | 7 | Codex and pi under the same harness | 8.7 | After v0.1 |
 
 ---

@@ -39,11 +39,15 @@ jobs:
           path: .build/zig-*
           key: zig-${{ runner.os }}-${{ runner.arch }}-${{ steps.zig.outputs.key }}
 
+      - name: Ghostty pin
+        id: ghostty
+        run: echo "key=$(grep -E '^(GHOSTTY_(REV|REPO|CPU)|ZIG_VERSION) ' Makefile | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+
       - name: Cache libghostty-vt
         uses: actions/cache@v6
         with:
           path: .build/ghostty-*
-          key: ghostty-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Makefile') }}
+          key: ghostty-${{ runner.os }}-${{ runner.arch }}-${{ steps.ghostty.outputs.key }}
 
       - name: toolchain
         run: |
@@ -91,11 +95,15 @@ jobs:
       - name: pkg-config
         run: command -v pkg-config || brew install pkgconf
 
+      - name: Ghostty pin
+        id: ghostty
+        run: echo "key=$(grep -E '^(GHOSTTY_(REV|REPO|CPU)|ZIG_VERSION) ' Makefile | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+
       - name: Cache libghostty-vt
         uses: actions/cache@v6
         with:
           path: .build/ghostty-*
-          key: ghostty-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Makefile') }}
+          key: ghostty-${{ runner.os }}-${{ runner.arch }}-${{ steps.ghostty.outputs.key }}
 
       - name: toolchain
         run: |

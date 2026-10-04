@@ -38,12 +38,18 @@ jobs:
       - name: pkg-config
         run: command -v pkg-config || brew install pkgconf
 
-      # libghostty-vt only changes when GHOSTTY_REV in the Makefile changes.
+      # libghostty-vt only changes with the Ghostty pin (and the Zig that
+      # builds it), so its cache is keyed on those lines alone: other
+      # Makefile edits don't force a rebuild.
+      - name: Ghostty pin
+        id: ghostty
+        run: echo "key=$(grep -E '^(GHOSTTY_(REV|REPO|CPU)|ZIG_VERSION) ' Makefile | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+
       - name: Cache libghostty-vt
         uses: actions/cache@v6
         with:
           path: .build/ghostty-*
-          key: ghostty-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Makefile') }}
+          key: ghostty-${{ runner.os }}-${{ runner.arch }}-${{ steps.ghostty.outputs.key }}
 
       - name: toolchain
         run: |
@@ -80,3 +86,63 @@ jobs:
           name: e2e-artifacts-${{ matrix.os }}
           path: ${{ runner.temp }}/e2e-artifacts
           if-no-files-found: ignore
+
+  # The release build (.goreleaser.yaml) as a snapshot: every target
+  # cross-compiled with zig cc and archived, nothing tagged or uploaded.
+  # macOS, like the release itself: darwin targets need the macOS SDK.
+  release-snapshot:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Pins
+        id: pins
+        run: |
+          echo "zig=$(grep -E '^ZIG_(VERSION|SHA256_)' Makefile | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+          echo "ghostty=$(grep -E '^(GHOSTTY_(REV|REPO|CPU)|ZIG_VERSION) ' Makefile | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Zig
+        uses: actions/cache@v6
+        with:
+          path: .build/zig-*
+          key: zig-${{ runner.os }}-${{ runner.arch }}-${{ steps.pins.outputs.zig }}
+
+      - name: Cache release libghostty-vt
+        uses: actions/cache@v6
+        with:
+          path: |
+            .build/release/ghostty-*
+            !.build/release/ghostty-src
+          key: ghostty-release-${{ runner.os }}-${{ runner.arch }}-${{ steps.pins.outputs.ghostty }}-${{ hashFiles('scripts/release/targets.sh') }}
+
+      - name: pkg-config
+        run: command -v pkg-config || brew install pkgconf
+
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          install-only: true
+          version: "~> v2"
+
+      - name: goreleaser check
+        run: goreleaser check
+
+      - name: release snapshot
+        run: make release-snapshot
+
+      - name: Check the archives
+        run: scripts/release/check.sh dist
+
+      - name: Upload archives
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-snapshot
+          path: |
+            dist/*.tar.gz
+            dist/checksums.txt
+          retention-days: 7

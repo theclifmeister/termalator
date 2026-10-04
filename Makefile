@@ -17,6 +17,7 @@
 #   make vet        go vet ./...
 #   make toolchain  check Go, Zig, pkg-config and git
 #   make env        print the PKG_CONFIG_PATH export, for gopls or a plain `go build`
+#   make release-snapshot  cross-build the release archives into dist/ (no tag, no upload)
 #   make clean      remove bin/      make distclean   also remove .build/
 
 # Must match the commit go.mitchellh.com/libghostty is developed against
@@ -28,6 +29,9 @@ GHOSTTY_REPO ?= https://github.com/ghostty-org/ghostty.git
 # cache onto a runner without it). Build for the baseline of the target
 # architecture instead; override with e.g. GHOSTTY_CPU=native for local use.
 GHOSTTY_CPU  ?= baseline
+# Zig target triple for cross builds (releases, scripts/release/): empty
+# builds for the host. Each target gets its own output directory.
+GHOSTTY_TARGET ?=
 GO           ?= go
 ZIG_MIN      := 0.16.0
 
@@ -51,7 +55,7 @@ ifeq ($(origin ZIG),undefined)
   ZIG := $(if $(and $(ZIG_ON_PATH),$(filter 0.16.%,$(shell $(ZIG_ON_PATH) version 2>/dev/null))),$(ZIG_ON_PATH),$(ZIG_LOCAL))
 endif
 GHOSTTY_SRC := $(BUILD)/ghostty-src
-GHOSTTY_OUT := $(BUILD)/ghostty-$(shell echo $(GHOSTTY_REV) | cut -c1-12)-$(GHOSTTY_CPU)
+GHOSTTY_OUT := $(BUILD)/ghostty-$(shell echo $(GHOSTTY_REV) | cut -c1-12)-$(GHOSTTY_CPU)$(if $(GHOSTTY_TARGET),-$(GHOSTTY_TARGET))
 STAMP       := $(GHOSTTY_OUT)/.built
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -69,7 +73,7 @@ export CGO_ENABLED := 1
 CGO_CFLAGS ?= -O2 -g
 export CGO_CFLAGS += -DTM_LIBGHOSTTY=$(GHOSTTY_OUT)
 
-.PHONY: all build run test test-claude e2e e2e-smoke e2e-smoke-race fuzz vet ghostty toolchain env clean distclean
+.PHONY: all build run test test-claude e2e e2e-smoke e2e-smoke-race fuzz vet ghostty toolchain env clean distclean zig-path release-ghostty release-snapshot release
 
 all: build
 
@@ -133,7 +137,8 @@ $(STAMP): | toolchain $(if $(filter $(ZIG_LOCAL),$(ZIG)),$(ZIG_LOCAL))
 	git -C $(GHOSTTY_SRC) fetch -q --depth 1 origin $(GHOSTTY_REV)
 	git -C $(GHOSTTY_SRC) checkout -q --force FETCH_HEAD
 	cd $(GHOSTTY_SRC) && $(ZIG) build -Demit-lib-vt -Demit-xcframework=false \
-		-Doptimize=ReleaseFast -Dcpu=$(GHOSTTY_CPU) --prefix $(GHOSTTY_OUT)
+		-Doptimize=ReleaseFast -Dcpu=$(GHOSTTY_CPU) $(if $(GHOSTTY_TARGET),-Dtarget=$(GHOSTTY_TARGET)) \
+		--prefix $(GHOSTTY_OUT)
 	@test -f $(GHOSTTY_OUT)/share/pkgconfig/libghostty-vt-static.pc || \
 		{ echo "libghostty-vt build produced no pkg-config file" >&2; exit 1; }
 	@touch $@
@@ -173,8 +178,29 @@ env:
 	@echo 'export PKG_CONFIG_PATH=$(PKG_CONFIG_PATH)'
 	@echo 'export CGO_CFLAGS="$(CGO_CFLAGS)"'
 
+# Releases (docs/OPERATIONS.md): goreleaser cross-compiles tm with zig cc
+# for darwin/linux x amd64/arm64, against one libghostty-vt build per
+# target in .build/release/ (scripts/release/). `make release-snapshot`
+# builds the archives into dist/ without a tag; `make release` is what
+# the tag-triggered release workflow runs.
+GORELEASER_VERSION ?= v2.18.2
+GORELEASER ?= $(or $(shell command -v goreleaser 2>/dev/null),$(GO) run github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION))
+RELEASE_ENV = TM_ROOT=$(CURDIR) TM_GHOSTTY_REV=$(shell echo $(GHOSTTY_REV) | cut -c1-12) TM_GHOSTTY_CPU=$(GHOSTTY_CPU)
+
+zig-path: | toolchain $(if $(filter $(ZIG_LOCAL),$(ZIG)),$(ZIG_LOCAL))
+	@echo $(ZIG)
+
+release-ghostty:
+	./scripts/release/ghostty.sh
+
+release-snapshot: release-ghostty
+	$(RELEASE_ENV) $(GORELEASER) release --snapshot --clean
+
+release: release-ghostty
+	$(RELEASE_ENV) $(GORELEASER) release --clean
+
 clean:
 	rm -rf bin
 
 distclean: clean
-	rm -rf $(BUILD)
+	rm -rf $(BUILD) dist

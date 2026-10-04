@@ -95,7 +95,7 @@ func printChecks(e *Env, checks []doctor.Check) {
 		counts[c.Status]++
 		fmt.Fprintf(e.Stdout, "  %-4s  %-14s %s\n", c.Status, c.Name, c.Detail)
 	}
-	fmt.Fprintf(e.Stdout, "\n%d ok, %d warnings, %d failures\n", counts[doctor.OK], counts[doctor.Warn], counts[doctor.Fail])
+	fmt.Fprintf(e.Stdout, "\n%d ok, %s, %s\n", counts[doctor.OK], plural(counts[doctor.Warn], "warning"), plural(counts[doctor.Fail], "failure"))
 }
 
 // libghosttySelftest feeds a line through the emulator, as tm selftest.
@@ -116,4 +116,11 @@ func libghosttySelftest() error {
 		return fmt.Errorf("unexpected screen %q", got)
 	}
 	return nil
+}
+
+func plural(n int, word string) string {
+	if n == 1 {
+		return "1 " + word
+	}
+	return fmt.Sprintf("%d %ss", n, word)
 }

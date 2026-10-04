@@ -1,0 +1,68 @@
+name: release
+
+# Builds the release archives for a version tag (git tag v0.1.0 && git
+# push origin v0.1.0) and attaches them, with checksums.txt, to a draft
+# GitHub release that a human reviews and publishes (.goreleaser.yaml).
+# Everything runs on one macOS runner: tm needs cgo, the Linux targets are
+# cross-compiled with zig cc, and the darwin targets need the macOS SDK.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Pins
+        id: pins
+        run: |
+          echo "zig=$(grep -E '^ZIG_(VERSION|SHA256_)' Makefile | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+          echo "ghostty=$(grep -E '^(GHOSTTY_(REV|REPO|CPU)|ZIG_VERSION) ' Makefile | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Zig
+        uses: actions/cache@v6
+        with:
+          path: .build/zig-*
+          key: zig-${{ runner.os }}-${{ runner.arch }}-${{ steps.pins.outputs.zig }}
+
+      # Shared with ci.yml's release-snapshot job.
+      - name: Cache release libghostty-vt
+        uses: actions/cache@v6
+        with:
+          path: |
+            .build/release/ghostty-*
+            !.build/release/ghostty-src
+          key: ghostty-release-${{ runner.os }}-${{ runner.arch }}-${{ steps.pins.outputs.ghostty }}-${{ hashFiles('scripts/release/targets.sh') }}
+
+      - name: pkg-config
+        run: command -v pkg-config || brew install pkgconf
+
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          install-only: true
+          version: "~> v2"
+
+      # Check a snapshot of the same commit before anything is uploaded
+      # (open-source goreleaser can't publish a dist/ built earlier); the
+      # release below rebuilds dist/ from the same libraries and Go cache.
+      - name: Check the archives
+        run: |
+          make release-snapshot
+          scripts/release/check.sh dist
+
+      - name: Release
+        run: make release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
