@@ -7,6 +7,7 @@ package e2e
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestSmokeViewsShared: two consoles on view main. Opening a project's
@@ -149,4 +150,55 @@ func TestSmokeViewSurvivesRestart(t *testing.T) {
 	w2.WaitFor("SESSIONS", wait)
 	w2.Type("q")
 	w2.WaitExit(wait)
+}
+
+// TestSmokeFirstViewFills: a pane no console has sized yet fills the
+// first console that shows it (docs/SPEC.md §3.3), a coordinator and a
+// watch-only thread alike; a console showing it later doesn't resize it,
+// and once someone types the console typed in sizes it, as before.
+func TestSmokeFirstViewFills(t *testing.T) {
+	env := New(t)
+	env.FakeClaude()
+	alpha, alphaDir := newProject(env, "Alpha")
+	env.Trust(alphaDir)
+
+	// Both start at 100×30 from the CLI, sized by no console.
+	co := env.StartAgent("claude", alphaDir, "--role", "coordinator", "--project", alpha)
+	th := env.StartAgent("claude", alphaDir, "--role", "thread", "--project", alpha, "--thread", "t-0001")
+	env.WaitState(co, "idle", agentWait)
+	env.WaitState(th, "idle", agentWait)
+
+	// The first console to show the coordinator gives it its rectangle:
+	// the window less the sidebar and the status bar.
+	w1 := env.Window(136, 40)
+	w1.WaitFor("▾○ alpha", wait)
+	clickCoordinator(t, w1, alpha)
+	w1.WaitUntil("attached to alpha", agentWait, func(sc string) bool { return lastLine(sc, alpha+" coordinator") })
+	waitPaneSize(t, env, co, 112, 39)
+
+	// A second console showing it later resizes nothing.
+	w2 := env.Attach(100, 26, co.ID)
+	w2.WaitFor("Fake Claude Code", agentWait)
+	time.Sleep(time.Second) // longer than the server's resize quiet time
+	assertPaneSize(t, env, co, 112, 39)
+
+	// Typing claims as before: w2's rectangle, then w1's again.
+	w2.Type("x")
+	waitPaneSize(t, env, co, 76, 26)
+	w1.Type("y")
+	waitPaneSize(t, env, co, 112, 39)
+
+	// The watch-only thread fills its first console too, and the next
+	// one to watch it leaves it alone.
+	w3 := env.Attach(120, 30, th.ID)
+	w3.WaitFor("Fake Claude Code", agentWait)
+	waitPaneSize(t, env, th, 96, 29) // the watch-only status bar takes a row
+	w4 := env.Attach(90, 24, th.ID)
+	w4.WaitFor("Fake Claude Code", agentWait)
+	time.Sleep(time.Second)
+	assertPaneSize(t, env, th, 96, 29)
+	for _, w := range []*Window{w2, w3, w4} {
+		w.Detach()
+		w.WaitExit(wait)
+	}
 }

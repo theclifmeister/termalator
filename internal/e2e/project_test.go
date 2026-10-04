@@ -154,9 +154,8 @@ func TestSmokeSidebar(t *testing.T) {
 	for _, x := range both {
 		x.WaitUntil("watching t-0001", wait, func(sc string) bool { return lastLine(sc, "watch-only") && !lastLine(sc, "pane ") })
 	}
-	if c, r := paneSize(env, th); c == 96 && r == 29 {
-		t.Fatalf("watching resized the thread")
-	}
+	// No console sized the thread yet: the first to watch it fills it.
+	waitPaneSize(t, env, th, 96, 29)
 	// beta's row, from the pane, shows beta's dashboard on both consoles;
 	// its coordinator's row attaches the coordinator again.
 	w.Click(4, sideRow(t, w.Screen(), beta))

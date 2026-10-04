@@ -176,11 +176,17 @@ func TestRequestResizeCoalesces(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer sub.Detach()
+	if s.Sized() {
+		t.Fatal("a new session is sized")
+	}
 	if err := s.RequestResize(100, 30); err != nil {
 		t.Fatal(err)
 	}
 	if got := s.Info(); got.Cols != 100 || got.Rows != 30 {
 		t.Fatalf("first request not applied at once: %d×%d", got.Cols, got.Rows)
+	}
+	if !s.Sized() {
+		t.Fatal("a resized session isn't sized")
 	}
 	for _, c := range []uint16{90, 91, 92} {
 		if err := s.RequestResize(c, 20); err != nil {
