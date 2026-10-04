@@ -1,0 +1,12 @@
+## hard links
+alt H1-read-hardlink exit=0
+alt H2-edit-hardlink exit=0
+after Claude Edit: project TASKS.md = - [ ] T1 spike; same inode: NO
+after atomic rename in project: worktree copy = SECRET-CONTEXT-TOKEN: banana-42
+cross-device hard link to /tmp: ok
+hard link to a directory: ln: /Users/clifford/.termalator-spike/projects/demo/memory: Is a directory
+
+## CLAUDE.local.md @import of absolute paths
+alt I1-import-abs exit=0
+alt I2-import-via-symlink exit=0
+?? CLAUDE.local.md

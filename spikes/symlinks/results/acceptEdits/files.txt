@@ -1,0 +1,8 @@
+## files after acceptEdits
+.termalator-spike/projects/demo/w2.md: MISSING
+.termalator-spike/projects/demo/w4.md: MISSING
+.termalator-spike/projects/demo/w5.md: MISSING
+.termalator-spike/projects/demo/threads/t1/out/REPORT.md: report acceptEdits
+.termalator-spike/projects/demo/threads/t1/out/STATUS.md: status acceptEdits
+brief: BRIEF-TOKEN: mango-9
+brief still symlink: yes
