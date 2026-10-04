@@ -16,6 +16,11 @@ type action struct {
 	// label and help are its line in the help; an empty label leaves it
 	// out.
 	label, help string
+	// menu are its entries in the ≡ menu, one per key ("" for none): the
+	// mouse's way to every action. mouse is its mouse path instead, for
+	// those that aren't in the menu.
+	menu  []string
+	mouse string
 	// foot is its word in the footer for the selected row (ok is false
 	// without one), "" to leave it out there.
 	foot func(m *dash, r row, ok bool) string
@@ -44,9 +49,10 @@ var actions []action
 
 func init() {
 	actions = []action{
-		{keys: []string{"up", "k"}, run: func(m *dash, _ string) tea.Cmd { m.move(-1); return nil }},
-		{keys: []string{"down", "j"}, run: func(m *dash, _ string) tea.Cmd { m.move(1); return nil }},
+		{keys: []string{"up", "k"}, mouse: "the wheel, or a click on a row", run: func(m *dash, _ string) tea.Cmd { m.move(-1); return nil }},
+		{keys: []string{"down", "j"}, mouse: "the wheel, or a click on a row", run: func(m *dash, _ string) tea.Cmd { m.move(1); return nil }},
 		{keys: []string{"enter"}, label: "enter", help: "attach to the selected session; on a project, open its coordinator; a thread opens watch-only",
+			menu: []string{"open the selected row"},
 			foot: func(_ *dash, r row, ok bool) string {
 				switch {
 				case !ok:
@@ -61,9 +67,9 @@ func init() {
 				return ""
 			},
 			run: (*dash).enter},
-		{keys: []string{"s"}, label: "s", help: "new shell session (in the directory tm was started in)",
+		{keys: []string{"s"}, label: "s", help: "new shell session (in the directory tm was started in)", menu: []string{"new shell"},
 			run: (*dash).startShell},
-		{keys: []string{"n"}, label: "n", help: "new project",
+		{keys: []string{"n"}, label: "n", help: "new project", menu: []string{"new project"},
 			foot: func(m *dash, _ row, _ bool) string {
 				if len(m.data.Projects) == 0 {
 					return "new project"
@@ -71,13 +77,13 @@ func init() {
 				return ""
 			},
 			run: (*dash).newProject},
-		{keys: []string{"a"}, label: "a", help: "the project popup: overview, inbox, tasks, settings and keys",
+		{keys: []string{"a"}, label: "a", help: "the project popup: overview, inbox, tasks, settings and keys", menu: []string{"project popup"},
 			foot: withProject("project"), run: (*dash).projectPopup},
-		{keys: []string{"t"}, label: "t", help: "the project's tasks, read-only; enter shows one",
+		{keys: []string{"t"}, label: "t", help: "the project's tasks, read-only; enter shows one", menu: []string{"tasks"},
 			foot: withProject("tasks"), run: (*dash).taskBoard},
-		{keys: []string{"i"}, label: "i", help: "the project's inbox, read-only: what the coordinator is told about",
+		{keys: []string{"i"}, label: "i", help: "the project's inbox, read-only: what the coordinator is told about", menu: []string{"inbox"},
 			foot: withProject("inbox"), run: (*dash).inbox},
-		{keys: []string{"p"}, label: "p", help: "project switcher; enter opens that project's coordinator",
+		{keys: []string{"p"}, label: "p", help: "project switcher; enter opens that project's coordinator", menu: []string{"switch project"},
 			foot: func(m *dash, _ row, _ bool) string {
 				if len(m.data.Projects) > 1 {
 					return "projects"
@@ -85,28 +91,28 @@ func init() {
 				return ""
 			},
 			run: (*dash).switcher},
-		{keys: []string{"]", "["}, label: "] [", help: "next / previous project's coordinator",
+		{keys: []string{"]", "["}, label: "] [", help: "next / previous project's coordinator", menu: []string{"next project", "previous project"},
 			run: func(m *dash, key string) tea.Cmd { return m.cycleProject(key == "]") }},
-		{keys: []string{"<", ">"}, label: "< >", help: "narrow / widen the list beside the details panel (or drag the divider)",
+		{keys: []string{"<", ">"}, label: "< >", help: "narrow / widen the list beside the details panel (or drag the divider)", menu: []string{"narrower list", "wider list"},
 			run: (*dash).resize},
-		{keys: []string{"{", "}"}, label: "{ }", help: "narrow / widen the projects sidebar (or drag its border)",
+		{keys: []string{"{", "}"}, label: "{ }", help: "narrow / widen the projects sidebar (or drag its border)", menu: []string{"narrower sidebar", "wider sidebar"},
 			run: (*dash).sideKey},
-		{keys: []string{"b"}, label: "b", help: "the sidebar as a slim strip (glyphs and short names), and back",
+		{keys: []string{"b"}, label: "b", help: "the sidebar as a slim strip (glyphs and short names), and back", menu: []string{"slim sidebar on / off"},
 			run: (*dash).sideKey},
-		{keys: []string{"|"}, label: "|", help: "show or hide the details panel (windows 120 columns or wider)",
+		{keys: []string{"|"}, label: "|", help: "show or hide the details panel (windows 120 columns or wider)", menu: []string{"details panel on / off"},
 			run: func(m *dash, _ string) tea.Cmd {
 				l := m.layout
 				l.Details = !l.Details
 				m.setLayout(l)
 				return nil
 			}},
-		{keys: []string{","}, label: ",", help: "settings for every project: the prefix key, the default agent, the layout (a project's own are under a)",
+		{keys: []string{","}, label: ",", help: "settings for every project: the prefix key, the default agent, the layout (a project's own are under a)", menu: []string{"settings"},
 			foot: always("settings"), run: func(m *dash, _ string) tea.Cmd { m.openSettings(); return nil }},
-		{keys: []string{"r"}, label: "r", help: "refresh",
+		{keys: []string{"r"}, label: "r", help: "refresh", menu: []string{"refresh"},
 			run: func(m *dash, _ string) tea.Cmd { return m.load() }},
-		{keys: []string{"?"}, label: "?", help: "help",
+		{keys: []string{"?"}, label: "?", help: "help", menu: []string{"help: keys and mouse"},
 			foot: always("help"), run: func(m *dash, _ string) tea.Cmd { m.push(&helpView{}); return nil }},
-		{keys: []string{"q"}, label: "q", help: "quit (the server keeps running)",
+		{keys: []string{"q"}, label: "q", help: "quit (the server keeps running)", menu: []string{"quit"},
 			foot: always("quit"), run: func(*dash, string) tea.Cmd { return tea.Quit }},
 	}
 }
@@ -123,11 +129,11 @@ func (m *dash) listKey(key string) tea.Cmd {
 	return nil
 }
 
-// footKeys is the footer's key list: the actions that apply to the
-// selected row.
+// footKeys is the footer's key list: the ≡ menu, then the actions that
+// apply to the selected row. Each is a button for the mouse too.
 func (m *dash) footKeys() string {
 	r, ok := m.selected()
-	var out []string
+	out := []string{menuButton + " menu"}
 	for _, a := range actions {
 		if a.foot == nil {
 			continue

@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/theclifmeister/termalator/internal/config"
 	"github.com/theclifmeister/termalator/internal/proto"
@@ -62,9 +63,16 @@ func (l *settingsList) key(m *dash, k tea.KeyPressMsg) (tea.Cmd, bool) {
 	return nil, true
 }
 
-// lines draws the list w cells wide; sel is the selected row's line.
-func (l *settingsList) lines(m *dash, w int) (out []string, sel int) {
+// lines draws the list w cells wide; sel is the selected row's line,
+// hits what a click on each line picks: a setting's own line is its
+// index, which changes it; its help is helpHit more, which selects it.
+func (l *settingsList) lines(m *dash, w int) (out []string, sel int, hits []int) {
 	sel = -1
+	defer func() {
+		for len(hits) < len(out) {
+			hits = append(hits, noHit)
+		}
+	}()
 	lw := 0
 	for _, r := range l.rows {
 		lw = max(lw, len([]rune(r.label)))
@@ -72,20 +80,65 @@ func (l *settingsList) lines(m *dash, w int) (out []string, sel int) {
 	for i, r := range l.rows {
 		if i > 0 {
 			out = append(out, "")
+			hits = append(hits, noHit)
 		}
-		text := fit(r.label, lw) + "  " + r.value(m)
+		hits = append(hits, i)
+		value := r.value(m)
+		btns := ""
+		if r.adjust != nil {
+			btns = adjustButtons
+		}
+		text := fit(r.label, lw) + "  " + value + btns
 		if i == l.sel {
 			sel = len(out)
 			out = append(out, styleSel.Render(fit(text, w)))
 		} else {
-			out = append(out, styleHead.Render(fit(r.label, lw))+"  "+styleAccent.Render(r.value(m)))
+			out = append(out, styleHead.Render(fit(r.label, lw))+"  "+styleAccent.Render(value)+styleHead.Render(btns))
 		}
 		out = append(out, faintLines(r.help, w)...)
 		if r.note != nil {
 			out = append(out, r.note(m)...)
 		}
+		for len(hits) < len(out) {
+			hits = append(hits, i+helpHit)
+		}
 	}
-	return out, sel
+	return out, sel, hits
+}
+
+// helpHit marks a setting's help lines in its list's hits.
+const helpHit = 1 << 16
+
+// adjustButtons follow a number's value: a click on − or + is - or +.
+const adjustButtons = "  −  +"
+
+// click selects the clicked setting; a click on its own line changes it,
+// as enter does, and on a number's − or + (col is the column in the
+// line) as - or + do.
+func (l *settingsList) click(m *dash, item, col int) tea.Cmd {
+	if item >= helpHit {
+		l.sel = moveSel(item-helpHit, 0, len(l.rows))
+		return nil
+	}
+	l.sel = moveSel(item, 0, len(l.rows))
+	key := "enter"
+	if r := l.rows[l.sel]; r.adjust != nil {
+		lw := 0
+		for _, r := range l.rows {
+			lw = max(lw, len([]rune(r.label)))
+		}
+		// − is 2 cells after the value, + 3 after −; a cell either side
+		// counts.
+		minus := lw + 2 + ansi.StringWidth(r.value(m)) + 2
+		switch {
+		case col >= minus-1 && col <= minus+1:
+			key = "-"
+		case col >= minus+2 && col <= minus+4:
+			key = "+"
+		}
+	}
+	cmd, _ := l.key(m, keyMsg(key))
+	return cmd
 }
 
 // onOff is a bool as the settings show it.
@@ -194,11 +247,17 @@ func (sv *settingsView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 
 func (sv *settingsView) render(m *dash) string {
 	w := m.inner(settingsWidth)
-	lines, sel := sv.list.lines(m, w)
+	lines, sel, hits := sv.list.lines(m, w)
 	lines = append(lines, "")
 	lines = append(lines, faintLines("A project's own settings (starting threads, yolo mode, remote control, …) are in its popup: a on the dashboard, prefix+a in a session.", w)...)
-	return m.popup(box{title: "settings", body: lines, sel: sel, keys: "enter change · ↑ ↓ move · esc back", width: settingsWidth})
+	return m.popup(box{title: "settings", body: lines, sel: sel, hits: hits, keys: "enter change · ↑ ↓ move · esc back", width: settingsWidth})
 }
+
+func (sv *settingsView) click(m *dash, item, col int, _ bool) tea.Cmd {
+	return sv.list.click(m, item, col)
+}
+
+func (sv *settingsView) wheel(m *dash, d int) { sv.list.key(m, arrow(d)) }
 
 const settingsWidth = 88
 

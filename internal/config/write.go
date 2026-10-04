@@ -44,7 +44,19 @@ func SetProject(slug, key string, value any) error {
 	if n, ok := value.(int); key == "auto_close_days" && (!ok || n < 1 || n > MaxAutoCloseDays) {
 		return fmt.Errorf("auto-close days must be 1 to %d", MaxAutoCloseDays)
 	}
-	return Set("projects."+slug, key, value)
+	table := "projects." + slug
+	if key == "auto_close" {
+		// auto_close replaces the older auto_resolve: its line goes in the
+		// same write, so nothing obsolete is left ignored in the file.
+		return edit(func(data []byte) ([]byte, error) {
+			out, err := Edit(data, table, key, value)
+			if err != nil {
+				return nil, err
+			}
+			return Remove(out, table, "auto_resolve"), nil
+		})
+	}
+	return Set(table, key, value)
 }
 
 // validKey reports whether key is a project setting.
@@ -63,6 +75,12 @@ var ProjectKeys = []string{"start_threads", "yolo", "coordinator_approves", "par
 // Set sets key in table ("" is the top level, "keys", "projects.<slug>")
 // to value: a bool, an int or a string.
 func Set(table, key string, value any) error {
+	return edit(func(data []byte) ([]byte, error) { return Edit(data, table, key, value) })
+}
+
+// edit rewrites the settings file with fn, under its lock and
+// atomically, keeping its mode; an unchanged file isn't written.
+func edit(fn func(data []byte) ([]byte, error)) error {
 	path, err := Path()
 	if err != nil {
 		return err
@@ -83,7 +101,7 @@ func Set(table, key string, value any) error {
 			perm = fi.Mode().Perm()
 		}
 	}
-	data, err := Edit(old, table, key, value)
+	data, err := fn(old)
 	if err != nil {
 		return err
 	}
@@ -176,6 +194,45 @@ func Edit(data []byte, table, key string, value any) ([]byte, error) {
 		return nil, ErrForm
 	}
 	return res, nil
+}
+
+// Remove returns data without the line setting key in table, everything
+// else kept: comments above it and the rest of the table too. When the
+// file sets key in a form the line editor doesn't change (a dotted key,
+// an inline table), or the result wouldn't parse without it, data comes
+// back as it was.
+func Remove(data []byte, table, key string) []byte {
+	lines := strings.SplitAfter(string(data), "\n")
+	want := splitTable(table)
+	in := len(want) == 0
+	var out []string
+	for _, l := range lines {
+		if h, ok := header(l); ok {
+			in = equal(h, want)
+		} else if _, _, ok := setting(l, key); ok && in {
+			continue
+		}
+		out = append(out, l)
+	}
+	res := []byte(strings.Join(out, ""))
+	var got map[string]any
+	if _, err := toml.Decode(string(res), &got); err != nil {
+		return data
+	}
+	v := any(got)
+	for _, k := range want {
+		m, ok := v.(map[string]any)
+		if !ok {
+			return res // the table is gone: so is key
+		}
+		v = m[k]
+	}
+	if m, ok := v.(map[string]any); ok {
+		if _, still := m[key]; still {
+			return data
+		}
+	}
+	return res
 }
 
 // insertAt inserts s after index i of lines (at the start for -1); at

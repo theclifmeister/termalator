@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -118,6 +119,17 @@ func fit(s string, w int) string {
 // prefix it lists the commands instead. Hints never show the prefix's
 // key, which is configurable: only the help and the settings do.
 func statusLine(s proto.SessionInfo, ts *thread.Status, pending bool, cols int, where string) string {
+	line, _ := statusBar(s, ts, pending, cols, where)
+	return line
+}
+
+// pendingHead starts the status bar's list of commands after the prefix.
+const pendingHead = " prefix ▸ "
+
+// statusBar is statusLine with its buttons, by column: after the prefix
+// each command; else "prefix+u takes over", the pane buttons (split
+// beside, split below, zoom, close), the ≡ menu and "prefix+d dashboard".
+func statusBar(s proto.SessionInfo, ts *thread.Status, pending bool, cols int, where string) (string, []hint) {
 	parts := []string{" " + s.ID}
 	if s.Project != "" {
 		parts = append(parts, s.Project+" "+sessionName(s))
@@ -135,17 +147,64 @@ func statusLine(s proto.SessionInfo, ts *thread.Status, pending bool, cols int, 
 	if where != "" {
 		parts = append(parts, where)
 	}
-	right := "prefix+d dashboard "
 	left := strings.Join(parts, " · ")
 	if pending {
-		left = ` prefix ▸ d dashboard · a project · p ] [ projects · i t , ? · % " split · arrows focus · ctrl+arrows resize · z zoom · x close · { } b sidebar · u take over · r remote control`
-		right = "prefix again sends it "
+		left = pendingHead + `d dashboard · a project · p ] [ projects · i t , ? · % " split · arrows focus · ctrl+arrows resize · z zoom · x close · { } b sidebar · u take over · r remote control`
+	}
+	// The pane buttons only when the line still fits: the session's own
+	// words come first.
+	right, rh := statusRight(pending, true)
+	if ansi.StringWidth(left)+1+ansi.StringWidth(right) > cols {
+		right, rh = statusRight(pending, false)
 	}
 	w := cols - ansi.StringWidth(right) - 1
 	if w < 1 {
-		return "\x1b[7m" + fit(left, cols) + "\x1b[27m"
+		return "\x1b[7m" + fit(left, cols) + "\x1b[27m", nil
 	}
-	return "\x1b[7m" + fit(left, w) + " " + right + "\x1b[27m"
+	var hs []hint
+	if pending {
+		hs = hints(strings.TrimPrefix(left, pendingHead), ansi.StringWidth(pendingHead))
+	} else if i := strings.Index(left, takeOverHint); i >= 0 {
+		x := ansi.StringWidth(left[:i])
+		hs = append(hs, hint{x, x + ansi.StringWidth(takeOverHint), "u"})
+	}
+	// Only what shows: the left part is cut at w.
+	hs = slices.DeleteFunc(hs, func(h hint) bool { return h.x1 > w-1 })
+	for _, h := range rh {
+		hs = append(hs, hint{h.x0 + w + 1, h.x1 + w + 1, h.key})
+	}
+	return "\x1b[7m" + fit(left, w) + " " + right + "\x1b[27m", hs
+}
+
+// takeOverHint is the status bar's note on a watch-only pane, a button.
+const takeOverHint = "prefix+u takes over"
+
+// paneButtons are the status bar's buttons for the panes, by glyph: the
+// prefix command each runs.
+var paneButtons = []struct{ glyph, key string }{
+	{"│", "%"}, {"─", `"`}, {"⤢", "z"}, {"×", "x"}, {menuButton, "menu"},
+}
+
+// statusRight is the status bar's right end and its buttons: the pane
+// buttons (with panes set; the ≡ menu always) and "prefix+d dashboard",
+// or after the prefix "prefix again sends it".
+func statusRight(pending, panes bool) (string, []hint) {
+	if pending {
+		return "prefix again sends it ", []hint{{0, 21, "prefix"}}
+	}
+	var b strings.Builder
+	var hs []hint
+	x := 0 // in cells: the glyphs are one cell, several bytes
+	for _, pb := range paneButtons {
+		if !panes && pb.key != "menu" {
+			continue
+		}
+		hs = append(hs, hint{x, x + 2, pb.key})
+		b.WriteString(pb.glyph + " ")
+		x += 2
+	}
+	hs = append(hs, hint{x + 1, x + 1 + len("prefix+d dashboard"), "d"})
+	return b.String() + " prefix+d dashboard ", hs
 }
 
 // sessionProgress is a session's progress from its own todos.

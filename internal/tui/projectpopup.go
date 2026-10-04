@@ -197,19 +197,20 @@ func (pv *projectView) box(m *dash) box {
 	p := pv.data(m)
 	lines := []string{pv.tabBar(p), ""}
 	var body []string
+	var hits []int
 	sel := -1
 	keys := "tab next tab · 1-5 pick one · esc close"
 	switch pv.tab {
 	case tabOverview:
-		body, sel = pv.overview(m, p, w)
+		body, sel, hits = pv.overview(m, p, w)
 		keys = "+ add repository · x remove it · " + keys
 	case tabInbox:
-		body, sel = inboxLines(p.Items, pv.sel[tabInbox], w)
+		body, sel, hits = inboxLines(p.Items, pv.sel[tabInbox], w)
 		body = append(body, "", styleFaint.Render("Read-only: the coordinator handles these."))
 	case tabTasks:
-		body, sel = pv.taskLines(w)
+		body, sel, hits = pv.taskLines(w)
 	case tabSettings:
-		body, sel = pv.settings.lines(m, w)
+		body, sel, hits = pv.settings.lines(m, w)
 		keys = "enter change · + - number · ↑ ↓ move · " + keys
 	case tabKeys:
 		// The same list as the help, scrolled the same way.
@@ -223,18 +224,59 @@ func (pv *projectView) box(m *dash) box {
 		scroll = pv.sel[tabKeys]
 	}
 	lines = append(lines, body...)
-	return box{title: pv.slug + " · prefix = " + m.prefix, body: lines, sel: sel, scroll: scroll, keys: keys, width: m.w}
+	all := append([]int{tabHit, noHit}, hits...)
+	for len(all) < len(lines) {
+		all = append(all, noHit)
+	}
+	return box{title: pv.slug + " · prefix = " + m.prefix, body: lines, sel: sel, scroll: scroll, hits: all, keys: keys, width: m.w}
+}
+
+// tabHit is the tab bar's line: the column picks the tab.
+const tabHit = -2
+
+// click picks a tab on the tab bar, else the clicked line's repository,
+// inbox item, task or setting (which it changes, as enter does).
+func (pv *projectView) click(m *dash, item, col int, _ bool) tea.Cmd {
+	if item == tabHit {
+		if t := pv.tabAt(pv.data(m), col); t >= 0 {
+			pv.tab = t
+		}
+		return nil
+	}
+	if pv.tab == tabSettings {
+		return pv.settings.click(m, item, col)
+	}
+	pv.sel[pv.tab] = item
+	return nil
+}
+
+// tabAt is the tab at column col of the tab bar, -1 for none.
+func (pv *projectView) tabAt(p ProjectData, col int) int {
+	x := 0
+	for i := range tabNames {
+		w := len([]rune(pv.tabLabel(p, i))) + 2
+		if col >= x && col < x+w {
+			return i
+		}
+		x += w + 1
+	}
+	return -1
+}
+
+func (pv *projectView) wheel(m *dash, d int) {
+	if pv.tab == tabKeys {
+		pv.sel[tabKeys] = clampScroll(pv.sel[tabKeys]+3*d, pv.count(m))
+		return
+	}
+	pv.key(m, arrow(d))
 }
 
 // tabBar names the tabs, the open one in reverse video, with the inbox's
 // count.
 func (pv *projectView) tabBar(p ProjectData) string {
 	var parts []string
-	for i, n := range tabNames {
-		label := fmt.Sprintf("%d %s", i+1, n)
-		if i == tabInbox && len(p.Items) > 0 {
-			label += fmt.Sprintf(" %d", len(p.Items))
-		}
+	for i := range tabNames {
+		label := pv.tabLabel(p, i)
 		if i == pv.tab {
 			parts = append(parts, styleSel.Render(" "+label+" "))
 		} else {
@@ -244,11 +286,22 @@ func (pv *projectView) tabBar(p ProjectData) string {
 	return strings.Join(parts, " ")
 }
 
+// tabLabel is tab i's label: its number and name, with the inbox's
+// count.
+func (pv *projectView) tabLabel(p ProjectData, i int) string {
+	label := fmt.Sprintf("%d %s", i+1, tabNames[i])
+	if i == tabInbox && len(p.Items) > 0 {
+		label += fmt.Sprintf(" %d", len(p.Items))
+	}
+	return label
+}
+
 // overview is the project's name, goal, repositories, machine and
 // agents.
-func (pv *projectView) overview(m *dash, p ProjectData, w int) ([]string, int) {
+func (pv *projectView) overview(m *dash, p ProjectData, w int) ([]string, int, []int) {
 	field := func(label string) string { return styleFaint.Render(fmt.Sprintf("%-14s", label)) }
 	var out []string
+	repoAt := map[int]int{} // a repository's line: its index
 	out = append(out, field("Project")+styleHead.Render(cmp.Or(oneLine(p.Name), p.Slug))+styleFaint.Render("  "+p.Slug))
 	if g := strings.TrimSpace(p.Goal); g == "" {
 		out = append(out, field("Goal")+styleFaint.Render("none set; ask the coordinator to set one"))
@@ -271,6 +324,7 @@ func (pv *projectView) overview(m *dash, p ProjectData, w int) ([]string, int) {
 		if i == 0 {
 			label = field("Repositories")
 		}
+		repoAt[len(out)] = i
 		if i == pv.sel[tabOverview] {
 			sel = len(out)
 			out = append(out, label+styleSel.Render(fit(r, w-14)))
@@ -317,7 +371,19 @@ func (pv *projectView) overview(m *dash, p ProjectData, w int) ([]string, int) {
 	if p.Err != "" {
 		out = append(out, "", styleBad.Render("error: "+oneLine(p.Err)))
 	}
-	return out, sel
+	return out, sel, lineHits(len(out), repoAt)
+}
+
+// lineHits are n lines' hits: at's, noHit elsewhere.
+func lineHits(n int, at map[int]int) []int {
+	hits := make([]int, n)
+	for i := range hits {
+		hits[i] = noHit
+		if v, ok := at[i]; ok {
+			hits[i] = v
+		}
+	}
+	return hits
 }
 
 // coordinatorLine is the coordinator's agent and state, or the agent a
@@ -336,11 +402,12 @@ func (pv *projectView) coordinatorLine(m *dash, p ProjectData) string {
 }
 
 // taskLines are the live tasks, grouped, each with its steps.
-func (pv *projectView) taskLines(w int) ([]string, int) {
+func (pv *projectView) taskLines(w int) ([]string, int, []int) {
 	if pv.board == nil {
-		return []string{styleFaint.Render("loading…")}, -1
+		return []string{styleFaint.Render("loading…")}, -1, nil
 	}
 	var out []string
+	taskAt := map[int]int{} // a task's lines, its steps' too: its index
 	sel := -1
 	var group tasks.Group
 	for i, t := range pv.tasks() {
@@ -363,6 +430,9 @@ func (pv *projectView) taskLines(w int) ([]string, int) {
 		if t.Thread != "" {
 			tail += " · " + t.Thread
 		}
+		for j := range 1 + len(t.Steps) {
+			taskAt[len(out)+j] = i
+		}
 		if i == pv.sel[tabTasks] {
 			sel = len(out)
 			out = append(out, styleSel.Render(fit(head+"  "+tail, w)))
@@ -383,16 +453,19 @@ func (pv *projectView) taskLines(w int) ([]string, int) {
 		out = append(out, styleFaint.Render("no open tasks"))
 	}
 	out = append(out, "", styleFaint.Render(fmt.Sprintf("done: %d · read-only: the coordinator changes tasks", done)))
-	return out, sel
+	return out, sel, lineHits(len(out), taskAt)
 }
 
-// inboxLines are a project's unhandled inbox items, sel selected.
-func inboxLines(items []project.Item, sel, w int) ([]string, int) {
+// inboxLines are a project's unhandled inbox items, sel selected, and
+// the item on each line.
+func inboxLines(items []project.Item, sel, w int) ([]string, int, []int) {
 	var lines []string
+	var hits []int
 	at := -1
 	now := time.Now()
 	for i, it := range items {
 		when := fmt.Sprintf("%-6s", age(now.Sub(it.Created)))
+		hits = append(hits, i)
 		if i == sel {
 			at = len(lines)
 			lines = append(lines, styleSel.Render(fit(fmt.Sprintf("%s %s %s", fit(it.Kind, 16), when, oneLine(it.Summary)), w)))
@@ -403,6 +476,7 @@ func inboxLines(items []project.Item, sel, w int) ([]string, int) {
 	}
 	if len(items) == 0 {
 		lines = append(lines, styleFaint.Render("inbox empty"))
+		hits = append(hits, noHit)
 	}
-	return lines, at
+	return lines, at, hits
 }

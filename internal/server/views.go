@@ -437,6 +437,11 @@ func (vs *views) do(method string, p proto.ViewParams) (view.View, *proto.Error)
 		layout()
 		v.ResizeTowards(p.Side, p.Cells, int(v.Cols), int(v.Rows))
 		resize = true
+	case proto.MethodViewDrag:
+		if v.DragDivider(p.X, p.Y, p.To, int(v.Cols), int(v.Rows)) {
+			layout()
+			resize = true
+		}
 	case proto.MethodViewSidebar:
 		if p.Sidebar == nil {
 			return before, proto.Errorf(proto.ErrBadParams, "no sidebar")

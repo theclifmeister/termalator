@@ -1,7 +1,7 @@
  PROJECTS 1            │ tm dashboard                                                           ● server ok · 0 sessions
 ▾· demo              0 │ demo ──────────────────────────────────────────────────────────────────────────────────────────
   · coordinator        │  coordinator                           —          enter starts the coordinator
-                       │  ╭─ demo · prefix = ctrl+b ─────────────────────────────────────────────────────────────────╮
+                       │  ╭─ demo · prefix = ctrl+b ────────────────────────────────────────────────────────────── × ╮
                        │ O│  1 Overview   2 Inbox   3 Tasks   4 Settings   5 Keys                                    │──
                        │  │                                                                                          │
                        │  │ Start threads                ask first                                                   │
@@ -16,11 +16,11 @@
                        │  │ The coordinator may answer its threads' in-scope permission prompts (allow once, never   │
                        │  │ always).                                                                                 │
                        │  │                                                                                          │
-                       │  │ Parallel threads             10 · 0 working now                                          │
+                       │  │ Parallel threads             10 · 0 working now  −  +                                    │
                        │  │ The most threads working at once; beyond it the coordinator proposes and waits. Idle and │
                        │  │ done threads don't count. Enter or + and - change it.                                    │
                        │  │                                                                                          │
-                       │  │ Auto-close finished threads  when its pull request merges                                │
+                       │  │ Auto-close finished threads  when its pull request merges  −  +                          │
                        │  │ Close a thread when its pull request merges, or some days after it finishes (done, or    │
                        │  │ its pull request merged); + and - change the days. One with uncommitted or unpushed work │
                        │  │ stays open, and the coordinator is told.                                                 │

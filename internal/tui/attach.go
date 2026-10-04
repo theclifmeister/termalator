@@ -83,6 +83,9 @@ type Options struct {
 	// Sidebar configures the projects sidebar, which every view shows
 	// (docs/SPEC.md §4); nil is the defaults.
 	Sidebar *SidebarOptions
+	// TakeOver is a session to ask about taking over once its pane has
+	// the focus: "take over…" picked from a dashboard menu.
+	TakeOver string
 }
 
 // SidebarOptions configure the attach view's projects sidebar.
@@ -148,7 +151,7 @@ func Attach(opts Options) (res Result, err error) {
 	vc := opts.View
 	v := vc.View()
 	c.vc, c.me = vc, vc.Client()
-	c.prefix, c.takeover = prefix, opts.Takeover
+	c.prefix, c.takeover, c.askFor = prefix, opts.Takeover, opts.TakeOver
 	c.bare, c.dashboard = v.Bare, !v.Bare
 	so := opts.Sidebar
 	if so == nil {
@@ -264,6 +267,17 @@ type client struct {
 	// control on or off.
 	confirmRemote *pane
 	takeover      func(proto.SessionInfo) error
+	// askFor is a session to ask about taking over once its pane has the
+	// focus (a menu's "take over…").
+	askFor string
+
+	// The mouse (attachmouse.go): the open menu, the divider being
+	// dragged, the last click (for double-clicks) and the status bar's
+	// buttons, by column from its start.
+	menu       *amenu
+	divDrag    *view.Divider
+	lastClick  click
+	statusHits []hint
 
 	bare        bool     // the view has no dashboard: detaching leaves
 	statusBar   bool     // the view's chrome has the status bar
@@ -728,6 +742,13 @@ func (c *client) relayout() {
 			}
 		}
 	}
+	if c.askFor != "" && c.focus != nil && c.focus.info.ID == c.askFor {
+		// A menu's "take over…": ask now its pane has the focus.
+		if c.focus.watch {
+			c.confirm = c.focus
+		}
+		c.askFor = ""
+	}
 	vis := c.visible()
 	// One pane draws alone, unless it shares the window with the sidebar.
 	c.single = len(vis) == 1 && c.side == nil
@@ -947,6 +968,10 @@ func (c *client) key(k uv.Key) {
 	if !c.lock() {
 		return
 	}
+	if c.menu != nil {
+		c.menuKey(k)
+		return
+	}
 	if p := c.confirm; p != nil {
 		c.answerTakeover(p, keyName(k) == "y")
 		return
@@ -967,9 +992,16 @@ func (c *client) key(k uv.Key) {
 	if redraw {
 		c.poke()
 	}
-	switch {
-	case do.input:
+	if do.input {
 		c.input(k)
+		return
+	}
+	c.run(do)
+}
+
+// run does what prefixStep decided, but for input.
+func (c *client) run(do prefixDo) {
+	switch {
 	case do.detach:
 		c.detachThen(do.then)
 	case do.pane != "":
@@ -1048,12 +1080,20 @@ func prefixStep(prefix chord, pending, repeat bool, k uv.Key, dashboard bool) pr
 // detachThen leaves the layout; then is the dashboard key to run
 // afterwards. A shared view goes back to its dashboard, on every console;
 // a bare one has none, so this console leaves it.
-func (c *client) detachThen(then string) {
+func (c *client) detachThen(then string) { c.detachTo("", then) }
+
+// detachTo is detachThen to project's dashboard ("" for the dashboard as
+// it was): a sidebar menu's project popup, tasks or inbox.
+func (c *client) detachTo(project, then string) {
 	c.then = then
 	c.detaching.Store(true) // publishes then to lost
 	if !c.bare {
-		if _, err := c.vc.Do(proto.MethodViewDashboard, proto.ViewParams{}); err != nil {
-			c.log.Printf("view.dashboard: %v", err)
+		method := proto.MethodViewDashboard
+		if project != "" {
+			method = proto.MethodViewProject
+		}
+		if _, err := c.vc.Do(method, proto.ViewParams{Project: project}); err != nil {
+			c.log.Printf("%s: %v", method, err)
 		}
 	}
 	var ps []*pane
@@ -1190,7 +1230,7 @@ func (c *client) status() {
 		if c.single {
 			c.focus.r.SetStatus(line)
 		}
-		c.statusText = line
+		c.statusText, c.statusHits = line, questionHits(line)
 		return
 	}
 	if p := c.confirm; p != nil {
@@ -1198,13 +1238,13 @@ func (c *client) status() {
 		if c.single {
 			c.focus.r.SetStatus(line)
 		}
-		c.statusText = line
+		c.statusText, c.statusHits = line, questionHits(line)
 		return
 	}
 	where := ""
 	switch {
 	case c.focus.watch:
-		where = "watch-only, prefix+u takes over"
+		where = "watch-only, " + takeOverHint
 	case c.focus.info.Role == proto.RoleThread:
 		where = "taken over"
 	}
@@ -1222,11 +1262,11 @@ func (c *client) status() {
 	if c.flash != "" {
 		where = strings.TrimPrefix(where+" · "+c.flash, " · ")
 	}
-	line := statusLine(c.focus.info, c.focus.status, c.pending, c.paneCols, where)
+	line, hits := statusBar(c.focus.info, c.focus.status, c.pending, c.paneCols, where)
 	if c.single {
 		c.focus.r.SetStatus(line)
 	}
-	c.statusText = line
+	c.statusText, c.statusHits = line, hits
 }
 
 // input sends a key to the focused program, unless its pane is
@@ -1280,17 +1320,53 @@ func (c *client) input(k uv.Key) {
 	}
 }
 
-// mouse forwards a mouse event to the program under it, unless its pane
-// is watch-only; a click on another pane focuses that pane first. The outer terminal only reports
-// the mouse while the focused program tracks it (see outerModes).
+// mouse handles a mouse event (attachmouse.go): the open menu, a
+// question in the status bar, a divider being dragged, the sidebar, the
+// status bar and the dividers are tm's. Over a pane, a click focuses it;
+// the event goes to the program when it tracks the mouse and the pane
+// isn't watch-only, and otherwise a double-click zooms the pane and a
+// right-click opens the ≡ menu. The outer terminal reports the mouse
+// while the focused program tracks it or the sidebar shows (see
+// outerModes).
 func (c *client) mouse(ev uv.Event) {
 	m, ok := toMouse(ev)
 	if !ok || !c.lock() {
 		return
 	}
-	if c.side != nil && (m.X < c.sideW || c.side.drag) {
+	press := m.Action == emu.MousePress && (m.Button == emu.MouseLeft || m.Button == emu.MouseRight || m.Button == emu.MouseMiddle)
+	status := c.statusBar && m.Y >= c.paneRows && m.X >= c.sideW
+	switch {
+	case c.menu != nil:
+		c.menuMouse(m)
+		return
+	case press && (c.confirm != nil || c.confirmRemote != nil):
+		// A click on y yes says yes; any other click, no.
+		yes := status && m.Button == emu.MouseLeft && hintAt(c.statusHits, m.X-c.sideW) == "y"
+		if p := c.confirm; p != nil {
+			c.answerTakeover(p, yes)
+		} else {
+			c.answerRemote(c.confirmRemote, yes)
+		}
+		return
+	case c.divDrag != nil:
+		c.dragMouse(m)
+		return
+	case c.side != nil && (m.X < c.sideW || c.side.drag):
+		if press && m.Button == emu.MouseRight && !c.side.drag {
+			c.sideMenu(m)
+			return
+		}
 		c.sideMouse(m)
 		return
+	case status:
+		c.statusMouse(m)
+		return
+	case press && m.Button == emu.MouseLeft:
+		if d := c.dividerAt(m.X, m.Y); d != nil {
+			c.divDrag = d
+			c.mu.Unlock()
+			return
+		}
 	}
 	var p *pane
 	for _, q := range c.shown() {
@@ -1298,7 +1374,7 @@ func (c *client) mouse(ev uv.Event) {
 			p = q
 		}
 	}
-	if p == nil { // the status bar, a divider or padding
+	if p == nil { // a divider or padding
 		c.mu.Unlock()
 		return
 	}
@@ -1309,12 +1385,25 @@ func (c *client) mouse(ev uv.Event) {
 		c.full = true
 		c.status()
 	}
-	if p.watch {
+	if p.watch || !p.mirror.Modes().MouseTracking() {
+		// tm's: the program doesn't take the mouse.
+		double := press && m.Button == emu.MouseLeft && c.doubleAt(m.X, m.Y)
+		if press && m.Button == emu.MouseRight {
+			c.openMenu("", c.sessionItems(), m.X, m.Y, false)
+		}
+		_, wheel := ev.(uv.MouseWheelEvent)
+		claim := !p.watch && (click || wheel) && c.needClaim()
 		c.mu.Unlock()
 		if refocus {
 			c.act(proto.MethodViewFocus, proto.ViewParams{Session: p.info.ID})
-			c.poke()
 		}
+		if claim {
+			c.claim(p.info.ID)
+		}
+		if double {
+			c.act(proto.MethodViewZoom, proto.ViewParams{})
+		}
+		c.poke()
 		return
 	}
 	claim := false
@@ -1327,7 +1416,7 @@ func (c *client) mouse(ev uv.Event) {
 	cols, rows := p.mirror.Size()
 	var b []byte
 	var err error
-	if m.X < int(cols) && m.Y < int(rows) && p.mirror.Modes().MouseTracking() {
+	if m.X < int(cols) && m.Y < int(rows) {
 		b, err = c.enc.Mouse(p.mirror, m)
 	}
 	c.mu.Unlock()
@@ -1450,6 +1539,9 @@ func (c *client) renderLoop(out io.Writer) Result {
 			b, err = vis[0].r.Frame(vis[0].mirror, vis[0].held)
 		default:
 			b, err = c.frameSplit(vis)
+		}
+		if err == nil && c.menu != nil && (len(b) > 0 || !c.menu.drawn) {
+			b = c.appendMenu(b)
 		}
 		if err == nil {
 			b = append(c.outerModes(), b...)

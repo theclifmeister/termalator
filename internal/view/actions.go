@@ -217,6 +217,51 @@ func (v *View) ResizeTowards(side bool, cells, cols, rows int) bool {
 	return false
 }
 
+// DragDivider moves the divider through cell (x, y) of the view laid out
+// in a window of cols×rows so that it sits at column (a side divider) or
+// row to, as far as the panes beside it allow: the mouse dragging it. It
+// reports whether one moved.
+func (v *View) DragDivider(x, y, to, cols, rows int) bool {
+	if v.Zoom || v.Root == nil {
+		return false
+	}
+	return v.Root.drag(v.Lay(cols, rows).Area, x, y, to)
+}
+
+// drag finds the split whose divider holds (x, y) under n, laid out in r,
+// and moves it to to.
+func (n *Node) drag(r Rect, x, y, to int) bool {
+	if n == nil || n.Session != "" {
+		return false
+	}
+	if n.Side {
+		aw, bw := SplitSizes(r.W, n.Ratio)
+		if x == r.X+aw && y >= r.Y && y < r.Y+r.H {
+			return n.moveTo(to-r.X, r.W-1)
+		}
+		return n.A.drag(Rect{r.X, r.Y, aw, r.H}, x, y, to) || n.B.drag(Rect{r.X + aw + 1, r.Y, bw, r.H}, x, y, to)
+	}
+	ah, bh := SplitSizes(r.H, n.Ratio)
+	if y == r.Y+ah && x >= r.X && x < r.X+r.W {
+		return n.moveTo(to-r.Y, r.H-1)
+	}
+	return n.A.drag(Rect{r.X, r.Y, r.W, ah}, x, y, to) || n.B.drag(Rect{r.X, r.Y + ah + 1, r.W, bh}, x, y, to)
+}
+
+// moveTo gives the split's A side a cells of room (the room less the
+// divider), within the same bounds as ResizeTowards.
+func (n *Node) moveTo(a, room int) bool {
+	if room < 2 {
+		return false
+	}
+	r := min(max(float64(a)/float64(room), 0.05), 0.95)
+	if r == n.Ratio {
+		return false
+	}
+	n.Ratio = r
+	return true
+}
+
 // path is the nodes from n down to the leaf of session id, empty when
 // it isn't under n.
 func (n *Node) path(id string, out []*Node) []*Node {

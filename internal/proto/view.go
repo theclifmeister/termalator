@@ -42,6 +42,9 @@ const (
 	// MethodViewResize moves the divider nearest the focused pane by
 	// Cells, on the side-by-side axis when Side.
 	MethodViewResize = "view.resize"
+	// MethodViewDrag moves the divider through cell (X, Y) of the view's
+	// layout to column or row To: the mouse dragging it.
+	MethodViewDrag = "view.drag"
 	// MethodViewSidebar sets the projects sidebar (Sidebar).
 	MethodViewSidebar = "view.sidebar"
 	// MethodViewSize reports the client's window (Cols, Rows). With
@@ -107,4 +110,7 @@ type ViewParams struct {
 	Rows    uint16        `json:"rows,omitempty"`
 	Resize  bool          `json:"resize,omitempty"`
 	Expand  bool          `json:"expand,omitempty"`
+	X       int           `json:"x,omitempty"`
+	Y       int           `json:"y,omitempty"`
+	To      int           `json:"to,omitempty"`
 }

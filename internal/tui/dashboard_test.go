@@ -333,13 +333,13 @@ func hasBell(cmd tea.Cmd) bool {
 func TestStatusLine(t *testing.T) {
 	info := proto.SessionInfo{ID: "s-4", Role: proto.RoleCoordinator, Project: "termalator", Agent: "claude",
 		State: "working", TodosDone: 2, TodosTotal: 5, Current: "Write §8"}
-	got := statusLine(info, nil, false, 80, "")
+	got := statusLine(info, nil, false, 100, "")
 	want := "\x1b[7m s-4 · termalator coordinator · working 40% 2/5 ▸ Write §8"
-	if !strings.HasPrefix(got, want) || !strings.HasSuffix(got, `prefix+d dashboard `+"\x1b[27m") {
+	if !strings.HasPrefix(got, want) || !strings.HasSuffix(got, `│ ─ ⤢ × ≡  prefix+d dashboard `+"\x1b[27m") {
 		t.Fatalf("status line %q", got)
 	}
-	if w := len([]rune(strings.TrimSuffix(strings.TrimPrefix(got, "\x1b[7m"), "\x1b[27m"))); w != 80 {
-		t.Fatalf("status line is %d cells, want 80", w)
+	if w := len([]rune(strings.TrimSuffix(strings.TrimPrefix(got, "\x1b[7m"), "\x1b[27m"))); w != 100 {
+		t.Fatalf("status line is %d cells, want 100", w)
 	}
 	// Split panes: where the focused one is.
 	if got := statusLine(info, nil, false, 120, "pane 2/3"); !strings.Contains(got, "▸ Write §8 · pane 2/3 ") {
@@ -525,17 +525,17 @@ func TestDashboardPrefix(t *testing.T) {
 	}
 }
 
-// TestDashboardFooter: the footer lists the keys that apply to the
-// selected row.
+// TestDashboardFooter: the footer lists the ≡ menu, then the keys that
+// apply to the selected row.
 func TestDashboardFooter(t *testing.T) {
 	src := &fakeSource{data: testData()}
 	m := newDash(DashOptions{Source: src, Width: 100, Height: 30, State: DashState{Current: "beta"}})
 	m.setData(src.data)
 	for sel, want := range map[string]string{
-		"n:s-1":          "enter attach · a project · t tasks · i inbox · p projects · , settings · ? help · q quit",
-		"th:beta:t-0005": "enter watch · a project · t tasks · i inbox · p projects",
-		"th:beta:t-0006": "a project · t tasks · i inbox · p projects",
-		"p:beta":         "enter open · a project · t tasks",
+		"n:s-1":          "≡ menu · enter attach · a project · t tasks · i inbox · p projects · , settings · ? help · q quit",
+		"th:beta:t-0005": "≡ menu · enter watch · a project · t tasks · i inbox · p projects",
+		"th:beta:t-0006": "≡ menu · a project · t tasks · i inbox · p projects",
+		"p:beta":         "≡ menu · enter open · a project · t tasks",
 	} {
 		m.sel = sel
 		if got := m.footKeys(); !strings.HasPrefix(got, want) {
@@ -544,7 +544,7 @@ func TestDashboardFooter(t *testing.T) {
 	}
 	m.data.Projects = nil
 	m.setData(Data{ServerOK: true})
-	if got := m.footKeys(); !strings.HasPrefix(got, "n new project · , settings") {
+	if got := m.footKeys(); !strings.HasPrefix(got, "≡ menu · n new project · , settings") {
 		t.Errorf("no projects: footer %q", got)
 	}
 }

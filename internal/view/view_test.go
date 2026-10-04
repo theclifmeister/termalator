@@ -282,3 +282,36 @@ func TestSidebar(t *testing.T) {
 		t.Fatalf("drag to 30: %+v", l)
 	}
 }
+
+// TestDragDivider: dragging the side divider at column 47 to 60 moves it
+// there; dragging b/c's divider moves only that one; a cell that is no
+// divider, and a zoomed view, move nothing.
+func TestDragDivider(t *testing.T) {
+	v := layout(t)
+	if !v.DragDivider(47, 5, 60, 88, 24) {
+		t.Fatal("side divider didn't move")
+	}
+	g := v.Lay(88, 24)
+	if g.Dividers[0].At.X != 60 || g.Panes["a"].W != 53 || g.Panes["b"].X != 61 {
+		t.Fatalf("after drag %+v %+v", g.Dividers, g.Panes)
+	}
+	if !v.DragDivider(70, 12, 5, 88, 24) {
+		t.Fatal("stacked divider didn't move")
+	}
+	g = v.Lay(88, 24)
+	if g.Dividers[1].At.Y != 5 || g.Panes["b"].H != 5 || g.Dividers[0].At.X != 60 {
+		t.Fatalf("after second drag %+v", g.Dividers)
+	}
+	if v.DragDivider(20, 5, 30, 88, 24) {
+		t.Fatal("a pane's cell moved a divider")
+	}
+	// Past the edge: the pane keeps a sliver.
+	v.DragDivider(60, 0, 0, 88, 24)
+	if g := v.Lay(88, 24); g.Panes["a"].W < 1 {
+		t.Fatalf("a vanished: %+v", g.Panes)
+	}
+	v.ToggleZoom()
+	if v.DragDivider(60, 0, 70, 88, 24) {
+		t.Fatal("dragged in a zoomed view")
+	}
+}

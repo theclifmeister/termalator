@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -111,5 +112,47 @@ func TestDefaultAgent(t *testing.T) {
 	}
 	if got := DefaultAgent("claude"); got != "pi" {
 		t.Fatalf("set: %q", got)
+	}
+}
+
+// TestAutoCloseReplacesAutoResolve: saving auto_close removes the older
+// auto_resolve line of that project, in the same write, keeping the
+// comments, the other settings and other projects' auto_resolve; the
+// result still parses and says what was meant.
+func TestAutoCloseReplacesAutoResolve(t *testing.T) {
+	write(t, "# my settings\n[projects.demo]\n# closes merged threads\nauto_resolve = true # old\nyolo = false\n\n[projects.other]\nauto_resolve = false\n")
+	path, _ := Path()
+	if err := SetProject("demo", "auto_close", CloseDays); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	want := "# my settings\n[projects.demo]\n# closes merged threads\nyolo = false\nauto_close = \"days\"\n\n[projects.other]\nauto_resolve = false\n"
+	if string(data) != want {
+		t.Fatalf("file:\n%s\nwant:\n%s", data, want)
+	}
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := c.Safety("demo"); s.AutoClose != CloseDays {
+		t.Fatalf("demo %+v", s)
+	}
+	if s, _ := c.Safety("other"); s.AutoClose != CloseOff {
+		t.Fatalf("other lost its auto_resolve: %+v", s)
+	}
+
+	// Without an auto_resolve line, saving auto_close changes only it.
+	if err := SetProject("demo", "auto_close", CloseMerged); err != nil {
+		t.Fatal(err)
+	}
+	data, _ = os.ReadFile(path)
+	if want := strings.Replace(want, `"days"`, `"merged"`, 1); string(data) != want {
+		t.Fatalf("second save:\n%s", data)
+	}
+
+	// A form the line editor doesn't change (a dotted key) stays as it is.
+	in := []byte("[projects]\ndemo.auto_resolve = true\n")
+	if got := Remove(in, "projects.demo", "auto_resolve"); string(got) != string(in) {
+		t.Fatalf("dotted key: %q", got)
 	}
 }
