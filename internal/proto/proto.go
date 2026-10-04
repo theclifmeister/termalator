@@ -93,17 +93,15 @@ const MaxFrame = 64 << 20
 var ErrFrameTooLarge = errors.New("proto: frame too large")
 
 // WriteFrame writes one frame: type u8, length u32 big-endian, payload.
+// It is a single Write: a frame split over two writes could be read and
+// acted on between them (a DETACH whose peer has already hung up), and on
+// Linux even the empty second write of a payload-less frame then fails
+// with EPIPE.
 func WriteFrame(w io.Writer, t FrameType, payload []byte) error {
 	if len(payload) > MaxFrame {
 		return ErrFrameTooLarge
 	}
-	var hdr [5]byte
-	hdr[0] = byte(t)
-	binary.BigEndian.PutUint32(hdr[1:], uint32(len(payload)))
-	if _, err := w.Write(hdr[:]); err != nil {
-		return err
-	}
-	_, err := w.Write(payload)
+	_, err := w.Write(AppendFrame(make([]byte, 0, 5+len(payload)), t, payload))
 	return err
 }
 

@@ -59,3 +59,22 @@ func TestAppendFrameMatchesWriteFrame(t *testing.T) {
 		t.Fatalf("AppendFrame %x, WriteFrame %x", got, b.Bytes())
 	}
 }
+
+// writeCounter counts Write calls.
+type writeCounter struct{ n int }
+
+func (w *writeCounter) Write(p []byte) (int, error) { w.n++; return len(p), nil }
+
+// TestWriteFrameOneWrite: a frame is one write, so the peer can never act
+// on a frame (DETACH, then hang up) before its writer has finished it.
+func TestWriteFrameOneWrite(t *testing.T) {
+	for _, payload := range [][]byte{nil, []byte("abc")} {
+		var w writeCounter
+		if err := WriteFrame(&w, FrameDetach, payload); err != nil {
+			t.Fatal(err)
+		}
+		if w.n != 1 {
+			t.Fatalf("WriteFrame with %d payload bytes made %d writes, want 1", len(payload), w.n)
+		}
+	}
+}
