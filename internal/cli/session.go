@@ -14,9 +14,12 @@ import (
 
 const sessionUsage = `usage: tm session list [--json]
        tm session start [--cwd DIR] [--cols N --rows N] [-- COMMAND ARGS…]
+       tm session start --agent NAME [--cwd DIR] [--brief FILE] [--kickoff TEXT] [--model M] [--yolo]
        tm session stop ID
        tm session read ID [--scrollback] [--json]
-       tm session keys ID [--enter] TEXT`
+       tm session keys ID [--enter] TEXT
+       tm session prompt ID TEXT
+       tm session wait ID [--state S[,S…]] [--timeout 30s]`
 
 // sessionCmd implements `tm session …`: plain sessions outside projects.
 func sessionCmd(e *Env, args []string) int {
@@ -34,6 +37,10 @@ func sessionCmd(e *Env, args []string) int {
 		return sessionRead(e, args[1:])
 	case "keys":
 		return sessionKeys(e, args[1:])
+	case "prompt":
+		return sessionPrompt(e, args[1:])
+	case "wait":
+		return sessionWait(e, args[1:])
 	}
 	return e.srvUsage("session", sessionUsage)
 }
@@ -59,8 +66,12 @@ func sessionList(e *Env, args []string) int {
 	}
 	tw := tabwriter.NewWriter(e.Stdout, 0, 0, 2, ' ', 0)
 	for _, s := range res.Sessions {
+		what := strings.Join(s.Argv, " ")
+		if s.Agent != "" {
+			what = s.Agent + " " + stateLine(s)
+		}
 		fmt.Fprintf(tw, "%s\t%s\tpid %d\t%d×%d\t%s\t%s\t%s\n", s.ID, s.Role, s.PID, s.Cols, s.Rows,
-			time.Since(s.Created).Round(time.Second), strings.Join(s.Argv, " "), s.Cwd)
+			time.Since(s.Created).Round(time.Second), what, s.Cwd)
 	}
 	tw.Flush()
 	return ExitOK
@@ -72,17 +83,41 @@ func sessionStart(e *Env, args []string) int {
 	cwd := fs.String("cwd", "", "working directory (default: the current one)")
 	cols := fs.Uint("cols", 0, "columns (default: this terminal's, or 80)")
 	rows := fs.Uint("rows", 0, "rows (default: this terminal's, or 24)")
-	agent := fs.String("agent", "", "agent to run (arrives with the agent layer)")
+	agentName := fs.String("agent", "", "agent to run, from tm agent list (instead of a command)")
+	brief := fs.String("brief", "", "file given to the agent as its brief (system prompt)")
+	kickoff := fs.String("kickoff", "", "the agent's first prompt")
+	model := fs.String("model", "", "the agent's model")
+	yolo := fs.Bool("yolo", false, "skip the agent's own permission prompts")
+	role := fs.String("role", "", "coordinator, thread or shell (default)")
+	project := fs.String("project", "", "project slug, for coordinator and thread roles")
+	thread := fs.String("thread", "", "thread id, for the thread role")
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
-	if *agent != "" {
-		return e.srvUsage("session start", "--agent is not supported yet; start a shell or pass a command after --")
+	if *agentName != "" && fs.NArg() > 0 {
+		return e.srvUsage("session start", "pass --agent or a command, not both")
+	}
+	if *agentName == "" && (*brief != "" || *kickoff != "" || *model != "" || *yolo || *role != "") {
+		return e.srvUsage("session start", "--brief, --kickoff, --model, --yolo and --role need --agent")
+	}
+	if *yolo && e.Caller.IsAgent() {
+		// Turning permission prompts off is the human's call (§11.2).
+		fmt.Fprintln(e.Stderr, "tm session start: coordinator-only: --yolo is a human call")
+		return ExitRefused
 	}
 	if *cols > 0xffff || *rows > 0xffff {
 		return e.srvUsage("session start", "size out of range")
 	}
-	p := proto.SessionStartParams{Argv: fs.Args(), Cols: uint16(*cols), Rows: uint16(*rows)}
+	p := proto.SessionStartParams{Argv: fs.Args(), Cols: uint16(*cols), Rows: uint16(*rows),
+		Agent: *agentName, Kickoff: *kickoff, Model: *model, Yolo: *yolo,
+		Role: *role, Project: *project, Thread: *thread}
+	if *brief != "" {
+		abs, err := filepath.Abs(*brief)
+		if err != nil {
+			return e.srvUsage("session start", err.Error())
+		}
+		p.Brief = abs
+	}
 	if p.Cols == 0 || p.Rows == 0 {
 		if c, r, ok := termSize(); ok {
 			p.Cols, p.Rows = c, r
@@ -202,4 +237,96 @@ func splitID(args []string) (string, []string) {
 		return args[0], args[1:]
 	}
 	return "", args
+}
+
+// stateLine is an agent session's state for listings: state/reason,
+// todo progress and the current item.
+func stateLine(s proto.SessionInfo) string {
+	st := s.State
+	if st == "" {
+		st = "unknown"
+	}
+	if s.Reason != "" {
+		st += "/" + s.Reason
+	}
+	if s.StateSources != "" {
+		st += " (" + s.StateSources + ")"
+	}
+	if s.TodosTotal > 0 {
+		st += fmt.Sprintf(" %d/%d todos", s.TodosDone, s.TodosTotal)
+	}
+	if s.Current != "" {
+		st += " ▸ " + s.Current
+	}
+	if s.Queued > 0 {
+		st += fmt.Sprintf(" · %d queued", s.Queued)
+	}
+	return st
+}
+
+func sessionPrompt(e *Env, args []string) int {
+	if len(args) < 2 {
+		return e.srvUsage("session prompt", "usage: tm session prompt ID TEXT")
+	}
+	id, text := args[0], strings.Join(args[1:], " ")
+	if text == "-" {
+		b, err := e.readArg("-")
+		if err != nil {
+			return e.srvUsage("session prompt", err.Error())
+		}
+		text = strings.TrimRight(b, "\n")
+	}
+	c, _, err := connect(false)
+	if err != nil {
+		return e.srvFail("session prompt", err)
+	}
+	defer c.Close()
+	var res proto.SessionPromptResult
+	if err := c.Call(proto.MethodSessionPrompt, proto.SessionPromptParams{ID: id, Text: text}, &res); err != nil {
+		return e.srvFail("session prompt", err)
+	}
+	switch res.Via {
+	case "channel":
+		fmt.Fprintf(e.Stdout, "%s: sent\n", id)
+	default:
+		fmt.Fprintf(e.Stdout, "%s: queued (pasted once the agent is idle)\n", id)
+	}
+	return ExitOK
+}
+
+func sessionWait(e *Env, args []string) int {
+	fs := flag.NewFlagSet("session wait", flag.ContinueOnError)
+	fs.SetOutput(e.Stderr)
+	states := fs.String("state", "", "comma-separated states to wait for (default: any change)")
+	timeout := fs.Duration("timeout", 30*time.Second, "give up after this long (exit 1)")
+	id, rest := splitID(args)
+	if err := fs.Parse(rest); err != nil {
+		return ExitUsage
+	}
+	if id == "" || fs.NArg() > 0 {
+		return e.srvUsage("session wait", "usage: tm session wait ID [--state S[,S…]] [--timeout 30s]")
+	}
+	p := proto.SessionWaitParams{ID: id, TimeoutMS: int(timeout.Milliseconds())}
+	if *states != "" {
+		p.States = strings.Split(*states, ",")
+	}
+	c, _, err := connect(false)
+	if err != nil {
+		return e.srvFail("session wait", err)
+	}
+	defer c.Close()
+	var res proto.SessionWaitResult
+	if err := c.Call(proto.MethodSessionWait, p, &res); err != nil {
+		return e.srvFail("session wait", err)
+	}
+	st := res.State
+	if res.Reason != "" {
+		st += "/" + res.Reason
+	}
+	fmt.Fprintln(e.Stdout, st)
+	if res.TimedOut {
+		fmt.Fprintf(e.Stderr, "tm session wait: timed out after %v\n", *timeout)
+		return ExitRefused
+	}
+	return ExitOK
 }

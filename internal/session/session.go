@@ -6,9 +6,11 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
+	"github.com/theclifmeister/termalator/internal/agent"
 	"github.com/theclifmeister/termalator/internal/emu"
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/pty"
@@ -31,6 +33,13 @@ type Config struct {
 	// OnExit is called once, after the process has exited and every
 	// subscriber has been closed.
 	OnExit func(*Session)
+
+	// Agent, when set, makes this an agent session (docs/SPEC.md §8).
+	Agent *AgentConfig
+	// Identify, when set on a session without Agent, recognises an agent
+	// the user starts by hand in it; ObservedAgent configures it then.
+	Identify      func(agent.ProcessInfo) agent.Agent
+	ObservedAgent AgentConfig
 }
 
 // Session is one process on a PTY with the authoritative emulator of its
@@ -49,6 +58,10 @@ type Session struct {
 	subs       map[*Subscriber]struct{}
 	cols, rows uint16
 	exitStatus string
+	ag         *agentRT
+	stateCh    chan struct{} // closed and replaced on every state change
+
+	output atomic.Bool // output arrived since the last screen evaluation
 }
 
 // ErrExited is returned for operations on a session whose process is gone.
@@ -66,12 +79,13 @@ func Start(cfg Config) (*Session, error) {
 		cfg.Created = time.Now()
 	}
 	s := &Session{
-		cfg:  cfg,
-		in:   newInputQueue(),
-		done: make(chan struct{}),
-		subs: map[*Subscriber]struct{}{},
-		cols: cfg.Cols,
-		rows: cfg.Rows,
+		cfg:     cfg,
+		in:      newInputQueue(),
+		done:    make(chan struct{}),
+		subs:    map[*Subscriber]struct{}{},
+		cols:    cfg.Cols,
+		rows:    cfg.Rows,
+		stateCh: make(chan struct{}),
 	}
 	term, err := emu.NewWith(emu.Options{
 		Cols: cfg.Cols, Rows: cfg.Rows,
@@ -90,11 +104,40 @@ func Start(cfg Config) (*Session, error) {
 		return nil, err
 	}
 	s.cmd, s.ptmx = cmd, ptmx
+	if cfg.Agent != nil {
+		rt, err := newAgentRT(*cfg.Agent, cmd.Process.Pid, false)
+		if err != nil {
+			// Unreachable for a validated manifest; the process still runs.
+			cfg.Logf("session %s: agent: %v", cfg.ID, err)
+		} else {
+			s.ag = rt
+		}
+	}
 	readDone := make(chan struct{})
 	go s.writeLoop()
 	go s.readLoop(readDone)
 	go s.waitLoop(readDone)
+	if s.ag != nil {
+		go s.runAgent(s.ag)
+	} else if cfg.Identify != nil {
+		go s.identifyLoop()
+	}
 	return s, nil
+}
+
+// StateChanged returns a channel that is closed at the next change of
+// the agent state (or the session's exit).
+func (s *Session) StateChanged() <-chan struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.stateCh
+}
+
+func (s *Session) notifyState() {
+	s.mu.Lock()
+	close(s.stateCh)
+	s.stateCh = make(chan struct{})
+	s.mu.Unlock()
 }
 
 // ID returns the session id.
@@ -120,7 +163,6 @@ func (s *Session) Config() Config { return s.cfg }
 // Info describes the session for session.list.
 func (s *Session) Info() proto.SessionInfo {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	info := proto.SessionInfo{
 		ID:      s.cfg.ID,
 		Role:    s.cfg.Role,
@@ -134,6 +176,26 @@ func (s *Session) Info() proto.SessionInfo {
 	}
 	if s.term != nil {
 		info.Title = s.term.Title()
+	}
+	s.mu.Unlock()
+	if st, ok := s.AgentState(); ok {
+		info.Agent = st.Agent
+		info.State, info.Reason, info.StateSources = string(st.State), st.Reason, st.Sources
+		info.AgentSID, info.Identified, info.Queued = st.AgentSID, st.Observed, st.Queued
+		for _, t := range st.Todos {
+			info.TodosTotal++
+			switch t.Status {
+			case agent.TodoCompleted:
+				info.TodosDone++
+			case agent.TodoInProgress:
+				if info.Current == "" {
+					info.Current = t.Text
+					if t.ActiveText != "" {
+						info.Current = t.ActiveText
+					}
+				}
+			}
+		}
 	}
 	return info
 }
@@ -248,6 +310,7 @@ func (s *Session) readLoop(done chan<- struct{}) {
 			data := append([]byte(nil), buf[:n]...)
 			s.mu.Lock()
 			s.term.Write(data)
+			s.output.Store(true)
 			for sub := range s.subs {
 				sub.enqueue(proto.FrameOutput, data)
 			}
@@ -319,9 +382,19 @@ func (s *Session) waitLoop(readDone <-chan struct{}) {
 	s.subs = map[*Subscriber]struct{}{}
 	s.term.Close()
 	s.term = nil
+	rt := s.ag
 	s.mu.Unlock()
 	s.cfg.Logf("session %s: pid %d %s", s.cfg.ID, s.cmd.Process.Pid, status)
+	if rt != nil {
+		rt.tr.Exited(status)
+		if rt.observed {
+			rt.close()
+		} else {
+			s.agentChanged(rt)
+		}
+	}
 	close(s.done)
+	s.notifyState()
 	if s.cfg.OnExit != nil {
 		s.cfg.OnExit(s)
 	}

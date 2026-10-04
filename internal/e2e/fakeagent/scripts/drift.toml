@@ -1,0 +1,15 @@
+# s15: the session file says idle while the agent still works (a stale
+# status file); the next real change corrects it.
+
+[[step]]
+do = "status"
+status = "idle"
+
+[[step]]
+do = "sleep"
+ms = 2000
+
+[[step]]
+do = "stream"
+ms = 100
+text = "still here"

@@ -70,6 +70,7 @@ func build(t testing.TB) string {
 		for _, a := range apps {
 			targets = append(targets, []string{"build", "-o", filepath.Join(binDir, a), "./internal/e2e/apps/" + a})
 		}
+		targets = append(targets, []string{"build", "-o", filepath.Join(binDir, "fakeagent"), "./internal/e2e/fakeagent"})
 		for _, tg := range targets {
 			cmd := exec.Command("go", tg...)
 			cmd.Dir = root
@@ -352,6 +353,7 @@ func (e *Env) cleanup() {
 	if t.Failed() {
 		e.saveArtifacts()
 	}
+
 	for _, w := range e.windows {
 		w.KillClient()
 		w.CloseWindow()
@@ -403,6 +405,16 @@ func (e *Env) saveArtifacts() {
 	for i, w := range e.windows {
 		os.WriteFile(filepath.Join(dir, fmt.Sprintf("window-%d.txt", i+1)), []byte(w.Screen()+"\n"), 0o644)
 		os.WriteFile(filepath.Join(dir, fmt.Sprintf("window-%d.raw", i+1)), w.Raw(), 0o644)
+	}
+	if Alive(e.ServerPID()) {
+		for _, s := range e.agentSessions() {
+			if r := e.CLI("agent", "explain", s); r.Code == 0 {
+				os.WriteFile(filepath.Join(dir, "explain-"+s+".txt"), []byte(r.Stdout), 0o644)
+			}
+		}
+	}
+	if b, err := os.ReadFile(e.FakeLog()); err == nil {
+		os.WriteFile(filepath.Join(dir, "fakeagent.jsonl"), b, 0o644)
 	}
 	for _, f := range []string{"logs/server.log", "state/sessions.json"} {
 		if b, err := os.ReadFile(filepath.Join(e.Home, f)); err == nil {

@@ -105,3 +105,10 @@ func (r *Registry) Names() []string {
 	sort.Strings(out)
 	return out
 }
+
+// Builtin returns the text of a built-in manifest, e.g. as the starting
+// point of a user manifest (docs/SPEC.md §8.7) or a test's copy.
+func Builtin(name string) ([]byte, bool) {
+	b, err := builtin.ReadFile("manifests/" + name + ".toml")
+	return b, err == nil
+}

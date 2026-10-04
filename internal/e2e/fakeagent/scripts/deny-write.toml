@@ -1,0 +1,12 @@
+# s20: a Write into a folder the settings deny (Edit(//dir/**)). Set
+# FAKEAGENT_DENY_PATH to that folder.
+
+[[step]]
+do = "write"
+path = "$FAKEAGENT_DENY_PATH/denied.txt"
+text = "should not exist\n"
+
+[[step]]
+do = "stream"
+ms = 100
+text = "The write was refused."

@@ -66,3 +66,21 @@ func Resize(f *os.File, cols, rows uint16) error {
 	}
 	return nil
 }
+
+// Foreground returns the foreground process group of the PTY: the job a
+// shell is running, or the shell itself.
+func Foreground(f *os.File) (int, error) {
+	raw, err := f.SyscallConn()
+	if err != nil {
+		return 0, err
+	}
+	var pgrp int
+	var serr error
+	err = raw.Control(func(fd uintptr) {
+		pgrp, serr = unix.IoctlGetInt(int(fd), unix.TIOCGPGRP)
+	})
+	if err == nil {
+		err = serr
+	}
+	return pgrp, err
+}

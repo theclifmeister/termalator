@@ -1,0 +1,19 @@
+# s03: a Write that asks first. Approve it (1, 2, Enter), refuse it (3),
+# or press Esc: the turn then ends with no hook at all.
+
+[[step]]
+do = "stream"
+ms = 200
+text = "I'll create x.txt."
+
+[[step]]
+do = "permission"
+tool = "Write"
+subject = "create x.txt"
+input = { file_path = "x.txt", content = "hi\n" }
+response = { type = "create", filePath = "x.txt" }
+
+[[step]]
+do = "stream"
+ms = 200
+text = "done"

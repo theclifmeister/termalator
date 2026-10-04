@@ -43,6 +43,10 @@ type Manifest struct {
 
 	Inject struct {
 		Prompt Injector `toml:"prompt"`
+		// EmptyRule names a screen rule that matches only while the
+		// prompt box is empty. The paste injector waits for it, so it
+		// never appends to a restored or half-typed prompt.
+		EmptyRule string `toml:"empty_rule"`
 	} `toml:"inject"`
 
 	// IgnoreFields: a hook event with any of these payload fields present
@@ -81,6 +85,23 @@ type HookMap struct {
 	// Respond is a template printed back to the harness. It sees .Event,
 	// .Payload and .Context (rendered only when the template uses it).
 	Respond string `toml:"respond"`
+}
+
+// RendersAccess reports whether the manifest turns the access policy
+// (LaunchSpec.Access) into the harness's own settings. `tm agent list`
+// marks agents that don't as unenforced (docs/SPEC.md §8.7).
+func (m *Manifest) RendersAccess() bool {
+	for _, f := range m.Launch.Files {
+		if strings.Contains(f.Template, ".Access") {
+			return true
+		}
+	}
+	for _, a := range m.Launch.Args {
+		if strings.Contains(a, ".Access") {
+			return true
+		}
+	}
+	return false
 }
 
 // ParseManifest decodes and validates one manifest.
@@ -170,6 +191,15 @@ func (m *Manifest) validate() error {
 			}
 		}
 	}
+	if r := m.Inject.EmptyRule; r != "" {
+		found := false
+		for _, x := range m.Rules {
+			found = found || x.ID == r
+		}
+		if !found {
+			errs = append(errs, fmt.Errorf("inject.empty_rule %q names no rule", r))
+		}
+	}
 	for _, f := range m.Launch.Files {
 		if filepath.IsAbs(f.Path) || strings.Contains(f.Path, "..") {
 			errs = append(errs, fmt.Errorf("launch.files %q must be relative, inside the runtime dir", f.Path))
@@ -180,6 +210,17 @@ func (m *Manifest) validate() error {
 
 // manifestAgent implements Agent from a Manifest alone.
 type manifestAgent struct{ m *Manifest }
+
+// ManifestOf returns the manifest an agent was built from, or nil for an
+// agent that has none.
+func ManifestOf(a Agent) *Manifest {
+	if x, ok := a.(interface{ Manifest() *Manifest }); ok {
+		return x.Manifest()
+	}
+	return nil
+}
+
+func (a *manifestAgent) Manifest() *Manifest { return a.m }
 
 // FromManifest returns an Agent driven entirely by m.
 func FromManifest(m *Manifest) Agent { return &manifestAgent{m: m} }
@@ -330,7 +371,7 @@ func (a *manifestAgent) Injector() Injector {
 	return a.m.Inject.Prompt
 }
 
-func (a *manifestAgent) Prompt(context.Context, string, string) error {
+func (a *manifestAgent) Prompt(context.Context, PromptTarget, string) error {
 	return fmt.Errorf("agent %s: no structured prompt channel; inject.prompt = %q", a.m.Name, a.Injector())
 }
 

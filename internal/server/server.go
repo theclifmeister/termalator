@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/theclifmeister/termalator/internal/agent"
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/session"
 	"github.com/theclifmeister/termalator/internal/version"
@@ -62,7 +63,11 @@ type Server struct {
 	stopping bool
 	prevShut string
 	lost     []string
+	resumed  []string
 	conns    map[net.Conn]struct{}
+
+	agents    *agent.Registry
+	agentErrs []string
 }
 
 // Run runs a server until ctx is cancelled or a client calls server.stop.
@@ -120,7 +125,8 @@ func Run(ctx context.Context, opts Options) error {
 		nextID:   1,
 		conns:    map[net.Conn]struct{}{},
 	}
-	s.loadPrevious()
+	s.loadAgents()
+	toResume := s.loadPrevious()
 	if err := s.saveLocked(""); err != nil {
 		logger.Printf("sessions.json: %v", err)
 	}
@@ -137,6 +143,9 @@ func Run(ctx context.Context, opts Options) error {
 			go s.handle(c)
 		}
 	}()
+	// Resume once hooks can be answered: a resumed agent fires
+	// SessionStart at once.
+	s.resume(toResume)
 
 	select {
 	case <-ctx.Done():
@@ -154,16 +163,17 @@ func Run(ctx context.Context, opts Options) error {
 }
 
 // loadPrevious reads the last server's sessions.json: was its shutdown
-// clean, and which of its sessions are gone. Shell sessions are never
-// restored; agent resume arrives with the agent layer (M3).
-func (s *Server) loadPrevious() {
+// clean, which agent sessions to resume, and which sessions are gone.
+// Shell sessions and agents without a recorded agent session id are never
+// restored (docs/SPEC.md §3.6).
+func (s *Server) loadPrevious() (resume []SessionRecord) {
 	prev, err := loadState(s.opts.Paths.Sessions)
 	if err != nil {
 		s.log.Printf("sessions.json unreadable, starting fresh: %v", err)
-		return
+		return nil
 	}
 	if prev == nil {
-		return
+		return nil
 	}
 	if prev.NextID > s.nextID {
 		s.nextID = prev.NextID
@@ -175,11 +185,16 @@ func (s *Server) loadPrevious() {
 		s.log.Printf("previous server (pid %d) did not shut down cleanly", prev.ServerPID)
 	}
 	for _, r := range prev.Sessions {
+		if r.Agent != "" && r.AgentSessionID != "" {
+			resume = append(resume, r)
+			continue
+		}
 		s.lost = append(s.lost, r.ID)
 	}
 	if len(s.lost) > 0 {
 		s.log.Printf("sessions of the previous server not restored: %v", s.lost)
 	}
+	return resume
 }
 
 // saveLocked rewrites sessions.json; s.mu held (or no concurrency yet).
@@ -232,6 +247,7 @@ func (s *Server) shutdown() {
 	if err := s.saveLocked("clean"); err != nil {
 		s.log.Printf("sessions.json: %v", err)
 	}
+	os.RemoveAll(filepath.Join(s.opts.Paths.RunDir, "s"))
 }
 
 // handle runs one connection: peer check, handshake, then control or
@@ -377,6 +393,35 @@ func (s *Server) dispatch(req proto.Request) (any, *proto.Error) {
 			return nil, sessionError(p.ID, err)
 		}
 		return struct{}{}, nil
+	case proto.MethodSessionPrompt:
+		var p proto.SessionPromptParams
+		if err := decodeParams(req.Params, &p); err != nil {
+			return nil, err
+		}
+		return s.prompt(p)
+	case proto.MethodSessionWait:
+		var p proto.SessionWaitParams
+		if err := decodeParams(req.Params, &p); err != nil {
+			return nil, err
+		}
+		return s.wait(p)
+	case proto.MethodHookEvent:
+		var p proto.HookEventParams
+		if err := decodeParams(req.Params, &p); err != nil {
+			return nil, err
+		}
+		return s.hookEvent(p), nil
+	case proto.MethodAgentList:
+		return s.agentList(), nil
+	case proto.MethodAgentReload:
+		s.loadAgents()
+		return s.agentList(), nil
+	case proto.MethodAgentExplain:
+		var p proto.SessionIDParams
+		if err := decodeParams(req.Params, &p); err != nil {
+			return nil, err
+		}
+		return s.explain(p.ID)
 	}
 	return nil, proto.Errorf(proto.ErrUnknownMethod, "unknown method %q", req.Method)
 }
@@ -395,6 +440,7 @@ func (s *Server) status() proto.ServerStatus {
 		Home:             s.opts.Paths.Home,
 		PreviousShutdown: s.prevShut,
 		Lost:             s.lost,
+		Resumed:          s.resumed,
 	}
 }
 
@@ -402,8 +448,8 @@ func (s *Server) stop(p proto.ServerStopParams) (any, *proto.Error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	agents := 0
-	for _, sess := range s.sessions {
-		if sess.Config().Role != proto.RoleShell {
+	for id, sess := range s.sessions {
+		if sess.Config().Role != proto.RoleShell || s.records[id].Agent != "" {
 			agents++
 		}
 	}
@@ -447,12 +493,15 @@ func sessionError(id string, err error) *proto.Error {
 
 func (s *Server) startSession(p proto.SessionStartParams) (any, *proto.Error) {
 	argv := p.Argv
-	if len(argv) == 0 {
+	if len(argv) == 0 && p.Agent == "" {
 		sh := os.Getenv("SHELL")
 		if sh == "" {
 			sh = "/bin/sh"
 		}
 		argv = []string{sh, "-l"}
+	}
+	if p.Agent != "" && len(argv) > 0 {
+		return nil, proto.Errorf(proto.ErrBadParams, "pass an agent or a command, not both")
 	}
 	cwd := p.Cwd
 	if cwd == "" {
@@ -463,6 +512,24 @@ func (s *Server) startSession(p proto.SessionStartParams) (any, *proto.Error) {
 	}
 	if fi, err := os.Stat(cwd); err != nil || !fi.IsDir() {
 		return nil, proto.Errorf(proto.ErrBadParams, "cwd is not a directory: %s", cwd)
+	}
+	role := p.Role
+	switch role {
+	case "":
+		role = proto.RoleShell
+	case proto.RoleShell:
+	case proto.RoleCoordinator, proto.RoleThread:
+		if p.Agent == "" || p.Project == "" {
+			return nil, proto.Errorf(proto.ErrBadParams, "role %s needs an agent and a project", role)
+		}
+		if role == proto.RoleThread && p.Thread == "" {
+			return nil, proto.Errorf(proto.ErrBadParams, "role thread needs a thread id")
+		}
+	default:
+		return nil, proto.Errorf(proto.ErrBadParams, "unknown role %q", role)
+	}
+	if p.Brief != "" && !filepath.IsAbs(p.Brief) {
+		return nil, proto.Errorf(proto.ErrBadParams, "brief must be an absolute path: %q", p.Brief)
 	}
 	cols, rows := p.Cols, p.Rows
 	if cols == 0 || rows == 0 {
@@ -476,34 +543,43 @@ func (s *Server) startSession(p proto.SessionStartParams) (any, *proto.Error) {
 	}
 	id := fmt.Sprintf("s-%d", s.nextID)
 	s.nextID++
-	base := s.opts.Env
-	if base == nil {
-		base = os.Environ()
-	}
-	env := sessionEnv(base, map[string]string{
-		"TERM":                 "xterm-256color",
-		"COLORTERM":            "truecolor",
-		"TERM_PROGRAM":         "termalator",
-		"TERM_PROGRAM_VERSION": version.Version,
-		"TERMALATOR":           "1",
-		"TERMALATOR_SESSION":   id,
-		"TERMALATOR_SOCKET":    s.opts.Paths.Socket,
-		"TERMALATOR_HOME":      s.opts.Paths.Home,
-		"TERMALATOR_BIN":       s.opts.Bin,
-	})
 	created := time.Now()
-	sess, err := session.Start(session.Config{
-		ID: id, Role: proto.RoleShell, Argv: argv, Cwd: cwd, Env: env,
+	rec := SessionRecord{ID: id, Role: role, Project: p.Project, Thread: p.Thread, Argv: argv, Cwd: cwd,
+		Created: created, Cols: cols, Rows: rows}
+	if p.Agent != "" {
+		rec.Agent, rec.AgentSessionID, rec.Brief, rec.Model, rec.Yolo = p.Agent, newUUID(), p.Brief, p.Model, p.Yolo
+		rec.Kickoff = p.Kickoff
+		sess, perr := s.launchAgent(agentLaunch{rec: rec, kick: p.Kickoff, cols: cols, rows: rows})
+		if perr != nil {
+			return nil, perr
+		}
+		return proto.SessionStartResult{Session: sess.Info()}, nil
+	}
+	env := sessionEnv(s.baseEnv(), s.termalatorEnv(rec))
+	home, _ := os.UserHomeDir()
+	reg := s.agents
+	cfg := session.Config{
+		ID: id, Role: role, Argv: argv, Cwd: cwd, Env: env,
 		Cols: cols, Rows: rows, Created: created,
 		Xtversion: "termalator " + version.Version,
 		Logf:      s.log.Printf,
 		OnExit:    s.sessionExited,
-	})
+		// A shell gets agent state while an agent the user started by
+		// hand runs in its foreground (docs/SPEC.md §8.1 Identify).
+		ObservedAgent: session.AgentConfig{Home: home, OnChange: s.agentChanged},
+	}
+	if reg != nil {
+		cfg.Identify = func(pi agent.ProcessInfo) agent.Agent {
+			a, _ := reg.Identify(pi)
+			return a
+		}
+	}
+	sess, err := session.Start(cfg)
 	if err != nil {
 		return nil, proto.Errorf(proto.ErrRefused, "%v", err)
 	}
 	s.sessions[id] = sess
-	s.records[id] = SessionRecord{ID: id, Role: proto.RoleShell, Argv: argv, Cwd: cwd, Created: created}
+	s.records[id] = rec
 	if err := s.saveLocked(""); err != nil {
 		s.log.Printf("sessions.json: %v", err)
 	}
@@ -518,6 +594,7 @@ func (s *Server) sessionExited(sess *session.Session) {
 	if s.stopping {
 		return // keep the record: shutdown writes it for resume
 	}
+	os.RemoveAll(s.runtimeDir(sess.ID()))
 	delete(s.records, sess.ID())
 	if err := s.saveLocked(""); err != nil {
 		s.log.Printf("sessions.json: %v", err)

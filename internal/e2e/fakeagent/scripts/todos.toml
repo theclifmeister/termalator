@@ -1,0 +1,39 @@
+# s16: a task list of three, worked on in order.
+
+[[step]]
+do = "todo_create"
+subject = "alpha"
+description = "Run echo step-alpha in bash"
+active_form = "Running alpha"
+
+[[step]]
+do = "todo_create"
+subject = "beta"
+description = "Run echo step-beta in bash"
+active_form = "Running beta"
+
+[[step]]
+do = "todo_create"
+subject = "gamma"
+description = "Run echo step-gamma in bash"
+active_form = "Running gamma"
+
+[[step]]
+do = "todo_update"
+id = "1"
+status = "in_progress"
+
+[[step]]
+do = "todo_update"
+id = "1"
+status = "completed"
+
+[[step]]
+do = "todo_update"
+id = "2"
+status = "in_progress"
+
+[[step]]
+do = "stream"
+ms = 100
+text = "TODO-DONE"

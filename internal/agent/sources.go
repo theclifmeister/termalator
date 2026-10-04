@@ -129,6 +129,19 @@ type StatusReading struct {
 	Fields map[string]string
 }
 
+// Version returns the agent version the file reports, or "".
+func (f *StatusFile) Version(data []byte) string {
+	if f.VersionField == "" {
+		return ""
+	}
+	var obj map[string]any
+	if json.Unmarshal(data, &obj) != nil {
+		return ""
+	}
+	v, _ := lookupString(obj, f.VersionField)
+	return v
+}
+
 // PathFor renders the file path.
 func (f *StatusFile) PathFor(v SourceVars) (string, error) { return render(f.Path, v) }
 
@@ -277,5 +290,23 @@ func (t *TodoSnapshot) Parse(files map[string][]byte) []Todo {
 		}
 		return out[i].ID < out[j].ID
 	})
+	return out
+}
+
+// Heal merges a snapshot read into the mirrored list: the snapshot
+// decides which items exist and their text and status, and the mirror
+// keeps what the snapshot doesn't carry (the active text).
+func (t *TodoSnapshot) Heal(mirror, snap []Todo) []Todo {
+	active := map[string]string{}
+	for _, m := range mirror {
+		active[m.ID] = m.ActiveText
+	}
+	out := make([]Todo, len(snap))
+	for i, s := range snap {
+		if s.ActiveText == "" {
+			s.ActiveText = active[s.ID]
+		}
+		out[i] = s
+	}
 	return out
 }

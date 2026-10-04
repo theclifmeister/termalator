@@ -1,0 +1,12 @@
+# s06: AskUserQuestion with two options.
+
+[[step]]
+do = "question"
+header = "Color"
+question = "Do you prefer red or blue?"
+options = ["Red", "Blue"]
+
+[[step]]
+do = "stream"
+ms = 200
+text = "Noted."
