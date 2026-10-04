@@ -34,7 +34,7 @@ func assertPaneSize(t *testing.T, env *Env, s *Session, cols, rows uint16) {
 }
 
 // TestSmokeAttachDetachReattach is M2's first "Try it": attach while a
-// program streams, detach with Ctrl+\, reattach from another window at
+// program streams, detach with Ctrl+\ d, reattach from another window at
 // another size, close that window mid-stream. The pane is never resized
 // by attaching, nothing is lost, and every mirror equals the server.
 func TestSmokeAttachDetachReattach(t *testing.T) {
@@ -46,7 +46,7 @@ func TestSmokeAttachDetachReattach(t *testing.T) {
 	w1 := env.Attach(120, 40, s.ID)
 	w1.WaitFor("line ", wait)
 	env.AssertMirrorsServer(w1) // mid-stream
-	w1.Key(CtrlBackslash)
+	w1.Detach()
 	w1.WaitExit(wait)
 	if !strings.Contains(w1.Screen(), "[detached from "+s.ID+"]") {
 		t.Fatalf("window after detach:\n%s", w1.Screen())
@@ -133,7 +133,7 @@ func TestAttachKillClient(t *testing.T) {
 // TestSmokeAttachFullscreenInput is M2's "run claude by hand" Try it,
 // against the full-screen app: keys go through libghostty's encoders
 // against the app's modes, mouse and focus modes are mirrored onto the
-// window, Ctrl+\ detaches without reaching the app, and the window gets
+// window, Ctrl+\ d detaches without either key reaching the app, and the window gets
 // its terminal back.
 func TestSmokeAttachFullscreenInput(t *testing.T) {
 	env := New(t)
@@ -164,10 +164,10 @@ func TestSmokeAttachFullscreenInput(t *testing.T) {
 	}
 	Golden(t, w.Screen(), "attach-fullscreen-80x24.txt")
 
-	w.Key(CtrlBackslash)
+	w.Detach()
 	w.WaitExit(wait)
-	if strings.Contains(env.Screen(s), `\x1c`) || strings.Contains(env.Screen(s), "92;5u") {
-		t.Fatalf("the detach key reached the app:\n%s", env.Screen(s))
+	if sc := env.Screen(s); strings.Contains(sc, `\x1c`) || strings.Contains(sc, "92;5u") || strings.Contains(sc, `in: "d"`) {
+		t.Fatalf("the prefix or its command reached the app:\n%s", sc)
 	}
 	if m := w.Modes(); m.AltScreen || m.MouseTracking() || m.Focus || m.BracketedPaste {
 		t.Errorf("window not restored after detach: %+v", m)
@@ -262,7 +262,7 @@ func TestAttachLocalScrollback(t *testing.T) {
 }
 
 // TestRunScript runs scripts/run.sh (`make run`) in a window: it opens
-// the dashboard; s starts a shell and attaches; Ctrl+\ comes back to the
+// the dashboard; s starts a shell and attaches; Ctrl+\ d comes back to the
 // dashboard and q leaves the shell running.
 func TestRunScript(t *testing.T) {
 	env := New(t)
@@ -273,10 +273,10 @@ func TestRunScript(t *testing.T) {
 	w := env.WindowCmd(100, 30, filepath.Join(root, "scripts", "run.sh"))
 	w.WaitFor("no sessions; s starts a shell", wait)
 	w.Type("s")
-	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, `ctrl+\ dashboard`) && strings.Contains(sc, "$") })
+	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, `ctrl+\ d dashboard`) && strings.Contains(sc, "$") })
 	w.Type("echo hello-$((6*7))\r")
 	w.WaitFor("hello-42", wait)
-	w.Key(CtrlBackslash)
+	w.Detach()
 	w.WaitFor("SESSIONS", wait)
 	w.Type("q")
 	w.WaitFor("keep running in the background server", wait)
@@ -364,7 +364,7 @@ func TestRunScriptLoginShellQueries(t *testing.T) {
 		}
 	}
 	check(w, "first", false)
-	w.Key(CtrlBackslash)
+	w.Detach()
 	w.WaitFor("SESSIONS", wait)
 	w.Type("q")
 	w.WaitExit(wait)
@@ -373,7 +373,7 @@ func TestRunScriptLoginShellQueries(t *testing.T) {
 		w = env.Window(76, 53, "attach", s.ID)
 		w.WaitFor("prompt$", wait)
 		check(w, fmt.Sprintf("cycle%d", i), true)
-		w.Key(CtrlBackslash)
+		w.Detach()
 		w.WaitFor("[detached from "+s.ID+"]", wait)
 		w.WaitExit(wait)
 		env.AssertAlive(s)

@@ -64,6 +64,9 @@ type Result struct {
 	Reason string
 	// Detached is true when the session is still running.
 	Detached bool
+	// Then is the dashboard key to run once back on the dashboard: the
+	// key typed after the prefix (p, ], [, i, t, , or ?), or "".
+	Then string
 }
 
 // ErrNotTTY is returned when stdin is not a terminal.
@@ -80,9 +83,9 @@ func Attach(opts Options) (res Result, err error) {
 	if !term.IsTerminal(fd) {
 		return res, ErrNotTTY
 	}
-	detach, kerr := detachKey()
+	prefix, kerr := prefixKey()
 	if kerr != nil {
-		fmt.Fprintf(os.Stderr, "tm attach: %v; using %s\n", kerr, DefaultDetachKey)
+		fmt.Fprintf(os.Stderr, "tm attach: %v; using %s\n", kerr, DefaultPrefixKey)
 	}
 	cols, rows, err := term.GetSize(fd)
 	if err != nil || cols <= 0 || rows <= 0 {
@@ -104,11 +107,9 @@ func Attach(opts Options) (res Result, err error) {
 		return res, err
 	}
 	defer c.close()
-	c.detach = detach
+	c.prefix, c.info = prefix, *info
 	c.statusBar, c.cols, c.paneRows = opts.StatusBar, cols, paneRows
-	if c.statusBar {
-		c.r.SetStatus(statusLine(*info, detach, cols))
-	}
+	c.status()
 	// The stream starts with the pane's snapshot.
 	typ, payload, err := conn.ReadFrame()
 	if err != nil {
@@ -155,7 +156,7 @@ func Attach(opts Options) (res Result, err error) {
 	go c.readLoop()
 	go c.inputLoop(ctx, opts.In)
 	if c.statusBar {
-		go c.pollState(ctx, opts.Paths, *info)
+		go c.pollState(ctx, opts.Paths)
 	}
 	c.poke() // paint the snapshot now, even if the pane is idle
 	res = c.renderLoop(opts.Out)
@@ -177,7 +178,9 @@ type client struct {
 	heldAt   time.Time
 	scrolled bool // the local viewport is scrolled back
 	outer    map[int]bool
-	detach   chord
+	prefix   chord
+	pending  bool              // the prefix was typed: the next key is a command
+	info     proto.SessionInfo // the session, as the status bar shows it
 
 	statusBar      bool
 	cols, paneRows int  // the window's columns and the rows given to the pane
@@ -185,8 +188,10 @@ type client struct {
 
 	// detaching is set before DETACH is written. The server may hang up
 	// as soon as it reads it, so from then on a failed write or a closed
-	// stream is the detach completing, not a lost server.
+	// stream is the detach completing, not a lost server. then, set
+	// before detaching, is the dashboard key that detach carries.
 	detaching atomic.Bool
+	then      string
 
 	wake    chan struct{}
 	endOnce sync.Once
@@ -252,7 +257,7 @@ func (c *client) send(typ proto.FrameType, payload []byte) {
 // lost ends the attach after the connection failed with err.
 func (c *client) lost(err error) {
 	if c.detaching.Load() {
-		c.finish(detached)
+		c.finish(c.detachResult())
 		return
 	}
 	c.finish(Result{Reason: "lost the server: " + errString(err)})
@@ -409,13 +414,81 @@ func (c *client) handle(ev uv.Event) {
 	}
 }
 
+// key handles a key from the outer terminal: the prefix and the command
+// after it (docs/SPEC.md §4), or a key for the program.
 func (c *client) key(k uv.Key) {
-	if c.detach.match(k) {
-		c.detaching.Store(true)
-		c.send(proto.FrameDetach, nil)
-		c.finish(detached)
+	if !c.lock() {
 		return
 	}
+	pending := c.pending
+	do := prefixStep(c.prefix, pending, k, c.statusBar)
+	c.pending = do.arm
+	if pending || do.arm {
+		c.status()
+		c.mu.Unlock()
+		c.poke()
+	} else {
+		c.mu.Unlock()
+	}
+	switch {
+	case do.input:
+		c.input(k)
+	case do.detach:
+		c.detachThen(do.then)
+	}
+}
+
+// prefixDo is what a key does given whether the prefix came before it.
+type prefixDo struct {
+	arm    bool   // it is the prefix: the next key is a command
+	input  bool   // the program gets it
+	detach bool   // detach, then run then on the dashboard
+	then   string //
+}
+
+// prefixStep decides what k does. After the prefix: d detaches, a
+// dashboard key detaches and runs there (only when there is a dashboard
+// to go back to), the prefix again goes to the program, and anything
+// else cancels.
+func prefixStep(prefix chord, pending bool, k uv.Key, dashboard bool) prefixDo {
+	switch {
+	case !pending && prefix.match(k):
+		return prefixDo{arm: true}
+	case !pending, prefix.match(k):
+		return prefixDo{input: true}
+	case k.Text == "d":
+		return prefixDo{detach: true}
+	case prefixCommands[k.Text] && dashboard:
+		return prefixDo{detach: true, then: k.Text}
+	}
+	return prefixDo{}
+}
+
+// detachThen detaches; then is the dashboard key to run afterwards.
+func (c *client) detachThen(then string) {
+	c.then = then
+	c.detaching.Store(true) // publishes then to lost
+	c.send(proto.FrameDetach, nil)
+	c.finish(c.detachResult())
+}
+
+// detachResult is how a detach ends. c.then is read only once detaching
+// is set.
+func (c *client) detachResult() Result {
+	res := detached
+	res.Then = c.then
+	return res
+}
+
+// status redraws the status bar. c.mu held.
+func (c *client) status() {
+	if c.statusBar {
+		c.r.SetStatus(statusLine(c.info, c.prefix, c.pending, c.cols))
+	}
+}
+
+// input sends a key to the program.
+func (c *client) input(k uv.Key) {
 	if !c.lock() {
 		return
 	}
@@ -568,7 +641,7 @@ const statePoll = 500 * time.Millisecond
 // server sent a notification (a session blocked, a thread reported;
 // docs/SPEC.md §4). It polls session.list; a
 // lost server is noticed by the attach stream itself.
-func (c *client) pollState(ctx context.Context, p server.Paths, info proto.SessionInfo) {
+func (c *client) pollState(ctx context.Context, p server.Paths) {
 	var ctl *server.Client
 	defer func() {
 		if ctl != nil {
@@ -591,9 +664,10 @@ func (c *client) pollState(ctx context.Context, p server.Paths, info proto.Sessi
 			}
 		}
 		ring := false
-		for _, s := range res.Sessions {
-			if s.ID == info.ID {
-				info = s
+		var info *proto.SessionInfo
+		for i, s := range res.Sessions {
+			if s.ID == c.info.ID { // set before this goroutine starts
+				info = &res.Sessions[i]
 			}
 		}
 		if ctl != nil {
@@ -601,7 +675,10 @@ func (c *client) pollState(ctx context.Context, p server.Paths, info proto.Sessi
 			alerts, first = res.Alerts, false
 		}
 		if c.lock() {
-			c.r.SetStatus(statusLine(info, c.detach, c.cols))
+			if info != nil {
+				c.info = *info
+			}
+			c.status()
 			c.bell = c.bell || ring
 			c.mu.Unlock()
 			c.poke()

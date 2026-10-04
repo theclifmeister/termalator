@@ -458,7 +458,7 @@ func TestSmokeMakeRun(t *testing.T) {
 			t.Errorf("session cwd %s, want %s", s.Cwd, dir)
 		}
 	}
-	w.Key(CtrlBackslash)
+	w.Detach()
 	w.WaitFor("SESSIONS", wait)
 	w.Type("q")
 	w.WaitExit(wait)

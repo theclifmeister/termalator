@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -33,6 +34,9 @@ type DashState struct {
 	Selected string
 	Current  string
 	Message  string
+	// Then is a key to run once the first poll is in: the key typed
+	// after the prefix in a session (p, ], [, i, t, , or ?).
+	Then string
 }
 
 // DashOptions configure Dashboard.
@@ -51,6 +55,8 @@ type DashOptions struct {
 	// UIFile is ui.json, where the layout is kept; empty keeps it in
 	// memory only (tests).
 	UIFile string
+	// Prefix is the prefix key ("ctrl+\\"); empty is the default.
+	Prefix string
 }
 
 // DashResult says why the dashboard ended: Attach names a session to
@@ -96,6 +102,10 @@ type dash struct {
 	uiFile   string
 	dragging bool // the mouse is moving the divider
 
+	prefix   string // the prefix key, as tea names it
+	prefixed bool   // the prefix was typed: the next key is a command
+	then     string // a key to run after the first poll
+
 	alerts uint64
 	seen   bool // the first poll arrived (no bell for old alerts)
 
@@ -109,7 +119,8 @@ func newDash(o DashOptions) *dash {
 	}
 	return &dash{src: o.Source, cwd: o.Cwd, agentName: o.AgentName, w: w, h: h,
 		sel: o.State.Selected, current: o.State.Current, msg: o.State.Message,
-		layout: LoadLayout(o.UIFile), uiFile: o.UIFile}
+		layout: LoadLayout(o.UIFile), uiFile: o.UIFile,
+		prefix: cmp.Or(o.Prefix, DefaultPrefixKey), then: o.State.Then}
 }
 
 type dataMsg Data
@@ -190,6 +201,16 @@ func (m *dash) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 	case tea.KeyPressMsg:
 		return m, m.key(msg)
+	case editedMsg:
+		if msg.err != nil {
+			m.fail(fmt.Errorf("editor: %w", msg.err))
+		}
+		if p, err := prefixKey(); err == nil {
+			m.prefix = p.String()
+		}
+		if sv, ok := m.top().(*settingsView); ok {
+			sv.load(m)
+		}
 	case tea.MouseClickMsg:
 		m.click(msg.Mouse())
 	case tea.MouseMotionMsg:
@@ -238,6 +259,7 @@ func (m *dash) click(mo tea.Mouse) {
 // when the server sent a notification (a session blocked, a thread
 // reported) since the last poll.
 func (m *dash) setData(d Data) tea.Cmd {
+	first := !m.loaded
 	m.data, m.loaded = d, true
 	m.rows = buildRows(d)
 	if m.selIndex() < 0 {
@@ -254,11 +276,20 @@ func (m *dash) setData(d Data) tea.Cmd {
 		ring = m.seen && d.Alerts > m.alerts
 		m.alerts, m.seen = d.Alerts, true
 	}
-	next := tea.Tick(refresh, func(time.Time) tea.Msg { return tickMsg{} })
+	cmds := []tea.Cmd{tea.Tick(refresh, func(time.Time) tea.Msg { return tickMsg{} })}
 	if ring {
-		return tea.Batch(next, tea.Raw("\a"))
+		cmds = append(cmds, tea.Raw("\a"))
 	}
-	return next
+	if first && m.then != "" {
+		// The key typed after the prefix in a session, now that the
+		// projects it may need are known.
+		cmds = append(cmds, m.listKey(m.then))
+		m.then = ""
+	}
+	if len(cmds) == 1 {
+		return cmds[0]
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m *dash) selIndex() int {
@@ -291,9 +322,20 @@ func (m *dash) move(d int) {
 func (m *dash) paneSize() (int, int) { return m.w, max(m.h-1, 1) }
 
 // key sends a key to the topmost overlay, else to the list's actions.
+// The prefix works here as in a session, so the same keys do the same
+// things: prefix then a key is that key, and prefix d is a no-op.
 func (m *dash) key(k tea.KeyPressMsg) tea.Cmd {
 	if k.String() == "ctrl+c" {
 		return tea.Quit
+	}
+	if m.prefixed {
+		m.prefixed = false
+		if k.String() == "d" || k.String() == m.prefix || k.String() == "esc" {
+			return nil
+		}
+	} else if k.String() == m.prefix {
+		m.prefixed = true
+		return nil
 	}
 	if o := m.top(); o != nil {
 		return o.key(m, k)
@@ -418,18 +460,22 @@ func (m *dash) render() string {
 	return m.renderList()
 }
 
-const listKeys = "enter attach · t tasks · i inbox · a ack · d done · n project · p projects · ? help · q quit"
+func (m *dash) renderList() string { return m.frame("", m.listBody(), -1, m.footKeys()) }
 
-func (m *dash) renderList() string {
+// listBody is the list (and the details panel beside it) as the body's
+// rows, scrolled so the selected row shows.
+func (m *dash) listBody() []string {
 	split, lw := m.split()
 	lines, _, sel := m.listLines(lw, !split)
+	room := m.bodyRows()
+	top := scrollTop(sel, room, len(lines))
 	if !split {
-		return m.frame("", lines, sel, listKeys)
+		body := make([]string, room)
+		copy(body, lines[min(top, len(lines)):])
+		return body
 	}
 	// The list scrolls on its own; the details panel shows the selected
 	// row from the top.
-	room := m.bodyRows()
-	top := scrollTop(sel, room, len(lines))
 	var right []string
 	if r, ok := m.selected(); ok {
 		right = m.details(r, m.w-lw-1)
@@ -445,7 +491,7 @@ func (m *dash) renderList() string {
 		}
 		body[i] = fit(l, lw) + reset + styleFaint.Render("│") + fit(d, m.w-lw-1) + reset
 	}
-	return m.frame("", body, -1, listKeys)
+	return body
 }
 
 // listLines lays out the list w cells wide: its lines, the row key on
@@ -516,11 +562,10 @@ func (m *dash) frame(title string, body []string, sel int, keys string) string {
 	}
 	head := fit(left, max(m.w-ansi.StringWidth(right)-1, 1)) + reset + " " + right
 	foot := []string{m.rule("")}
-	if in, ok := m.top().(*inputView); ok {
-		foot = append(foot, fit(" "+styleAccent.Render(in.label)+in.text+"█", m.w)+reset)
-	} else {
-		foot = append(foot, fit(" "+keysLine(keys), m.w)+reset)
+	if m.prefixed {
+		keys = m.prefix + " ▸ any dashboard key · d or esc cancels"
 	}
+	foot = append(foot, fit(" "+keysLine(keys), m.w)+reset)
 	msg := " " + oneLine(m.msg)
 	switch {
 	case m.busy:

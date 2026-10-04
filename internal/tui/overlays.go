@@ -1,21 +1,25 @@
 package tui
 
 import (
+	"cmp"
 	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/theclifmeister/termalator/internal/config"
 	"github.com/theclifmeister/termalator/internal/project"
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/tasks"
 )
 
 // Overlays: the views opened on top of the list (help, a prompt, the
-// task board, the project switcher, the inbox). Each keeps its own
-// state; keys go to the topmost, and closing it returns to the one
-// below, or to the list.
+// task board, the project switcher, the inbox, the settings). Each keeps
+// its own state and draws as a popup (popup.go); keys go to the topmost,
+// and closing it returns to the one below, or to the list.
 type overlay interface {
 	key(m *dash, k tea.KeyPressMsg) tea.Cmd
 	render(m *dash) string
@@ -59,15 +63,26 @@ func (m *dash) boardView() *boardView {
 
 // line draws r w cells wide: plain in reverse video when selected,
 // styled otherwise.
-func (m *dash) line(r row, selected bool) string {
+func line(r row, w int, selected bool) string {
 	if selected {
-		return styleSel.Render(fit(r.text(m.w), m.w))
+		return styleSel.Render(fit(r.text(w), w))
 	}
-	return r.styled(m.w)
+	return r.styled(w)
 }
 
 // moveSel moves a list selection by d within n items.
 func moveSel(sel, d, n int) int { return min(max(sel+d, 0), max(n-1, 0)) }
+
+// popupWidth is the width of the list-like popups.
+const popupWidth = 104
+
+// inner is the text width inside a popup of the given width.
+func (m *dash) inner(width int) int {
+	if m.w < 44 {
+		return max(m.w-4, 4)
+	}
+	return max(min(width, m.w-4)-4, 4)
+}
 
 // helpView lists the keys; any key closes it.
 type helpView struct{}
@@ -75,10 +90,10 @@ type helpView struct{}
 func (helpView) key(m *dash, _ tea.KeyPressMsg) tea.Cmd { m.pop(); return nil }
 
 func (helpView) render(m *dash) string {
-	return m.frame("help", helpLines(m.agentName), -1, "any key returns")
+	return m.popup(box{title: "keys", body: helpLines(m.agentName, m.prefix), sel: -1, keys: "any key returns", width: 96})
 }
 
-// inputView reads a line of text in the footer, over the list.
+// inputView reads a line of text.
 type inputView struct {
 	label, text string
 	submit      func(string) tea.Cmd
@@ -111,7 +126,16 @@ func (in *inputView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
-func (in *inputView) render(m *dash) string { return m.renderList() }
+func (in *inputView) render(m *dash) string {
+	// The end of a long text stays in view.
+	text := in.text + "█"
+	w := max(m.inner(76)-len([]rune(in.label)), 4)
+	if r := []rune(text); len(r) > w {
+		text = "…" + string(r[len(r)-w+1:])
+	}
+	return m.popup(box{body: []string{styleAccent.Render(in.label) + text}, sel: -1,
+		keys: "enter ok · ctrl+u clear · esc cancel", width: 76})
+}
 
 // boardView is a project's task board: its live tasks in board order
 // (needs you, in motion, on deck), or one of them when open.
@@ -188,12 +212,20 @@ func (b *boardView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 }
 
 func (b *boardView) render(m *dash) string {
+	title := b.slug + " tasks"
 	if b.board == nil {
-		return m.frame(b.slug+" tasks", []string{" loading…"}, -1, "esc back")
+		return m.popup(box{title: title, body: []string{styleFaint.Render("loading…")}, sel: -1, keys: "esc back", width: popupWidth})
 	}
 	if b.open && b.sel < len(b.list) {
-		return b.renderTask(m, b.list[b.sel])
+		t := b.list[b.sel]
+		d := &panel{w: m.inner(88) + 1} // panel lines start with a space
+		taskPanel(d, t, "")
+		for i, l := range d.lines {
+			d.lines[i] = strings.TrimPrefix(l, " ")
+		}
+		return m.popup(box{title: b.slug + " " + t.Ref(), body: d.lines, sel: -1, keys: "d mark done (review) · esc back", width: 88})
 	}
+	w := m.inner(popupWidth)
 	var lines []string
 	sel := -1
 	var group tasks.Group
@@ -204,9 +236,9 @@ func (b *boardView) render(m *dash) string {
 			if g == tasks.NeedsYou {
 				st = styleWarn.Bold(true)
 			}
-			lines = append(lines, m.ruleIn(strings.ToUpper(string(g)), st, m.w))
+			lines = append(lines, m.ruleIn(strings.ToUpper(string(g)), st, w))
 		}
-		r := row{mark: markTop, who: t.Ref(), what: oneLine(t.Title), state: string(t.Status), rest: t.Thread, pct: -1}
+		r := row{who: t.Ref(), what: oneLine(t.Title), state: string(t.Status), rest: t.Thread, pct: -1}
 		if len(t.Steps) > 0 {
 			r.pct = pctOf(t.StepsDone(), len(t.Steps))
 			r.rest = joinSp(fmt.Sprintf("%d/%d", t.StepsDone(), len(t.Steps)), t.Thread)
@@ -214,7 +246,7 @@ func (b *boardView) render(m *dash) string {
 		if i == b.sel {
 			sel = len(lines)
 		}
-		lines = append(lines, m.line(r, i == b.sel))
+		lines = append(lines, line(r, w, i == b.sel))
 	}
 	done := 0
 	for _, t := range b.board.Tasks {
@@ -223,36 +255,10 @@ func (b *boardView) render(m *dash) string {
 		}
 	}
 	if len(b.list) == 0 {
-		lines = append(lines, styleFaint.Render(" no open tasks"))
+		lines = append(lines, styleFaint.Render("no open tasks"))
 	}
-	lines = append(lines, styleFaint.Render(fmt.Sprintf("  done: %d", done)))
-	return m.frame(b.slug+" tasks", lines, sel, "enter show · d mark done (review) · r refresh · esc back")
-}
-
-func (b *boardView) renderTask(m *dash, t *tasks.Task) string {
-	g, st := stateLook(string(t.Status))
-	status := st.Render(strings.TrimSpace(g + " " + string(t.Status)))
-	if t.Thread != "" {
-		status += styleFaint.Render(" · thread ") + t.Thread
-	}
-	lines := []string{
-		fit(" "+styleHead.Render(t.Ref()+" "+oneLine(t.Title)), m.w) + reset,
-		fit(" "+status, m.w) + reset,
-		"",
-	}
-	for _, l := range strings.Split(strings.TrimSpace(t.Notes), "\n") {
-		if l != "" {
-			lines = append(lines, fit(" "+oneLine(l), m.w))
-		}
-	}
-	if len(t.Steps) > 0 {
-		lines = append(lines, "", styleFaint.Render(fmt.Sprintf(" steps %d/%d", t.StepsDone(), len(t.Steps))))
-		for _, s := range t.Steps {
-			box := todoGlyph(map[bool]string{true: "done"}[s.Done])
-			lines = append(lines, fit(fmt.Sprintf("  %s %d %s", box, s.N, oneLine(s.Text)), m.w)+reset)
-		}
-	}
-	return m.frame(b.slug+" "+t.Ref(), lines, -1, "d mark done (review) · esc back")
+	lines = append(lines, styleFaint.Render(fmt.Sprintf("done: %d", done)))
+	return m.popup(box{title: title, body: lines, sel: sel, keys: "enter show · d mark done (review) · r refresh · esc back", width: popupWidth})
 }
 
 // switchView is the project switcher: enter opens the selected
@@ -277,6 +283,7 @@ func (sw *switchView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 }
 
 func (sw *switchView) render(m *dash) string {
+	w := m.inner(popupWidth)
 	var lines []string
 	for i, p := range m.data.Projects {
 		r := row{key: "p:" + p.Slug, mark: "  ", who: p.Slug, what: oneLine(p.Name), state: "—", rest: "no coordinator", pct: -1}
@@ -289,9 +296,9 @@ func (sw *switchView) render(m *dash) string {
 		if p.Slug == m.current {
 			r.mark = "* "
 		}
-		lines = append(lines, m.line(r, i == sw.sel))
+		lines = append(lines, line(r, w, i == sw.sel))
 	}
-	return m.frame("projects", lines, sw.sel, "enter open its coordinator · esc back")
+	return m.popup(box{title: "projects", body: lines, sel: sw.sel, keys: "enter open its coordinator · esc back", width: popupWidth})
 }
 
 // inboxView is a project's unhandled inbox items.
@@ -324,6 +331,7 @@ func (in *inboxView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 }
 
 func (in *inboxView) render(m *dash) string {
+	w := m.inner(popupWidth)
 	items := in.items(m)
 	var lines []string
 	sel := -1
@@ -334,19 +342,114 @@ func (in *inboxView) render(m *dash) string {
 			flag = "!"
 		}
 		when := fmt.Sprintf("%-6s", age(now.Sub(it.Created)))
-		text := fmt.Sprintf(" %s %s %s %s", flag, fit(it.Kind, 16), when, oneLine(it.Summary))
 		if i == in.sel {
 			sel = len(lines)
-			text = styleSel.Render(fit(text, m.w))
-		} else {
-			text = fit(fmt.Sprintf(" %s %s %s %s", styleBad.Bold(true).Render(flag), styleWarn.Render(fit(it.Kind, 16)),
-				styleFaint.Render(when), oneLine(it.Summary)), m.w) + reset
+			lines = append(lines, styleSel.Render(fit(fmt.Sprintf("%s %s %s %s", flag, fit(it.Kind, 16), when, oneLine(it.Summary)), w)))
+			continue
 		}
-		lines = append(lines, text)
+		lines = append(lines, fit(fmt.Sprintf("%s %s %s %s", styleBad.Bold(true).Render(flag), styleWarn.Render(fit(it.Kind, 16)),
+			styleFaint.Render(when), oneLine(it.Summary)), w)+reset)
 	}
 	if len(items) == 0 {
-		lines = append(lines, styleFaint.Render(" inbox empty"))
+		lines = append(lines, styleFaint.Render("inbox empty"))
 	}
-	lines = append(lines, "", styleFaint.Render(fit(" The coordinator handles these (tm inbox done); ! marks the ones for you.", m.w)))
-	return m.frame(in.slug+" inbox", lines, sel, "r refresh · esc back")
+	lines = append(lines, "", styleFaint.Render("The coordinator handles these (tm inbox done); ! marks the ones for you."))
+	return m.popup(box{title: in.slug + " inbox", body: lines, sel: sel, keys: "r refresh · esc back", width: popupWidth})
+}
+
+// settingsView shows the settings that apply here: config.toml's keys
+// and the project's safety settings (§11.2), and the layout. tm never
+// writes config.toml; e opens it in the user's editor.
+type settingsView struct {
+	slug  string
+	lines []string
+}
+
+// editedMsg is the editor's exit.
+type editedMsg struct{ err error }
+
+func (m *dash) openSettings(slug string) {
+	sv := &settingsView{slug: slug}
+	sv.load(m)
+	m.push(sv)
+}
+
+func (sv *settingsView) load(m *dash) {
+	var l []string
+	add := func(label, value, note string) {
+		s := styleFaint.Render(fmt.Sprintf("%-22s", label)) + " " + value
+		if note != "" {
+			s += "  " + styleFaint.Render(note)
+		}
+		l = append(l, s)
+	}
+	def := func(isDefault bool) string {
+		if isDefault {
+			return "default"
+		}
+		return ""
+	}
+	path, _ := config.Path()
+	where := path
+	if _, err := os.Stat(path); err != nil {
+		where += styleFaint.Render("  (not created yet)")
+	}
+	l = append(l, styleHead.Render("config.toml"), where, "", styleHead.Render("[keys]"))
+	if _, err := prefixKey(); err != nil {
+		l = append(l, styleBad.Render(oneLine(err.Error())))
+	}
+	add("prefix", m.prefix, def(m.prefix == DefaultPrefixKey))
+	l = append(l, "")
+
+	cfg, err := config.Load()
+	switch {
+	case err != nil:
+		l = append(l, styleBad.Render(oneLine(err.Error())), "")
+	case sv.slug == "":
+		l = append(l, styleFaint.Render("Select a project to see its safety settings."), "")
+	default:
+		s, err := cfg.Safety(sv.slug)
+		l = append(l, styleHead.Render("[projects."+sv.slug+"]"))
+		if err != nil {
+			l = append(l, styleBad.Render(oneLine(err.Error())))
+		}
+		d := config.Defaults
+		add("start_threads", s.StartThreads, def(s.StartThreads == d.StartThreads))
+		add("yolo", fmt.Sprint(s.Yolo), def(s.Yolo == d.Yolo))
+		add("coordinator_approves", fmt.Sprint(s.CoordinatorApproves), def(s.CoordinatorApproves == d.CoordinatorApproves))
+		add("auto_resolve", fmt.Sprint(s.AutoResolve), def(s.AutoResolve == d.AutoResolve))
+		add("pr_followup", fmt.Sprint(s.PRFollowup), def(s.PRFollowup == d.PRFollowup))
+		l = append(l, "")
+	}
+
+	l = append(l, styleHead.Render("layout")+styleFaint.Render("  ui.json, changed with < > | and the mouse"))
+	add("details panel", map[bool]string{true: "on", false: "off"}[m.layout.Details], "")
+	add("list width", fmt.Sprintf("%d%%", int(m.layout.Split*100+0.5)), "")
+	l = append(l, "", styleFaint.Render("tm never writes config.toml; e opens it in $VISUAL or $EDITOR."))
+	sv.lines = l
+}
+
+func (sv *settingsView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
+	switch k.String() {
+	case "esc", "q", ",":
+		m.pop()
+	case "e":
+		path, err := config.Path()
+		if err != nil {
+			m.fail(err)
+			return nil
+		}
+		args := strings.Fields(cmp.Or(os.Getenv("VISUAL"), os.Getenv("EDITOR"), "vi"))
+		cmd := exec.Command(args[0], append(args[1:], path)...)
+		return tea.ExecProcess(cmd, func(err error) tea.Msg { return editedMsg{err} })
+	}
+	return nil
+}
+
+func (sv *settingsView) render(m *dash) string {
+	title := "settings"
+	if sv.slug != "" {
+		title += " · " + sv.slug
+	}
+	return m.popup(box{title: title, body: sv.lines, sel: -1, keys: "e edit config.toml · esc back", width: 88})
 }

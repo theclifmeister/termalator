@@ -5,10 +5,12 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/theclifmeister/termalator/internal/tasks"
 )
 
-// Actions: the list's keys. One table drives the key handling and the
-// help, so the two can't disagree.
+// Actions: the list's keys. One table drives the key handling, the help
+// and the footer, so they can't disagree.
 
 // An action is a key on the list and what it does.
 type action struct {
@@ -16,7 +18,26 @@ type action struct {
 	// label and help are its line in the help; an empty label leaves it
 	// out. {agent} in help is the agent's name.
 	label, help string
-	run         func(m *dash, key string) tea.Cmd
+	// foot is its word in the footer for the selected row (ok is false
+	// without one), "" to leave it out there.
+	foot func(m *dash, r row, ok bool) string
+	run  func(m *dash, key string) tea.Cmd
+}
+
+// always shows an action in the footer as word.
+func always(word string) func(*dash, row, bool) string {
+	return func(*dash, row, bool) string { return word }
+}
+
+// withProject shows an action in the footer as word when there is a
+// project to apply it to.
+func withProject(word string) func(*dash, row, bool) string {
+	return func(m *dash, _ row, _ bool) string {
+		if m.projectHere() == "" {
+			return ""
+		}
+		return word
+	}
 }
 
 // actions is set in init: the ? action opens the help, which lists the
@@ -27,25 +48,68 @@ func init() {
 	actions = []action{
 		{keys: []string{"up", "k"}, run: func(m *dash, _ string) tea.Cmd { m.move(-1); return nil }},
 		{keys: []string{"down", "j"}, run: func(m *dash, _ string) tea.Cmd { m.move(1); return nil }},
-		{keys: []string{"enter"}, label: "enter", help: "attach to the selected session; on a project, open its coordinator",
+		{keys: []string{"enter"}, label: "enter", help: "attach to the selected session; on a project, open its coordinator; on a task, show it",
+			foot: func(_ *dash, r row, ok bool) string {
+				switch {
+				case !ok:
+					return ""
+				case r.task != nil:
+					return "show"
+				case r.session != "":
+					return "attach"
+				case r.thread == nil && r.project != "":
+					return "open"
+				}
+				return ""
+			},
 			run: (*dash).enter},
 		{keys: []string{"s"}, label: "s", help: "new shell session (in the directory tm was started in)",
 			run: (*dash).startShell},
 		{keys: []string{"c"}, label: "c", help: "new {agent} session in a directory you choose",
 			run: (*dash).startAgent},
 		{keys: []string{"n"}, label: "n", help: "new project",
+			foot: func(m *dash, _ row, _ bool) string {
+				if len(m.data.Projects) == 0 {
+					return "new project"
+				}
+				return ""
+			},
 			run: (*dash).newProject},
 		{keys: []string{"t"}, label: "t", help: "the project's tasks; enter shows one, d marks a task in review done",
-			run: (*dash).taskBoard},
+			foot: withProject("tasks"), run: (*dash).taskBoard},
 		{keys: []string{"d"}, label: "d", help: "mark the selected task done (tasks in review)",
+			foot: func(_ *dash, r row, ok bool) string {
+				if ok && r.task != nil && (r.confirm || r.task.Status == tasks.Review) {
+					return "done"
+				}
+				return ""
+			},
 			run: (*dash).done},
 		{keys: []string{"i"}, label: "i", help: "the project's inbox: what the coordinator is told about",
-			run: (*dash).inbox},
+			foot: withProject("inbox"), run: (*dash).inbox},
 		{keys: []string{"a"}, label: "a", help: "acknowledge the selected thread's report",
+			foot: func(_ *dash, r row, ok bool) string {
+				if ok && r.thread != nil && r.thread.ReportState() == "new" {
+					return "ack"
+				}
+				return ""
+			},
 			run: (*dash).ack},
 		{keys: strings.Split("1 2 3 4 5 6 7 8 9", " "), label: "1-9", help: "send that ## Next line of the thread's report as its next prompt",
+			foot: func(_ *dash, r row, ok bool) string {
+				if ok && r.thread != nil && r.thread.Report != nil && len(r.thread.Report.Next) > 0 {
+					return "send next"
+				}
+				return ""
+			},
 			run: (*dash).sendNext},
 		{keys: []string{"p"}, label: "p", help: "project switcher; enter opens that project's coordinator",
+			foot: func(m *dash, _ row, _ bool) string {
+				if len(m.data.Projects) > 1 {
+					return "projects"
+				}
+				return ""
+			},
 			run: (*dash).switcher},
 		{keys: []string{"]", "["}, label: "] [", help: "next / previous project's coordinator",
 			run: func(m *dash, key string) tea.Cmd { return m.cycleProject(key == "]") }},
@@ -58,12 +122,14 @@ func init() {
 				m.setLayout(l)
 				return nil
 			}},
+		{keys: []string{","}, label: ",", help: "settings: the prefix key, the project's safety settings, the layout",
+			foot: always("settings"), run: func(m *dash, _ string) tea.Cmd { m.openSettings(m.projectHere()); return nil }},
 		{keys: []string{"r"}, label: "r", help: "refresh",
 			run: func(m *dash, _ string) tea.Cmd { return m.load() }},
 		{keys: []string{"?"}, label: "?", help: "help",
-			run: func(m *dash, _ string) tea.Cmd { m.push(helpView{}); return nil }},
+			foot: always("help"), run: func(m *dash, _ string) tea.Cmd { m.push(helpView{}); return nil }},
 		{keys: []string{"q"}, label: "q", help: "quit (the server keeps running)",
-			run: func(*dash, string) tea.Cmd { return tea.Quit }},
+			foot: always("quit"), run: func(*dash, string) tea.Cmd { return tea.Quit }},
 	}
 }
 
@@ -79,17 +145,37 @@ func (m *dash) listKey(key string) tea.Cmd {
 	return nil
 }
 
-func helpLines(agentName string) []string {
+// footKeys is the footer's key list: the actions that apply to the
+// selected row.
+func (m *dash) footKeys() string {
+	r, ok := m.selected()
+	var out []string
+	for _, a := range actions {
+		if a.foot == nil {
+			continue
+		}
+		if word := a.foot(m, r, ok); word != "" {
+			out = append(out, a.label+" "+word)
+		}
+	}
+	return strings.Join(out, " · ")
+}
+
+func helpLines(agentName, prefix string) []string {
 	var out []string
 	for _, a := range actions {
 		if a.label != "" {
-			out = append(out, fmt.Sprintf(" %-9s %s", a.label, strings.ReplaceAll(a.help, "{agent}", agentName)))
+			out = append(out, fmt.Sprintf("%-9s %s", a.label, strings.ReplaceAll(a.help, "{agent}", agentName)))
 		}
 	}
 	return append(out,
 		"",
-		" While attached: "+DefaultDetachKey+" returns here. "+DefaultDetachKey+" then p, ] or [",
-		" switches project straight from a session.",
+		styleHead.Render("In a session")+", the prefix "+styleAccent.Render(prefix)+" then:",
+		fmt.Sprintf("%-9s %s", "d", "back to this dashboard (the session keeps running)"),
+		fmt.Sprintf("%-9s %s", "p ] [", "back here and switch project"),
+		fmt.Sprintf("%-9s %s", "i t , ?", "back here with the inbox, tasks, settings or help open"),
+		fmt.Sprintf("%-9s %s", prefix, "send "+prefix+" itself to the program"),
+		styleFaint.Render("Here, the prefix then a key is that key. The prefix is [keys] prefix in config.toml."),
 	)
 }
 

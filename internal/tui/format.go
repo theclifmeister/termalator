@@ -97,8 +97,9 @@ func fit(s string, w int) string {
 }
 
 // statusLine is the attach status bar (docs/SPEC.md §4): session,
-// project, state, progress and the detach key, in reverse video.
-func statusLine(s proto.SessionInfo, detach chord, cols int) string {
+// project, state, progress and the prefix key, in reverse video. After
+// the prefix it lists the commands instead.
+func statusLine(s proto.SessionInfo, prefix chord, pending bool, cols int) string {
 	parts := []string{" " + s.ID}
 	if s.Project != "" {
 		parts = append(parts, s.Project+" "+sessionName(s))
@@ -110,8 +111,12 @@ func statusLine(s proto.SessionInfo, detach chord, cols int) string {
 		st += " " + p
 	}
 	parts = append(parts, st)
-	right := detach.String() + " dashboard "
+	right := prefix.String() + " d dashboard "
 	left := strings.Join(parts, " · ")
+	if pending {
+		left = " " + prefix.String() + " ▸ d dashboard · p projects · ] [ next/prev · i inbox · t tasks · , settings · ? help"
+		right = prefix.String() + " again sends it "
+	}
 	w := cols - ansi.StringWidth(right) - 1
 	if w < 1 {
 		return "\x1b[7m" + fit(left, cols) + "\x1b[27m"

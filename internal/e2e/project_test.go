@@ -47,16 +47,16 @@ func TestSmokeProjectOpenAndSwitch(t *testing.T) {
 	w.WaitUntil("attached to beta", agentWait, func(sc string) bool { return lastLine(sc, beta+" coordinator") })
 	w.WaitFor("Fake Claude Code", agentWait)
 
-	// Ctrl+\ then [: the previous project, alpha; then ]: beta again.
-	w.Key(CtrlBackslash)
-	w.WaitFor("PROJECTS", wait)
-	w.Type("[")
+	// Prefix then [: the previous project, alpha, straight from the
+	// session; then prefix ]: beta again.
+	w.Prefix("[")
 	w.WaitUntil("attached to alpha", wait, func(sc string) bool { return lastLine(sc, id+" · "+alpha+" coordinator") })
-	w.Key(CtrlBackslash)
-	w.WaitFor("PROJECTS", wait)
-	w.Type("]")
+	w.Prefix("]")
 	w.WaitUntil("attached to beta", wait, func(sc string) bool { return lastLine(sc, beta+" coordinator") })
-	w.Key(CtrlBackslash)
+	// Prefix p: the switcher, over the dashboard.
+	w.Prefix("p")
+	w.WaitFor("enter open its coordinator", wait)
+	w.Key(keyEsc)
 	w.WaitFor("PROJECTS", wait)
 	w.Type("q")
 	w.WaitExit(wait)
@@ -75,7 +75,7 @@ func TestSmokeProjectOpenAndSwitch(t *testing.T) {
 	// tm project open on a terminal attaches, with the status bar.
 	w2 := env.Window(100, 30, "project", "open", beta)
 	w2.WaitUntil("attached to beta", wait, func(sc string) bool { return lastLine(sc, beta+" coordinator") })
-	w2.Key(CtrlBackslash)
+	w2.Detach()
 	w2.WaitExit(wait)
 }
 

@@ -94,7 +94,7 @@ func agentSession(env *Env) *Session {
 
 // TestSmokeFirstLocalRun is M4's "Try it" with the fake agent: from the
 // dashboard, c starts an agent in a chosen directory and attaches; a
-// prompt typed there blocks on a permission dialog; Ctrl+\ shows the
+// prompt typed there blocks on a permission dialog; Ctrl+\ d shows the
 // session under NEEDS YOU; enter attaches again to answer it; closing the
 // terminal loses nothing, and a new dashboard shows the session idle.
 func TestSmokeFirstLocalRun(t *testing.T) {
@@ -126,7 +126,7 @@ func TestSmokeFirstLocalRun(t *testing.T) {
 	w.WaitUntil("blocked in the status bar", wait, func(sc string) bool { return lastLine(sc, "blocked permission") })
 
 	// Back to the dashboard: the session needs you.
-	w.Key(CtrlBackslash)
+	w.Detach()
 	w.WaitFor("NEEDS YOU", wait)
 	w.WaitFor("▲ blocked   permission", wait)
 	env.AssertAlive(s)
@@ -134,11 +134,11 @@ func TestSmokeFirstLocalRun(t *testing.T) {
 	// Attach again (the session's row is still selected) and approve.
 	w.Key(Enter)
 	w.WaitUntil("attached", wait, func(sc string) bool {
-		return lastLine(sc, `ctrl+\ dashboard`) && strings.Contains(sc, "Do you want to create x.txt?")
+		return lastLine(sc, `ctrl+\ d dashboard`) && strings.Contains(sc, "Do you want to create x.txt?")
 	})
 	w.Type("1")
 	env.WaitState(s, "idle", agentWait)
-	w.Key(CtrlBackslash)
+	w.Detach()
 	w.WaitUntil("NEEDS YOU gone", wait, func(sc string) bool { return !strings.Contains(sc, "NEEDS YOU") && strings.Contains(sc, "idle") })
 
 	// Close the terminal: nothing is lost.

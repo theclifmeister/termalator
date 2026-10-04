@@ -266,13 +266,18 @@ func hasBell(cmd tea.Cmd) bool {
 func TestStatusLine(t *testing.T) {
 	info := proto.SessionInfo{ID: "s-4", Role: proto.RoleCoordinator, Project: "termalator", Agent: "claude",
 		State: "working", TodosDone: 2, TodosTotal: 5, Current: "Write §8"}
-	got := statusLine(info, chord{'\\'}, 80)
+	got := statusLine(info, chord{'\\'}, false, 80)
 	want := "\x1b[7m s-4 · termalator coordinator · working 40% 2/5 ▸ Write §8"
-	if !strings.HasPrefix(got, want) || !strings.HasSuffix(got, `ctrl+\ dashboard `+"\x1b[27m") {
+	if !strings.HasPrefix(got, want) || !strings.HasSuffix(got, `ctrl+\ d dashboard `+"\x1b[27m") {
 		t.Fatalf("status line %q", got)
 	}
 	if w := len([]rune(strings.TrimSuffix(strings.TrimPrefix(got, "\x1b[7m"), "\x1b[27m"))); w != 80 {
 		t.Fatalf("status line is %d cells, want 80", w)
+	}
+	// After the prefix: the commands.
+	got = statusLine(info, chord{'\\'}, true, 120)
+	if !strings.Contains(got, "d dashboard · p projects") || !strings.Contains(got, `ctrl+\ again sends it`) {
+		t.Fatalf("pending status line %q", got)
 	}
 }
 
@@ -408,5 +413,111 @@ func TestLayoutFile(t *testing.T) {
 	os.WriteFile(far, []byte(`{"details":true,"split":5}`), 0o644)
 	if l := LoadLayout(far); l.Split != maxSplit {
 		t.Fatalf("split out of range: %+v", l)
+	}
+}
+
+// TestDashboardPrefix: the prefix works on the dashboard as in a
+// session, and a key typed after it in a session runs once back here.
+func TestDashboardPrefix(t *testing.T) {
+	src := &fakeSource{data: testData()}
+	m := newDash(DashOptions{Source: src, Width: 100, Height: 30})
+	m.setData(src.data)
+	m.sel = "p:alpha"
+	prefix := tea.KeyPressMsg{Code: '\\', Mod: tea.ModCtrl}
+	m.Update(prefix)
+	if !m.prefixed || !strings.Contains(screen(m), `ctrl+\ ▸ any dashboard key`) {
+		t.Fatalf("prefix not shown:\n%s", screen(m))
+	}
+	press(m, "t")
+	if _, ok := m.top().(*boardView); !ok || m.prefixed {
+		t.Fatalf("prefix t: overlay %T", m.top())
+	}
+	m.pop()
+	m.Update(prefix)
+	press(m, "d") // already on the dashboard: nothing
+	if m.top() != nil || m.prefixed {
+		t.Fatal("prefix d on the dashboard did something")
+	}
+
+	// Back from a session after prefix p: the switcher opens.
+	m = newDash(DashOptions{Source: src, Width: 100, Height: 30, State: DashState{Then: "p"}})
+	m.setData(src.data)
+	if _, ok := m.top().(*switchView); !ok {
+		t.Fatalf("then p: overlay %T", m.top())
+	}
+	m.setData(src.data)
+	m.pop()
+	if m.top() != nil {
+		t.Fatal("then ran twice")
+	}
+}
+
+// TestDashboardFooter: the footer lists the keys that apply to the
+// selected row.
+func TestDashboardFooter(t *testing.T) {
+	src := &fakeSource{data: testData()}
+	m := newDash(DashOptions{Source: src, Width: 100, Height: 30})
+	m.setData(src.data)
+	for sel, want := range map[string]string{
+		"n:s-2":          "enter attach · t tasks · i inbox · p projects · , settings · ? help · q quit",
+		"t:alpha:7":      "enter show · t tasks · d done · i inbox",
+		"th:beta:t-0005": "enter attach · t tasks · i inbox · a ack · 1-9 send next",
+		"th:beta:t-0006": "t tasks · i inbox · p projects",
+		"p:beta":         "enter open · t tasks",
+	} {
+		m.sel = sel
+		if got := m.footKeys(); !strings.HasPrefix(got, want) {
+			t.Errorf("%s: footer %q, want %q…", sel, got, want)
+		}
+	}
+	m.data.Projects = nil
+	m.setData(Data{ServerOK: true})
+	if got := m.footKeys(); !strings.HasPrefix(got, "n new project · , settings") {
+		t.Errorf("no projects: footer %q", got)
+	}
+}
+
+// TestDashboardPopups: views draw as boxes over the dimmed list, and the
+// settings show the project's safety settings from config.toml.
+func TestDashboardPopups(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("TERMALATOR_HOME", home)
+	os.WriteFile(filepath.Join(home, "config.toml"), []byte("[projects.alpha]\nyolo = true\n"), 0o600)
+	src := &fakeSource{data: testData()}
+	src.data.Projects[0].Items = []project.Item{{ID: "x", Kind: "report", Summary: "t-0002 handed in report 1"}}
+	m := newDash(DashOptions{Source: src, Width: 100, Height: 30})
+	m.setData(src.data)
+	m.sel = "p:alpha"
+
+	press(m, "i")
+	out := screen(m)
+	for _, want := range []string{"╭─ alpha inbox ─", "│ ", "t-0002 handed in report 1", "╰─", "r refresh · esc back",
+		"PROJECTS 2"} { // the list stays in view behind the box
+		if !strings.Contains(out, want) {
+			t.Errorf("inbox popup lacks %q:\n%s", want, out)
+		}
+	}
+	for _, l := range strings.Split(out, "\n") {
+		if w := ansi.StringWidth(l); w > 100 {
+			t.Errorf("line %d cells wide: %q", w, l)
+		}
+	}
+	m.pop()
+
+	press(m, ",")
+	out = screen(m)
+	for _, want := range []string{"settings · alpha", "[projects.alpha]", "yolo                   true",
+		"start_threads          propose  default", "prefix                 ctrl+\\  default", "e edit config.toml"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("settings lack %q:\n%s", want, out)
+		}
+	}
+
+	// A tiny window: the box takes the body, and nothing overflows.
+	m.Update(tea.WindowSizeMsg{Width: 30, Height: 8})
+	for _, l := range strings.Split(screen(m), "\n") {
+		if w := ansi.StringWidth(l); w > 30 {
+			t.Errorf("tiny window: line %d cells wide: %q", w, l)
+		}
 	}
 }
