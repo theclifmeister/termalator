@@ -38,7 +38,18 @@ type LaunchSpec struct {
 	Yolo       bool   // skip the agent's own permission prompts (project setting)
 	Model      string // optional
 	TMBin      string // absolute path of the running tm binary, for hooks
-	Socket     string // server socket path
+	Socket     string // server socket path; the agent's sandbox must allow it
+
+	// Access is the policy the core decided for this role. The manifest
+	// turns it into the agent's own permission and sandbox settings.
+	Access Access
+}
+
+// Access is a harness-neutral file access policy (docs/SPEC.md §5.2).
+// Paths are absolute directories; each grant covers everything below it.
+type Access struct {
+	Read    []string // readable without a prompt
+	NoWrite []string // must never be written, even where a broader rule would allow it
 }
 
 // Launch is the agent's answer: what to exec in the PTY, and which files to
@@ -75,6 +86,25 @@ type Signal struct {
 	Seq       uint64
 	At        time.Time
 	Transient bool // an edge (e.g. a tool call) rather than a level
+
+	// Todos is the agent's own live todo list, when the event carried one.
+	// nil means "no todo information"; an empty slice means "list cleared".
+	Todos *[]Todo
+}
+
+// TodoStatus is the harness-neutral status of one todo item.
+type TodoStatus string
+
+const (
+	TodoPending    TodoStatus = "pending"
+	TodoInProgress TodoStatus = "in_progress"
+	TodoCompleted  TodoStatus = "completed"
+)
+
+// Todo is one item of an agent's live todo list (docs/SPEC.md §7.3).
+type Todo struct {
+	Text   string     `json:"text"`
+	Status TodoStatus `json:"status"`
 }
 
 // HookResult is what `tm hook` prints back to the harness, if anything

@@ -46,6 +46,7 @@ type Manifest struct {
 	// present and non-empty (e.g. Claude's agent_id on subagent events).
 	IgnoreFields []string  `toml:"ignore_fields"`
 	Hooks        []HookMap `toml:"hooks"`
+	Todos        []TodoMap `toml:"todos"`
 	Rules        []Rule    `toml:"rules"`
 }
 
@@ -68,6 +69,19 @@ type HookMap struct {
 	// Respond is a template printed back to the harness. It sees .Event,
 	// .Payload and .Context (rendered only when the template uses it).
 	Respond string `toml:"respond"`
+}
+
+// TodoMap says which hook event carries the agent's todo list and how to
+// read it (docs/SPEC.md §8.2). Paths are dotted payload paths.
+type TodoMap struct {
+	Event  string            `toml:"event"`
+	Match  map[string]string `toml:"match"`
+	List   string            `toml:"list"`   // e.g. "tool_input.todos"
+	Text   string            `toml:"text"`   // field of each item, e.g. "content"
+	Status string            `toml:"status"` // field of each item, e.g. "status"
+	// StatusMap maps the harness's status values to pending, in_progress
+	// or completed. Values not listed must already be one of those.
+	StatusMap map[string]TodoStatus `toml:"status_map"`
 }
 
 // ParseManifest decodes and validates one manifest.
@@ -109,6 +123,17 @@ func (m *Manifest) validate() error {
 		}
 		if !valid[h.State] {
 			errs = append(errs, fmt.Errorf("hooks[%d]: unknown state %q", i, h.State))
+		}
+	}
+	validTodo := map[TodoStatus]bool{TodoPending: true, TodoInProgress: true, TodoCompleted: true}
+	for i, t := range m.Todos {
+		if t.Event == "" || t.List == "" || t.Text == "" || t.Status == "" {
+			errs = append(errs, fmt.Errorf("todos[%d]: needs event, list, text and status", i))
+		}
+		for k, v := range t.StatusMap {
+			if !validTodo[v] {
+				errs = append(errs, fmt.Errorf("todos[%d]: status_map %q -> %q is not pending|in_progress|completed", i, k, v))
+			}
 		}
 	}
 	for i, r := range m.Rules {
@@ -224,7 +249,67 @@ func (a *manifestAgent) Hook(ev HookEvent, ctxFn func() ([]byte, error)) ([]Sign
 			res.Stdout = out
 		}
 	}
+	for _, tm := range a.m.Todos {
+		if tm.Event != ev.Event || !matches(tm.Match, ev.Payload) {
+			continue
+		}
+		todos, err := tm.extract(ev.Payload)
+		if err != nil {
+			return sigs, res, fmt.Errorf("agent %s: todos on %s: %w", a.m.Name, ev.Event, err)
+		}
+		sigs = append(sigs, Signal{Source: "hook", Seq: ev.Seq, At: ev.At, Todos: &todos})
+		break
+	}
 	return sigs, res, nil
+}
+
+// extract reads the todo list from a payload.
+func (tm TodoMap) extract(payload map[string]any) ([]Todo, error) {
+	raw, ok := lookup(payload, tm.List)
+	if !ok {
+		return nil, fmt.Errorf("no field %q", tm.List)
+	}
+	items, ok := raw.([]any)
+	if !ok {
+		return nil, fmt.Errorf("%q is not a list", tm.List)
+	}
+	todos := make([]Todo, 0, len(items))
+	for i, it := range items {
+		obj, ok := it.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("%s[%d] is not an object", tm.List, i)
+		}
+		text, _ := lookup(obj, tm.Text)
+		status, _ := lookup(obj, tm.Status)
+		ts, _ := status.(string)
+		st := TodoStatus(ts)
+		if mapped, ok := tm.StatusMap[ts]; ok {
+			st = mapped
+		}
+		switch st {
+		case TodoPending, TodoInProgress, TodoCompleted:
+		default:
+			return nil, fmt.Errorf("%s[%d]: unknown status %q", tm.List, i, ts)
+		}
+		t, _ := text.(string)
+		todos = append(todos, Todo{Text: t, Status: st})
+	}
+	return todos, nil
+}
+
+// lookup follows a dotted path through nested JSON objects.
+func lookup(v map[string]any, path string) (any, bool) {
+	var cur any = v
+	for _, key := range strings.Split(path, ".") {
+		obj, ok := cur.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		if cur, ok = obj[key]; !ok {
+			return nil, false
+		}
+	}
+	return cur, true
 }
 
 func (a *manifestAgent) Rules() []Rule { return a.m.Rules }
@@ -255,6 +340,23 @@ var funcs = template.FuncMap{
 	"json": func(v any) (string, error) {
 		b, err := json.Marshal(v)
 		return string(b), err
+	},
+	// rules formats one permission rule per directory, e.g.
+	// rules "Read(/%s/**)" .Access.Read -> ["Read(//home/u/p/**)"].
+	"rules": func(format string, dirs []string) []string {
+		out := make([]string, 0, len(dirs))
+		for _, d := range dirs {
+			out = append(out, fmt.Sprintf(format, d))
+		}
+		return out
+	},
+	// concat joins lists, for building one JSON array from several grants.
+	"concat": func(lists ...[]string) []string {
+		out := []string{}
+		for _, l := range lists {
+			out = append(out, l...)
+		}
+		return out
 	},
 }
 

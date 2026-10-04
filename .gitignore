@@ -2,9 +2,8 @@
 /bin/
 /.build/
 
-# Per-thread working files from herdr-projects / termalator
+# Per-thread working files from herdr-projects
 /.herdr-project/
-/.termalator/
 
 # Editors and OS
 .DS_Store

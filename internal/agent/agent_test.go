@@ -25,8 +25,9 @@ func TestClaudeLaunch(t *testing.T) {
 	a := claude(t)
 	spec := LaunchSpec{
 		Role: RoleThread, SessionID: "s1", AgentSID: "uuid-1",
-		Cwd: "/w", RuntimeDir: "/run/s1", BriefPath: "/w/.termalator/brief.md",
+		Cwd: "/w", RuntimeDir: "/run/s1", BriefPath: "/h/.termalator/projects/p/threads/t-0001/brief.md",
 		Kickoff: "Read your brief.", TMBin: "/bin/tm", Socket: "/run/tm.sock",
+		Access: Access{Read: []string{"/h/.termalator/projects/p"}, NoWrite: []string{"/h/.termalator/projects/p"}},
 	}
 	l, err := a.Launch(spec)
 	if err != nil {
@@ -34,8 +35,9 @@ func TestClaudeLaunch(t *testing.T) {
 	}
 	want := []string{"claude",
 		"--plugin-dir", "/run/s1/claude-plugin",
+		"--settings", "/run/s1/claude-settings.json",
 		"--session-id", "uuid-1",
-		"--append-system-prompt-file", "/w/.termalator/brief.md",
+		"--append-system-prompt-file", "/h/.termalator/projects/p/threads/t-0001/brief.md",
 		"Read your brief."}
 	if !reflect.DeepEqual(l.Argv, want) {
 		t.Fatalf("argv\n got %q\nwant %q", l.Argv, want)
@@ -45,6 +47,28 @@ func TestClaudeLaunch(t *testing.T) {
 		t.Fatalf("hooks.json is not JSON: %v\n%s", err, l.Files["claude-plugin/hooks/hooks.json"])
 	}
 
+	settings := parseSettings(t, l.Files["claude-settings.json"])
+	if want := []string{"Read(//h/.termalator/projects/p/**)"}; !reflect.DeepEqual(settings.Permissions.Allow, want) {
+		t.Fatalf("allow = %q, want %q", settings.Permissions.Allow, want)
+	}
+	if want := []string{"Edit(//h/.termalator/projects/p/**)", "Write(//h/.termalator/projects/p/**)"}; !reflect.DeepEqual(settings.Permissions.Deny, want) {
+		t.Fatalf("deny = %q, want %q", settings.Permissions.Deny, want)
+	}
+	if !settings.Sandbox.Enabled || !reflect.DeepEqual(settings.Sandbox.Network.AllowUnixSockets, []string{"/run/tm.sock"}) {
+		t.Fatalf("thread sandbox = %+v", settings.Sandbox)
+	}
+
+	coord := spec
+	coord.Role, coord.Access = RoleCoordinator, Access{Read: []string{"/h/.termalator/worktrees/p"}}
+	l, err = a.Launch(coord)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings = parseSettings(t, l.Files["claude-settings.json"])
+	if settings.Sandbox.Enabled || len(settings.Permissions.Deny) != 0 {
+		t.Fatalf("coordinator must not get the thread sandbox or deny rules: %+v", settings)
+	}
+
 	spec.Resume, spec.Yolo = true, true
 	l, err = a.Launch(spec)
 	if err != nil {
@@ -52,11 +76,29 @@ func TestClaudeLaunch(t *testing.T) {
 	}
 	want = []string{"claude",
 		"--plugin-dir", "/run/s1/claude-plugin",
-		"--append-system-prompt-file", "/w/.termalator/brief.md",
+		"--settings", "/run/s1/claude-settings.json",
+		"--append-system-prompt-file", "/h/.termalator/projects/p/threads/t-0001/brief.md",
 		"--resume", "uuid-1", "--dangerously-skip-permissions"}
 	if !reflect.DeepEqual(l.Argv, want) {
 		t.Fatalf("resume argv\n got %q\nwant %q", l.Argv, want)
 	}
+}
+
+type claudeSettings struct {
+	Permissions struct{ Allow, Deny []string }
+	Sandbox     struct {
+		Enabled bool
+		Network struct{ AllowUnixSockets []string }
+	}
+}
+
+func parseSettings(t *testing.T, b []byte) claudeSettings {
+	t.Helper()
+	var s claudeSettings
+	if err := json.Unmarshal(b, &s); err != nil {
+		t.Fatalf("claude-settings.json is not JSON: %v\n%s", err, b)
+	}
+	return s
 }
 
 func TestClaudeHooks(t *testing.T) {
@@ -91,6 +133,39 @@ func TestClaudeHooks(t *testing.T) {
 	}
 	if out.HookSpecificOutput.AdditionalContext != "# Context\n\"quoted\"" {
 		t.Fatalf("additionalContext = %q", out.HookSpecificOutput.AdditionalContext)
+	}
+}
+
+func TestClaudeTodos(t *testing.T) {
+	a := claude(t)
+	payload := map[string]any{
+		"tool_name": "TodoWrite",
+		"tool_input": map[string]any{"todos": []any{
+			map[string]any{"content": "Reproduce", "status": "completed", "activeForm": "Reproducing"},
+			map[string]any{"content": "Fix", "status": "in_progress", "activeForm": "Fixing"},
+			map[string]any{"content": "Open a PR", "status": "pending", "activeForm": "Opening a PR"},
+		}},
+	}
+	sigs, _, err := a.Hook(HookEvent{Event: "PostToolUse", Payload: payload}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got *[]Todo
+	for _, s := range sigs {
+		if s.Todos != nil {
+			got = s.Todos
+		}
+	}
+	want := []Todo{{"Reproduce", TodoCompleted}, {"Fix", TodoInProgress}, {"Open a PR", TodoPending}}
+	if got == nil || !reflect.DeepEqual(*got, want) {
+		t.Fatalf("todos = %+v, want %+v", got, want)
+	}
+
+	// A subagent's todo list is not the thread's.
+	payload["agent_id"] = "sub-1"
+	sigs, _, _ = a.Hook(HookEvent{Event: "PostToolUse", Payload: payload}, nil)
+	if len(sigs) != 0 {
+		t.Fatalf("subagent todos must be ignored, got %+v", sigs)
 	}
 }
 

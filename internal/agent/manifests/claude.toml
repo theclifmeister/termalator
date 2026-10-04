@@ -21,8 +21,11 @@ command = "claude"
 # session without guessing. --plugin-dir loads our hooks for this session
 # only, without touching ~/.claude (spike: hooks are added to the user's own
 # hooks, not replacing them). The brief goes in as an appended system prompt.
+# --settings carries the access policy (docs/SPEC.md §5.2); its permission
+# lists merge with the user's own settings.
 args = [
   "--plugin-dir", "{{.RuntimeDir}}/claude-plugin",
+  "--settings", "{{.RuntimeDir}}/claude-settings.json",
   "{{if not .Resume}}--session-id{{end}}", "{{if not .Resume}}{{.AgentSID}}{{end}}",
   "{{if .BriefPath}}--append-system-prompt-file{{end}}", "{{.BriefPath}}",
 ]
@@ -40,6 +43,28 @@ TERMALATOR_BIN = "{{.TMBin}}"
 path = "claude-plugin/.claude-plugin/plugin.json"
 template = '''
 {"name": "termalator", "description": "termalator session hooks", "version": "0.1.0"}
+'''
+
+# Access policy (docs/SPEC.md §5.2), verified by the symlink spike (t-0005):
+# Claude checks permissions on real paths, so grants name the real project
+# directories. Read rules make reads silent; Edit/Write deny rules block the
+# tools; for threads the sandbox blocks Bash writes at the OS level. The
+# server's socket must be allowed or sandboxed `tm` calls fail with EPERM.
+[[launch.files]]
+path = "claude-settings.json"
+template = '''
+{
+  "permissions": {
+    "allow": {{json (rules "Read(/%s/**)" .Access.Read)}},
+    "deny": {{json (concat (rules "Edit(/%s/**)" .Access.NoWrite) (rules "Write(/%s/**)" .Access.NoWrite))}}
+  },
+  "sandbox": {
+    {{- if eq .Role "thread"}}
+    "enabled": true,
+    {{- end}}
+    "network": {"allowUnixSockets": [{{json .Socket}}]}
+  }
+}
 '''
 
 # Every event goes to `tm hook --agent claude`, which forwards the payload
@@ -138,6 +163,17 @@ reason = "error"
 [[hooks]]
 event = "SessionEnd"
 state = "exited"
+
+# Todo mirroring (docs/SPEC.md §7.3): Claude's TodoWrite tool sends the
+# whole list each time, so the server can replace its copy on every call.
+# Spike (t-0004): confirm the payload shape, and whether newer Claude
+# versions use other task tools (TaskCreate/TaskUpdate) that need entries.
+[[todos]]
+event = "PostToolUse"
+match = { tool_name = "TodoWrite" }
+list = "tool_input.todos"
+text = "content"
+status = "status"
 
 # Screen rules: a cross-check, never the primary signal (docs/SPEC.md §8.4).
 # Highest priority wins. Spike: verify each against current Claude Code.
