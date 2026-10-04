@@ -5,7 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+
+	"github.com/theclifmeister/termalator/internal/home"
 )
+
+const homeEnv = home.Env
 
 // Paths are the files the server and its clients agree on (docs/SPEC.md
 // §3.2, §5.1).
@@ -19,27 +23,21 @@ type Paths struct {
 	Sessions string // Home/state/sessions.json
 }
 
-// ResolvePaths computes the paths from the process environment.
+// ResolvePaths computes the paths from the process environment. The state
+// directory comes from internal/home, the single source of truth for
+// TERMALATOR_HOME.
 //
 // The lock and pid file sit next to the socket, so a TERMALATOR_SOCKET
 // override (how tests isolate a server) also isolates its lock. A custom
 // TERMALATOR_HOME ignores XDG_RUNTIME_DIR for the same reason: a test home
 // must never share a run directory with the user's real server.
 func ResolvePaths() (Paths, error) {
-	home := os.Getenv("TERMALATOR_HOME")
-	custom := home != ""
-	if !custom {
-		h, err := os.UserHomeDir()
-		if err != nil {
-			return Paths{}, fmt.Errorf("server: no home directory: %w", err)
-		}
-		home = filepath.Join(h, ".termalator")
-	}
-	home, err := filepath.Abs(home)
+	stateDir, err := home.Dir()
 	if err != nil {
-		return Paths{}, err
+		return Paths{}, fmt.Errorf("server: %w", err)
 	}
-	env := Env{TermalatorSocket: os.Getenv("TERMALATOR_SOCKET"), TermalatorHome: home, UID: os.Getuid()}
+	custom := os.Getenv(homeEnv) != ""
+	env := Env{TermalatorSocket: os.Getenv("TERMALATOR_SOCKET"), TermalatorHome: stateDir, UID: os.Getuid()}
 	if runtime.GOOS == "linux" && !custom {
 		env.XDGRuntimeDir = os.Getenv("XDG_RUNTIME_DIR")
 	}
@@ -54,13 +52,13 @@ func ResolvePaths() (Paths, error) {
 	}
 	run := filepath.Dir(sock)
 	return Paths{
-		Home:     home,
+		Home:     stateDir,
 		RunDir:   run,
 		Socket:   sock,
 		Lock:     filepath.Join(run, "server.lock"),
 		PID:      filepath.Join(run, "server.pid"),
-		Log:      filepath.Join(home, "logs", "server.log"),
-		Sessions: filepath.Join(home, "state", "sessions.json"),
+		Log:      filepath.Join(stateDir, "logs", "server.log"),
+		Sessions: filepath.Join(stateDir, "state", "sessions.json"),
 	}, nil
 }
 
