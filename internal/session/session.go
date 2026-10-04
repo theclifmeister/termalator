@@ -71,6 +71,9 @@ type Session struct {
 	stateCh    chan struct{} // closed and replaced on every state change
 
 	output atomic.Bool // output arrived since the last screen evaluation
+	// sized is set once a console asked for a size (RequestResize): from
+	// then on, showing the pane never resizes it (docs/SPEC.md §3.3).
+	sized  atomic.Bool
 	remote atomic.Bool // remote control is on
 	// closeNote, when set, replaces "session exited: …" as the reason
 	// subscribers are given when the process ends.
@@ -307,6 +310,7 @@ func (s *Session) RequestResize(cols, rows uint16) error {
 	if cols == 0 || rows == 0 {
 		return fmt.Errorf("session: invalid size %d×%d", cols, rows)
 	}
+	s.sized.Store(true)
 	s.rmu.Lock()
 	defer s.rmu.Unlock()
 	if s.resizeTimer == nil {
@@ -329,6 +333,11 @@ func (s *Session) RequestResize(cols, rows uint16) error {
 	s.resizedAt = time.Now()
 	return s.Resize(cols, rows)
 }
+
+// Sized says whether a console has sized the session since it started:
+// typed into it, resized a window or changed a layout showing it, or was
+// the first to show it.
+func (s *Session) Sized() bool { return s.sized.Load() }
 
 // resizeLater applies the request that waited for the quiet time.
 func (s *Session) resizeLater() {
