@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.289
+▝▜██████▀  Haiku 4.5 · Claude Max
+ ▝▝   ▝▝   ~/…/termalator/hp-termalator-t-0003-spike-libghostty-vt-from-go/spikes/libghostty/.deps/claude-cwd
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                                  auto mode unavailable for this model
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ Try "fix typecheck errors"
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Model: Haiku 4.5 | Ctx: 0 | ⎇ hp/termalator/t-0003-spike-libghostty-vt-from-g...
+  cwd: /Users/clifford/.herdr/worktrees/termalator/hp-termalator-t-0003-spike-l...
+  ⏸ manual mode on · ← for agents

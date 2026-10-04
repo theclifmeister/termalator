@@ -1,0 +1,40 @@
+❯ Print the numbers 1 to 300, one per line, each line exactly 'row N ok' (e.g. row 7 ok). No tools, no other text.
+  row 252 ok
+  row 253 ok
+  row 254 ok
+  row 255 ok
+  row 256 ok
+  row 257 ok
+  row 258 ok
+  row 259 ok
+  row 260 ok
+  row 261 ok
+  row 262 ok
+  row 263 ok
+  row 264 ok
+  row 265 ok
+  row 266 ok
+  row 267 ok
+  row 268 ok
+  row 269 ok
+  row 270 ok
+  row 271 ok
+  row 272 ok
+  row 273 ok
+  row 274 ok
+  row 275 ok
+  row 276 ok
+  row 277 ok
+  row 278 ok
+  row 279 ok
+  row 280 ok
+  row 281 ok
+  row 282 ok
+  row 283 ok                                    Jump to bottom (click) ↓
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Model: Haiku 4.5 | Ctx: 8.3k | ⎇ hp/termalator/t-0003-spi...
+  cwd: /Users/clifford/.herdr/worktrees/termalator/hp-terma...
+  ⏸ manual mode on · ← for agents
