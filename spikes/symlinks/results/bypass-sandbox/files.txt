@@ -1,0 +1,8 @@
+## files after bypass-sandbox
+.termalator-spike/projects/demo/w2.md: w2 bypass-sandbox
+.termalator-spike/projects/demo/w4.md: MISSING
+.termalator-spike/projects/demo/w5.md: w5 bypass-sandbox
+.termalator-spike/projects/demo/threads/t1/out/REPORT.md: report bypass-sandbox
+.termalator-spike/projects/demo/threads/t1/out/STATUS.md: status bypass-sandbox
+brief: BRIEF-TOKEN: mango-9
+brief still symlink: yes
