@@ -55,6 +55,16 @@ const (
 	MethodSessionKeys  = "session.keys"
 )
 
+// Control methods of the agent layer (M3).
+const (
+	MethodSessionPrompt = "session.prompt"
+	MethodSessionWait   = "session.wait"
+	MethodAgentList     = "agent.list"
+	MethodAgentReload   = "agent.reload"
+	MethodAgentExplain  = "agent.explain"
+	MethodHookEvent     = "hook.event"
+)
+
 // ServerStatus is the result of server.status.
 type ServerStatus struct {
 	PID      int       `json:"pid"`
@@ -69,6 +79,9 @@ type ServerStatus struct {
 	PreviousShutdown string `json:"previous_shutdown,omitempty"`
 	// Lost lists sessions of the previous server that were not restored.
 	Lost []string `json:"lost,omitempty"`
+	// Resumed lists agent sessions of the previous server that were
+	// relaunched with their agent session ids (docs/SPEC.md §3.6).
+	Resumed []string `json:"resumed,omitempty"`
 }
 
 // ServerStopParams are the params of server.stop.
@@ -99,6 +112,18 @@ type SessionInfo struct {
 	Title   string    `json:"title,omitempty"`
 	Created time.Time `json:"created"`
 	Clients int       `json:"clients"`
+
+	// Agent state (docs/SPEC.md §8.4), for agent sessions and for shells
+	// whose foreground job was identified as an agent.
+	State        string `json:"state,omitempty"`
+	Reason       string `json:"reason,omitempty"`
+	StateSources string `json:"state_sources,omitempty"`
+	AgentSID     string `json:"agent_session_id,omitempty"`
+	Identified   bool   `json:"identified,omitempty"` // found by process, not launched
+	TodosDone    int    `json:"todos_done,omitempty"`
+	TodosTotal   int    `json:"todos_total,omitempty"`
+	Current      string `json:"current,omitempty"` // the in-progress todo
+	Queued       int    `json:"queued_prompts,omitempty"`
 }
 
 // SessionStartParams are the params of session.start.
@@ -109,6 +134,20 @@ type SessionStartParams struct {
 	Cwd  string `json:"cwd,omitempty"`
 	Cols uint16 `json:"cols,omitempty"`
 	Rows uint16 `json:"rows,omitempty"`
+
+	// Agent starts the named agent (docs/SPEC.md §8) instead of Argv.
+	Agent string `json:"agent,omitempty"`
+	// Role is coordinator, thread or shell (the default). It decides the
+	// access policy and the context re-injected after a clear.
+	Role    string `json:"role,omitempty"`
+	Project string `json:"project,omitempty"`
+	Thread  string `json:"thread,omitempty"`
+	// Brief is a file attached as the agent's system prompt, if the agent
+	// supports it; Kickoff is the first prompt.
+	Brief   string `json:"brief,omitempty"`
+	Kickoff string `json:"kickoff,omitempty"`
+	Yolo    bool   `json:"yolo,omitempty"`
+	Model   string `json:"model,omitempty"`
 }
 
 // SessionStartResult is the result of session.start.
@@ -173,4 +212,66 @@ func AppendFrame(b []byte, t FrameType, payload []byte) []byte {
 	n := len(payload)
 	b = append(b, byte(t), byte(n>>24), byte(n>>16), byte(n>>8), byte(n))
 	return append(b, payload...)
+}
+
+// SessionPromptParams are the params of session.prompt.
+type SessionPromptParams struct {
+	ID   string `json:"id"`
+	Text string `json:"text"`
+}
+
+// SessionPromptResult says how the prompt went in: "channel" (delivered
+// through the agent's structured channel) or "queued" (pasted once the
+// agent is idle with an empty prompt box).
+type SessionPromptResult struct {
+	Via string `json:"via"`
+}
+
+// SessionWaitParams are the params of session.wait: block until the
+// session's agent state is one of States (any change when empty), or
+// until TimeoutMS passes.
+type SessionWaitParams struct {
+	ID        string   `json:"id"`
+	States    []string `json:"states,omitempty"`
+	TimeoutMS int      `json:"timeout_ms,omitempty"`
+}
+
+// SessionWaitResult is the state when session.wait returned.
+type SessionWaitResult struct {
+	State    string `json:"state"`
+	Reason   string `json:"reason,omitempty"`
+	TimedOut bool   `json:"timed_out,omitempty"`
+}
+
+// AgentInfo describes one known agent for agent.list.
+type AgentInfo struct {
+	Name       string   `json:"name"`
+	Display    string   `json:"display,omitempty"`
+	Source     string   `json:"source"` // builtin:… or a file path
+	Command    string   `json:"command"`
+	Injector   string   `json:"injector"`
+	Tested     []string `json:"tested_versions,omitempty"`
+	Unenforced bool     `json:"unenforced,omitempty"` // renders no access policy
+}
+
+// AgentListResult is the result of agent.list and agent.reload.
+type AgentListResult struct {
+	Agents []AgentInfo `json:"agents"`
+	// Errors lists broken user manifests, which were skipped.
+	Errors []string `json:"errors,omitempty"`
+}
+
+// HookEventParams are what `tm hook` sends: one event of one session.
+type HookEventParams struct {
+	Session string         `json:"session"`
+	Agent   string         `json:"agent"`
+	Event   string         `json:"event"`
+	PPID    int            `json:"ppid,omitempty"`
+	At      time.Time      `json:"at"`
+	Payload map[string]any `json:"payload"`
+}
+
+// HookEventResult is what `tm hook` prints back to the harness.
+type HookEventResult struct {
+	Stdout string `json:"stdout,omitempty"`
 }

@@ -2,7 +2,7 @@ name: nightly
 
 # Slow checks that don't run on every PR (docs/SPEC.md §16): long fuzzing
 # and the full end-to-end suite.
-# Real-Claude tests need a logged-in claude and don't run here.
+# Real-Claude tests need a logged-in claude: see the realclaude job.
 
 on:
   schedule:
@@ -112,5 +112,28 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: e2e-artifacts-${{ matrix.os }}
+          path: ${{ runner.temp }}/e2e-artifacts
+          if-no-files-found: ignore
+
+  # The real-Claude suite (docs/SPEC.md §16.4) needs a logged-in claude,
+  # which GitHub-hosted runners don't have. It runs only on a self-hosted
+  # runner labelled "claude", and only when the repository variable
+  # REALCLAUDE_RUNNER is "true". By hand: make test-claude.
+  realclaude:
+    if: vars.REALCLAUDE_RUNNER == 'true'
+    runs-on: [self-hosted, claude]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: test-claude
+        run: make test-claude
+        env:
+          E2E_ARTIFACTS: ${{ runner.temp }}/e2e-artifacts
+
+      - name: Upload e2e artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts-realclaude
           path: ${{ runner.temp }}/e2e-artifacts
           if-no-files-found: ignore

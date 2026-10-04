@@ -11,6 +11,7 @@
 #   make test       go test -race ./... (unit + integration + fuzz seed corpora)
 #   make e2e        every end-to-end scenario (internal/e2e) against bin/tm
 #   make e2e-smoke  the core scenarios, as on every PR
+#   make test-claude  the scenarios against the real claude (needs a login; costs cents)
 #   make fuzz       run every fuzz target for FUZZTIME each (nightly)
 #   make vet        go vet ./...
 #   make toolchain  check Go, Zig, pkg-config and git
@@ -67,7 +68,7 @@ export CGO_ENABLED := 1
 CGO_CFLAGS ?= -O2 -g
 export CGO_CFLAGS += -DTM_LIBGHOSTTY=$(GHOSTTY_OUT)
 
-.PHONY: all build run test e2e e2e-smoke fuzz vet ghostty toolchain env clean distclean
+.PHONY: all build run test test-claude e2e e2e-smoke fuzz vet ghostty toolchain env clean distclean
 
 all: build
 
@@ -100,6 +101,11 @@ e2e: $(STAMP)
 
 e2e-smoke: $(STAMP)
 	E2E=1 E2E_RACE=1 $(GO) test -race -count=1 -run '^TestSmoke' ./internal/e2e $(E2E_FLAGS)
+
+# The real-Claude suite (docs/SPEC.md §16.4): build tag realclaude, the
+# claude on PATH, Haiku. On demand, and nightly where a login exists.
+test-claude: $(STAMP)
+	E2E=1 $(GO) test -tags realclaude -count=1 -timeout 30m -run '^TestReal' -v ./internal/e2e $(E2E_FLAGS)
 
 vet: $(STAMP)
 	$(GO) vet ./...

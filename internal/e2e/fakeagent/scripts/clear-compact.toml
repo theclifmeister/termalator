@@ -1,0 +1,23 @@
+# s07: /clear (new session id, SessionStart clear) and /compact
+# (PreCompact, SessionStart compact, same id) inside one turn.
+
+[[step]]
+do = "stream"
+ms = 100
+text = "clearing"
+
+[[step]]
+do = "clear"
+
+[[step]]
+do = "stream"
+ms = 100
+text = "compacting"
+
+[[step]]
+do = "compact"
+
+[[step]]
+do = "stream"
+ms = 100
+text = "done"

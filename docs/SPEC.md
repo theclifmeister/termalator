@@ -870,11 +870,17 @@ Claude Code is pure data (`manifests/claude.toml`), except for the optional sock
   - Subagents have no task tools, so their events never touch the list.
 - **Prompt injection:**
   - **Paste** (core, always available): bracketed paste, then Enter as a separate write 150 ms later. Only when the state is idle, **no dialog is visible** (an Enter would answer it), and the prompt box is empty, ignoring dim ghost text. After an Esc, Claude puts the cancelled prompt back in the box.
-  - **uds-messaging socket** (Go, `internal/agent/claude`, optional): send one NDJSON line `{"type":"user","message":{"role":"user","content":"…"}}` to `messagingSocketPath` from the status file (optionally preceded by an auth line). It queues correctly both idle and mid-turn, and avoids all three paste hazards.
+  - **uds-messaging socket** (Go, `internal/agent/claude`, opt-in with `inject.prompt = "channel"`): send one NDJSON line `{"type":"user","message":{"role":"user","content":"…"}}` to `messagingSocketPath` from the status file (optionally preceded by an auth line). It queues correctly both idle and mid-turn, and avoids all three paste hazards.
     - It is used only when the version is tested, the socket exists, and a probe succeeds.
     - On any error the core falls back to paste.
+    - **Off for Claude (M3 finding):** 2.1.289 delivers a socket message to the model as "Another Claude session sent a message: … not typed by your user", with caveats against treating it as the user's approval. That framing is wrong for prompts from the human or the coordinator, so `claude.toml` keeps `paste`.
 - **Re-injection after `/clear` and compaction:** the `SessionStart` response carries `hookSpecificOutput.additionalContext`, fetched fresh from the server each time (verified for `startup`, `clear` and `compact`; §7.8).
 - **Workspace trust.** Trust gates every hook, ours included. A new worktree of an already-trusted repo shows no trust dialog. Otherwise the dialog shows as blocked / trust, and the human (or the coordinator, if `trust_screens = "coordinator"`) answers it. Keys sent within about 0.5 s of it painting are dropped.
+- **Found in M3 against 2.1.289:**
+  - The prompt box line is `❯` followed by a **no-break space** (U+00A0), which RE2's `\s` doesn't match; the empty-box rule (`inject.empty_rule`, used by the paste injector) allows for it.
+  - A fresh session file has **no `status`** until Claude's first state change; until then the tracker uses hooks.
+  - The status file is written ~100 ms **after** the hook: a hook newer than the file stands in for it for up to 1 s.
+  - Claude saves a conversation only after the first prompt, so `--resume` of an **unprompted** session fails ("No conversation found"). The server records whether a session was prompted and relaunches unprompted ones fresh.
 - **Not verified yet:** Linux (bubblewrap sandbox); `async` hooks; `PermissionDenied`/`StopFailure`/MCP elicitation; auto-compaction; the status file after a Claude crash (treated as invalid when the pid is dead); Ctrl+U to clear the input box; `skipDangerousModePermissionPrompt`; the `deleted` task status.
 
 ### 8.7 Adding a new agent

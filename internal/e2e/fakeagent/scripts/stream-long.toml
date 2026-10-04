@@ -1,0 +1,6 @@
+# s04: a long answer. Press Esc while it streams: no Stop hook.
+
+[[step]]
+do = "stream"
+ms = 5000
+text = "Once upon a time a lighthouse keeper counted the ships that passed in the night, one by one, until the sea grew quiet and the lamp burned low."

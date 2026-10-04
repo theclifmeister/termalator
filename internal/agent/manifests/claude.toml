@@ -98,10 +98,15 @@ template = '''
 '''
 
 [inject]
-# Bracketed paste + Enter while idle with an empty prompt box (core). The
-# Go part (internal/agent/claude) upgrades this to Claude's undocumented
-# uds-messaging socket when its feature probe succeeds (docs/SPEC.md §8.6).
+# Bracketed paste + Enter while idle with an empty prompt box (core).
+# "channel" would use Claude's undocumented uds-messaging socket (Go, in
+# internal/agent/claude, behind a probe), but 2.1.289 presents socket
+# messages as coming from "another Claude session … not typed by your
+# user", so prompts from the human or the coordinator are pasted.
 prompt = "paste"
+# Paste only into an empty box: after an Esc, Claude puts the cancelled
+# prompt back, and a paste would be appended to it.
+empty_rule = "idle-empty-box"
 
 # Hook payloads are trimmed before they leave the hook process.
 [hook]
@@ -361,4 +366,16 @@ state = "idle"
 priority = 0
 region = "bottom:10"
 regex = '(?m)^\s*❯'
+skip_dim = true
+
+# Not a state of its own (the box above already says idle): the paste
+# injector checks it so it never appends to text left in the box. Ghost
+# text (the dim prompt suggestion) doesn't count as typed. Claude puts a
+# no-break space after the ❯, which \s doesn't cover.
+[[rules]]
+id = "idle-empty-box"
+state = "idle"
+priority = 0
+region = "bottom:10"
+regex = '(?m)^\s*❯[\s\x{00A0}]*$'
 skip_dim = true

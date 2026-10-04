@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 
+	// The Go parts of built-in agents register themselves.
+	_ "github.com/theclifmeister/termalator/internal/agent/claude"
 	"github.com/theclifmeister/termalator/internal/cli"
 	"github.com/theclifmeister/termalator/internal/emu"
 	"github.com/theclifmeister/termalator/internal/version"
@@ -29,7 +31,7 @@ func main() {
 		os.Exit(code)
 	}
 	fmt.Fprintln(os.Stderr, "tm: not implemented yet; see docs/SPEC.md")
-	fmt.Fprintln(os.Stderr, "usage: tm version | selftest | server | session | attach | project | task | context | skill | inbox")
+	fmt.Fprintln(os.Stderr, "usage: tm version | selftest | server | session | attach | agent | hook | project | task | context | skill | inbox")
 	os.Exit(2)
 }
 

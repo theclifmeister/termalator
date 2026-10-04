@@ -1,0 +1,20 @@
+# s18: Esc mid-list. The list keeps its last state (k1 in progress, k2
+# pending).
+
+[[step]]
+do = "todo_create"
+subject = "k1"
+description = "First step"
+
+[[step]]
+do = "todo_create"
+subject = "k2"
+description = "Second step"
+
+[[step]]
+do = "todo_update"
+id = "1"
+status = "in_progress"
+
+[[step]]
+do = "await_key"

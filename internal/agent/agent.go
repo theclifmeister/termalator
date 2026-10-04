@@ -162,6 +162,17 @@ const (
 	InjectNone    Injector = "none"
 )
 
+// PromptTarget is what a structured prompt channel needs to reach one
+// live session: the ids and the extra values the status file exposes
+// (StatusFile.Fields, e.g. a messaging socket path).
+type PromptTarget struct {
+	SessionID string
+	AgentSID  string
+	PID       int
+	Version   string            // the agent's version, when the status file says
+	Fields    map[string]string // from the status file; nil when it isn't trusted
+}
+
 // Agent is the whole contract between the core and one agent harness.
 //
 // The manifest-backed implementation (FromManifest) covers every method
@@ -194,9 +205,9 @@ type Agent interface {
 	Injector() Injector
 
 	// Prompt delivers text through a structured channel. Only called when
-	// Injector() == InjectChannel. ErrNoChannel (or any error) makes the
-	// core fall back to the paste injector.
-	Prompt(ctx context.Context, sessionID, text string) error
+	// Injector() == InjectChannel. Any error makes the core fall back to
+	// the paste injector.
+	Prompt(ctx context.Context, target PromptTarget, text string) error
 
 	// Sources returns the declarative state sources the core runs for this
 	// agent besides hooks and the screen: a status file, a JSONL tail and a

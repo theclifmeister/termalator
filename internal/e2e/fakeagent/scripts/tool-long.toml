@@ -1,0 +1,14 @@
+# s04: a tool that runs for 5 s. Press Esc during it: PreToolUse and then
+# nothing.
+
+[[step]]
+do = "tool"
+tool = "Bash"
+input = { command = "sleep 5", description = "Wait five seconds" }
+response = { stdout = "", stderr = "", interrupted = false }
+ms = 5000
+
+[[step]]
+do = "stream"
+ms = 200
+text = "finished"

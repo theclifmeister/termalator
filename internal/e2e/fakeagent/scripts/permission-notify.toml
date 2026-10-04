@@ -1,0 +1,19 @@
+# s07: the permission dialog stays open; Notification(permission_prompt)
+# follows a second later (Claude: about 6 s).
+
+[[step]]
+do = "notify"
+type = "permission_prompt"
+message = "Claude needs your permission to use Write"
+after_ms = 1000
+
+[[step]]
+do = "permission"
+tool = "Write"
+subject = "create x.txt"
+input = { file_path = "x.txt", content = "x\n" }
+
+[[step]]
+do = "stream"
+ms = 200
+text = "done"

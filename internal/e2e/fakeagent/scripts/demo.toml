@@ -1,0 +1,62 @@
+# A little of everything, for demos.
+
+[[step]]
+do = "stream"
+ms = 600
+text = "Let me plan this."
+
+[[step]]
+do = "todo_create"
+subject = "Look around"
+description = "List the files"
+active_form = "Looking around"
+
+[[step]]
+do = "todo_create"
+subject = "Write a note"
+description = "Create note.txt"
+active_form = "Writing a note"
+
+[[step]]
+do = "todo_update"
+id = "1"
+status = "in_progress"
+
+[[step]]
+do = "run"
+cmd = "ls | head -5"
+
+[[step]]
+do = "todo_update"
+id = "1"
+status = "completed"
+
+[[step]]
+do = "todo_update"
+id = "2"
+status = "in_progress"
+
+[[step]]
+do = "write"
+path = "note.txt"
+text = "written by the fake agent\n"
+
+[[step]]
+do = "todo_update"
+id = "2"
+status = "completed"
+
+[[step]]
+do = "question"
+header = "Next"
+question = "What next?"
+options = ["Stop here", "Keep going"]
+
+[[step]]
+do = "stream"
+ms = 800
+text = "All done."
+
+[[step]]
+do = "suggestion"
+text = "run demo"

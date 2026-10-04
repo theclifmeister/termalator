@@ -1,0 +1,13 @@
+# s05/s06: a background agent outlives the turn. The session file stays
+# busy until it finished and its <task-notification> turn ended.
+
+[[step]]
+do = "subagent"
+type = "general-purpose"
+text = "count the lines"
+ms = 1500
+
+[[step]]
+do = "stream"
+ms = 200
+text = "Launched a background agent."

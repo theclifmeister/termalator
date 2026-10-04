@@ -460,3 +460,13 @@ func TestBuiltinUnsetEnv(t *testing.T) {
 		t.Fatalf("FilterEnv with the built-in unset list = %q", got)
 	}
 }
+
+func TestTodoSnapshotHeal(t *testing.T) {
+	snap := &TodoSnapshot{}
+	mirror := []Todo{{ID: "1", Text: "a", ActiveText: "Doing a", Status: TodoInProgress}, {ID: "2", Text: "b", Status: TodoPending}}
+	got := snap.Heal(mirror, []Todo{{ID: "1", Text: "a", Status: TodoCompleted}, {ID: "3", Text: "c", Status: TodoPending}})
+	want := []Todo{{ID: "1", Text: "a", ActiveText: "Doing a", Status: TodoCompleted}, {ID: "3", Text: "c", Status: TodoPending}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Heal = %+v", got)
+	}
+}
