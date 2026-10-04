@@ -107,6 +107,7 @@ func TestPrefixStep(t *testing.T) {
 		{"ctrl+→ without the repeat is typed", false, false, ctrlRight, false, prefixDo{input: true}},
 		{"→ never repeats", false, true, uv.Key{Code: uv.KeyRight}, false, prefixDo{input: true}},
 		{"prefix u takes over", true, false, key("u"), false, prefixDo{takeover: true}},
+		{"prefix r toggles remote control", true, false, key("r"), false, prefixDo{remote: true}},
 		{"u alone is typed", false, false, key("u"), true, prefixDo{input: true}},
 	}
 	for _, c := range cases {

@@ -212,6 +212,9 @@ type pane struct {
 	info     proto.SessionInfo
 	rect     view.Rect // where it is in this window; empty when cropped away
 	gone     bool      // closed or ended: its goroutines stop
+	// restarting: the server relaunches its session under the same id
+	// (proto.ClosedRestarting); a failing write isn't a lost server then.
+	restarting bool
 }
 
 // client is the attached window: its panes and everything they share.
@@ -246,7 +249,10 @@ type client struct {
 	repeatUntil time.Time // until then, a resize key repeats without the prefix
 	flash       string    // a note for the status bar until the next key
 	confirm     *pane     // asking whether to take over this watch-only pane
-	takeover    func(proto.SessionInfo) error
+	// confirmRemote: asking whether to turn this coordinator's remote
+	// control on or off.
+	confirmRemote *pane
+	takeover      func(proto.SessionInfo) error
 
 	bare        bool     // the view has no dashboard: detaching leaves
 	statusBar   bool     // the view's chrome has the status bar
@@ -552,7 +558,7 @@ func (c *client) lost(p *pane, err error) {
 		return
 	}
 	c.mu.Lock()
-	gone := p.gone || c.closed
+	gone := p.gone || c.closed || p.restarting
 	c.mu.Unlock()
 	if !gone {
 		c.finish(Result{Reason: "lost the server: " + errString(err)})
@@ -627,6 +633,15 @@ func (c *client) readLoop(p *pane) {
 				c.log.Printf("digest mismatch server=%s client=%s %v", payload, mine, derr)
 			}
 		case proto.FrameClosed:
+			if string(payload) == proto.ClosedRestarting {
+				p.restarting = true
+				c.flash = paneName(p.info) + " is restarting"
+				c.status()
+				c.mu.Unlock()
+				c.poke()
+				go c.reattach(p)
+				return
+			}
 			c.mu.Unlock()
 			c.ended(p, string(payload))
 			return
@@ -923,6 +938,10 @@ func (c *client) key(k uv.Key) {
 		c.answerTakeover(p, keyName(k) == "y")
 		return
 	}
+	if p := c.confirmRemote; p != nil {
+		c.answerRemote(p, keyName(k) == "y")
+		return
+	}
 	pending := c.pending
 	do := prefixStep(c.prefix, pending, time.Now().Before(c.repeatUntil), k, c.dashboard)
 	c.pending = do.arm
@@ -944,6 +963,8 @@ func (c *client) key(k uv.Key) {
 		c.paneCommand(do.pane)
 	case do.takeover:
 		c.askTakeover()
+	case do.remote:
+		c.askRemote()
 	}
 }
 
@@ -956,6 +977,9 @@ type prefixDo struct {
 	pane   string // a split-pane command (paneCommands)
 	// takeover asks to take over the focused watch-only pane.
 	takeover bool
+	// remote asks to turn the focused coordinator's remote control on
+	// or off.
+	remote bool
 }
 
 // paneCommands are the keys that, after the prefix, act on the window's
@@ -998,6 +1022,8 @@ func prefixStep(prefix chord, pending, repeat bool, k uv.Key, dashboard bool) pr
 		return prefixDo{detach: true}
 	case name == "u":
 		return prefixDo{takeover: true}
+	case name == "r":
+		return prefixDo{remote: true}
 	case prefixCommands[name] && dashboard:
 		return prefixDo{detach: true, then: name}
 	case paneCommands[name]:
@@ -1144,6 +1170,14 @@ func paneName(s proto.SessionInfo) string {
 // status redraws the status bar. c.mu held.
 func (c *client) status() {
 	if !c.statusBar || c.focus == nil {
+		return
+	}
+	if p := c.confirmRemote; p != nil {
+		line := "\x1b[7m" + fit(" "+remoteQuestion(p.info)+" y yes · any other key no", c.paneCols) + "\x1b[27m"
+		if c.single {
+			c.focus.r.SetStatus(line)
+		}
+		c.statusText = line
 		return
 	}
 	if p := c.confirm; p != nil {

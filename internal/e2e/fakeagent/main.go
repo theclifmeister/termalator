@@ -70,6 +70,7 @@ type app struct {
 	alwaysAllow map[string]bool
 	notify      *step
 	lastText    string
+	remote      bool // Remote Control is on (--remote-control, /remote-control)
 
 	written       sessionState // what the session file holds
 	real          sessionState // the last computed state
@@ -87,6 +88,7 @@ type app struct {
 // sessionState is what the session file says.
 type sessionState struct {
 	status, waitingFor, sid string
+	remote                  bool
 }
 
 func main() {
@@ -110,6 +112,7 @@ func main() {
 	}
 	a := &app{
 		opts:        opts,
+		remote:      opts.remote != nil,
 		version:     version,
 		home:        home,
 		logicalWD:   wd,
@@ -354,7 +357,7 @@ func (a *app) realStatusLocked() (string, string) {
 // A status override (the status step) holds until the next real change.
 func (a *app) syncSessionLocked() {
 	st, wf := a.realStatusLocked()
-	now := sessionState{status: st, waitingFor: wf, sid: a.sid}
+	now := sessionState{status: st, waitingFor: wf, sid: a.sid, remote: a.remote}
 	if a.overridden && now == a.real {
 		return
 	}
@@ -366,7 +369,7 @@ func (a *app) syncSessionLocked() {
 // overrideStatusLocked writes a status that is not the real one.
 func (a *app) overrideStatusLocked(status, waitingFor string) {
 	a.overridden = true
-	a.writeSessionLocked(sessionState{status: status, waitingFor: waitingFor, sid: a.sid})
+	a.writeSessionLocked(sessionState{status: status, waitingFor: waitingFor, sid: a.sid, remote: a.remote})
 }
 
 func (a *app) writeSessionLocked(s sessionState) {
@@ -393,6 +396,10 @@ func (a *app) writeSessionLocked(s sessionState) {
 	}
 	if s.status == "waiting" && s.waitingFor != "" {
 		m["waitingFor"] = s.waitingFor
+	}
+	m["bridgeSessionId"] = nil // as 2.1.289: null while Remote Control is off
+	if s.remote {
+		m["bridgeSessionId"] = "session_fake"
 	}
 	b, _ := json.Marshal(m)
 	_ = writeAtomic(a.sessionFile(), b, 0o600)

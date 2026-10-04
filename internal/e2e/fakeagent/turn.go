@@ -76,7 +76,7 @@ func (a *app) worker() {
 	}
 }
 
-// runSlash runs /clear, /compact or /exit.
+// runSlash runs /clear, /compact, /exit or /remote-control.
 func (a *app) runSlash(j job) {
 	a.mu.Lock()
 	a.running = &j
@@ -84,6 +84,11 @@ func (a *app) runSlash(j job) {
 	a.syncSessionLocked()
 	a.mu.Unlock()
 	a.requestRedraw()
+	a.log("slash", map[string]any{"text": j.text, "via": j.via})
+	switch {
+	case strings.HasPrefix(j.text, "/remote-control"):
+		a.doRemote()
+	}
 	switch j.text {
 	case "/clear":
 		a.doClear()
@@ -100,6 +105,30 @@ func (a *app) runSlash(j job) {
 	a.syncSessionLocked()
 	a.mu.Unlock()
 	a.requestRedraw()
+}
+
+// doRemote is /remote-control as 2.1.289 has it: off, it connects; on,
+// it opens a menu whose first entry disconnects, on Continue.
+func (a *app) doRemote() {
+	a.mu.Lock()
+	on := a.remote
+	a.mu.Unlock()
+	if !on {
+		a.mu.Lock()
+		a.remote = true
+		a.syncSessionLocked()
+		a.mu.Unlock()
+		a.say("  ", "/remote-control is active · Continue here, on your phone, or at https://claude.ai/code/session_fake")
+		return
+	}
+	d := &dialog{kind: "remote", options: []string{"Disconnect this session", "Show QR code", "Continue"}, sel: 2}
+	if n, _ := a.waitDialog(context.Background(), d); n == 1 {
+		a.mu.Lock()
+		a.remote = false
+		a.syncSessionLocked()
+		a.mu.Unlock()
+		a.say("  ⎿  ", "Remote Control disconnected.")
+	}
 }
 
 // doClear ends the session and starts a new one with a new id.
@@ -334,8 +363,9 @@ func (a *app) handleKey(k key) {
 		a.input, a.pasted = nil, false
 		a.suggestion = ""
 		kind := "prompt"
-		switch text {
-		case "/clear", "/compact", "/exit":
+		switch {
+		case text == "/clear", text == "/compact", text == "/exit",
+			text == "/remote-control", strings.HasPrefix(text, "/remote-control "):
 			kind = "slash"
 		}
 		a.mu.Unlock()
@@ -374,7 +404,9 @@ func (a *app) dialogKeyLocked(d *dialog, k key) {
 	case kEnter:
 		choose(d.sel + 1)
 	case kEsc, kCtrlC:
-		if d.kind == "trust" || d.kind == "bypass" {
+		if d.kind == "remote" {
+			choose(3) // Esc to continue
+		} else if d.kind == "trust" || d.kind == "bypass" {
 			choose(0)
 		} else {
 			a.cancelTurnLocked()

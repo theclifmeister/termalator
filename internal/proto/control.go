@@ -63,7 +63,34 @@ const (
 	MethodAgentReload   = "agent.reload"
 	MethodAgentExplain  = "agent.explain"
 	MethodHookEvent     = "hook.event"
+	// MethodSessionRemote turns a coordinator's remote control on or off
+	// in the running session (docs/SPEC.md §8.2).
+	MethodSessionRemote = "session.remote"
 )
+
+// ClosedRestarting is the FrameClosed reason of a session that the server
+// relaunches at once under the same id (a remote control change): a
+// client attaches to it again instead of closing the pane.
+const ClosedRestarting = "session restarting"
+
+// SessionRemoteParams are the params of session.remote.
+type SessionRemoteParams struct {
+	ID string `json:"id"`
+	On bool   `json:"on"`
+}
+
+// How session.remote applied the change.
+const (
+	RemoteUnchanged = "unchanged" // it already was so
+	RemotePrompted  = "prompted"  // the agent's in-session text was pasted
+	RemoteRestarted = "restarted" // the agent was resumed with or without the flag
+)
+
+// SessionRemoteResult is the result of session.remote.
+type SessionRemoteResult struct {
+	RemoteControl bool   `json:"remote_control"`
+	How           string `json:"how"`
+}
 
 // ServerStatus is the result of server.status.
 type ServerStatus struct {
@@ -124,6 +151,8 @@ type SessionInfo struct {
 	TodosTotal   int    `json:"todos_total,omitempty"`
 	Current      string `json:"current,omitempty"` // the in-progress todo
 	Queued       int    `json:"queued_prompts,omitempty"`
+	// RemoteControl: the agent is reachable from another device.
+	RemoteControl bool `json:"remote_control,omitempty"`
 }
 
 // SessionStartParams are the params of session.start.
@@ -148,6 +177,9 @@ type SessionStartParams struct {
 	Kickoff string `json:"kickoff,omitempty"`
 	Yolo    bool   `json:"yolo,omitempty"`
 	Model   string `json:"model,omitempty"`
+	// RemoteControl starts a coordinator reachable from another device,
+	// named after its project; the agent's manifest must support it.
+	RemoteControl bool `json:"remote_control,omitempty"`
 	// ResumeSID resumes this agent session id instead of starting fresh
 	// (tm thread restart); Kickoff is then not sent.
 	ResumeSID string `json:"resume_sid,omitempty"`

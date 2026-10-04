@@ -49,6 +49,11 @@ type Manifest struct {
 		EmptyRule string `toml:"empty_rule"`
 	} `toml:"inject"`
 
+	// RemoteControl: reaching the session from another device, e.g.
+	// Claude Code's Remote Control (docs/SPEC.md §8.2). Without args the
+	// agent has none.
+	RemoteControl RemoteControl `toml:"remote_control"`
+
 	Screen struct {
 		// Resize: "follow" (the default) lets the console typed in size
 		// the pane; "explicit" resizes it only on a window resize or a
@@ -69,6 +74,66 @@ type Manifest struct {
 	// Sources holds tested_versions, session_field, [hook], [status_file],
 	// [jsonl_tail] and [todos_snapshot].
 	Sources
+}
+
+// RemoteControl is a manifest's [remote_control] table. Templates see the
+// LaunchSpec; .RemoteName is the name the remote side lists the session
+// under (the project's slug for a coordinator).
+type RemoteControl struct {
+	// Args are appended (before the kickoff) when it starts on.
+	Args []string `toml:"args"`
+	// Enable and Disable are in-session text, pasted as a prompt, that
+	// turn it on or off in the running session (e.g. a slash command).
+	// Empty: the session is restarted, resumed, with or without Args.
+	Enable  string `toml:"enable"`
+	Disable string `toml:"disable"`
+	// DisableDialog answers a dialog the disable text opens.
+	DisableDialog *RemoteDialog `toml:"disable_dialog"`
+	// StatusField names a [status_file] fields entry that is non-empty
+	// while remote control is on: the observed state, which wins over
+	// what tm last asked for (an agent may reconnect on resume). Without
+	// that entry (or a status file) tm goes by what it asked for.
+	StatusField string `toml:"status_field"`
+}
+
+// RemoteDialog answers a dialog that in-session text opens: once the
+// screen contains Contains, Keys are typed, and the change counts as made
+// once the screen contains Done.
+type RemoteDialog struct {
+	Contains string `toml:"contains"`
+	Keys     string `toml:"keys"`
+	Done     string `toml:"done"`
+}
+
+// Supported reports whether the agent has remote control at all.
+func (r *RemoteControl) Supported() bool { return r != nil && len(r.Args) > 0 }
+
+// Text is the in-session text that turns it on or off, rendered for
+// spec; "" means the session has to be restarted instead.
+func (r *RemoteControl) Text(on bool, spec LaunchSpec) (string, error) {
+	t := r.Disable
+	if on {
+		t = r.Enable
+	}
+	if t == "" {
+		return "", nil
+	}
+	return render(t, spec)
+}
+
+// ObservesRemote reports whether the status file says if remote control
+// is on (remote_control.status_field names one of its fields).
+func (m *Manifest) ObservesRemote() bool {
+	f := m.RemoteControl.StatusField
+	return m.RemoteControl.Supported() && f != "" && m.StatusFile != nil && m.StatusFile.Fields[f] != ""
+}
+
+// RemoteControlOf returns a's [remote_control], or nil when a has none.
+func RemoteControlOf(a Agent) *RemoteControl {
+	if m := ManifestOf(a); m != nil && m.RemoteControl.Supported() {
+		return &m.RemoteControl
+	}
+	return nil
 }
 
 // ManifestFile is a generated file written into the session's runtime dir
@@ -146,6 +211,12 @@ func (m *Manifest) validate() error {
 	case "", InjectPaste, InjectNone, InjectChannel:
 	default:
 		errs = append(errs, fmt.Errorf("inject.prompt %q is not paste|channel|none", m.Inject.Prompt))
+	}
+	if rc := m.RemoteControl; !rc.Supported() && (rc.Enable != "" || rc.Disable != "") {
+		errs = append(errs, errors.New("remote_control: enable and disable need args"))
+	}
+	if d := m.RemoteControl.DisableDialog; d != nil && (m.RemoteControl.Disable == "" || d.Contains == "" || d.Keys == "" || d.Done == "") {
+		errs = append(errs, errors.New("remote_control.disable_dialog: needs disable, and contains, keys and done"))
 	}
 	switch m.Screen.Resize {
 	case "", ResizeFollow, ResizeExplicit:
@@ -271,6 +342,9 @@ func (a *manifestAgent) Identify(p ProcessInfo) bool {
 func (a *manifestAgent) Launch(spec LaunchSpec) (Launch, error) {
 	l := a.m.Launch
 	var out Launch
+	if spec.RemoteControl && !a.m.RemoteControl.Supported() {
+		return out, fmt.Errorf("agent %s has no remote control", a.m.Name)
+	}
 	if spec.Resume && spec.AgentSID == "" {
 		// Some CLIs open an interactive picker for an empty id.
 		return out, fmt.Errorf("agent %s: resume needs the agent's session id", a.m.Name)
@@ -296,6 +370,7 @@ func (a *manifestAgent) Launch(spec LaunchSpec) (Launch, error) {
 		{spec.Resume, l.ResumeArgs},
 		{spec.Yolo, l.YoloArgs},
 		{spec.Model != "", l.ModelArgs},
+		{spec.RemoteControl, a.m.RemoteControl.Args},
 		{spec.Kickoff != "" && !spec.Resume, l.KickoffArgs},
 	}
 	for _, s := range steps {

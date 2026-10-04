@@ -154,6 +154,7 @@ func helpLines() []string {
 		fmt.Sprintf("%-16s %s", "prefix+arrows o", "focus another pane;  ctrl+arrows resize, z zooms, x closes, space switches the layout"),
 		fmt.Sprintf("%-16s %s", "prefix+{ } b", "narrow / widen the sidebar, or make it a slim strip"),
 		fmt.Sprintf("%-16s %s", "prefix+u", "take over a watch-only thread pane and type into it (asks first; its coordinator is told)"),
+		fmt.Sprintf("%-16s %s", "prefix+r", "turn remote control of a coordinator on or off, to continue it from another device (asks first)"),
 		fmt.Sprintf("%-16s %s", "prefix+prefix", "send the prefix key itself to the program"),
 		"",
 		styleFaint.Render("Every tm shows the same view: what one does, the others show, sized by the one typed in. tm --own keeps to itself."),

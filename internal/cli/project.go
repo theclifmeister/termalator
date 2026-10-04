@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -8,14 +9,17 @@ import (
 
 	"github.com/theclifmeister/termalator/internal/caller"
 	"github.com/theclifmeister/termalator/internal/project"
+	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/skill"
+	"github.com/theclifmeister/termalator/internal/tui"
 	"github.com/theclifmeister/termalator/internal/version"
 )
 
 const projectUsage = `usage: tm project new <name> [--goal "…"] [--repo PATH]... [--json]
        tm project list [--json]
        tm project repo add|remove PATH [--project <slug>]
-       tm project open <slug> [--agent NAME]   (start or attach its coordinator)`
+       tm project open <slug> [--agent NAME]   (start or attach its coordinator)
+       tm project remote on|off [<slug>]   (remote control of its running coordinator)`
 
 func runProject(e *Env, args []string) error {
 	if len(args) == 0 {
@@ -28,6 +32,8 @@ func runProject(e *Env, args []string) error {
 		return projectList(e, args[1:])
 	case "repo", "repos":
 		return projectRepo(e, args[1:])
+	case "remote":
+		return projectRemote(e, args[1:])
 	case "open":
 		f := newFlags()
 		agentName := f.String("agent")
@@ -262,5 +268,44 @@ func projectRepo(e *Env, args []string) error {
 		return err
 	}
 	fmt.Fprintf(e.Stdout, "%s %s\n", verb, path)
+	return nil
+}
+
+// projectRemote turns remote control of a project's running coordinator
+// on or off (docs/SPEC.md §8.2). It changes the live session only; the
+// project's setting decides how the next coordinator starts.
+func projectRemote(e *Env, args []string) error {
+	pos, err := newFlags().Parse(args)
+	if err != nil {
+		return err
+	}
+	if len(pos) < 1 || len(pos) > 2 || (pos[0] != "on" && pos[0] != "off") {
+		return usagef("usage: tm project remote on|off [<slug>]")
+	}
+	if e.Caller.IsAgent() {
+		return &project.Error{Code: "human-only", Msg: "the user decides about remote control"}
+	}
+	flag := ""
+	if len(pos) == 2 {
+		flag = pos[1]
+	}
+	p, err := e.openProject(flag)
+	if err != nil {
+		return err
+	}
+	c, _, err := connect(false)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	res, err := tui.SetRemote(c.Call, p.Slug, pos[0] == "on")
+	if err != nil {
+		var pe *proto.Error
+		if errors.As(err, &pe) {
+			return &project.Error{Code: pe.Code, Msg: pe.Message}
+		}
+		return err
+	}
+	fmt.Fprintln(e.Stdout, tui.RemoteMessage(p.Slug, res))
 	return nil
 }

@@ -113,13 +113,16 @@ func statusLine(s proto.SessionInfo, pending bool, cols int, where string) strin
 		st += " " + p
 	}
 	parts = append(parts, st)
+	if s.RemoteControl {
+		parts = append(parts, "remote control on")
+	}
 	if where != "" {
 		parts = append(parts, where)
 	}
 	right := "prefix+d dashboard "
 	left := strings.Join(parts, " · ")
 	if pending {
-		left = ` prefix ▸ d dashboard · p ] [ projects · i t , ? · % " split · arrows focus · ctrl+arrows resize · z zoom · x close · { } b sidebar · u take over`
+		left = ` prefix ▸ d dashboard · p ] [ projects · i t , ? · % " split · arrows focus · ctrl+arrows resize · z zoom · x close · { } b sidebar · u take over · r remote control`
 		right = "prefix again sends it "
 	}
 	w := cols - ansi.StringWidth(right) - 1
