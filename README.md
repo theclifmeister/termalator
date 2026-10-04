@@ -24,7 +24,8 @@ macOS or Linux. To build you need:
 
 ```sh
 make            # fetch Ghostty, build libghostty-vt into .build/, then build bin/tm
-make test       # go test ./...
+make test       # go test -race ./... (unit, integration, fuzz seed corpora)
+make fuzz       # run every fuzz target, FUZZTIME=5m each (nightly in CI)
 make vet
 ./bin/tm selftest
 ```

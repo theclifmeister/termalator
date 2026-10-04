@@ -1,0 +1,49 @@
+name: nightly
+
+# Slow checks that don't run on every PR (docs/SPEC.md §16.6): long fuzzing
+# now; the full end-to-end suite joins once internal/e2e exists (M1).
+# Real-Claude tests need a logged-in claude and don't run here.
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      fuzztime:
+        description: Time per fuzz target
+        default: 5m
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Cache libghostty-vt
+        uses: actions/cache@v4
+        with:
+          path: .build/ghostty-*
+          key: ghostty-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Makefile') }}
+
+      - name: fuzz
+        run: make fuzz FUZZTIME=${{ inputs.fuzztime || '5m' }}
+
+      # A crasher is written to testdata/fuzz/<Target>/; commit it so it
+      # becomes a regression test on every PR.
+      - name: Upload crashers
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashers
+          path: internal/**/testdata/fuzz/

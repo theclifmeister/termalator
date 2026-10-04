@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"text/template"
 
@@ -24,17 +25,19 @@ type Manifest struct {
 	Display         string `toml:"display"`
 
 	Identify struct {
-		Argv0 []string `toml:"argv0"` // basenames of argv[0] after unwrapping
+		Argv0       []string `toml:"argv0"`        // basenames of argv[0] after unwrapping
+		VersionArgs []string `toml:"version_args"` // e.g. ["--version"], for tm doctor
 	} `toml:"identify"`
 
 	Launch struct {
 		Command     string            `toml:"command"`
 		Args        []string          `toml:"args"`         // templates; empty results are dropped
-		KickoffArgs []string          `toml:"kickoff_args"` // appended when Kickoff is set
+		KickoffArgs []string          `toml:"kickoff_args"` // appended last when Kickoff is set; start with "--" if the CLI has variadic flags
 		ResumeArgs  []string          `toml:"resume_args"`  // appended when Resume is set
 		YoloArgs    []string          `toml:"yolo_args"`
 		ModelArgs   []string          `toml:"model_args"` // appended when Model is set
 		Env         map[string]string `toml:"env"`        // values are templates
+		UnsetEnv    []string          `toml:"unset_env"`  // inherited variables to drop; trailing * = prefix
 		Files       []ManifestFile    `toml:"files"`
 	} `toml:"launch"`
 
@@ -42,12 +45,18 @@ type Manifest struct {
 		Prompt Injector `toml:"prompt"`
 	} `toml:"inject"`
 
-	// IgnoreFields drops a hook event when any of these payload fields is
-	// present and non-empty (e.g. Claude's agent_id on subagent events).
+	// IgnoreFields: a hook event with any of these payload fields present
+	// and non-empty (e.g. Claude's agent_id on subagent events) is ignored
+	// for state, session id and todos. It still feeds [[hooks]] entries
+	// that have a counter.
 	IgnoreFields []string  `toml:"ignore_fields"`
 	Hooks        []HookMap `toml:"hooks"`
 	Todos        []TodoMap `toml:"todos"`
 	Rules        []Rule    `toml:"rules"`
+
+	// Sources holds tested_versions, session_field, [hook], [status_file],
+	// [jsonl_tail] and [todos_snapshot].
+	Sources
 }
 
 // ManifestFile is a generated file written into the session's runtime dir
@@ -57,31 +66,21 @@ type ManifestFile struct {
 	Template string `toml:"template"`
 }
 
-// HookMap maps one harness event to a signal.
+// HookMap maps one harness event to a signal. Every matching entry
+// applies, so use negated matches ("!value") to keep entries exclusive.
 type HookMap struct {
 	Event     string            `toml:"event"`
-	Match     map[string]string `toml:"match"` // payload field == value, all must hold
+	Match     map[string]string `toml:"match"` // see matches for the pattern syntax
 	State     State             `toml:"state"` // empty: no state change
 	Reason    string            `toml:"reason"`
 	Transient bool              `toml:"transient"`
-	// SessionField names the payload field holding the agent's session id.
-	SessionField string `toml:"session_field"`
+	// Counter is "+name" or "-name" (background activity started or
+	// ended), keyed by the payload field CounterKey.
+	Counter    string `toml:"counter"`
+	CounterKey string `toml:"counter_key"`
 	// Respond is a template printed back to the harness. It sees .Event,
 	// .Payload and .Context (rendered only when the template uses it).
 	Respond string `toml:"respond"`
-}
-
-// TodoMap says which hook event carries the agent's todo list and how to
-// read it (docs/SPEC.md §8.2). Paths are dotted payload paths.
-type TodoMap struct {
-	Event  string            `toml:"event"`
-	Match  map[string]string `toml:"match"`
-	List   string            `toml:"list"`   // e.g. "tool_input.todos"
-	Text   string            `toml:"text"`   // field of each item, e.g. "content"
-	Status string            `toml:"status"` // field of each item, e.g. "status"
-	// StatusMap maps the harness's status values to pending, in_progress
-	// or completed. Values not listed must already be one of those.
-	StatusMap map[string]TodoStatus `toml:"status_map"`
 }
 
 // ParseManifest decodes and validates one manifest.
@@ -111,6 +110,9 @@ func (m *Manifest) validate() error {
 	if m.Launch.Command == "" {
 		errs = append(errs, errors.New("launch.command is empty"))
 	}
+	if m.Launch.Command != "" && strings.ContainsAny(m.Launch.Command, " \t") {
+		errs = append(errs, errors.New("launch.command must be one program; put arguments in launch.args"))
+	}
 	switch m.Inject.Prompt {
 	case "", InjectPaste, InjectNone, InjectChannel:
 	default:
@@ -124,21 +126,48 @@ func (m *Manifest) validate() error {
 		if !valid[h.State] {
 			errs = append(errs, fmt.Errorf("hooks[%d]: unknown state %q", i, h.State))
 		}
-	}
-	validTodo := map[TodoStatus]bool{TodoPending: true, TodoInProgress: true, TodoCompleted: true}
-	for i, t := range m.Todos {
-		if t.Event == "" || t.List == "" || t.Text == "" || t.Status == "" {
-			errs = append(errs, fmt.Errorf("todos[%d]: needs event, list, text and status", i))
+		if h.Counter != "" && (len(h.Counter) < 2 || (h.Counter[0] != '+' && h.Counter[0] != '-') || h.CounterKey == "") {
+			errs = append(errs, fmt.Errorf("hooks[%d]: counter must be +name or -name, with counter_key", i))
 		}
-		for k, v := range t.StatusMap {
-			if !validTodo[v] {
-				errs = append(errs, fmt.Errorf("todos[%d]: status_map %q -> %q is not pending|in_progress|completed", i, k, v))
+	}
+	for i, t := range m.Todos {
+		if err := t.validate(); err != nil {
+			errs = append(errs, fmt.Errorf("todos[%d]: %w", i, err))
+		}
+	}
+	if f := m.StatusFile; f != nil {
+		if f.Path == "" || f.StateField == "" || len(f.StateMap) == 0 {
+			errs = append(errs, errors.New("status_file: needs path, state_field and state_map"))
+		}
+		for k, v := range f.StateMap {
+			if !valid[v] || v == "" {
+				errs = append(errs, fmt.Errorf("status_file.state_map %q -> unknown state %q", k, v))
 			}
 		}
 	}
+	if t := m.JSONLTail; t != nil {
+		if t.PathField == "" || len(t.Rules) == 0 {
+			errs = append(errs, errors.New("jsonl_tail: needs path_field and rules"))
+		}
+		for i, r := range t.Rules {
+			if !valid[r.State] || r.State == "" {
+				errs = append(errs, fmt.Errorf("jsonl_tail.rules[%d]: unknown state %q", i, r.State))
+			}
+		}
+	}
+	if t := m.TodoSnapshot; t != nil && (t.Dir == "" || t.Glob == "" || t.ID == "" || t.Text == "" || t.Status == "") {
+		errs = append(errs, errors.New("todos_snapshot: needs dir, glob, id, text and status"))
+	}
 	for i, r := range m.Rules {
-		if r.ID == "" || r.State == "" || !valid[r.State] {
+		// A rule may also say "unknown": a screen on which no state can be
+		// read (e.g. a transcript view), so the screen abstains.
+		if r.ID == "" || r.State == "" || !(valid[r.State] || r.State == StateUnknown) {
 			errs = append(errs, fmt.Errorf("rules[%d]: needs an id and a valid state", i))
+		}
+		if r.Regex != "" {
+			if _, err := regexp.Compile(r.Regex); err != nil {
+				errs = append(errs, fmt.Errorf("rules[%d] %s: %w", i, r.ID, err))
+			}
 		}
 	}
 	for _, f := range m.Launch.Files {
@@ -173,6 +202,10 @@ func (a *manifestAgent) Identify(p ProcessInfo) bool {
 func (a *manifestAgent) Launch(spec LaunchSpec) (Launch, error) {
 	l := a.m.Launch
 	var out Launch
+	if spec.Resume && spec.AgentSID == "" {
+		// Some CLIs open an interactive picker for an empty id.
+		return out, fmt.Errorf("agent %s: resume needs the agent's session id", a.m.Name)
+	}
 	argv := []string{l.Command}
 	add := func(tmpls []string) error {
 		for _, t := range tmpls {
@@ -204,6 +237,7 @@ func (a *manifestAgent) Launch(spec LaunchSpec) (Launch, error) {
 		}
 	}
 	out.Argv = argv
+	out.Unset = append([]string{}, l.UnsetEnv...)
 	for k, v := range l.Env {
 		s, err := render(v, spec)
 		if err != nil {
@@ -223,22 +257,39 @@ func (a *manifestAgent) Launch(spec LaunchSpec) (Launch, error) {
 }
 
 func (a *manifestAgent) Hook(ev HookEvent, ctxFn func() ([]byte, error)) ([]Signal, HookResult, error) {
+	ignored := false
 	for _, f := range a.m.IgnoreFields {
-		if v, ok := ev.Payload[f]; ok && v != nil && v != "" {
-			return nil, HookResult{}, nil
+		if s, ok := lookupString(ev.Payload, f); ok && s != "" {
+			ignored = true
+			break
 		}
 	}
 	var sigs []Signal
 	var res HookResult
+	base := Signal{Source: "hook", Seq: ev.Seq, At: ev.At}
+	if !ignored && a.m.SessionField != "" {
+		if sid, _ := lookupString(ev.Payload, a.m.SessionField); sid != "" {
+			sig := base
+			sig.AgentSID = sid
+			sigs = append(sigs, sig)
+		}
+	}
 	for _, h := range a.m.Hooks {
 		if h.Event != ev.Event || !matches(h.Match, ev.Payload) {
 			continue
 		}
-		sig := Signal{Source: "hook", State: h.State, Reason: h.Reason, Seq: ev.Seq, At: ev.At, Transient: h.Transient}
-		if h.SessionField != "" {
-			sig.AgentSID, _ = ev.Payload[h.SessionField].(string)
+		if h.Counter != "" {
+			sig := base
+			sig.Counter = h.Counter
+			sig.CounterKey, _ = lookupString(ev.Payload, h.CounterKey)
+			sigs = append(sigs, sig)
 		}
-		if sig.State != "" || sig.AgentSID != "" {
+		if ignored {
+			continue
+		}
+		if h.State != "" {
+			sig := base
+			sig.State, sig.Reason, sig.Transient = h.State, h.Reason, h.Transient
 			sigs = append(sigs, sig)
 		}
 		if h.Respond != "" && res.Stdout == nil {
@@ -249,68 +300,26 @@ func (a *manifestAgent) Hook(ev HookEvent, ctxFn func() ([]byte, error)) ([]Sign
 			res.Stdout = out
 		}
 	}
+	if ignored {
+		return sigs, res, nil
+	}
 	for _, tm := range a.m.Todos {
 		if tm.Event != ev.Event || !matches(tm.Match, ev.Payload) {
 			continue
 		}
-		todos, err := tm.extract(ev.Payload)
+		ch, err := tm.change(ev.Payload)
 		if err != nil {
 			return sigs, res, fmt.Errorf("agent %s: todos on %s: %w", a.m.Name, ev.Event, err)
 		}
-		sigs = append(sigs, Signal{Source: "hook", Seq: ev.Seq, At: ev.At, Todos: &todos})
+		sig := base
+		sig.Todo = &ch
+		sigs = append(sigs, sig)
 		break
 	}
 	return sigs, res, nil
 }
 
-// extract reads the todo list from a payload.
-func (tm TodoMap) extract(payload map[string]any) ([]Todo, error) {
-	raw, ok := lookup(payload, tm.List)
-	if !ok {
-		return nil, fmt.Errorf("no field %q", tm.List)
-	}
-	items, ok := raw.([]any)
-	if !ok {
-		return nil, fmt.Errorf("%q is not a list", tm.List)
-	}
-	todos := make([]Todo, 0, len(items))
-	for i, it := range items {
-		obj, ok := it.(map[string]any)
-		if !ok {
-			return nil, fmt.Errorf("%s[%d] is not an object", tm.List, i)
-		}
-		text, _ := lookup(obj, tm.Text)
-		status, _ := lookup(obj, tm.Status)
-		ts, _ := status.(string)
-		st := TodoStatus(ts)
-		if mapped, ok := tm.StatusMap[ts]; ok {
-			st = mapped
-		}
-		switch st {
-		case TodoPending, TodoInProgress, TodoCompleted:
-		default:
-			return nil, fmt.Errorf("%s[%d]: unknown status %q", tm.List, i, ts)
-		}
-		t, _ := text.(string)
-		todos = append(todos, Todo{Text: t, Status: st})
-	}
-	return todos, nil
-}
-
-// lookup follows a dotted path through nested JSON objects.
-func lookup(v map[string]any, path string) (any, bool) {
-	var cur any = v
-	for _, key := range strings.Split(path, ".") {
-		obj, ok := cur.(map[string]any)
-		if !ok {
-			return nil, false
-		}
-		if cur, ok = obj[key]; !ok {
-			return nil, false
-		}
-	}
-	return cur, true
-}
+func (a *manifestAgent) Sources() *Sources { return &a.m.Sources }
 
 func (a *manifestAgent) Rules() []Rule { return a.m.Rules }
 
@@ -323,16 +332,6 @@ func (a *manifestAgent) Injector() Injector {
 
 func (a *manifestAgent) Prompt(context.Context, string, string) error {
 	return fmt.Errorf("agent %s: no structured prompt channel; inject.prompt = %q", a.m.Name, a.Injector())
-}
-
-func matches(want map[string]string, payload map[string]any) bool {
-	for k, v := range want {
-		got, _ := payload[k].(string)
-		if got != v {
-			return false
-		}
-	}
-	return true
 }
 
 var funcs = template.FuncMap{

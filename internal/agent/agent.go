@@ -34,7 +34,7 @@ type LaunchSpec struct {
 	RuntimeDir string // per-session scratch dir owned by the server; generated files go here
 	BriefPath  string // thread brief, or the coordinator role file
 	Kickoff    string // the first user prompt, e.g. "Read your brief and do what it says."
-	Resume     bool   // resume AgentSID instead of starting fresh
+	Resume     bool   // resume AgentSID instead of starting fresh; AgentSID must be set
 	Yolo       bool   // skip the agent's own permission prompts (project setting)
 	Model      string // optional
 	TMBin      string // absolute path of the running tm binary, for hooks
@@ -55,8 +55,11 @@ type Access struct {
 // Launch is the agent's answer: what to exec in the PTY, and which files to
 // write first (paths relative to LaunchSpec.RuntimeDir).
 type Launch struct {
-	Argv  []string
-	Env   []string // KEY=VALUE, added to the session environment
+	Argv []string
+	Env  []string // KEY=VALUE, added to the session environment
+	// Unset lists variables to remove from the inherited environment before
+	// Env is added; a trailing * matches a prefix (see FilterEnv).
+	Unset []string
 	Files map[string][]byte
 }
 
@@ -87,9 +90,17 @@ type Signal struct {
 	At        time.Time
 	Transient bool // an edge (e.g. a tool call) rather than a level
 
-	// Todos is the agent's own live todo list, when the event carried one.
-	// nil means "no todo information"; an empty slice means "list cleared".
-	Todos *[]Todo
+	// Counter, when set, is "+name" or "-name": one unit of background
+	// activity (e.g. a background subagent) started or ended. CounterKey
+	// identifies the unit so a repeated end can't go below zero. While any
+	// counter is above zero, an idle state reads as working, reason
+	// "background" (docs/SPEC.md §8.4).
+	Counter    string
+	CounterKey string
+
+	// Todo is a change to the agent's own live todo list, when the event
+	// carried one (docs/SPEC.md §7.3). The core applies it with ApplyTodo.
+	Todo *TodoChange
 }
 
 // TodoStatus is the harness-neutral status of one todo item.
@@ -103,8 +114,36 @@ const (
 
 // Todo is one item of an agent's live todo list (docs/SPEC.md §7.3).
 type Todo struct {
-	Text   string     `json:"text"`
-	Status TodoStatus `json:"status"`
+	ID         string     `json:"id,omitempty"` // the agent's own id, for diff-style updates
+	Text       string     `json:"text"`
+	ActiveText string     `json:"active_text,omitempty"` // shown while in progress, if the agent gives one
+	Status     TodoStatus `json:"status"`
+}
+
+// TodoOp says how a TodoChange applies to the stored list.
+type TodoOp string
+
+const (
+	TodoReplace TodoOp = "replace" // Items is the whole new list
+	TodoUpsert  TodoOp = "upsert"  // Patch creates or updates one item by ID
+	TodoReset   TodoOp = "reset"   // start a new, empty list
+)
+
+// TodoChange is one change to a todo list.
+type TodoChange struct {
+	Op    TodoOp
+	Items []Todo    // replace
+	Patch TodoPatch // upsert
+}
+
+// TodoPatch updates one item. Nil fields keep the stored value.
+type TodoPatch struct {
+	ID         string
+	Text       *string
+	ActiveText *string
+	Status     *TodoStatus
+	Default    TodoStatus // status for a new item when Status is nil
+	Remove     bool
 }
 
 // HookResult is what `tm hook` prints back to the harness, if anything
@@ -119,7 +158,7 @@ type Injector string
 
 const (
 	InjectPaste   Injector = "paste"   // bracketed paste, then Enter, only while idle (core does this)
-	InjectChannel Injector = "channel" // structured, via Agent.Prompt
+	InjectChannel Injector = "channel" // structured, via Agent.Prompt (Go); falls back to paste when it fails
 	InjectNone    Injector = "none"
 )
 
@@ -155,8 +194,14 @@ type Agent interface {
 	Injector() Injector
 
 	// Prompt delivers text through a structured channel. Only called when
-	// Injector() == InjectChannel.
+	// Injector() == InjectChannel. ErrNoChannel (or any error) makes the
+	// core fall back to the paste injector.
 	Prompt(ctx context.Context, sessionID, text string) error
+
+	// Sources returns the declarative state sources the core runs for this
+	// agent besides hooks and the screen: a status file, a JSONL tail and a
+	// todo snapshot, plus hook payload trimming (docs/SPEC.md §8.2).
+	Sources() *Sources
 }
 
 // Rule is one screen rule. It is plain data, evaluated by package detect.
@@ -169,4 +214,7 @@ type Rule struct {
 	Contains []string `toml:"contains"` // all must appear
 	Regex    string   `toml:"regex"`    // optional, RE2, multiline
 	Not      []string `toml:"not"`      // none may appear
+	// SkipDim ignores dim/faint cells when matching, so ghost text such as
+	// Claude's prompt suggestion isn't read as typed input.
+	SkipDim bool `toml:"skip_dim"`
 }
