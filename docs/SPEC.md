@@ -823,7 +823,8 @@ Claude Code is pure data (`manifests/claude.toml`), except for the optional sock
 
   - **Only `Edit(...)` deny rules.** They cover Write, Edit and NotebookEdit; Claude warns that `Write(...)` rules aren't matched by file checks.
   - The spike verified that, in interactive mode **and under yolo**, reads are silent, Write is refused by the deny rule, and a Bash write is refused by the sandbox.
-  - The coordinator gets a `Read` rule for `~/.termalator/worktrees/<slug>/`, no deny rules and no forced sandbox, but keeps the socket allowance.
+  - The coordinator gets a `Read` rule for `~/.termalator/worktrees/<slug>/`, no forced sandbox, and one deny rule, `Edit(//<home>/.termalator/config.toml)`, so it can't change the human's safety settings (§11.2). It keeps the socket allowance.
+  - A thread also gets that config deny, plus an `Edit(//<repo>/.git/**)` allow rule for its worktree's git common dir (`LaunchSpec.Access.Write`): a worktree's commits are written to the main repo's `.git`, outside the cwd the sandbox allows. Whether Claude's sandbox honours this allow rule is not yet verified with real Claude (M6).
   - Rules name real paths, because Claude resolves symlinks before checking. `~/.termalator` itself must not be a symlink; `tm doctor` checks this.
 - **State sources, in rank order (§8.4):**
   1. **Status file** `~/.claude/sessions/<pid>.json`, written atomically by Claude. `status`: `idle` → idle, `busy` → working, `waiting` → blocked, with `waitingFor`: `"permission prompt"` → permission, `"input needed"` → question. It also carries `sessionId`, `version` and `messagingSocketPath`.
@@ -931,10 +932,11 @@ These commands are used by the human, the coordinator and threads alike. Exit co
 | `tm` / `tm attach <session>` | human | dashboard / attach |
 | `tm server run\|start\|stop\|restart\|status\|service` | human | §3.1 |
 | `tm project new <name> [--repo PATH]… \| list \| open <slug>` | human | create a project folder; `open` starts or attaches its coordinator |
+| `tm project repo add\|remove PATH` | human, coordinator | change the project's repo list in `PROJECT.md`; `tm thread start` defaults to the first repo |
 | `tm context [--project]` | coordinator | §7.6 |
 | `tm skill coordinator\|thread` | agents | print the standing rules, versioned with the binary (§7.8) |
 | `tm task …` | all | §6.3; threads only read, and add or tick steps on their own task (§6.4) |
-| `tm thread start [--task T12] [--agent A] [--repo PATH] [--base B] "title"` | coordinator | §9; refused if `start_threads = "propose"` and the human hasn't approved (§11) |
+| `tm thread start [--task T12] [--agent A] [--repo PATH] [--base B] [--approved-by-user] "title"` | coordinator | §9; refused if `start_threads = "propose"` and the human hasn't approved (§11) |
 | `tm thread list \| show <id> \| read <id> [--lines N]` | coordinator | state, report, screen text |
 | `tm thread prompt <id> "text" \| --next N` | coordinator | queue a prompt (sent when idle; refused while blocked) |
 | `tm thread approve <id> [--choice N]` | coordinator | answer a permission prompt (§11.2) |
@@ -961,6 +963,8 @@ The server tells them apart by the caller's pid (§3.2):
 
 - If the calling process descends from a hosted session's process **and** that session's role is `coordinator` or `thread`, the call is an **agent call**.
 - Everything else is a **human call**: a shell outside termalator, or a hosted `shell` session.
+
+Agent calls of project commands (`tm task`, `thread`, `report`, `status`, `done`, `inbox`, `context`, `project`) run **inside the server** (`cli.run`): the CLI sees `TERMALATOR_SESSION`, sends its arguments, cwd and (when the command reads it) stdin, and the server runs the command with the caller it derived from the peer pid's process tree. That also lets a sandboxed thread's `tm report` write the project folder it can't write itself (§5.2). Without a server, the command runs in the CLI with the caller from the environment.
 
 This is stronger than herdr-projects' TTY check, because an agent's own shell has a TTY. It is still **soft**: an agent with a shell could, for example, start a detached process outside its tree. This document says so plainly, as herdr-projects' docs do.
 

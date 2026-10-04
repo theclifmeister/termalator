@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/theclifmeister/termalator/internal/caller"
 	"github.com/theclifmeister/termalator/internal/project"
 	"github.com/theclifmeister/termalator/internal/tasks"
 )
@@ -21,7 +20,8 @@ const taskUsage = `usage: tm task <command> [--project <slug>] [--json]
   edit T12 [--title "…"] [--notes "…" | --notes-file F] [--owner O]
   steps T12 add "text" | check N | uncheck N | rename N "text" | remove N
   archive T12 | unarchive T12
-  delegate T12                  (threads arrive in M6)
+  delegate T12 [--agent A] [--repo PATH] [--base B] [--approved-by-user]
+                                = tm thread start --task T12
 
 Exit codes: 0 done or already true, 1 refused, 2 usage, 3 I/O.`
 
@@ -108,7 +108,7 @@ func runTask(e *Env, args []string) error {
 		}
 	case "steps", "step":
 		run = func(p *project.Project, s *tasks.Store, pos []string) error {
-			return taskSteps(e, s, pos, *asJSON)
+			return taskSteps(e, p, s, pos, *asJSON)
 		}
 	case "archive", "unarchive":
 		run = func(p *project.Project, s *tasks.Store, pos []string) error {
@@ -124,20 +124,15 @@ func runTask(e *Env, args []string) error {
 			return e.done(res, err, *asJSON, sub+"d")
 		}
 	case "delegate":
-		f.String("agent")
-		f.String("repo")
+		o := startOpts{task: new(string), agent: f.String("agent"), repo: f.String("repo"),
+			base: f.String("base"), approved: f.Bool("approved-by-user")}
 		run = func(p *project.Project, s *tasks.Store, pos []string) error {
-			id, err := oneRef(pos, 1, "delegate T12 [--agent A] [--repo PATH]")
+			id, err := oneRef(pos, 1, "delegate T12 [--agent A] [--repo PATH] [--base B] [--approved-by-user]")
 			if err != nil {
 				return err
 			}
-			if e.Caller.Kind == caller.Thread {
-				return &tasks.Error{Code: "coordinator-only", Msg: "threads don't start threads"}
-			}
-			if _, err := s.Get(id); err != nil {
-				return err
-			}
-			return &tasks.Error{Code: "not-implemented", Msg: "threads arrive in milestone M6; nothing was changed"}
+			*o.task = fmt.Sprintf("T%d", id)
+			return e.threadStart(p, o, *asJSON)
 		}
 	default:
 		return usagef("unknown subcommand %q\n%s", sub, taskUsage)
@@ -322,7 +317,7 @@ func taskList(e *Env, s *tasks.Store, pos []string, asJSON bool, status string, 
 
 const stepsUsage = `usage: tm task steps T12 add "text" | check N | uncheck N | rename N "text" | remove N`
 
-func taskSteps(e *Env, s *tasks.Store, pos []string, asJSON bool) error {
+func taskSteps(e *Env, p *project.Project, s *tasks.Store, pos []string, asJSON bool) error {
 	if len(pos) < 2 {
 		return usagef("%s", stepsUsage)
 	}
@@ -375,6 +370,9 @@ func taskSteps(e *Env, s *tasks.Store, pos []string, asJSON bool) error {
 		what = fmt.Sprintf("step %d removed", n)
 	default:
 		return usagef("unknown steps command %q\n%s", verb, stepsUsage)
+	}
+	if err == nil && res.Changed {
+		refreshThread(p, res.Task)
 	}
 	return e.done(res, err, asJSON, what)
 }

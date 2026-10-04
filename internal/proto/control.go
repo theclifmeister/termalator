@@ -148,6 +148,9 @@ type SessionStartParams struct {
 	Kickoff string `json:"kickoff,omitempty"`
 	Yolo    bool   `json:"yolo,omitempty"`
 	Model   string `json:"model,omitempty"`
+	// ResumeSID resumes this agent session id instead of starting fresh
+	// (tm thread restart); Kickoff is then not sent.
+	ResumeSID string `json:"resume_sid,omitempty"`
 }
 
 // SessionStartResult is the result of session.start.
@@ -274,4 +277,28 @@ type HookEventParams struct {
 // HookEventResult is what `tm hook` prints back to the harness.
 type HookEventResult struct {
 	Stdout string `json:"stdout,omitempty"`
+}
+
+// Control methods of projects and threads (M6).
+const (
+	// MethodCLIRun runs a project command (tm task, thread, report,
+	// status, done, …) inside the server for an agent caller: the server
+	// tells the caller from the peer pid (docs/SPEC.md §11.1) and writes
+	// the project folder with its own permissions, which a sandboxed
+	// thread lacks (§5.2).
+	MethodCLIRun = "cli.run"
+)
+
+// CLIRunParams are the params of cli.run.
+type CLIRunParams struct {
+	Args  []string `json:"args"`
+	Cwd   string   `json:"cwd"`
+	Stdin []byte   `json:"stdin,omitempty"`
+}
+
+// CLIRunResult is the command's output and exit code.
+type CLIRunResult struct {
+	Stdout string `json:"stdout"`
+	Stderr string `json:"stderr"`
+	Code   int    `json:"code"`
 }

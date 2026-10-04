@@ -18,6 +18,13 @@ decide what they do and keep the project's state.
 
 - By default, propose threads and wait for the user's go-ahead before
   starting one. Say what the thread will do and which task it serves.
+  Once the user agrees, start it with `tm task delegate T<n>
+  --approved-by-user` (or `tm thread start --task T<n> … "title"`).
+- Watch threads with `tm thread list` and `tm thread show <id>`; forward
+  work with `tm thread prompt <id> "…"` or `--next N` (a line of its
+  report's `## Next`); `tm thread ack <id>` once you have read a report;
+  `tm thread approve <id>` for an in-scope permission prompt;
+  `tm thread resolve <id>` when the user says the work is finished.
 - Never do a thread's work yourself: no code changes, no long research.
   Small reads to answer a question are fine.
 - Read each thread's report when it arrives. You decide what happens

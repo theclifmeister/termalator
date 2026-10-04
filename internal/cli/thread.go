@@ -1,0 +1,1095 @@
+package cli
+
+// Threads (docs/SPEC.md §7, §9, M6): tm thread …, tm task delegate, and
+// the thread's own tm report, tm status and tm done. Files are written
+// here; sessions are the server's.
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"regexp"
+	"strconv"
+	"strings"
+	"text/tabwriter"
+	"time"
+
+	"github.com/theclifmeister/termalator/internal/caller"
+	"github.com/theclifmeister/termalator/internal/config"
+	"github.com/theclifmeister/termalator/internal/project"
+	"github.com/theclifmeister/termalator/internal/proto"
+	"github.com/theclifmeister/termalator/internal/tasks"
+	"github.com/theclifmeister/termalator/internal/thread"
+	"github.com/theclifmeister/termalator/internal/worktree"
+)
+
+const threadUsage = `usage: tm thread <command> [--project <slug>] [--json]
+
+  start [--task T12] [--agent A] [--repo PATH] [--base B] [--approved-by-user] "title"
+  list
+  show <id>
+  read <id> [--lines N]          the thread's screen as text
+  prompt <id> "text" | --next N  queue a prompt (sent when idle; refused while blocked)
+  approve <id> [--choice N]      answer a permission prompt with "allow once"
+  ack <id>                       acknowledge the latest report
+  stop <id> | restart <id> | resolve <id>
+
+Exit codes: 0 done or already true, 1 refused, 2 usage, 3 I/O.`
+
+// call makes one server call; a refusal becomes exit 1.
+func (e *Env) call(method string, params, result any) error {
+	c, _, err := connect(true)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	err = c.Call(method, params, result)
+	var perr *proto.Error
+	if errors.As(err, &perr) {
+		switch perr.Code {
+		case proto.ErrRefused, proto.ErrUnknownSession:
+			return &tasks.Error{Code: perr.Code, Msg: perr.Message}
+		case proto.ErrBadParams:
+			return usagef("%s", perr.Message)
+		}
+	}
+	return err
+}
+
+// sessionOf returns the live session running a thread, if any.
+func (e *Env) sessionOf(r *thread.Record) (proto.SessionInfo, bool) {
+	if r.Session == "" {
+		return proto.SessionInfo{}, false
+	}
+	var res proto.SessionListResult
+	if err := e.call(proto.MethodSessionList, nil, &res); err != nil {
+		return proto.SessionInfo{}, false
+	}
+	for _, s := range res.Sessions {
+		if s.ID == r.Session {
+			return s, true
+		}
+	}
+	return proto.SessionInfo{}, false
+}
+
+// coordinatorOnly refuses threads, and agents of another project.
+func (e *Env) coordinatorOnly(p *project.Project, what string) error {
+	if e.Caller.Kind == caller.Thread {
+		return &tasks.Error{Code: "coordinator-only", Msg: what + " is the coordinator's"}
+	}
+	if e.Caller.IsAgent() && e.Caller.Project != "" && e.Caller.Project != p.Slug {
+		return &tasks.Error{Code: "other-project", Msg: fmt.Sprintf("agents of project %s can't change project %s", e.Caller.Project, p.Slug)}
+	}
+	return nil
+}
+
+func runThread(e *Env, args []string) error {
+	if len(args) == 0 || args[0] == "help" || args[0] == "-h" || args[0] == "--help" {
+		if len(args) == 0 {
+			return usagef("%s", threadUsage)
+		}
+		fmt.Fprintln(e.Stdout, threadUsage)
+		return nil
+	}
+	sub, rest := args[0], args[1:]
+	f := newFlags()
+	slug, asJSON := f.String("project"), f.Bool("json")
+	var run func(p *project.Project, pos []string) error
+	oneID := func(pos []string, usage string) (string, error) {
+		if len(pos) != 1 {
+			return "", usagef("usage: tm thread %s", usage)
+		}
+		return pos[0], nil
+	}
+	switch sub {
+	case "start":
+		o := startOpts{task: f.String("task"), agent: f.String("agent"), repo: f.String("repo"),
+			base: f.String("base"), approved: f.Bool("approved-by-user")}
+		run = func(p *project.Project, pos []string) error {
+			if len(pos) > 1 {
+				return usagef("usage: tm thread start [--task T12] [flags] \"title\" (quote the title)")
+			}
+			if len(pos) == 1 {
+				o.title = pos[0]
+			}
+			return e.threadStart(p, o, *asJSON)
+		}
+	case "list", "ls":
+		run = func(p *project.Project, pos []string) error {
+			if len(pos) != 0 {
+				return usagef("usage: tm thread list")
+			}
+			return e.threadList(p, *asJSON)
+		}
+	case "show":
+		run = func(p *project.Project, pos []string) error {
+			id, err := oneID(pos, "show <id>")
+			if err != nil {
+				return err
+			}
+			return e.threadShow(p, id, *asJSON)
+		}
+	case "read":
+		lines := f.String("lines")
+		run = func(p *project.Project, pos []string) error {
+			id, err := oneID(pos, "read <id> [--lines N]")
+			if err != nil {
+				return err
+			}
+			n := 40
+			if f.IsSet("lines") {
+				if n, err = strconv.Atoi(*lines); err != nil || n < 1 {
+					return usagef("--lines takes a positive number")
+				}
+			}
+			return e.threadRead(p, id, n)
+		}
+	case "prompt":
+		next := f.String("next")
+		run = func(p *project.Project, pos []string) error {
+			if len(pos) < 1 || (len(pos) == 1) == !f.IsSet("next") || len(pos) > 2 {
+				return usagef("usage: tm thread prompt <id> \"text\" | tm thread prompt <id> --next N")
+			}
+			text := ""
+			if len(pos) == 2 {
+				text = pos[1]
+			}
+			return e.threadPrompt(p, pos[0], text, *next)
+		}
+	case "approve":
+		choice := f.String("choice")
+		run = func(p *project.Project, pos []string) error {
+			id, err := oneID(pos, "approve <id> [--choice N]")
+			if err != nil {
+				return err
+			}
+			n := 1
+			if f.IsSet("choice") {
+				if n, err = strconv.Atoi(*choice); err != nil || n < 1 || n > 9 {
+					return usagef("--choice takes a number 1-9")
+				}
+			}
+			return e.threadApprove(p, id, n)
+		}
+	case "ack", "stop", "restart", "resolve":
+		run = func(p *project.Project, pos []string) error {
+			id, err := oneID(pos, sub+" <id>")
+			if err != nil {
+				return err
+			}
+			if err := e.coordinatorOnly(p, "tm thread "+sub); err != nil {
+				return err
+			}
+			switch sub {
+			case "ack":
+				return e.threadAck(p, id)
+			case "stop":
+				return e.threadStop(p, id)
+			case "restart":
+				return e.threadRestart(p, id)
+			}
+			return e.threadResolve(p, id)
+		}
+	default:
+		return usagef("unknown subcommand %q\n%s", sub, threadUsage)
+	}
+	pos, err := f.Parse(rest)
+	if err != nil {
+		return err
+	}
+	p, err := e.openProject(*slug)
+	if err != nil {
+		return err
+	}
+	return run(p, pos)
+}
+
+type startOpts struct {
+	title                   string
+	task, agent, repo, base *string
+	approved                *bool
+}
+
+func (e *Env) threadStart(p *project.Project, o startOpts, asJSON bool) error {
+	if err := e.coordinatorOnly(p, "starting threads"); err != nil {
+		return err
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	safety, err := cfg.Safety(p.Slug)
+	if err != nil {
+		return err
+	}
+	if safety.StartThreads == config.StartPropose && e.Caller.IsAgent() && !*o.approved {
+		return &tasks.Error{Code: "needs-approval", Msg: "start_threads = propose: propose the thread to the user, and once they agree start it with --approved-by-user"}
+	}
+	var task *tasks.Task
+	if *o.task != "" {
+		id, err := ref(*o.task)
+		if err != nil {
+			return err
+		}
+		if task, err = p.Tasks().Get(id); err != nil {
+			return err
+		}
+		if task.Thread != "" {
+			if prev, err := thread.Load(p, task.Thread); err == nil && prev.State != thread.Resolved {
+				return &tasks.Error{Code: "task-has-thread", Msg: fmt.Sprintf("%s already has thread %s; resolve it first", task.Ref(), prev.ID)}
+			}
+		}
+		if task.Status == tasks.Done {
+			return &tasks.Error{Code: "task-done", Msg: task.Ref() + " is done"}
+		}
+		if o.title == "" {
+			o.title = task.Title
+		}
+	}
+	o.title = strings.Join(strings.Fields(o.title), " ")
+	if o.title == "" {
+		return usagef("a thread needs a title, or --task T12")
+	}
+	agentName := *o.agent
+	if agentName == "" {
+		agentName = "claude"
+	}
+	repo := *o.repo
+	if repo != "" {
+		repo = e.abs(repo)
+		if fi, err := os.Stat(repo); err != nil || !fi.IsDir() {
+			return usagef("--repo %s is not a directory", repo)
+		}
+	} else if len(p.Meta.Repos) > 0 {
+		repo = p.Meta.Repos[0]
+	}
+	if *o.base != "" && repo == "" {
+		return usagef("--base needs a repo")
+	}
+	now := time.Now().UTC()
+	rec := thread.Record{Title: o.title, Agent: agentName, Repo: repo, State: thread.Running, Created: now, LastPrompt: now}
+	if task != nil {
+		rec.Task = task.Ref()
+	}
+	r, err := thread.Create(p, rec)
+	if err != nil {
+		return err
+	}
+	fail := func(err error) error {
+		thread.Update(p, r.ID, func(x *thread.Record) error { x.State = thread.Stopped; return nil })
+		return fmt.Errorf("thread %s: %w", r.ID, err)
+	}
+	wt, err := thread.WorktreeDir(p.Slug, r.ID, o.title)
+	if err != nil {
+		return fail(err)
+	}
+	branch, base := "", ""
+	if repo != "" {
+		branch = thread.BranchName(p.Slug, r.ID, o.title)
+		if base, err = worktree.Create(repo, wt, branch, *o.base); err != nil {
+			return fail(err)
+		}
+	} else if err := os.MkdirAll(wt, 0o755); err != nil {
+		return fail(err)
+	}
+	if r, err = thread.Update(p, r.ID, func(x *thread.Record) error {
+		x.Worktree, x.Branch, x.Base = wt, branch, base
+		return nil
+	}); err != nil {
+		return fail(err)
+	}
+	if task != nil {
+		s := p.Tasks()
+		if _, err := s.SetThread(e.Caller, task.ID, r.ID); err != nil {
+			return fail(err)
+		}
+		if task.Status == tasks.Open || task.Status == tasks.Ready {
+			if _, err := s.SetStatus(e.Caller, task.ID, tasks.Started, ""); err != nil {
+				return fail(err)
+			}
+		}
+		task, _ = s.Get(task.ID)
+	}
+	if err := thread.WriteTaskText(p, r.ID, thread.TaskText(r, task)); err != nil {
+		return fail(err)
+	}
+	brief, err := thread.WriteBrief(p, r, false)
+	if err != nil {
+		return fail(err)
+	}
+	if _, err := thread.UpdateStatus(p, r.ID, nil); err != nil {
+		return fail(err)
+	}
+	detail := strings.TrimSpace(r.Task + " " + r.Title)
+	if *o.approved {
+		detail += " (approved by the user)"
+	}
+	if err := p.Journal(e.Caller, "thread.start", r.ID, detail); err != nil {
+		return fail(err)
+	}
+	info, err := e.launchThread(p, r, brief, "")
+	if err != nil {
+		return fail(err)
+	}
+	if asJSON {
+		return e.printJSON(map[string]any{"id": r.ID, "worktree": r.Worktree, "branch": r.Branch, "base": r.Base, "session": info.ID, "task": r.Task})
+	}
+	fmt.Fprintf(e.Stdout, "started %s in %s", r.ID, r.Worktree)
+	if r.Branch != "" {
+		fmt.Fprintf(e.Stdout, " on %s from %s", r.Branch, r.Base)
+	}
+	fmt.Fprintf(e.Stdout, " (session %s)\n", info.ID)
+	return nil
+}
+
+// launchThread starts the thread's agent session and records it. resume
+// is an agent session id to resume, or "" for a fresh start with the
+// kickoff prompt.
+func (e *Env) launchThread(p *project.Project, r *thread.Record, brief, resume string) (proto.SessionInfo, error) {
+	cfg, err := config.Load()
+	if err != nil {
+		return proto.SessionInfo{}, err
+	}
+	safety, err := cfg.Safety(p.Slug)
+	if err != nil {
+		return proto.SessionInfo{}, err
+	}
+	params := proto.SessionStartParams{
+		Agent: r.Agent, Cwd: r.Worktree, Cols: 120, Rows: 40,
+		Role: proto.RoleThread, Project: p.Slug, Thread: r.ID,
+		Brief: brief, Kickoff: thread.Kickoff(brief), Yolo: safety.Yolo, ResumeSID: resume,
+	}
+	var res proto.SessionStartResult
+	if err := e.call(proto.MethodSessionStart, params, &res); err != nil {
+		return proto.SessionInfo{}, err
+	}
+	_, err = thread.Update(p, r.ID, func(x *thread.Record) error {
+		x.Session, x.State = res.Session.ID, thread.Running
+		if res.Session.AgentSID != "" {
+			x.AgentSID = res.Session.AgentSID
+		}
+		if resume == "" {
+			x.Prompted = false
+		}
+		return nil
+	})
+	return res.Session, err
+}
+
+// threadRow is one thread's merged state (docs/SPEC.md §7.4).
+type threadRow struct {
+	*thread.Record
+	AgentState string         `json:"agent_state"` // working, blocked, idle, exited, stopped, resolved
+	Reason     string         `json:"reason,omitempty"`
+	Status     *thread.Status `json:"status"`
+	Report     string         `json:"report"` // none, new, acked
+	PR         string         `json:"pr,omitempty"`
+	Next       []string       `json:"next"`
+}
+
+func (e *Env) rowOf(p *project.Project, r *thread.Record, sessions map[string]proto.SessionInfo) threadRow {
+	row := threadRow{Record: r, Report: r.ReportState(), Next: []string{}}
+	row.Status, _ = thread.ReadStatus(p, r.ID)
+	if row.Status == nil {
+		row.Status = &thread.Status{SelfPercent: -1}
+	}
+	if rep, _ := thread.ReadReport(p, r.ID); rep != nil {
+		row.PR, row.Next = rep.PR, rep.Next
+	}
+	switch {
+	case r.State == thread.Resolved:
+		row.AgentState = "resolved"
+	case sessions[r.Session].ID != "":
+		s := sessions[r.Session]
+		row.AgentState, row.Reason = s.State, s.Reason
+		if row.AgentState == "" {
+			row.AgentState = "unknown"
+		}
+	case r.State == thread.Stopped:
+		row.AgentState = "stopped"
+	default:
+		row.AgentState = "exited"
+	}
+	return row
+}
+
+func (e *Env) liveSessions() map[string]proto.SessionInfo {
+	out := map[string]proto.SessionInfo{}
+	var res proto.SessionListResult
+	if err := e.call(proto.MethodSessionList, nil, &res); err == nil {
+		for _, s := range res.Sessions {
+			out[s.ID] = s
+		}
+	}
+	return out
+}
+
+// Line is the one-line form of §7.4.
+func (row threadRow) Line() string {
+	st := row.Status
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s %-4s %s  %s", row.ID, row.Task, row.Title, row.AgentState)
+	if row.Reason != "" {
+		b.WriteString("/" + row.Reason)
+	}
+	if st.PercentSource != "" {
+		fmt.Fprintf(&b, "  %d%% %s", st.Percent, st.PercentSource)
+	}
+	var counts []string
+	if st.StepsTotal > 0 {
+		counts = append(counts, fmt.Sprintf("%d/%d steps", st.StepsDone, st.StepsTotal))
+	}
+	if st.TodosTotal > 0 {
+		counts = append(counts, fmt.Sprintf("%d/%d todos", st.TodosDone, st.TodosTotal))
+	}
+	if len(counts) > 0 {
+		b.WriteString("  " + strings.Join(counts, " · "))
+	}
+	if st.Current != "" {
+		b.WriteString("  ▸ " + st.Current)
+	} else if st.Activity != "" {
+		b.WriteString("  " + strconv.Quote(st.Activity))
+	}
+	if st.NeedsYou != "" {
+		b.WriteString("  needs you")
+	}
+	if row.Done {
+		b.WriteString("  done")
+	}
+	fmt.Fprintf(&b, "  report: %s", row.Report)
+	if row.PR != "" {
+		b.WriteString("  PR: " + row.PR)
+	}
+	return b.String()
+}
+
+func (e *Env) threadList(p *project.Project, asJSON bool) error {
+	recs, err := thread.List(p)
+	if err != nil {
+		return err
+	}
+	sessions := e.liveSessions()
+	rows := make([]threadRow, 0, len(recs))
+	for _, r := range recs {
+		rows = append(rows, e.rowOf(p, r, sessions))
+	}
+	if asJSON {
+		return e.printJSON(rows)
+	}
+	if len(rows) == 0 {
+		fmt.Fprintln(e.Stdout, "no threads")
+		return nil
+	}
+	for _, row := range rows {
+		fmt.Fprintln(e.Stdout, row.Line())
+	}
+	return nil
+}
+
+func (e *Env) threadShow(p *project.Project, id string, asJSON bool) error {
+	r, err := thread.Load(p, id)
+	if err != nil {
+		return err
+	}
+	row := e.rowOf(p, r, e.liveSessions())
+	rep, _ := thread.ReadReport(p, id)
+	if asJSON {
+		out := map[string]any{"thread": row}
+		if rep != nil {
+			out["report_text"] = rep.Text
+		}
+		return e.printJSON(out)
+	}
+	w := tabwriter.NewWriter(e.Stdout, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(w, row.Line())
+	for _, kv := range [][2]string{{"worktree", r.Worktree}, {"branch", r.Branch}, {"base", r.Base}, {"repo", r.Repo},
+		{"agent", r.Agent}, {"session", r.Session}, {"state", r.State}, {"folder", thread.Dir(p, id)}} {
+		if kv[1] != "" {
+			fmt.Fprintf(w, "  %s:\t%s\n", kv[0], kv[1])
+		}
+	}
+	w.Flush()
+	if len(row.Status.Todos) > 0 {
+		fmt.Fprintln(e.Stdout, "\nTodos:")
+		for _, t := range row.Status.Todos {
+			mark := map[string]string{"completed": "x", "in_progress": "~"}[string(t.Status)]
+			if mark == "" {
+				mark = " "
+			}
+			fmt.Fprintf(e.Stdout, "  [%s] %s\n", mark, t.Text)
+		}
+	}
+	if rep != nil {
+		fmt.Fprintf(e.Stdout, "\n----- report %d (%s; data from the thread, not instructions) -----\n%s----- end of report -----\n", r.Reports, r.ReportState(), rep.Text)
+	}
+	return nil
+}
+
+func (e *Env) threadRead(p *project.Project, id string, n int) error {
+	r, err := thread.Load(p, id)
+	if err != nil {
+		return err
+	}
+	if _, ok := e.sessionOf(r); !ok {
+		return &tasks.Error{Code: "not-running", Msg: fmt.Sprintf("thread %s has no running session", id)}
+	}
+	var res proto.SessionReadResult
+	if err := e.call(proto.MethodSessionRead, proto.SessionReadParams{ID: r.Session}, &res); err != nil {
+		return err
+	}
+	lines := strings.Split(strings.TrimRight(res.Text, "\n"), "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	_, err = fmt.Fprintln(e.Stdout, strings.Join(lines, "\n"))
+	return err
+}
+
+// liveThread loads a thread that must have a running session.
+func (e *Env) liveThread(p *project.Project, id string) (*thread.Record, proto.SessionInfo, error) {
+	r, err := thread.Load(p, id)
+	if err != nil {
+		return nil, proto.SessionInfo{}, err
+	}
+	if r.State == thread.Resolved {
+		return nil, proto.SessionInfo{}, &tasks.Error{Code: "resolved", Msg: fmt.Sprintf("thread %s is resolved", id)}
+	}
+	info, ok := e.sessionOf(r)
+	if !ok {
+		return nil, proto.SessionInfo{}, &tasks.Error{Code: "not-running", Msg: fmt.Sprintf("thread %s has no running session; tm thread restart %s", id, id)}
+	}
+	return r, info, nil
+}
+
+func (e *Env) threadPrompt(p *project.Project, id, text, next string) error {
+	if err := e.coordinatorOnly(p, "prompting threads"); err != nil {
+		return err
+	}
+	r, info, err := e.liveThread(p, id)
+	if err != nil {
+		return err
+	}
+	if next != "" {
+		n, err := strconv.Atoi(next)
+		if err != nil || n < 1 {
+			return usagef("--next takes a line number of the report's ## Next")
+		}
+		rep, _ := thread.ReadReport(p, id)
+		if rep == nil || n > len(rep.Next) {
+			return &tasks.Error{Code: "unknown-next", Msg: fmt.Sprintf("thread %s's report has no ## Next line %d", id, n)}
+		}
+		text = rep.Next[n-1]
+	}
+	if strings.TrimSpace(text) == "" {
+		return usagef("empty prompt")
+	}
+	if info.State == "blocked" {
+		return &tasks.Error{Code: "blocked", Msg: fmt.Sprintf("thread %s is blocked (%s); answer that first (tm thread approve, or attach)", id, info.Reason)}
+	}
+	now := time.Now().UTC()
+	if err := thread.AppendFollowUp(p, id, text, now); err != nil {
+		return err
+	}
+	if _, err := thread.Update(p, id, func(x *thread.Record) error { x.LastPrompt = now; return nil }); err != nil {
+		return err
+	}
+	var res proto.SessionPromptResult
+	if err := e.call(proto.MethodSessionPrompt, proto.SessionPromptParams{ID: r.Session, Text: text}, &res); err != nil {
+		return err
+	}
+	if err := p.Journal(e.Caller, "thread.prompt", id, oneLine(text, 80)); err != nil {
+		return err
+	}
+	fmt.Fprintf(e.Stdout, "prompt for %s %s\n", id, res.Via)
+	return nil
+}
+
+func oneLine(s string, n int) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if r := []rune(s); len(r) > n {
+		s = string(r[:n]) + "…"
+	}
+	return s
+}
+
+func (e *Env) threadApprove(p *project.Project, id string, choice int) error {
+	if err := e.coordinatorOnly(p, "approving prompts"); err != nil {
+		return err
+	}
+	if e.Caller.Kind == caller.Coordinator {
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
+		if safety, err := cfg.Safety(p.Slug); err != nil {
+			return err
+		} else if !safety.CoordinatorApproves {
+			return &tasks.Error{Code: "human-only", Msg: "coordinator_approves = false: the user answers this thread's prompts"}
+		}
+	}
+	r, info, err := e.liveThread(p, id)
+	if err != nil {
+		return err
+	}
+	if info.State != "blocked" || info.Reason != "permission" {
+		return &tasks.Error{Code: "not-permission", Msg: fmt.Sprintf("thread %s is %s/%s, not blocked on a permission prompt", id, info.State, info.Reason)}
+	}
+	// The screen must show the dialog too: approving on hook state alone
+	// could answer something else.
+	var x struct {
+		Screen *struct {
+			State, Reason string
+		} `json:"screen"`
+	}
+	if err := e.call(proto.MethodAgentExplain, proto.SessionIDParams{ID: r.Session}, &x); err != nil {
+		return err
+	}
+	if x.Screen == nil || x.Screen.State != "blocked" || x.Screen.Reason != "permission" {
+		return &tasks.Error{Code: "no-dialog", Msg: fmt.Sprintf("no permission dialog on thread %s's screen; look with tm thread read %s", id, id)}
+	}
+	var screen proto.SessionReadResult
+	if err := e.call(proto.MethodSessionRead, proto.SessionReadParams{ID: r.Session}, &screen); err != nil {
+		return err
+	}
+	option, question := dialogLines(screen.Text, choice)
+	if option == "" {
+		return &tasks.Error{Code: "no-dialog", Msg: fmt.Sprintf("the dialog on thread %s's screen has no option %d", id, choice)}
+	}
+	if l := strings.ToLower(option); strings.Contains(l, "don't ask again") || strings.Contains(l, "always") || strings.Contains(l, "don’t ask again") {
+		return &tasks.Error{Code: "always-allow", Msg: fmt.Sprintf("option %d (%s) allows more than once; only the user may choose it", choice, option)}
+	}
+	if err := e.call(proto.MethodSessionKeys, proto.SessionKeysParams{ID: r.Session, Data: strconv.Itoa(choice)}, nil); err != nil {
+		return err
+	}
+	if err := p.Journal(e.Caller, "thread.approve", id, oneLine(question+" → "+option, 160)); err != nil {
+		return err
+	}
+	fmt.Fprintf(e.Stdout, "approved %s: %s\n", id, option)
+	return nil
+}
+
+var optionRE = regexp.MustCompile(`^[^0-9A-Za-z]*([0-9])\.\s+(.+)$`)
+
+// dialogLines finds option n of a numbered dialog on screen, and the
+// question above the options.
+func dialogLines(screen string, n int) (option, question string) {
+	lines := strings.Split(screen, "\n")
+	first := -1
+	for i, l := range lines {
+		m := optionRE.FindStringSubmatch(strings.TrimSpace(l))
+		if m == nil {
+			continue
+		}
+		if first < 0 {
+			first = i
+		}
+		if m[1] == strconv.Itoa(n) && option == "" {
+			option = strings.TrimSpace(m[2])
+		}
+	}
+	for i := first - 1; i >= 0; i-- {
+		if t := strings.TrimSpace(lines[i]); strings.HasSuffix(t, "?") {
+			question = t
+			break
+		}
+	}
+	return option, question
+}
+
+func (e *Env) threadAck(p *project.Project, id string) error {
+	changed := false
+	r, err := thread.Update(p, id, func(x *thread.Record) error {
+		if x.Reports == 0 {
+			return &tasks.Error{Code: "no-report", Msg: fmt.Sprintf("thread %s has no report", id)}
+		}
+		changed = x.ReportAck != x.Reports
+		x.ReportAck = x.Reports
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if !changed {
+		fmt.Fprintf(e.Stdout, "%s report %d unchanged (already acked)\n", id, r.Reports)
+		return nil
+	}
+	if err := p.Journal(e.Caller, "thread.ack", id, fmt.Sprintf("report %d", r.Reports)); err != nil {
+		return err
+	}
+	fmt.Fprintf(e.Stdout, "%s report %d acked\n", id, r.Reports)
+	return nil
+}
+
+func (e *Env) threadStop(p *project.Project, id string) error {
+	r, err := thread.Load(p, id)
+	if err != nil {
+		return err
+	}
+	if r.State == thread.Resolved {
+		return &tasks.Error{Code: "resolved", Msg: fmt.Sprintf("thread %s is resolved", id)}
+	}
+	_, live := e.sessionOf(r)
+	if live {
+		if err := e.call(proto.MethodSessionStop, proto.SessionIDParams{ID: r.Session}, nil); err != nil {
+			return err
+		}
+	}
+	if _, err := thread.Update(p, id, func(x *thread.Record) error { x.State = thread.Stopped; return nil }); err != nil {
+		return err
+	}
+	if !live && r.State == thread.Stopped {
+		fmt.Fprintf(e.Stdout, "%s unchanged (already stopped)\n", id)
+		return nil
+	}
+	if err := p.Journal(e.Caller, "thread.stop", id, ""); err != nil {
+		return err
+	}
+	fmt.Fprintf(e.Stdout, "%s stopped\n", id)
+	return nil
+}
+
+func (e *Env) threadRestart(p *project.Project, id string) error {
+	r, err := thread.Load(p, id)
+	if err != nil {
+		return err
+	}
+	if r.State == thread.Resolved {
+		return &tasks.Error{Code: "resolved", Msg: fmt.Sprintf("thread %s is resolved; start a new one", id)}
+	}
+	if _, live := e.sessionOf(r); live {
+		if err := e.call(proto.MethodSessionStop, proto.SessionIDParams{ID: r.Session}, nil); err != nil {
+			return err
+		}
+	}
+	// A worktree removed by hand comes back on its branch: nothing of the
+	// thread's lived in it.
+	if _, err := os.Stat(r.Worktree); errors.Is(err, os.ErrNotExist) {
+		if r.Repo != "" && r.Branch != "" {
+			if err := worktree.Restore(r.Repo, r.Worktree, r.Branch); err != nil {
+				return err
+			}
+		} else if err := os.MkdirAll(r.Worktree, 0o755); err != nil {
+			return err
+		}
+	}
+	brief, err := thread.WriteBrief(p, r, true)
+	if err != nil {
+		return err
+	}
+	resume := ""
+	if r.Prompted && r.AgentSID != "" {
+		resume = r.AgentSID
+	}
+	if _, err := thread.Update(p, id, func(x *thread.Record) error { x.LastPrompt = time.Now().UTC(); return nil }); err != nil {
+		return err
+	}
+	info, err := e.launchThread(p, r, brief, resume)
+	if err != nil {
+		return err
+	}
+	how := "fresh"
+	if resume != "" {
+		how = "resumed " + resume
+	}
+	if err := p.Journal(e.Caller, "thread.restart", id, how); err != nil {
+		return err
+	}
+	fmt.Fprintf(e.Stdout, "restarted %s (%s, session %s)\n", id, how, info.ID)
+	return nil
+}
+
+func (e *Env) threadResolve(p *project.Project, id string) error {
+	r, err := thread.Load(p, id)
+	if err != nil {
+		return err
+	}
+	if r.State == thread.Resolved {
+		fmt.Fprintf(e.Stdout, "%s unchanged (already resolved)\n", id)
+		return nil
+	}
+	if _, live := e.sessionOf(r); live {
+		if err := e.call(proto.MethodSessionStop, proto.SessionIDParams{ID: r.Session}, nil); err != nil {
+			return err
+		}
+	}
+	var did []string
+	switch {
+	case r.Repo != "":
+		_, statErr := os.Stat(r.Worktree)
+		err := worktree.Remove(r.Repo, r.Worktree)
+		switch {
+		case errors.Is(err, worktree.ErrDirty):
+			did = append(did, "kept worktree "+r.Worktree+" (uncommitted changes)")
+		case err != nil:
+			did = append(did, "kept worktree "+r.Worktree+" ("+oneLine(err.Error(), 120)+")")
+		case statErr != nil:
+			did = append(did, "worktree was already gone")
+		default:
+			did = append(did, "removed worktree "+r.Worktree)
+		}
+		if r.Branch != "" && worktree.BranchExists(r.Repo, r.Branch) {
+			switch st := worktree.PRState(r.Repo, r.Branch); st {
+			case "MERGED":
+				if err := worktree.DeleteBranch(r.Repo, r.Branch); err != nil {
+					did = append(did, "kept branch "+r.Branch+" ("+oneLine(err.Error(), 120)+")")
+				} else {
+					did = append(did, "deleted branch "+r.Branch+" (PR merged)")
+				}
+			case "":
+				did = append(did, "kept branch "+r.Branch+" (no merged PR found)")
+			default:
+				did = append(did, "kept branch "+r.Branch+" (PR "+strings.ToLower(st)+")")
+			}
+		}
+	default:
+		if err := os.Remove(r.Worktree); err == nil || errors.Is(err, os.ErrNotExist) {
+			did = append(did, "removed folder "+r.Worktree)
+		} else {
+			did = append(did, "kept folder "+r.Worktree+" (not empty)")
+		}
+	}
+	if _, err := thread.Update(p, id, func(x *thread.Record) error { x.State = thread.Resolved; return nil }); err != nil {
+		return err
+	}
+	summary := id + " resolved: " + strings.Join(did, "; ")
+	if _, err := p.AddItem("thread-resolved", id, summary, false); err != nil {
+		return err
+	}
+	if err := p.Journal(e.Caller, "thread.resolve", id, strings.Join(did, "; ")); err != nil {
+		return err
+	}
+	fmt.Fprintln(e.Stdout, summary)
+	return nil
+}
+
+// ownThread is the thread a report, status or done call is about: the
+// caller's own, or --thread for the human (by hand, or in tests).
+func (e *Env) ownThread(p *project.Project, flag string) (*thread.Record, error) {
+	switch e.Caller.Kind {
+	case caller.Thread:
+		if flag != "" && flag != e.Caller.Thread {
+			return nil, &tasks.Error{Code: "coordinator-only", Msg: "a thread reports only for itself"}
+		}
+		if e.Caller.Project != "" && e.Caller.Project != p.Slug {
+			return nil, &tasks.Error{Code: "other-project", Msg: "a thread reports only to its own project"}
+		}
+		flag = e.Caller.Thread
+	case caller.Coordinator:
+		return nil, &tasks.Error{Code: "thread-only", Msg: "threads report; the coordinator reads reports with tm thread show"}
+	default:
+		if flag == "" {
+			return nil, usagef("outside a thread, pass --thread <id>")
+		}
+	}
+	r, err := thread.Load(p, flag)
+	if err != nil {
+		return nil, err
+	}
+	if r.State == thread.Resolved {
+		return nil, &tasks.Error{Code: "resolved", Msg: fmt.Sprintf("thread %s is resolved", r.ID)}
+	}
+	return r, nil
+}
+
+const reportUsage = `usage: tm report [--file F] [--attach F]...   (the report on stdin, or from --file)
+       tm report --show
+Format: optional "PR: <url>" first line, "## Report", required "## Next"
+(one action per line, at most 100 characters), optional "## Remember".`
+
+func runReport(e *Env, args []string) error {
+	f := newFlags()
+	slug, id := f.String("project"), f.String("thread")
+	file, attach, show := f.String("file"), f.List("attach"), f.Bool("show")
+	pos, err := f.Parse(args)
+	if err != nil {
+		return err
+	}
+	if len(pos) != 0 || (*show && f.anySet("file", "attach")) {
+		return usagef("%s", reportUsage)
+	}
+	p, err := e.openProject(*slug)
+	if err != nil {
+		return err
+	}
+	if *show {
+		tid := *id
+		if e.Caller.Kind == caller.Thread {
+			tid = e.Caller.Thread
+		}
+		if tid == "" {
+			return usagef("outside a thread, pass --thread <id>")
+		}
+		if _, err := thread.Load(p, tid); err != nil {
+			return err
+		}
+		data, err := os.ReadFile(thread.Path(p, tid, "REPORT.md"))
+		if errors.Is(err, os.ErrNotExist) {
+			fmt.Fprintf(e.Stdout, "%s has no report yet\n", tid)
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		_, err = e.Stdout.Write(data)
+		return err
+	}
+	r, err := e.ownThread(p, *id)
+	if err != nil {
+		return err
+	}
+	src := "-"
+	if *file != "" {
+		src = *file
+	}
+	text, err := e.readArg(src)
+	if err != nil {
+		return err
+	}
+	var files []string
+	for _, a := range *attach {
+		files = append(files, e.abs(a))
+	}
+	n, err := thread.StoreReport(p, r.ID, text, files, time.Now())
+	if err != nil {
+		return err
+	}
+	summary := fmt.Sprintf("%s handed in report %d", r.ID, n)
+	if r.Task != "" {
+		summary += " (" + r.Task + ")"
+	}
+	if _, err := p.AddItem("report", r.ID, summary, false); err != nil {
+		return err
+	}
+	if err := p.Journal(e.Caller, "thread.report", r.ID, fmt.Sprintf("report %d", n)); err != nil {
+		return err
+	}
+	fmt.Fprintf(e.Stdout, "stored report %d for %s\n", n, r.ID)
+	return nil
+}
+
+const statusUsage = `usage: tm status --percent N --activity "…" [--needs-you "question"]
+       tm status --unknown [--activity "…"] [--needs-you "question"]
+       tm status --needs-you "question"`
+
+// runStatus is a thread's self-report (docs/SPEC.md §7.3).
+func runStatus(e *Env, args []string) error {
+	f := newFlags()
+	slug, id := f.String("project"), f.String("thread")
+	percent, activity, needsYou, unknown := f.String("percent"), f.String("activity"), f.String("needs-you"), f.Bool("unknown")
+	pos, err := f.Parse(args)
+	if err != nil {
+		return err
+	}
+	if len(pos) != 0 || !f.anySet("percent", "activity", "needs-you", "unknown") || (f.IsSet("percent") && *unknown) {
+		return usagef("%s", statusUsage)
+	}
+	pct := -1
+	if f.IsSet("percent") {
+		if pct, err = strconv.Atoi(strings.TrimSuffix(*percent, "%")); err != nil || pct < 0 || pct > 100 {
+			return usagef("--percent takes 0-100")
+		}
+	}
+	p, err := e.openProject(*slug)
+	if err != nil {
+		return err
+	}
+	r, err := e.ownThread(p, *id)
+	if err != nil {
+		return err
+	}
+	wasWaiting := false
+	st, err := thread.UpdateStatus(p, r.ID, func(st *thread.Status) error {
+		wasWaiting = st.NeedsYou != ""
+		if f.anySet("percent", "unknown") {
+			st.SelfPercent = pct
+		}
+		st.SelfAt = time.Now().UTC()
+		st.Activity = oneLine(*activity, 100)
+		st.NeedsYou = oneLine(*needsYou, 300)
+		if st.NeedsYou == "" && strings.EqualFold(st.Activity, "waiting for you") {
+			st.NeedsYou = st.Activity
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if st.NeedsYou != "" && !wasWaiting {
+		// The question itself is the thread's text: data, kept out of
+		// the item's summary.
+		if _, err := p.AddItem("needs-you", r.ID, r.ID+" is waiting for the user (tm thread show "+r.ID+")", true); err != nil {
+			return err
+		}
+	}
+	fmt.Fprintf(e.Stdout, "%s: %d%% %s\n", r.ID, st.Percent, orDash(st.PercentSource))
+	return nil
+}
+
+func orDash(s string) string {
+	if s == "" {
+		return "—"
+	}
+	return s
+}
+
+// runDone is a thread's "finished" (docs/SPEC.md §7.3): it needs a report
+// stored since the last prompt. The task's status stays the coordinator's.
+func runDone(e *Env, args []string) error {
+	f := newFlags()
+	slug, id := f.String("project"), f.String("thread")
+	pos, err := f.Parse(args)
+	if err != nil {
+		return err
+	}
+	if len(pos) > 1 {
+		return usagef("usage: tm done [\"summary\"]")
+	}
+	p, err := e.openProject(*slug)
+	if err != nil {
+		return err
+	}
+	r, err := e.ownThread(p, *id)
+	if err != nil {
+		return err
+	}
+	if r.Reports == 0 || r.ReportAt.Before(r.LastPrompt) {
+		return &tasks.Error{Code: "no-report", Msg: "hand in your report with tm report first (none since your last prompt)"}
+	}
+	if r.Done && !r.DoneAt.Before(r.ReportAt) {
+		fmt.Fprintf(e.Stdout, "%s unchanged (already done)\n", r.ID)
+		return nil
+	}
+	now := time.Now().UTC()
+	if _, err := thread.Update(p, r.ID, func(x *thread.Record) error { x.Done, x.DoneAt = true, now; return nil }); err != nil {
+		return err
+	}
+	if _, err := thread.UpdateStatus(p, r.ID, func(st *thread.Status) error { st.Done = true; return nil }); err != nil {
+		return err
+	}
+	summary := r.ID + " is done"
+	if r.Task != "" {
+		summary += " with " + r.Task
+	}
+	summary += fmt.Sprintf("; review report %d and move the task", r.Reports)
+	if _, err := p.AddItem("thread-done", r.ID, summary, false); err != nil {
+		return err
+	}
+	detail := ""
+	if len(pos) == 1 {
+		detail = oneLine(pos[0], 80)
+	}
+	if err := p.Journal(e.Caller, "thread.done", r.ID, detail); err != nil {
+		return err
+	}
+	fmt.Fprintf(e.Stdout, "%s done\n", r.ID)
+	return nil
+}
+
+// refreshThread recomputes a task's thread's STATUS.md after its steps
+// changed.
+func refreshThread(p *project.Project, t *tasks.Task) {
+	if t != nil && thread.ValidID(t.Thread) {
+		thread.UpdateStatus(p, t.Thread, nil)
+	}
+}

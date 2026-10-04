@@ -19,7 +19,9 @@ import (
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/session"
 	"github.com/theclifmeister/termalator/internal/skill"
+	"github.com/theclifmeister/termalator/internal/thread"
 	"github.com/theclifmeister/termalator/internal/version"
+	"github.com/theclifmeister/termalator/internal/worktree"
 )
 
 // AgentsDir is where user manifests live, under TERMALATOR_HOME.
@@ -103,7 +105,7 @@ func realPath(p string) string {
 
 // accessFor is the role's file access policy (docs/SPEC.md §5.2). A
 // session outside a project gets no grants and no restrictions.
-func (s *Server) accessFor(role, slug string) (agent.Access, error) {
+func (s *Server) accessFor(role, slug, cwd string) (agent.Access, error) {
 	if slug == "" || role == proto.RoleShell {
 		return agent.Access{}, nil
 	}
@@ -112,12 +114,20 @@ func (s *Server) accessFor(role, slug string) (agent.Access, error) {
 		return agent.Access{}, err
 	}
 	dir = realPath(dir)
+	// The human's safety settings (docs/SPEC.md §11.2).
+	cfg := filepath.Join(realPath(s.opts.Paths.Home), "config.toml")
 	switch role {
 	case proto.RoleCoordinator:
 		wt := realPath(filepath.Join(s.opts.Paths.Home, "worktrees", slug))
-		return agent.Access{Read: []string{dir, wt}}, nil
+		return agent.Access{Read: []string{dir, wt}, NoWriteFiles: []string{cfg}}, nil
 	case proto.RoleThread:
-		return agent.Access{Read: []string{dir}, NoWrite: []string{dir}}, nil
+		a := agent.Access{Read: []string{dir}, NoWrite: []string{dir}, NoWriteFiles: []string{cfg}}
+		// A worktree's commits go to the main repo's git dir, outside
+		// the cwd the sandbox allows.
+		if gd, err := worktree.CommonDir(cwd); err == nil {
+			a.Write = []string{realPath(gd)}
+		}
+		return a, nil
 	}
 	return agent.Access{}, fmt.Errorf("unknown role %q", role)
 }
@@ -126,7 +136,7 @@ func (s *Server) accessFor(role, slug string) (agent.Access, error) {
 // compaction (docs/SPEC.md §7.8): the role's rules plus `tm context` for
 // a coordinator, the rules plus the brief for a thread, nothing for a
 // session outside a project.
-func contextFor(role, slug, brief string) func() ([]byte, error) {
+func contextFor(role, slug, threadID, brief string) func() ([]byte, error) {
 	return func() ([]byte, error) {
 		switch role {
 		case proto.RoleCoordinator:
@@ -142,6 +152,11 @@ func contextFor(role, slug, brief string) func() ([]byte, error) {
 			return []byte(rules + "\n\n" + project.RenderContext(secs)), nil
 		case proto.RoleThread:
 			rules, _ := skill.Text("thread", version.Version)
+			if p, err := project.Open(slug); err == nil && threadID != "" {
+				if ctx := thread.ResetContext(p, threadID); ctx != "" {
+					return []byte(rules + "\n\n" + ctx), nil
+				}
+			}
 			if brief != "" {
 				rules += "\n\nYour brief: " + brief + "\nRead it again, then continue with your task's unchecked steps.\n"
 			}
@@ -175,7 +190,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 	if l.resume && r.AgentSessionID == "" {
 		return nil, proto.Errorf(proto.ErrRefused, "session %s: no agent session id to resume", r.ID)
 	}
-	access, err := s.accessFor(r.Role, r.Project)
+	access, err := s.accessFor(r.Role, r.Project, r.Cwd)
 	if err != nil {
 		return nil, proto.Errorf(proto.ErrBadParams, "%v", err)
 	}
@@ -220,7 +235,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		OnExit:    s.sessionExited,
 		Agent: &session.AgentConfig{
 			Agent: a, AgentSID: r.AgentSessionID, Home: home,
-			Context:  contextFor(r.Role, r.Project, r.Brief),
+			Context:  contextFor(r.Role, r.Project, r.Thread, r.Brief),
 			OnChange: s.agentChanged,
 		},
 	})
@@ -279,9 +294,15 @@ func (s *Server) agentChanged(sess *session.Session) {
 		return
 	}
 	s.mu.Lock()
+	r, ok := s.records[sess.ID()]
+	s.mu.Unlock()
+	if ok && r.Role == proto.RoleThread && !st.Observed {
+		s.syncThread(r, st)
+	}
+	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.log.Printf("session %s: %s %s/%s (%s)", sess.ID(), st.Agent, st.State, st.Reason, st.Sources)
-	r, ok := s.records[sess.ID()]
+	r, ok = s.records[sess.ID()]
 	if !ok || st.Observed {
 		return
 	}
