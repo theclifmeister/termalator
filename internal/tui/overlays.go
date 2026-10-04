@@ -302,7 +302,7 @@ func (sw *switchView) render(m *dash) string {
 		r := row{key: "p:" + p.Slug, mark: "  ", who: p.Slug, what: oneLine(p.Name), state: "—", rest: "no coordinator", pct: -1}
 		for _, s := range m.data.Sessions {
 			if s.Role == proto.RoleCoordinator && s.Project == p.Slug {
-				r.state, r.rest, r.pct = stateWord(s), progress(s), sessionPct(s)
+				r.state, r.rest, r.pct = stateWord(s), progress(s, nil), sessionPct(s)
 				break
 			}
 		}

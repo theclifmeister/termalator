@@ -118,7 +118,7 @@ func buildRows(d Data) []row {
 				who = s.ID
 			}
 			needs = append(needs, row{key: "n:" + s.ID, session: s.ID, project: s.Project,
-				mark: markBlocked, who: who, what: sessionName(s), state: "blocked", rest: progress(s), pct: -1})
+				mark: markBlocked, who: who, what: sessionName(s), state: "blocked", rest: progress(s, nil), pct: -1})
 		}
 	}
 	for _, p := range d.Projects {
@@ -145,7 +145,7 @@ func buildRows(d Data) []row {
 		}
 		state, rest := "—", "enter starts the coordinator"
 		if coord != nil {
-			state, rest = stateWord(*coord), progress(*coord)
+			state, rest = stateWord(*coord), progress(*coord, nil)
 		}
 		if p.Err != "" {
 			rest = "error: " + oneLine(p.Err)
@@ -165,9 +165,7 @@ func buildRows(d Data) []row {
 		for i := range threads {
 			t := &threads[i]
 			tr := row{key: "th:" + p.Slug + ":" + t.ID, project: p.Slug, thread: t, mark: markNested, pct: -1}
-			if t.Status != nil && t.Status.PercentSource != "" {
-				tr.pct = t.Status.Percent
-			}
+			tr.pct = t.Status.Progress().Percent
 			state := t.State
 			if s, ok := byID[t.Session]; ok && t.Session != "" {
 				tr.session, state = s.ID, stateWord(s)
@@ -198,7 +196,7 @@ func buildRows(d Data) []row {
 		sort.SliceStable(members, func(i, j int) bool { return members[i].Thread < members[j].Thread })
 		for _, s := range members {
 			projs = append(projs, row{key: "s:" + s.ID, session: s.ID, project: p.Slug,
-				mark: markNested, who: s.ID, what: sessionName(s), state: stateWord(s), rest: joinSp(progress(s), age(now.Sub(s.Created))), pct: sessionPct(s)})
+				mark: markNested, who: s.ID, what: sessionName(s), state: stateWord(s), rest: joinSp(progress(s, nil), age(now.Sub(s.Created))), pct: sessionPct(s)})
 		}
 		c := p.Counts
 		projs = append(projs, row{note: fmt.Sprintf("    tasks: %d needs you · %d in motion · %d on deck", c["needs_you"], c["in_motion"], c["on_deck"])})
@@ -213,7 +211,7 @@ func buildRows(d Data) []row {
 			where = "~" + where[len(home):]
 		}
 		other = append(other, row{key: "s:" + s.ID, session: s.ID,
-			mark: markTop, who: s.ID, what: sessionName(s), state: stateWord(s), rest: joinSp(progress(s), age(now.Sub(s.Created)), where), pct: sessionPct(s)})
+			mark: markTop, who: s.ID, what: sessionName(s), state: stateWord(s), rest: joinSp(progress(s, nil), age(now.Sub(s.Created)), where), pct: sessionPct(s)})
 	}
 
 	var rows []row
@@ -234,7 +232,7 @@ func buildRows(d Data) []row {
 }
 
 // sessionPct is a session's todo percent, -1 without todos.
-func sessionPct(s proto.SessionInfo) int { return pctOf(s.TodosDone, s.TodosTotal) }
+func sessionPct(s proto.SessionInfo) int { return sessionProgress(s).Percent }
 
 // threadGroup orders a project's threads as §7.4 does: waiting on you,
 // ready for review, working, idle, then the rest.

@@ -623,6 +623,8 @@ The coordinator learns a thread's exact progress without asking it. Three source
 
 - **Steps set the scale; todos fill in the current step.** Agents often keep one todo list for the whole job rather than per step, so this can overstate progress, but by at most one step's worth. It never jumps back when the agent starts a new todo list.
 - The result is rounded down to a multiple of 5 and capped at 95 % until `tm done`.
+- **done/total counts the list that sets the scale:** steps when the task has any, else todos. With 2 of 4 steps checked and 1 of 3 todos done, every view shows `55% 2/4`; step and todo counts are never added together.
+- **Every view shows the same value.** The dashboard row, the details panel, the attach status bar and `tm` all show what `STATUS.md` holds, derived by this one rule. A session that is not a thread (a coordinator, an agent in a shell) has only its todos and uses the todos row; with no `tm done`, it reaches 100 % once every todo is done.
 - An in-progress todo counts as not done.
 - **The current item** is the first `in_progress` todo; if there is none, it's the first unchecked step.
 - **The self-report's other fields still count when derived progress exists.** `--needs-you` (or the activity `Waiting for you`) is the explicit "blocked on the human" signal, which harness hooks can't express for a question asked in plain text. The activity text is shown only when there are no todos or steps.
