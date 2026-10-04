@@ -15,8 +15,8 @@ import (
 const sessionUsage = `usage: tm session list [--json]
        tm session start [--cwd DIR] [--cols N --rows N] [-- COMMAND ARGS…]
        tm session stop ID
-       tm session read ID [--scrollback] [--json]
-       tm session keys ID [--enter] TEXT`
+       tm session read ID [--scrollback] [--json]   (the screen as plain text)
+       tm session keys ID [--enter] [TEXT…]   (types TEXT literally; --enter presses Enter)`
 
 // sessionCmd implements `tm session …`: plain sessions outside projects.
 func sessionCmd(e *Env, args []string) int {
@@ -168,7 +168,7 @@ func sessionRead(e *Env, args []string) int {
 func sessionKeys(e *Env, args []string) int {
 	fs := flag.NewFlagSet("session keys", flag.ContinueOnError)
 	fs.SetOutput(e.Stderr)
-	enter := fs.Bool("enter", false, "press Enter after the text")
+	enter := fs.Bool("enter", false, "press Enter after the text (key names are not parsed: 'enter' types e-n-t-e-r)")
 	id, rest := splitID(args)
 	if err := fs.Parse(rest); err != nil {
 		return ExitUsage
@@ -178,7 +178,7 @@ func sessionKeys(e *Env, args []string) int {
 		id, words = words[0], words[1:]
 	}
 	if id == "" || (len(words) == 0 && !*enter) {
-		return e.srvUsage("session keys", "usage: tm session keys ID [--enter] TEXT")
+		return e.srvUsage("session keys", "usage: tm session keys ID [--enter] [TEXT…]   (TEXT is typed literally; --enter presses Enter)")
 	}
 	data := strings.Join(words, " ")
 	if *enter {
