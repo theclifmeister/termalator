@@ -330,8 +330,9 @@ func (s *Server) agentChanged(sess *session.Session) {
 }
 
 // resume relaunches the previous server's agent sessions with their
-// latest agent session ids (docs/SPEC.md §3.6).
-func (s *Server) resume(recs []SessionRecord) {
+// latest agent session ids (docs/SPEC.md §3.6), and says what became of
+// each.
+func (s *Server) resume(recs []SessionRecord) (outs []restartOutcome) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, r := range recs {
@@ -339,6 +340,7 @@ func (s *Server) resume(recs []SessionRecord) {
 		if _, err := os.Stat(r.Cwd); err != nil {
 			s.log.Printf("session %s: not resumed: %v", r.ID, err)
 			s.lost = append(s.lost, r.ID)
+			outs = append(outs, restartOutcome{rec: r, how: "lost"})
 			continue
 		}
 		cols, rows := r.Cols, r.Rows
@@ -346,17 +348,22 @@ func (s *Server) resume(recs []SessionRecord) {
 			cols, rows = 80, 24
 		}
 		l := agentLaunch{rec: r, resume: true, cols: cols, rows: rows}
+		how := "resumed"
 		if !r.Prompted {
+			how = "fresh"
 			// Nothing to resume: the agent saved no conversation yet.
 			l.resume, l.kick, l.rec.AgentSessionID = false, r.Kickoff, newUUID()
 		}
 		if _, perr := s.launchAgent(l); perr != nil {
 			s.log.Printf("session %s: not resumed: %v", r.ID, perr)
 			s.lost = append(s.lost, r.ID)
+			outs = append(outs, restartOutcome{rec: r, how: "lost"})
 			continue
 		}
 		s.resumed = append(s.resumed, r.ID)
+		outs = append(outs, restartOutcome{rec: r, how: how})
 	}
+	return outs
 }
 
 func (s *Server) hookEvent(p proto.HookEventParams) proto.HookEventResult {
