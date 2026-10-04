@@ -254,6 +254,42 @@ func TestViewsLayoutActions(t *testing.T) {
 	}
 }
 
+// TestViewsTree: view.project shows a project's dashboard, on every
+// console of the view, leaving the layout; view.expand opens and closes
+// projects in the tree; an own view keeps its tree to itself.
+func TestViewsTree(t *testing.T) {
+	h := newFakeHost("s-1")
+	vs := newViews(h, "", nil)
+	a, _ := join(t, vs, proto.ViewSubscribeParams{Cols: 120, Rows: 30})
+	b, _ := join(t, vs, proto.ViewSubscribeParams{Cols: 120, Rows: 30})
+	mustDo(t, vs, proto.MethodViewAttach, proto.ViewParams{Client: a.id, Session: "s-1", Project: "p"})
+	woken(b)
+	v := mustDo(t, vs, proto.MethodViewProject, proto.ViewParams{Client: a.id, Project: "q"})
+	if v.Mode != view.ModeDashboard || v.Current != "q" || v.Selected != "p:q" || !woken(b) || len(h.takeResizes()) != 0 {
+		t.Fatalf("project: %+v", v)
+	}
+	v = mustDo(t, vs, proto.MethodViewExpand, proto.ViewParams{Client: b.id, Project: "p", Expand: true})
+	if !slices.Equal(v.Expanded, []string{"p"}) || !woken(a) {
+		t.Fatalf("expand: %+v", v)
+	}
+	if v = mustDo(t, vs, proto.MethodViewExpand, proto.ViewParams{Client: a.id, Project: "p"}); len(v.Expanded) != 0 {
+		t.Fatalf("collapse: %+v", v)
+	}
+	for _, m := range []string{proto.MethodViewProject, proto.MethodViewExpand} {
+		if _, err := vs.do(m, proto.ViewParams{Client: a.id}); err == nil {
+			t.Fatalf("%s without a project", m)
+		}
+	}
+	own, name := join(t, vs, proto.ViewSubscribeParams{Own: true, Cols: 120, Rows: 30})
+	mustDo(t, vs, proto.MethodViewExpand, proto.ViewParams{Client: own.id, Project: "z", Expand: true})
+	if v, _ := vs.get(view.Main); len(v.Expanded) != 0 {
+		t.Fatalf("main took an own view's tree: %+v", v)
+	}
+	if v, _ := vs.get(name); !slices.Equal(v.Expanded, []string{"z"}) {
+		t.Fatalf("own view's tree: %+v", v)
+	}
+}
+
 func TestViewsOwn(t *testing.T) {
 	h := newFakeHost("s-1", "s-2")
 	vs := newViews(h, "", nil)
@@ -404,6 +440,10 @@ func FuzzViewActions(f *testing.F) {
 	f.Add([]byte(`{"method":"view.size","params":{"cols":1,"rows":1,"resize":true}}
 {"method":"view.sidebar","params":{"sidebar":{"width":-5,"slim":true}}}
 {"method":"view.even"}`), []byte(`{"views":[{"name":"main","root":{"a":{"session":"x"}}}]}`))
+	f.Add([]byte(`{"method":"view.expand","params":{"project":"b","expand":true}}
+{"method":"view.project","params":{"project":"a"}}
+{"method":"view.expand","params":{"project":"a"}}
+{"method":"view.attach","params":{"session":"s-3","project":"b"}}`), []byte(`{"version":1,"views":[{"name":"main","mode":"dashboard","current":"a","expanded":["z","b","z",""]}]}`))
 	f.Fuzz(func(t *testing.T, calls, file []byte) {
 		h := newFakeHost("s-1", "s-2", "s-3")
 		vs := newViews(h, "", nil)
@@ -424,6 +464,9 @@ func FuzzViewActions(f *testing.F) {
 			v, _ := vs.do(req.Method, req.Params)
 			if err := v.Valid(); err != nil {
 				t.Fatalf("%s left %v", line, err)
+			}
+			if len(v.Expanded) > view.MaxExpanded || !slices.IsSorted(v.Expanded) {
+				t.Fatalf("%s left the tree %v", line, v.Expanded)
 			}
 			v.Lay(int(v.Cols), int(v.Rows))
 		}

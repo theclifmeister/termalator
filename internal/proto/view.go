@@ -17,6 +17,12 @@ const (
 	MethodViewAttach = "view.attach"
 	// MethodViewDashboard shows the dashboard.
 	MethodViewDashboard = "view.dashboard"
+	// MethodViewProject shows Project's dashboard: the dashboard, with
+	// Project current (a click on its row in the sidebar's tree).
+	MethodViewProject = "view.project"
+	// MethodViewExpand opens (Expand) or closes Project in the sidebar's
+	// tree.
+	MethodViewExpand = "view.expand"
 	// MethodViewSelect selects a dashboard row (Key).
 	MethodViewSelect = "view.select"
 	// MethodViewSplit starts a shell in the focused pane's directory and
@@ -51,8 +57,8 @@ const (
 type ViewSubscribeParams struct {
 	// View names the view; empty is view.Main. Own makes a new view of
 	// this console's own, gone when it leaves; Bare (with Own) makes it a
-	// view without dashboard and sidebar (tm attach), StatusBar gives it
-	// the status bar.
+	// view without a dashboard (tm attach), StatusBar gives it the status
+	// bar.
 	View      string `json:"view,omitempty"`
 	Own       bool   `json:"own,omitempty"`
 	Bare      bool   `json:"bare,omitempty"`
@@ -100,4 +106,5 @@ type ViewParams struct {
 	Cols    uint16        `json:"cols,omitempty"`
 	Rows    uint16        `json:"rows,omitempty"`
 	Resize  bool          `json:"resize,omitempty"`
+	Expand  bool          `json:"expand,omitempty"`
 }

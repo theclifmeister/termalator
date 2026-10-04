@@ -21,12 +21,12 @@ func TestSmokeViewsShared(t *testing.T) {
 	env.Trust(alphaDir, betaDir)
 
 	w1 := env.Window(120, 30)
-	w1.WaitFor("beta         coordinator", wait)
+	w1.WaitFor("▸· beta", wait)
 	w2 := env.Window(100, 26)
-	w2.WaitFor("beta         coordinator", wait)
+	w2.WaitFor("▸· beta", wait)
 
 	// w1 opens alpha's coordinator: both consoles show it.
-	w1.Click(3, sideRow(t, w1.Screen(), alpha))
+	clickCoordinator(t, w1, alpha)
 	for _, w := range []*Window{w1, w2} {
 		w.WaitUntil("attached to alpha", agentWait, func(sc string) bool { return lastLine(sc, alpha+" coordinator") })
 		w.WaitFor("Fake Claude Code", agentWait)
@@ -83,7 +83,7 @@ func TestSmokeViewsShared(t *testing.T) {
 	// stays there.
 	w3 := env.Window(100, 26, "--own")
 	w3.WaitFor("SESSIONS", wait)
-	w3.Click(3, sideRow(t, w3.Screen(), beta))
+	clickCoordinator(t, w3, beta)
 	w3.WaitUntil("w3 on beta", agentWait, func(sc string) bool { return lastLine(sc, beta+" coordinator") })
 	for _, w := range []*Window{w1, w2} {
 		if sc := w.Screen(); !lastLine(sc, alpha+" coordinator") {
@@ -123,8 +123,8 @@ func TestSmokeViewSurvivesRestart(t *testing.T) {
 	env.Trust(alphaDir)
 
 	w := env.Window(120, 30)
-	w.WaitFor("alpha        coordinator", wait)
-	w.Click(3, sideRow(t, w.Screen(), alpha))
+	w.WaitFor("▾· alpha", wait)
+	clickCoordinator(t, w, alpha)
 	w.WaitUntil("attached to alpha", agentWait, func(sc string) bool { return lastLine(sc, alpha+" coordinator") })
 	a := coordinatorOf(t, env, alpha)
 	env.WaitState(a, "idle", agentWait)

@@ -39,8 +39,11 @@ func TestSmokeProjectOpenAndSwitch(t *testing.T) {
 	env.WaitState(coord, "idle", agentWait)
 
 	w := env.Window(100, 30)
-	w.WaitFor("alpha        coordinator                    ○ idle", wait)
-	w.WaitFor("beta         coordinator                    —", wait)
+	// The sidebar's tree: alpha (the first, listed) open with its idle
+	// coordinator, beta closed without one.
+	w.WaitFor("▾○ alpha", wait)
+	w.WaitFor("  ○ coordinator", wait)
+	w.WaitFor("▸· beta", wait)
 
 	// p, down, enter: beta's coordinator starts and is attached.
 	w.Type("p")
@@ -82,52 +85,86 @@ func TestSmokeProjectOpenAndSwitch(t *testing.T) {
 	w2.WaitExit(wait)
 }
 
-// TestSmokeSidebar: the projects sidebar (docs/SPEC.md §4) on every
-// screen. A click on a project opens its coordinator, from the dashboard
-// and while attached, also from a split layout; the sidebar stays left
-// of split panes; prefix } widens it and a drag on its border moves it,
-// both resizing the panes and kept in ui.json; a narrow window gets the
-// slim strip.
+// TestSmokeSidebar: the project tree in the sidebar (docs/SPEC.md §4)
+// on every screen, shared by the consoles of view main. ▸ ▾ open and
+// close a project in both consoles; a project row shows its dashboard, a
+// coordinator row attaches the coordinator, a thread row watches the
+// thread, from the dashboard and from (split) panes; the sidebar stays
+// left of split panes; prefix } widens it and a drag on its border moves
+// it, both resizing the panes and kept in ui.json; a narrow window gets
+// the slim strip. tm attach shows the sidebar too, and a click on it
+// switches that console to the full UI on view main.
 func TestSmokeSidebar(t *testing.T) {
-	env := New(t)
-	env.FakeClaude()
-	alpha, alphaDir := newProject(env, "Alpha")
+	env, projDir, _ := threadEnv(t)
+	demo := "demo"
 	beta, betaDir := newProject(env, "Beta")
-	env.Trust(alphaDir, betaDir)
+	env.Trust(betaDir)
+	th := startThread(t, env, projDir)
 
 	w := env.Window(120, 30)
-	w.WaitFor("beta         coordinator", wait)
-	// From the dashboard: a click on alpha opens its coordinator; the
-	// panes get the window less the sidebar's 24 columns.
-	w.Click(3, sideRow(t, w.Screen(), alpha))
-	w.WaitUntil("attached to alpha", agentWait, func(sc string) bool { return lastLine(sc, alpha+" coordinator") })
-	w.WaitFor("Fake Claude Code", agentWait)
-	w.WaitFor("▸○ "+alpha, wait) // the current project is marked
-	a := coordinatorOf(t, env, alpha)
-	waitPaneSize(t, env, a, 96, 29)
+	// beta, the first project, is current: open, with its coordinator
+	// (none runs yet); demo is closed, with its one thread.
+	w.WaitFor("▾· "+beta, wait)
+	w.WaitFor("  · coordinator", wait)
+	w.WaitFor("▸· "+demo+"              1", wait)
+	w2 := env.Window(100, 26)
+	w2.WaitFor("▸· "+demo, wait)
 
-	// A split: the sidebar stays, the panes share the 96 columns, and
-	// alpha stays the current project.
+	// ▸ opens demo in both consoles of the view; ▾ in the other closes it.
+	both := []*Window{w, w2}
+	w.Click(0, sideRow(t, w.Screen(), demo))
+	for _, x := range both {
+		x.WaitUntil("demo open", wait, func(sc string) bool { return treeRow(sc, demo, "t-0001 Small fix") >= 0 })
+	}
+	w2.Click(0, sideRow(t, w2.Screen(), demo))
+	for _, x := range both {
+		x.WaitUntil("demo closed", wait, func(sc string) bool { return treeRow(sc, demo, "coordinator") < 0 })
+	}
+
+	// A project row shows that project's dashboard, in both consoles.
+	w.Click(4, sideRow(t, w.Screen(), demo))
+	for _, x := range both {
+		x.WaitUntil("demo's dashboard", wait, func(sc string) bool {
+			return strings.Contains(sc, " "+demo+" ──") && strings.Contains(sc, "t-0001 Small fix") && treeRow(sc, demo, "coordinator") >= 0
+		})
+	}
+	// beta's row, then its coordinator's row, starts and attaches the
+	// coordinator; the panes get the window less the sidebar's 24 columns.
+	clickCoordinator(t, w, beta)
+	w.WaitUntil("attached to beta", agentWait, func(sc string) bool { return lastLine(sc, beta+" coordinator") })
+	w.WaitFor("Fake Claude Code", agentWait)
+	b := coordinatorOf(t, env, beta)
+	waitPaneSize(t, env, b, 96, 29)
+
+	// A split: the sidebar stays, the panes share the 96 columns.
 	w.Prefix("%")
 	w.WaitUntil("two panes", wait, func(sc string) bool { return lastLine(sc, "pane 2/2") })
-	waitPaneSize(t, env, a, 48, 29)
+	waitPaneSize(t, env, b, 48, 29)
 	for i, l := range strings.Split(w.Screen(), "\n")[:29] {
 		if r := []rune(l); len(r) <= 72 || r[23] != '│' || r[72] != '│' {
 			t.Fatalf("row %d lacks the sidebar's border or the divider:\n%s", i, w.Screen())
 		}
 	}
-	if !strings.Contains(w.Screen(), "▸○ "+alpha) {
-		t.Fatalf("alpha not marked current in a split:\n%s", w.Screen())
-	}
 
-	// From the split: a click on beta opens beta's coordinator.
-	w.Click(3, sideRow(t, w.Screen(), beta))
-	w.WaitUntil("attached to beta", agentWait, func(sc string) bool {
-		return lastLine(sc, beta+" coordinator") && !lastLine(sc, "pane ")
-	})
-	w.WaitFor("Fake Claude Code", agentWait)
-	b := coordinatorOf(t, env, beta)
-	waitPaneSize(t, env, b, 96, 29)
+	// From the split: ▸ opens demo in place, and its thread's row watches
+	// the thread, still in the attach view.
+	w.Click(0, sideRow(t, w.Screen(), demo))
+	w.WaitUntil("demo open", wait, func(sc string) bool { return treeRow(sc, demo, "t-0001") >= 0 && lastLine(sc, "pane 2/2") })
+	w.Click(5, treeRow(w.Screen(), demo, "t-0001"))
+	for _, x := range both {
+		x.WaitUntil("watching t-0001", wait, func(sc string) bool { return lastLine(sc, "watch-only") && !lastLine(sc, "pane ") })
+	}
+	if c, r := paneSize(env, th); c == 96 && r == 29 {
+		t.Fatalf("watching resized the thread")
+	}
+	// beta's row, from the pane, shows beta's dashboard on both consoles;
+	// its coordinator's row attaches the coordinator again.
+	w.Click(4, sideRow(t, w.Screen(), beta))
+	for _, x := range both {
+		x.WaitUntil("beta's dashboard", wait, func(sc string) bool { return strings.Contains(sc, " "+beta+" ──") })
+	}
+	clickCoordinator(t, w, beta)
+	w.WaitUntil("attached to beta", wait, func(sc string) bool { return lastLine(sc, beta+" coordinator") })
 
 	// Prefix } widens the sidebar: a layout change, so the pane follows,
 	// and ui.json keeps the width.
@@ -143,28 +180,84 @@ func TestSmokeSidebar(t *testing.T) {
 		t.Fatalf("ui.json after the drag: %s", readFile(env.Home, "ui.json"))
 	}
 
-	// A narrow window: the slim strip, 7 columns, never nothing.
+	// A narrow window: the slim strip of projects, 7 columns, never
+	// nothing; beta, the focused pane's, is marked.
 	w.Resize(70, 30)
 	waitPaneSize(t, env, b, 63, 29)
 	w.WaitFor("▸○beta│", wait)
-	w.WaitFor(" ○alph│", wait)
-
+	w.WaitFor(" ·demo│", wait)
+	w.Resize(120, 30)
 	w.Detach()
-	w.WaitFor("SESSIONS", wait)
-	w.Type("q")
-	w.WaitExit(wait)
+	for _, x := range both {
+		x.WaitFor("SESSIONS", wait)
+	}
+
+	// tm attach on the thread: watch-only, with the sidebar. A click on
+	// demo's coordinator hands the console over to view main, which
+	// starts and shows the coordinator, on every console of the view.
+	w3 := env.Attach(120, 30, th.ID)
+	w3.WaitUntil("tm attach watching", wait, func(sc string) bool { return lastLine(sc, "watch-only") })
+	w3.WaitFor(" PROJECTS 2", wait)
+	w3.Click(4, treeRow(w3.Screen(), demo, "coordinator"))
+	for _, x := range []*Window{w3, w, w2} {
+		x.WaitUntil("on demo's coordinator", agentWait, func(sc string) bool { return lastLine(sc, demo+" coordinator") })
+	}
+	coordinatorOf(t, env, demo)
+	w3.Detach() // a full console now: back to the dashboard, everywhere
+	for _, x := range []*Window{w3, w, w2} {
+		x.WaitFor("SESSIONS", wait)
+		x.Type("q")
+		x.WaitExit(wait)
+	}
 }
 
 // sideRow is the screen row where the sidebar lists slug.
 func sideRow(t *testing.T, screen, slug string) int {
 	t.Helper()
+	if i := projectRow(screen, slug); i >= 0 {
+		return i
+	}
+	t.Fatalf("the sidebar doesn't list %s:\n%s", slug, screen)
+	return -1
+}
+
+// projectRow is the screen row of slug's project row in the sidebar, -1
+// for none.
+func projectRow(screen, slug string) int {
 	for i, l := range strings.Split(screen, "\n") {
 		if r := []rune(l); len(r) > 3 && strings.HasPrefix(strings.TrimSpace(string(r[2:min(len(r), 23)])), slug) {
 			return i
 		}
 	}
-	t.Fatalf("the sidebar doesn't list %s:\n%s", slug, screen)
 	return -1
+}
+
+// treeRow is the screen row of the row under slug's project in the
+// sidebar's tree whose text starts with label ("coordinator", a thread
+// id); -1 when slug is closed or has none.
+func treeRow(screen, slug, label string) int {
+	lines := strings.Split(screen, "\n")
+	for i := projectRow(screen, slug) + 1; i > 0 && i < len(lines); i++ {
+		r := []rune(lines[i])
+		if len(r) < 4 || r[0] != ' ' || r[1] != ' ' {
+			return -1
+		}
+		if strings.HasPrefix(string(r[4:min(len(r), 23)]), label) {
+			return i
+		}
+	}
+	return -1
+}
+
+// clickCoordinator clicks slug's row in the sidebar, which shows its
+// dashboard, then its coordinator's row, which attaches the coordinator
+// (started when none runs).
+func clickCoordinator(t *testing.T, w *Window, slug string) {
+	t.Helper()
+	w.Click(4, sideRow(t, w.Screen(), slug))
+	y := -1
+	w.WaitUntil(slug+"'s coordinator row", wait, func(sc string) bool { y = treeRow(sc, slug, "coordinator"); return y >= 0 })
+	w.Click(4, y)
 }
 
 // coordinatorOf is the project's coordinator session.

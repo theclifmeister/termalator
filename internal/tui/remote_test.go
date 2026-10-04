@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/theclifmeister/termalator/internal/proto"
+	"github.com/theclifmeister/termalator/internal/thread"
 )
 
 func TestRemoteMarkers(t *testing.T) {
@@ -19,23 +20,27 @@ func TestRemoteMarkers(t *testing.T) {
 		t.Fatalf("status bar with a marker while off: %q", line)
 	}
 
-	items := sideItems([]sideProject{{slug: "demo", threads: 2}, {slug: "other"}},
-		[]proto.SessionInfo{{Role: proto.RoleCoordinator, Project: "demo", State: "idle", RemoteControl: true}})
-	if !items[0].remote || items[1].remote {
-		t.Fatalf("items = %+v", items)
+	rows := buildTree([]ProjectData{{Slug: "demo", Threads: []ThreadRow{{Record: &thread.Record{ID: "t-0001"}}}}, {Slug: "other"}},
+		[]proto.SessionInfo{{Role: proto.RoleCoordinator, Project: "demo", State: "idle", RemoteControl: true}},
+		treeIn{current: "demo"})
+	if len(rows) != 4 || !rows[0].remote || !rows[1].remote || rows[3].remote {
+		t.Fatalf("rows = %+v", rows)
 	}
 	for _, slim := range []bool{false, true} {
 		w := 20
 		if slim {
 			w = sideSlim - 1
 		}
-		on, off := ansi.Strip(sideLine(items[0], false, w, slim)), ansi.Strip(sideLine(items[1], false, w, slim))
+		on, off := ansi.Strip(treeLine(rows[0], w, slim)), ansi.Strip(treeLine(rows[3], w, slim))
 		if !strings.Contains(on, remoteMark) || strings.Contains(off, remoteMark) {
 			t.Errorf("slim %v: %q / %q", slim, on, off)
 		}
 		if ansi.StringWidth(on) != w {
 			t.Errorf("slim %v: %q is %d wide, want %d", slim, on, ansi.StringWidth(on), w)
 		}
+	}
+	if c := ansi.Strip(treeLine(rows[1], 20, false)); !strings.Contains(c, "coordinator"+remoteMark) {
+		t.Errorf("coordinator row %q", c)
 	}
 }
 

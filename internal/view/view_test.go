@@ -8,7 +8,7 @@ import (
 
 func layout(t *testing.T) *View {
 	t.Helper()
-	v := &View{Name: Main, Bare: true}
+	v := &View{Name: Main, Bare: true, Sidebar: Sidebar{Slim: true}}
 	v.Attach("a", "proj")
 	// a | b, then b split below: a | (b / c).
 	if !v.Split("a", "b", true) || !v.Split("b", "c", false) {
@@ -22,11 +22,12 @@ func TestLay(t *testing.T) {
 	if v.Focus != "c" || v.Current != "proj" || v.Mode != ModeLayout {
 		t.Fatalf("view %+v", v)
 	}
-	g := v.Lay(81, 24)
-	if g.Panes["a"] != (Rect{0, 0, 40, 24}) || g.Panes["b"] != (Rect{41, 0, 40, 12}) || g.Panes["c"] != (Rect{41, 13, 40, 11}) {
+	// Every view has the sidebar: here the 7-column slim strip.
+	g := v.Lay(88, 24)
+	if g.Panes["a"] != (Rect{7, 0, 40, 24}) || g.Panes["b"] != (Rect{48, 0, 40, 12}) || g.Panes["c"] != (Rect{48, 13, 40, 11}) {
 		t.Fatalf("rects %+v", g.Panes)
 	}
-	if len(g.Dividers) != 2 || g.Dividers[0].At != (Rect{40, 0, 1, 24}) || !g.Dividers[0].Side || g.Dividers[1].At != (Rect{41, 12, 40, 1}) {
+	if len(g.Dividers) != 2 || g.Dividers[0].At != (Rect{47, 0, 1, 24}) || !g.Dividers[0].Side || g.Dividers[1].At != (Rect{48, 12, 40, 1}) {
 		t.Fatalf("dividers %+v", g.Dividers)
 	}
 	if !g.Dividers[0].Focused || !g.Dividers[1].Focused {
@@ -40,8 +41,9 @@ func TestLay(t *testing.T) {
 		t.Fatal("neighbours")
 	}
 
-	// The chrome: a shared view has the sidebar and the status bar.
-	v.Bare = false
+	// The chrome: a shared view has the sidebar and the status bar; a
+	// bare one the sidebar, and the status bar when asked for.
+	v.Bare, v.Sidebar.Slim = false, false
 	g = v.Lay(120, 30)
 	if g.SideW != SideDefault || g.Status != 1 || g.Area != (Rect{SideDefault, 0, 120 - SideDefault, 29}) {
 		t.Fatalf("chrome %+v", g)
@@ -50,20 +52,82 @@ func TestLay(t *testing.T) {
 	if g = v.Lay(70, 30); g.SideW != SideSlim {
 		t.Fatalf("narrow: sidebar %d", g.SideW)
 	}
+	v.Bare = true
+	if g = v.Lay(120, 30); g.SideW != SideDefault || g.Status != 0 {
+		t.Fatalf("bare chrome %+v", g)
+	}
+	v.StatusBar = true
+	if g = v.Lay(120, 30); g.SideW != SideDefault || g.Status != 1 {
+		t.Fatalf("bare chrome with a status bar %+v", g)
+	}
+}
+
+// TestTree: the sidebar's tree state. The current project is always
+// expanded, others open and close; showing a project's dashboard makes it
+// current with its coordinator's row selected; the highlight follows
+// the screen and the focus.
+func TestTree(t *testing.T) {
+	v := &View{Name: Main}
+	v.Normalize()
+	if !v.ShowProject("b") || v.Mode != ModeDashboard || v.Current != "b" || v.Selected != "p:b" || v.ShowProject("b") {
+		t.Fatalf("show b: %+v", v)
+	}
+	if p, s := v.Here(); p != "b" || s != "" {
+		t.Fatalf("here on the dashboard: %q %q", p, s)
+	}
+	if !v.IsExpanded("b") || v.IsExpanded("a") {
+		t.Fatal("only the current project is expanded")
+	}
+	if !v.Expand("c", true) || !v.Expand("a", true) || v.Expand("a", true) {
+		t.Fatal("expand")
+	}
+	if strings.Join(v.Expanded, ",") != "a,c" || !v.IsExpanded("a") {
+		t.Fatalf("expanded %v", v.Expanded)
+	}
+	if !v.Expand("a", false) || v.Expand("a", false) || v.IsExpanded("a") {
+		t.Fatal("collapse")
+	}
+	// Collapsing the current project keeps it open.
+	v.Expand("b", true)
+	v.Expand("b", false)
+	if !v.IsExpanded("b") {
+		t.Fatal("the current project closed")
+	}
+	v.Attach("s-1", "a")
+	if p, s := v.Here(); p != "a" || s != "s-1" {
+		t.Fatalf("here attached: %q %q", p, s)
+	}
+	// The tree state survives the wire, and a clone owns its list.
+	c := v.Clone()
+	c.Expanded[0] = "z"
+	if v.Expanded[0] != "c" {
+		t.Fatal("a clone shares Expanded")
+	}
+	b, _ := json.Marshal(v)
+	var back View
+	if err := json.Unmarshal(b, &back); err != nil || !Equal(*v, back) {
+		t.Fatalf("round trip: %s", b)
+	}
+	// Normalize sorts and dedupes.
+	v.Expanded = []string{"q", "c", "q"}
+	v.Normalize()
+	if strings.Join(v.Expanded, ",") != "c,q" {
+		t.Fatalf("normalized %v", v.Expanded)
+	}
 }
 
 func TestActions(t *testing.T) {
 	v := layout(t)
 	// ctrl+→ on c moves the side divider right; ctrl+↓ on a finds no
 	// stacked split around a.
-	if !v.ResizeTowards(true, 8, 81, 24) {
+	if !v.ResizeTowards(true, 8, 88, 24) {
 		t.Fatal("no side split to resize")
 	}
-	if g := v.Lay(81, 24); g.Panes["a"].W != 48 || g.Panes["b"].X != 49 {
+	if g := v.Lay(88, 24); g.Panes["a"].W != 48 || g.Panes["b"].X != 56 {
 		t.Fatalf("after resize %+v", g.Panes)
 	}
 	v.FocusOn("a")
-	if v.ResizeTowards(false, 1, 81, 24) {
+	if v.ResizeTowards(false, 1, 88, 24) {
 		t.Fatal("resized a stacked split a isn't in")
 	}
 
@@ -74,7 +138,7 @@ func TestActions(t *testing.T) {
 	if !v.ToggleZoom() || len(v.Visible()) != 1 || v.Visible()[0] != "b" {
 		t.Fatalf("zoom: %v", v.Visible())
 	}
-	if !v.FocusDir(0, 1, 81, 24) || v.Zoom || v.Focus != "c" {
+	if !v.FocusDir(0, 1, 88, 24) || v.Zoom || v.Focus != "c" {
 		t.Fatalf("down from b: %s zoom %v", v.Focus, v.Zoom)
 	}
 
@@ -82,7 +146,7 @@ func TestActions(t *testing.T) {
 	if !v.Remove("b") || v.Focus != "c" {
 		t.Fatalf("remove: focus %s", v.Focus)
 	}
-	if g := v.Lay(81, 24); len(g.Panes) != 2 || g.Panes["c"].H != 24 || g.Panes["c"].X != 49 {
+	if g := v.Lay(88, 24); len(g.Panes) != 2 || g.Panes["c"].H != 24 || g.Panes["c"].X != 56 {
 		t.Fatalf("after remove: %+v", g.Panes)
 	}
 	// Removing the focused pane moves the focus.

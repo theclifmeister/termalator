@@ -159,17 +159,17 @@ The types are in `internal/proto`.
 | sessions | `session.list`, `session.start`, `session.stop`, `session.read` (screen text), `session.prompt`, `session.keys`, `session.wait` (until a state) |
 | agents | `agent.list`, `agent.reload`, `agent.explain` (which signals and rules produced a session's state) |
 | hooks | `hook.event` (from `tm hook`; also its own connection kind, §8.2) |
-| views | `view.subscribe` (join a view; the connection then streams `view.changed`), `view.attach`, `view.dashboard`, `view.select`, `view.split`, `view.close`, `view.focus`, `view.zoom`, `view.even`, `view.resize`, `view.sidebar`, `view.size`, `view.input` (below) |
+| views | `view.subscribe` (join a view; the connection then streams `view.changed`), `view.attach`, `view.dashboard`, `view.project`, `view.expand`, `view.select`, `view.split`, `view.close`, `view.focus`, `view.zoom`, `view.even`, `view.resize`, `view.sidebar`, `view.size`, `view.input` (below) |
 | projects | `project.list`, `project.context`, `task.*`, `thread.*`, `inbox.*`, `report.*`, `status.*` |
 | events | `subscribe` turns the connection into an event stream: `session.state`, `session.exited`, `inbox.new`, `task.changed`, `thread.changed` |
 
 The server MAY serve file-only operations such as `task.*` itself, so that all writes are serialised. The CLI MUST also work without a server for read-only commands (`task list`, `context`), by reading the files directly.
 
 **Views (server-owned).** What a console shows is the server's, as in tmux, so every console joined to the same view shows the same screen. The model is `internal/view`; the server keeps the views (`internal/server/views.go`).
-- **A view holds** the screen (`mode`: the dashboard, or the layout of attached sessions), the split tree of session ids with each split's ratio, the focus and zoom, the dashboard's selected row, the current project (the sidebar's highlight, where `]` and `[` count from), the projects sidebar's width and slim strip (§4), and its **latest** client with that client's window size. Each change bumps its `seq`.
-- **Joining.** `tm` joins view `main`; `tm --own` gets a view of its own, which goes away with it. `tm attach` and `tm project open` also get their own, a *bare* one without dashboard or sidebar, which ends on a detach (§10). A console joins with `view.subscribe` (its window size, and the sidebar from its `ui.json` for a view it creates). The answer is its client id and the view; the connection then carries a `view.changed` line with the whole view, which is small, for every new version, until the console hangs up, which leaves the view.
-- **Actions** are control methods on a second connection, each with the client id: `view.attach` (show a session: it gets the focus when the layout holds it, else the layout becomes that one pane), `view.dashboard`, `view.select`, `view.split` (the server starts the shell in the focused pane's directory, at the size its pane will have), `view.close`, `view.focus` (a session, the next pane, or a direction), `view.zoom`, `view.even`, `view.resize` (the divider nearest the focus), `view.sidebar`, `view.size` (the console's window) and `view.input` (below). Each answers the view as it is afterwards, and the console draws that at once.
-- **Clients render the view.** A console opens one attach connection per pane of the layout and closes those that left it, and lays the tree out with the same function as the server (`view.Lay`), at the view's size: every console computes the same rectangles. The dashboard's selection, current project and sidebar come from the view too; this console's own selections win while they are on their way. A console whose dashboard is showing switches to the layout when the view does, and back.
+- **A view holds** the screen (`mode`: the dashboard, or the layout of attached sessions), the split tree of session ids with each split's ratio, the focus and zoom, the dashboard's selected row, the current project (the one the dashboard lists, always open in the sidebar's tree, where `]` and `[` count from), the projects sidebar's width and slim strip and its tree's expanded projects (§4), and its **latest** client with that client's window size. Each change bumps its `seq`.
+- **Joining.** `tm` joins view `main`; `tm --own` gets a view of its own, which goes away with it. `tm attach` and `tm project open` also get their own, a *bare* one without a dashboard, which ends on a detach (§10). A bare view shows the sidebar too; a click on it hands the console over: the bare client leaves its view and the same `tm` process becomes a full console joined to view `main`, which opens what was clicked there (a project's dashboard, its coordinator, a thread's pane), so every console of `main` shows it. A bare view never grows a dashboard of its own. A console joins with `view.subscribe` (its window size, and the sidebar from its `ui.json` for a view it creates). The answer is its client id and the view; the connection then carries a `view.changed` line with the whole view, which is small, for every new version, until the console hangs up, which leaves the view.
+- **Actions** are control methods on a second connection, each with the client id: `view.attach` (show a session: it gets the focus when the layout holds it, else the layout becomes that one pane), `view.dashboard`, `view.project` (show a project's dashboard: the dashboard, with the project current and its coordinator's row selected), `view.expand` (open or close a project in the sidebar's tree), `view.select`, `view.split` (the server starts the shell in the focused pane's directory, at the size its pane will have), `view.close`, `view.focus` (a session, the next pane, or a direction), `view.zoom`, `view.even`, `view.resize` (the divider nearest the focus), `view.sidebar`, `view.size` (the console's window) and `view.input` (below). Each answers the view as it is afterwards, and the console draws that at once.
+- **Clients render the view.** A console opens one attach connection per pane of the layout and closes those that left it, and lays the tree out with the same function as the server (`view.Lay`), at the view's size: every console computes the same rectangles. The dashboard's selection, current project and sidebar (its width and tree) come from the view too; the tree's highlighted row, the row you are on, follows from the view's screen, focus and current project, so every console of the view shows the same tree; this console's own selections win while they are on their way. A console whose dashboard is showing switches to the layout when the view does, and back.
 - **What stays per console:** the window's size, the outer terminal's modes (mouse, focus reports, kitty flags), the local scrollback position, native text selection, popups and overlays (help, the inbox, the switcher, a prompt being typed: their results are view actions), the prefix state and status-bar notes, takeovers of watch-only panes (§4), and the dashboard's details panel (`ui.json`).
 - **Sessions ending** leave every view; a layout without panes goes back to the dashboard.
 - **Persistence.** Every view but the own ones is saved in `~/.termalator/state/views.json` on each change. After a restart the server loads them, drops the panes whose sessions didn't come back (shells, §3.6) and forgets the latest client: a console that joins sees the same screen and layout.
@@ -278,50 +278,56 @@ The processes die with the server, because the PTY master closes and the childre
 **The coordinator owns all communication.** The user talks only to coordinators, and threads talk only to their coordinator. The dashboard shows threads, tasks and the inbox so the user can see where things stand, but it has no keys that act on them: acknowledging a report, sending a thread its next prompt and marking a task done are the coordinator's `tm` commands (§10), which it runs when the user asks. A thread's pane opens watch-only.
 
 ```
- termalator                                            server ok · 6 sessions
- NEEDS YOU ───────────────────────────────────────────────────────────────────
-  ! foodperfect coordinator                 blocked  question
- PROJECTS ────────────────────────────────────────────────────────────────────
-  termalator    coordinator                 idle     2 inbox
-    t-0002 Bootstrap repo + spec   T3       working  60% 3/5 ▸ Write SPEC §8   4m
-    t-0003 libghostty spike        T4       working  30% 2/7 ▸ Build the lib   1m
-    t-0004 Claude spike            T5       blocked  permission             0m
-    tasks: 2 needs you · 3 in motion · 4 on deck
-  foodperfect   coordinator                 blocked  question
- ─────────────────────────────────────────────────────────────────────────────
- enter attach · t tasks · i inbox · p projects · ? help · q quit
+ PROJECTS 2            │ termalator                                          ● server ok · 6 sessions
+▾○ termalator        3 │ NEEDS YOU 1 ──────────────────────────────────────────────────────────────
+  ○ coordinator        │ ! foodperfect  coordinator           ▲ blocked  question
+  ● t-0002 Bootstr… 60%│ termalator ───────────────────────────────────────────────────────────────
+  ● t-0003 libghos… 30%│  coordinator                         ○ idle     2 inbox
+  ▲ t-0004 Claude s…   │  t-0002 Bootstrap repo + spec        ● working  T3  60% 3/5 ▸ Write SPEC §8  4m
+▸▲ foodperfect       0 │  t-0003 libghostty spike             ● working  T4  30% 2/7 ▸ Build the lib  1m
+                       │  t-0004 Claude spike                 ▲ blocked  permission  T5  0m
+                       │  t-0005 Docs pass                    ✓ done     report new  T6  PR #12
+                       │  tasks: 2 needs you · 3 in motion · 4 on deck
+                       │ SESSIONS 1 ───────────────────────────────────────────────────────────────
+                       │────────────────────────────────────────────────────────────────────────────
+                       │ enter attach · t tasks · i inbox · p projects · ? help · q quit
 ```
 
-- **Rows.** There are three sections. NEEDS YOU comes first, across every project. Then each project shows its coordinator and its threads, with task counts. Shell sessions are listed last.
+- **Rows.** There are three sections. NEEDS YOU comes first, across every project. Then the current project's own section (headed by its slug): its coordinator, its threads, its other sessions and its task counts; the sidebar's tree lists every project, so the list has no section of all projects. A click on a project in the tree shows its section. Shell sessions are listed last.
 - **NEEDS YOU** lists only what waits on the user: coordinators that are `blocked` (a question or a permission dialog), and blocked sessions of the user's own outside the projects (an agent started with `tm session start`, which has no coordinator). Everything about threads (a blocked thread, an unacknowledged report, a `Waiting for you` self-report) and tasks in `review` or `blocked` goes to the coordinator's inbox; the coordinator asks the user when it needs them.
 - **Per-row data.** Each row shows:
   - the state from the server's arbitration (§8.4);
   - the derived percent, done/total, and the current todo or step after `▸` (§7.3); the self-reported activity appears only when there are no todos or steps;
   - the time since the last change, and the linked task id.
 
-  Selecting a thread row shows its full todo list, its task's steps and its report's `## Next` lines, to read: in the details panel beside the list, or under the row when the window is too narrow for the panel. Threads are ordered as in §7.4; a row says `report waiting`, or `ready for review` once the thread called `tm done`, and the PR number from the report.
+  Selecting a thread row shows its full todo list, its task's steps and its report's `## Next` lines, to read: in the details panel beside the list, or under the row when the window is too narrow for the panel. Threads are ordered as in §7.4. A thread that called `tm done` shows `✓ done` (unless it is working or blocked); a row with an unacknowledged report says `report new`, and a blocked row its reason, first after the state, so neither is cut off; then the progress and the PR number from the report.
 - **Details panel.** When the dashboard (the window less the sidebar) is at least 120 columns wide, a panel right of the list shows everything about the selected row: a thread's state, task, progress, PR, report and the lines above; a task's notes and steps; a session's directory, command and progress; a project's coordinator, counts and inbox. `<` and `>` narrow and widen the list, dragging the divider with the mouse does the same, and `|` hides or shows the panel. This layout is each console's own, kept in `ui.json` (§5.1), not `config.toml`, which `tm` never writes.
-- **Look.** Colours are the terminal's 16 ANSI colours, so they follow the user's theme; `NO_COLOR` turns them off. Every state also has its own glyph (● working, ▲ blocked, ○ idle, ◌ starting, ◆ needs you, ✓ done), so colour is never the only signal. A row shows a five-cell progress bar when it still fits.
+- **Look.** Colours are the terminal's 16 ANSI colours, so they follow the user's theme; `NO_COLOR` turns them off. Every state also has its own glyph (● working, ▲ blocked, ○ idle, ◌ starting, ◆ needs you, ✓ done), so colour is never the only signal. A row shows a five-cell progress bar when it still fits. The list's columns adapt to its width: the title column takes a share of the room (20 to 40 cells), rows of the project's own section have no project column, and the state column is the glyph and word only. With the details panel the list takes 65% of the dashboard by default.
 - **Help** (`?`) lists every key; its header names the configured prefix (`prefix = ctrl+b`), the one place besides the settings that shows it.
 - **Popups.** Help, the inbox, the task board, the project switcher, prompts and the settings open as bordered boxes over the dimmed dashboard; `esc` closes the topmost. The footer lists the popup's keys and still shows messages.
 - **Settings** (`,`): the prefix key (with a note to pick another inside tmux, which takes Ctrl+B), the selected project's safety settings (§11.2), each marked when it is the default, and the layout. `tm` never writes `config.toml`; `e` opens it in `$VISUAL` or `$EDITOR`, and the popup reloads when the editor exits.
-- **Projects sidebar.** A column on the left of every screen, the dashboard, an attached session and split layouts alike, lists every project with its coordinator's state glyph (`·` when none runs) and its count of open (unresolved) threads. A `⌁` after the name, in both widths, means its coordinator's remote control is on (§11.2):
+- **Projects sidebar.** A column on the left of every screen, the dashboard, an attached session, split layouts, `tm attach` and `tm project open` alike, holds the project tree. A `⌁` after a project's name and after its coordinator, in both widths, means the coordinator's remote control is on (§11.2):
 
   ```
-   PROJECTS 2            │ termalator                               ● server ok · 3 sessions
-  ▸● termalator        2 │ PROJECTS 2 ─────────────────────────────────────────────────────
-   ▲ foodperfect       0 │  termalator   coordinator   ● working  ...
+   PROJECTS 2            │
+  ▾○ termalator        2 │   a project: ▾ open / ▸ closed, its coordinator's glyph, its open threads
+    ○ coordinator        │   its coordinator (· when none runs)
+    ● t-0002 Bootstr… 60%│   each open thread: state glyph, id and title, progress
+    ▲ t-0004 Claude s…   │
+  ▸○ foodperfect     ◆ 1 │   ◆: a thread is blocked or waiting, even with an idle coordinator
   ```
 
-  - The current project is marked `▸` and drawn in reverse video: on the dashboard the project last attached to (else the selected row's); while attached, the focused pane's project (else the dashboard's). The status bar names the project too (`s-4 · termalator coordinator · …`), so the context is never lost.
-  - A click on a project opens its coordinator (started if none runs), from the dashboard, under a popup, or while attached, split panes included: the attach view detaches and the dashboard opens it at once. The prefix then `p`, `]` and `[` and the switcher do the same from the keys.
+  - Every project has a row with its coordinator's state glyph (`·` when none runs), `◆` when one of its threads is blocked or waiting on someone (a `Waiting for you` self-report), and its count of open (unresolved) threads. Under an open project come its coordinator and each open thread with its state glyph (`✓` once done) and percent; resolved threads disappear.
+  - The current project is always open: on the dashboard the one it lists (the view's current project, else the first); while attached, the focused pane's project (else the view's). Others open and close with a click on their `▸` / `▾` (the first two columns). Which projects are open is part of the view (`view.expand`), so every console of `main` shows the same tree; `--own` views keep their own.
+  - The row you are on is drawn in reverse video: the current project's row on the dashboard, the focused session's coordinator or thread row while attached. The current project's name is bold, and the status bar names the project too (`s-4 · termalator coordinator · …`), so the context is never lost.
+  - A click on a project row shows that project's dashboard (`view.project`); on a coordinator row attaches its coordinator (started if none runs); on a thread row watches the thread's pane (watch-only; a thread without a running session says so). This works from the dashboard, under a popup, and while attached, split panes included: the view changes on every console. In `tm attach` and `tm project open` a click hands the console over to a full one of view `main` (§3.3). The prefix then `p`, `]` and `[` and the switcher open coordinators from the keys.
   - It is 24 columns wide by default (its border included), 14 to 48. Dragging its border, `{` and `}` (2 columns) on the dashboard, or the prefix then `{` or `}` while attached, change the width; `b` (prefix then `b` while attached) turns it into the slim strip and back. The width is the view's, so every console of the view follows; `ui.json` (§5.1) keeps the last one set as the width of new views.
-  - When a full sidebar would leave less than 60 columns, it shrinks to the slim strip, 7 columns of a marker, the glyph and the slug's first four letters (`▸●term`). It never disappears.
+  - When a full sidebar would leave less than 60 columns, it shrinks to the slim strip, 7 columns listing projects only: a marker on the current one, the glyph (`◆` for the thread hint) and the slug's first four letters (`▸●term`). A click on one shows its dashboard. It never disappears.
   - Panes and the dashboard get the window less the sidebar. A width change is a layout change: the panes the view shows are resized to their new rectangles (§3.3). Watch-only thread panes stay watch-only and never claim a size.
   - While a sidebar is shown, the attach view keeps the outer terminal's mouse reporting on (button events and drags) so the sidebar can be clicked whatever the focused program wants; the program still only gets mouse events it asked for. Selecting text natively in a pane then needs Shift, as on the dashboard.
-  - Its state (width, slim) is part of the view (`view.Sidebar`, §3.3).
+  - Its state (width, slim, expanded projects) is part of the view (`view.Sidebar`, `view.Expanded`, §3.3).
 - **Footer.** It lists only the keys that apply to the selected row: `enter attach`, `enter watch` on a thread, `enter show` or `enter open`. `?` lists every key.
-- **Mouse.** A click selects a row, the wheel moves the selection, and the divider and the sidebar's border can be dragged; a click on the sidebar opens a project. Holding Shift selects text as usual in most terminals.
+- **Mouse.** A click selects a row, the wheel moves the selection, and the divider and the sidebar's border can be dragged; a click on the sidebar's tree opens or closes a project, shows a project's dashboard, attaches a coordinator or watches a thread. Holding Shift selects text as usual in most terminals.
 - **Keys** (small and fixed in v0.1):
 
   | Key | Action |
@@ -342,7 +348,7 @@ The processes die with the server, because the PTY master closes and the childre
   | `?` | help |
   | `q` | quit the client; the server keeps running |
 
-- **Attaching.** `enter` shows the selected session in the view (`view.attach`), on every console of the view. Attaching gives the whole screen to the pane, rendered from the client's mirror emulator (§3.3), with a one-line status bar at the bottom that the client draws. The projects sidebar stays on the left, and the status bar runs under the panes, right of it. The status bar shows the session, its project and role, state, progress, `remote control on` while a coordinator's is, and `prefix+d dashboard`; after the prefix it lists the commands instead. The client polls `session.list` for it, and the project folders for the sidebar. Sessions started from the dashboard get the window's size less the sidebar and that row, so nothing is cropped. (`tm attach` and `tm project open` keep the whole window for the pane in a view of their own and have no sidebar; `tm attach` has no status bar either, except on a thread's pane.)
+- **Attaching.** `enter` shows the selected session in the view (`view.attach`), on every console of the view. Attaching gives the whole screen to the pane, rendered from the client's mirror emulator (§3.3), with a one-line status bar at the bottom that the client draws. The projects sidebar stays on the left, and the status bar runs under the panes, right of it. The status bar shows the session, its project and role, state, progress, `remote control on` while a coordinator's is, and `prefix+d dashboard`; after the prefix it lists the commands instead. The client polls `session.list` for it, and the project folders for the sidebar. Sessions started from the dashboard get the window's size less the sidebar and that row, so nothing is cropped. (`tm attach` and `tm project open` show the pane beside the sidebar in a view of their own; `tm attach` has no status bar, except on a thread's pane.)
 - **Prefix commands.** While attached, the prefix (Ctrl+B by default; hints write `prefix+<key>`) then:
 
   | Key | Action |
@@ -1010,7 +1016,7 @@ These commands are used by the human, the coordinator and threads alike. Exit co
 | Command | Who | What |
 |---|---|---|
 | `tm [--own]` | human | a console of view `main` (§3.3, Views): the dashboard or the layout it shows, as every other console of `main`; `--own` gives the console a view of its own |
-| `tm attach [<session>]` | human | one session (the newest when none is named) in a bare view of this console's own, which no other console follows; the prefix then `d` leaves |
+| `tm attach [<session>]` | human | one session (the newest when none is named) beside the projects sidebar, in a bare view of this console's own, which no other console follows; the prefix then `d` leaves; a click on the sidebar switches to the full UI on view `main` |
 | `tm server run\|start\|stop\|restart\|status\|service` | human | §3.1 |
 | `tm project new <name> [--repo PATH]… \| list \| open <slug> [--agent A]` | human | create a project folder; `open` starts the coordinator (role coordinator, cwd the project folder, remote control per `coordinator_remote_control`) unless one runs, then attaches with the status bar, in a bare view of its own as `tm attach`; without a terminal it prints the session id |
 | `tm project remote on\|off [<slug>]` | human | turn the running coordinator's remote control on or off (§11.2); refused when no coordinator runs or its agent has none |

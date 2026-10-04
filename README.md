@@ -8,7 +8,7 @@ Claude Code is the first supported agent. Other agents plug in through a manifes
 - the background server (milestone M1): it hosts shell sessions that survive closing your terminal (`tm server …`, `tm session …`);
 - the attach client (milestone M2): `tm attach` shows a session full-screen; Ctrl+B then `d` detaches and leaves it running;
 - agent sessions (milestone M3): `tm session start --agent claude` runs Claude Code with its live state (working / blocked / idle), todos and resume;
-- the dashboard (milestone M4): `tm` lists every session and project with live state, attaches with `enter` and comes back with Ctrl+B then `d`; a projects sidebar on the left of every screen shows which project you are in, and a click on another opens its coordinator;
+- the dashboard (milestone M4): `tm` lists every session and project with live state, attaches with `enter` and comes back with Ctrl+B then `d`; a projects sidebar on the left of every screen is a project tree: each project with its coordinator and threads (state and progress); a click on a project shows its dashboard, on a coordinator attaches it, on a thread watches it;
 - server-owned views: every `tm` you open, in any terminal, shows the same screen, as tmux's sessions do. Open a session, split, focus, zoom or move the sidebar in one, and the others follow; `tm --own` opens one that keeps to itself;
 - projects and tasks (milestone M5): `tm project new|list|open`, `tm skill`, `tm task …`, `tm context` and `tm inbox list|done`;
 - threads (milestone M6): `tm thread start|prompt|restart|resolve`, agents in git worktrees reporting through `tm`;

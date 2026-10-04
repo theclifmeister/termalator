@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -79,8 +80,8 @@ type Options struct {
 	// Takeover tells a thread's coordinator that the user took over the
 	// thread's pane; nil tells no one.
 	Takeover func(s proto.SessionInfo) error
-	// Sidebar configures the projects sidebar, which every view but a
-	// bare one shows (docs/SPEC.md §4).
+	// Sidebar configures the projects sidebar, which every view shows
+	// (docs/SPEC.md §4); nil is the defaults.
 	Sidebar *SidebarOptions
 }
 
@@ -89,7 +90,12 @@ type SidebarOptions struct {
 	// UIFile is ui.json, where its width is kept as the default of new
 	// views; empty keeps it nowhere.
 	UIFile string
+	// Agent runs the coordinator a click starts; empty is DefaultAgent.
+	Agent string
 }
+
+// DefaultAgent runs coordinators.
+const DefaultAgent = "claude"
 
 // Result says how an attach ended.
 type Result struct {
@@ -102,6 +108,10 @@ type Result struct {
 	// Then is the dashboard key to run once back on the dashboard: the
 	// key typed after the prefix (p, ], [, i, t, , or ?), or "".
 	Then string
+	// GoTo is a sidebar row clicked in a bare view, which has no
+	// dashboard: the caller hands the console over to view main, which
+	// opens it (OpenTarget).
+	GoTo *Target
 	// Quit is set when the console itself went away (its terminal closed,
 	// a signal): the client exits rather than show the dashboard.
 	Quit bool
@@ -140,13 +150,11 @@ func Attach(opts Options) (res Result, err error) {
 	c.vc, c.me = vc, vc.Client()
 	c.prefix, c.takeover = prefix, opts.Takeover
 	c.bare, c.dashboard = v.Bare, !v.Bare
-	if !v.Bare {
-		so := opts.Sidebar
-		if so == nil {
-			so = &SidebarOptions{}
-		}
-		c.side = &sidebar{uiFile: so.UIFile, items: sideItems(loadSideProjects(), nil)}
+	so := opts.Sidebar
+	if so == nil {
+		so = &SidebarOptions{}
 	}
+	c.side = &sidebar{uiFile: so.UIFile, agent: cmp.Or(so.Agent, DefaultAgent), projects: loadSideProjects()}
 	c.setWindow(cols, rows)
 	watch, stopWatch := vc.Watch()
 	defer stopWatch()
@@ -280,6 +288,7 @@ type client struct {
 	// before detaching, is the dashboard key that detach carries.
 	detaching atomic.Bool
 	then      string
+	goTo      *Target // a sidebar click in a bare view, carried like then
 
 	wake    chan struct{}
 	endOnce sync.Once
@@ -1062,7 +1071,7 @@ func (c *client) detachThen(then string) {
 // is set.
 func (c *client) detachResult() Result {
 	res := detached
-	res.Then = c.then
+	res.Then, res.GoTo = c.then, c.goTo
 	return res
 }
 
@@ -1605,14 +1614,14 @@ func (c *client) pollState(ctx context.Context) {
 			ring = !first && res.Alerts > alerts
 			alerts, first = res.Alerts, false
 		}
-		var projects []sideProject
+		var projects []ProjectData
 		if c.side != nil {
 			projects = loadSideProjects()
 		}
 		statuses := threadStatuses(res.Sessions)
 		if c.lock() {
 			if c.side != nil {
-				c.side.items = sideItems(projects, res.Sessions)
+				c.side.projects, c.side.sessions = projects, res.Sessions
 			}
 			for _, p := range c.panes {
 				for _, s := range res.Sessions {

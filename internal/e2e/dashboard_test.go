@@ -105,7 +105,7 @@ func TestSmokeFirstLocalRun(t *testing.T) {
 	// Back to the dashboard: the session needs you.
 	w.Detach()
 	w.WaitFor("NEEDS YOU", wait)
-	w.WaitFor("▲ blocked   permission", wait)
+	w.WaitFor("▲ blocked  permission", wait)
 	env.AssertAlive(s)
 
 	// Attach again (the session's row is still selected) and approve.

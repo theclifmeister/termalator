@@ -14,7 +14,7 @@ import (
 )
 
 // TestProgressSameEverywhere: the dashboard row, the details panel and
-// the attach status bar show one thread's progress alike (docs/SPEC.md
+// the attach status bar and the sidebar show one thread's progress alike (docs/SPEC.md
 // §7.3), here 2 of 4 steps plus 1 of 3 todos. The status bar once
 // counted the session's todos alone ("33% 1/3").
 func TestProgressSameEverywhere(t *testing.T) {
@@ -30,13 +30,16 @@ func TestProgressSameEverywhere(t *testing.T) {
 
 	const want = "55% 2/4"
 	var r row
-	for _, x := range buildRows(data) {
+	for _, x := range buildRows(data, "alpha") {
 		if x.thread != nil {
 			r = x
 		}
 	}
 	if r.thread == nil || !strings.Contains(r.rest, want) || r.pct != 55 {
 		t.Errorf("dashboard row: %q, bar %d%%", r.rest, r.pct)
+	}
+	if tree := buildTree(data.Projects, data.Sessions, treeIn{current: "alpha"}); len(tree) != 3 || tree[2].pct != 55 {
+		t.Errorf("sidebar: %+v", tree)
 	}
 	m := newDash(DashOptions{Source: &fakeSource{data: data}, Width: 140 + sideDefault, Height: 30})
 	if panel := ansi.Strip(strings.Join(m.details(r, 50), "\n")); !strings.Contains(panel, want) {

@@ -1,8 +1,8 @@
  PROJECTS              │ termalator                                         ● server ok · 0 sessions
- no projects           │ PROJECTS ──────────────────────────────────────────────────────────────────
-                       │  no projects; n creates one
+ no projects           │  no projects; n creates one
                        │ SESSIONS ──────────────────────────────────────────────────────────────────
                        │  no sessions; s starts a shell
+                       │
                        │
                        │
                        │

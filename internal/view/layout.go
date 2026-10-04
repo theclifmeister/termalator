@@ -30,15 +30,14 @@ type Geometry struct {
 }
 
 // Chrome is the sidebar's width and the status bar's height of v in a
-// window cols wide.
+// window cols wide. Every view has the sidebar; a bare one has the status
+// bar only when asked for.
 func (v *View) Chrome(cols int) (sideW, status int) {
-	if v.Bare {
-		if v.StatusBar {
-			return 0, 1
-		}
-		return 0, 0
+	status = 1
+	if v.Bare && !v.StatusBar {
+		status = 0
 	}
-	return v.Sidebar.Cols(cols), 1
+	return v.Sidebar.Cols(cols), status
 }
 
 // Lay lays v out in a window of cols×rows.

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -37,8 +38,7 @@ type DashState struct {
 	Current  string
 	Message  string
 	// Then is a key to run once the first poll is in: the key typed
-	// after the prefix in a session (p, ], [, i, t, , or ?), or ThenOpen
-	// and a project clicked in the session's sidebar.
+	// after the prefix in a session (p, ], [, i, t, , or ?).
 	Then string
 }
 
@@ -103,11 +103,14 @@ type dash struct {
 	loaded  bool
 	rows    []row
 	sel     string // key of the selected row
-	current string // project last attached to
-	msg     string
-	errMsg  string    // msg when it reports a failure, drawn as one
-	busy    bool      // an action is running
-	stack   []overlay // views open on top of the list, topmost last
+	current string // the current project: the one listed (listProject)
+	// expanded are the projects the sidebar's tree shows open besides
+	// the current one: the view's.
+	expanded []string
+	msg      string
+	errMsg   string    // msg when it reports a failure, drawn as one
+	busy     bool      // an action is running
+	stack    []overlay // views open on top of the list, topmost last
 
 	layout   Layout
 	uiFile   string
@@ -150,7 +153,7 @@ func newDash(o DashOptions) *dash {
 		v := vc.View()
 		m.view, m.viewSeq = vc, v.Seq
 		m.sel = cmp.Or(v.Selected, m.sel)
-		m.current = v.Current
+		m.current, m.expanded = v.Current, v.Expanded
 		m.layout.Sidebar, m.viewSide = v.Sidebar, v.Sidebar
 		m.watch, m.stopWatch = vc.Watch()
 	}
@@ -249,7 +252,11 @@ func (m *dash) fromView() tea.Cmd {
 	if m.selPending == 0 && v.Selected != "" {
 		m.sel = v.Selected
 	}
-	m.current = v.Current
+	if m.current != v.Current {
+		m.current = v.Current
+		m.rebuild()
+	}
+	m.expanded = v.Expanded
 	if !m.sideDrag && v.Sidebar != m.viewSide {
 		m.layout.Sidebar, m.viewSide = v.Sidebar, v.Sidebar
 		m.setWidth(m.winW)
@@ -326,8 +333,9 @@ func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.msg = msg.msg
 		if msg.attach != "" {
-			if msg.current != "" {
+			if msg.current != "" && msg.current != m.current {
 				m.current = msg.current
+				m.rebuild()
 			}
 			if m.view != nil {
 				// The view shows it, on every console; the dashboard ends
@@ -394,31 +402,76 @@ func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// sideClick handles a click on the sidebar: its border starts a drag, a
-// project opens its coordinator, from under any popup.
+// sideClick handles a click on the sidebar, from under any popup: its
+// border starts a drag, ▸ ▾ open or close a project, a project row shows
+// its dashboard, the coordinator row opens the coordinator, a thread row
+// watches its session.
 func (m *dash) sideClick(mo tea.Mouse) tea.Cmd {
 	if mo.Button != tea.MouseLeft {
 		return nil
 	}
-	slug, border := sideHit(m.sideItems(), m.sideCurrent(), m.sideW(), m.h, mo.X, mo.Y)
+	r, ok, toggle, border := sideHitAt(m.tree(), m.sideW(), m.h, mo.X, mo.Y)
+	t, can, why := r.target()
 	switch {
 	case border:
 		m.sideDrag = true
-	case slug != "" && !m.busy:
+	case !ok || m.busy:
+	case toggle && r.current:
+		m.msg = r.slug + " is the current project: it stays open"
+	case toggle:
+		return m.expand(r.slug, !r.open)
+	case !can:
+		m.msg = why
+	case t.Session != "":
 		m.stack = nil
-		return m.openProject(slug)
+		return m.act(func() actionMsg { return actionMsg{attach: t.Session, current: t.Project} })
+	case t.Coordinator:
+		m.stack = nil
+		return m.openProject(t.Project)
+	default:
+		m.stack = nil
+		return m.showProject(t.Project)
 	}
 	return nil
 }
 
-// sideItems are the sidebar's projects, from the last poll.
-func (m *dash) sideItems() []sideItem {
-	return sideItems(sideProjectsOf(m.data.Projects), m.data.Sessions)
+// showProject shows project's dashboard: it becomes current, with its
+// coordinator's row selected, on every console of the view.
+func (m *dash) showProject(slug string) tea.Cmd {
+	if m.current != slug {
+		m.current = slug
+		m.rebuild()
+	}
+	m.sel = "p:" + slug
+	if m.view == nil {
+		return nil
+	}
+	m.selPending++ // the view's selection follows with the answer
+	return func() tea.Msg {
+		_, err := m.view.Do(proto.MethodViewProject, proto.ViewParams{Project: slug})
+		return viewDoneMsg{sel: true, err: err}
+	}
 }
 
-// sideCurrent is the project the sidebar highlights: the one last
-// attached to, else the selected row's.
-func (m *dash) sideCurrent() string { return cmp.Or(m.current, m.projectHere()) }
+// expand opens or closes a project in the sidebar's tree.
+func (m *dash) expand(slug string, open bool) tea.Cmd {
+	if open {
+		m.expanded = append(slices.DeleteFunc(m.expanded, func(p string) bool { return p == slug }), slug)
+	} else {
+		m.expanded = slices.DeleteFunc(m.expanded, func(p string) bool { return p == slug })
+	}
+	if m.view == nil {
+		return nil
+	}
+	return m.call(proto.MethodViewExpand, proto.ViewParams{Project: slug, Expand: open})
+}
+
+// tree is the sidebar's tree, from the last poll: the listed project is
+// current, and its row the one you are on.
+func (m *dash) tree() []treeRow {
+	return buildTree(m.data.Projects, m.data.Sessions, treeIn{current: listProject(m.data, m.current),
+		expanded: func(slug string) bool { return slices.Contains(m.expanded, slug) }})
+}
 
 // click selects the row under the mouse, or starts dragging the divider.
 func (m *dash) click(mo tea.Mouse) {
@@ -446,16 +499,7 @@ func (m *dash) click(mo tea.Mouse) {
 func (m *dash) setData(d Data) tea.Cmd {
 	first := !m.loaded
 	m.data, m.loaded = d, true
-	m.rows = buildRows(d)
-	if m.selIndex() < 0 {
-		m.sel = ""
-		for _, r := range m.rows {
-			if r.selectable() {
-				m.sel = r.key
-				break
-			}
-		}
-	}
+	m.rebuild()
 	ring := false
 	if d.ServerOK {
 		ring = m.seen && d.Alerts > m.alerts
@@ -466,19 +510,30 @@ func (m *dash) setData(d Data) tea.Cmd {
 		cmds = append(cmds, tea.Raw("\a"))
 	}
 	if first && m.then != "" {
-		// The key typed after the prefix in a session, or a project
-		// clicked in its sidebar, now that the projects are known.
-		if slug, ok := strings.CutPrefix(m.then, ThenOpen); ok {
-			cmds = append(cmds, m.openProject(slug))
-		} else {
-			cmds = append(cmds, m.listKey(m.then))
-		}
+		// The key typed after the prefix in a session, now that the
+		// projects are known.
+		cmds = append(cmds, m.listKey(m.then))
 		m.then = ""
 	}
 	if len(cmds) == 1 {
 		return cmds[0]
 	}
 	return tea.Batch(cmds...)
+}
+
+// rebuild lays the rows out again from the last poll, for the listed
+// project; a selection that went away moves to the first row.
+func (m *dash) rebuild() {
+	m.rows = buildRows(m.data, listProject(m.data, m.current))
+	if m.selIndex() < 0 {
+		m.sel = ""
+		for _, r := range m.rows {
+			if r.selectable() {
+				m.sel = r.key
+				break
+			}
+		}
+	}
 }
 
 func (m *dash) selIndex() int {
@@ -552,18 +607,12 @@ func (m *dash) openProject(slug string) tea.Cmd {
 	})
 }
 
-// projectHere is the project of the selected row, else the current one.
+// projectHere is the project of the selected row, else the listed one.
 func (m *dash) projectHere() string {
 	if r, ok := m.selected(); ok && r.project != "" {
 		return r.project
 	}
-	if m.current != "" {
-		return m.current
-	}
-	if len(m.data.Projects) > 0 {
-		return m.data.Projects[0].Slug
-	}
-	return ""
+	return listProject(m.data, m.current)
 }
 
 // cycleProject opens the coordinator of the next (or previous) project
@@ -626,7 +675,7 @@ func (m *dash) render() string {
 		s = m.renderList()
 	}
 	lines := strings.Split(s, "\n")
-	side := sidebarLines(m.sideItems(), m.sideCurrent(), m.sideW(), m.h)
+	side := sidebarLines(m.tree(), m.sideW(), m.h)
 	for i := range side {
 		var l string
 		if i < len(lines) {

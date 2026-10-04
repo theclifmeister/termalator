@@ -2,7 +2,7 @@
 // every console joined to it shows. The screen (the dashboard or the
 // attached layout), the split tree with its ratios, the focus and zoom,
 // the dashboard's selection, the current project and the projects
-// sidebar live here, once, in the server; consoles only render them.
+// sidebar with its tree live here, once, in the server; consoles only render them.
 //
 // The package is the model alone, with no I/O: the tree, the actions on
 // it and the geometry. The server (internal/server) keeps the views, applies
@@ -20,6 +20,9 @@ import (
 // Main is the view every console joins unless it asks for its own.
 const Main = "main"
 
+// MaxExpanded bounds the projects a view keeps expanded.
+const MaxExpanded = 256
+
 // Modes: what the view shows.
 const (
 	ModeDashboard = "dashboard"
@@ -32,8 +35,9 @@ type View struct {
 	// Own views belong to one console (tm --own, tm attach) and go away
 	// with it; they are never saved.
 	Own bool `json:"own,omitempty"`
-	// Bare views have no dashboard and no sidebar: tm attach and tm
-	// project open, which end on a detach.
+	// Bare views have no dashboard: tm attach and tm project open, which
+	// end on a detach. They show the sidebar too; a click on it hands the
+	// console over to view main (docs/SPEC.md §3.3).
 	Bare bool `json:"bare,omitempty"`
 	// StatusBar draws the status bar in a bare view; the others always
 	// have one.
@@ -49,10 +53,15 @@ type View struct {
 
 	// Selected is the dashboard's selected row (its key).
 	Selected string `json:"selected,omitempty"`
-	// Current is the project last attached to: the sidebar's highlight
-	// and where ] and [ count from.
+	// Current is the project last opened: the one the dashboard shows,
+	// always expanded in the sidebar's tree, and where ] and [ count
+	// from.
 	Current string  `json:"current,omitempty"`
 	Sidebar Sidebar `json:"sidebar"`
+	// Expanded are the projects the sidebar's tree shows open besides
+	// the current one, sorted. The tree's highlighted row follows from
+	// the view too (Here).
+	Expanded []string `json:"expanded,omitempty"`
 
 	// Latest is the client whose window sizes the layout: the one that
 	// last typed, resized its window or changed the layout. Cols and Rows
@@ -76,7 +85,24 @@ type Node struct {
 // Clone is a deep copy of v, safe to hand to another goroutine.
 func (v View) Clone() View {
 	v.Root = v.Root.clone()
+	v.Expanded = slices.Clone(v.Expanded)
 	return v
+}
+
+// Here is what the sidebar's tree highlights, the row you are on: in the
+// layout, the focused session (its coordinator or thread row); on the
+// dashboard, the current project's row (session "").
+func (v *View) Here() (project, session string) {
+	if v.Mode == ModeLayout {
+		return v.Current, v.Focus
+	}
+	return v.Current, ""
+}
+
+// IsExpanded says whether the tree shows project open: the current one
+// always is.
+func (v *View) IsExpanded(project string) bool {
+	return project != "" && (project == v.Current || slices.Contains(v.Expanded, project))
 }
 
 func (n *Node) clone() *Node {
@@ -156,6 +182,16 @@ func (v *View) Valid() error {
 // focus when there are panes, the dashboard when there are none.
 func (v *View) Normalize() {
 	v.Sidebar = v.Sidebar.Clamp()
+	if len(v.Expanded) > 0 {
+		v.Expanded = slices.DeleteFunc(v.Expanded, func(p string) bool { return p == "" })
+		slices.Sort(v.Expanded)
+		v.Expanded = slices.Compact(v.Expanded)
+		if len(v.Expanded) > MaxExpanded {
+			v.Expanded = v.Expanded[:MaxExpanded]
+		}
+	} else {
+		v.Expanded = nil
+	}
 	var fix func(n *Node)
 	fix = func(n *Node) {
 		if n == nil || n.Session != "" {

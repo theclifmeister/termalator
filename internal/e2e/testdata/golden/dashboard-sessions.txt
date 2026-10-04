@@ -1,9 +1,9 @@
  PROJECTS 1            │ termalator                                          ● server ok · 1 session
-▸· demo              0 │ PROJECTS 1 ────────────────────────────────────────────────────────────────
-                       │  demo         coordinator                    —           enter starts the …
-                       │    tasks: 0 needs you · 1 in motion · 1 on deck
+▾· demo              0 │ demo ──────────────────────────────────────────────────────────────────────
+  · coordinator        │  coordinator                  —          enter starts the coordinator
+                       │  tasks: 0 needs you · 1 in motion · 1 on deck
                        │ SESSIONS 1 ────────────────────────────────────────────────────────────────
-                       │  <session>          /bin/sh                        ● running   <duration>  /
+                       │  <session>          /bin/sh                ● running  <duration>  /
                        │
                        │
                        │

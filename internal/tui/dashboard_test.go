@@ -103,42 +103,44 @@ func run(m *dash, cmd tea.Cmd) {
 	}
 }
 
+// TestDashboardRows: NEEDS YOU across projects, then the current
+// project's own section (its coordinator, threads and task counts; the
+// sidebar's tree lists the projects), then SESSIONS. A block's reason
+// and a new report lead the rest of a row, so they are never cut off.
 func TestDashboardRows(t *testing.T) {
 	src := &fakeSource{data: testData()}
-	m := newDash(DashOptions{Source: src, Width: 120 + sideDefault, Height: 30})
+	m := newDash(DashOptions{Source: src, Width: 120 + sideDefault, Height: 30, State: DashState{Current: "beta"}})
 	m.layout.Details = false // one column: the rows at full width
 	m.setData(src.data)
 	out := screen(m)
 	needs := strings.Index(out, "NEEDS YOU")
-	projs := strings.Index(out, "PROJECTS")
+	proj := strings.Index(out, " beta ─")
 	sess := strings.Index(out, "SESSIONS")
-	if needs < 0 || !(needs < projs && projs < sess) {
+	if needs < 0 || !(needs < proj && proj < sess) {
 		t.Fatalf("sections out of order:\n%s", out)
 	}
-	if strings.Contains(out, "s-5 ") {
-		t.Errorf("thread session listed besides its thread row:\n%s", out)
+	if strings.Contains(out, "s-5 ") || strings.Contains(out, "PROJECTS") || strings.Contains(out[needs:], "  alpha") {
+		t.Errorf("a thread's session, a PROJECTS section or another project listed:\n%s", out)
 	}
 	// NEEDS YOU: the blocked coordinator and the user's own blocked
 	// session; nothing of the threads (a blocked one, a report, a
 	// question), which are their coordinator's.
 	for _, want := range []string{
 		"NEEDS YOU 2 ─",
-		"! alpha        coordinator                    ▲ blocked   question",
-		"! s-4          claude                         ▲ blocked   permission",
-		"  alpha        coordinator                    ▲ blocked",
-		"    s-2          t-0002",
-		"  beta         coordinator                    —           enter starts the coordinator",
-		"  s-3          /bin/zsh -l                    ● running",
-		"                 t-0005 Write docs              ● working   ▰▰▰▱▱  T4  60% 3/5 ▸ Draft §2  report waiting  PR #7",
-		"                 t-0006 Old work                · stopped",
-		"PROJECTS 2 ─",
+		"! alpha        coordinator                              ▲ blocked  question",
+		"! s-4          claude                                   ▲ blocked  permission",
+		"  coordinator                              —          enter starts the coordinator",
+		"  t-0005 Write docs                        ● working  report new  ▰▰▰▱▱  T4  60% 3/5 ▸ Draft §2  PR #7",
+		"  t-0006 Old work                          · stopped",
+		"  tasks: 0 needs you · 0 in motion · 0 on deck",
+		"  s-3          /bin/zsh -l                              ● running",
 		"● server ok · 5 sessions",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in\n%s", want, out)
 		}
 	}
-	needsYou := out[needs:projs]
+	needsYou := out[needs:proj]
 	for _, not := range []string{"t-0002", "t-0005", "report", "Which licence?"} {
 		if strings.Contains(needsYou, not) {
 			t.Errorf("NEEDS YOU shows %q:\n%s", not, needsYou)
@@ -148,11 +150,34 @@ func TestDashboardRows(t *testing.T) {
 	if r, _ := m.selected(); r.session != "s-1" {
 		t.Errorf("selected %+v", r)
 	}
+	// Without a current project, the first is listed.
+	m = newDash(DashOptions{Source: src, Width: 120 + sideDefault, Height: 30})
+	m.setData(src.data)
+	if out := screen(m); !strings.Contains(out, " alpha ─") || strings.Contains(out, "t-0005") {
+		t.Errorf("no current project:\n%s", out)
+	}
+}
+
+// TestDashboardDoneThread: a done thread with a new report says so in
+// full, its blocked reason or report leading the row even in a narrow
+// list.
+func TestDashboardDoneThread(t *testing.T) {
+	d := testData()
+	th := &d.Projects[1].Threads[1]
+	th.Done, th.Reports, th.State = true, 1, thread.Running
+	d.Sessions = append(d.Sessions, proto.SessionInfo{ID: "s-6", Role: proto.RoleThread, Project: "beta", Thread: "t-0006", Agent: "claude", State: "idle"})
+	th.Session = "s-6"
+	src := &fakeSource{data: d}
+	m := newDash(DashOptions{Source: src, Width: 82 + sideDefault, Height: 30, State: DashState{Current: "beta"}})
+	m.setData(src.data)
+	if out := screen(m); !strings.Contains(out, "t-0006 Old work                 ✓ done     report new") {
+		t.Fatalf("done thread:\n%s", out)
+	}
 }
 
 func TestDashboardKeys(t *testing.T) {
 	src := &fakeSource{data: testData()}
-	m := newDash(DashOptions{Source: src, Cwd: "/work", Width: 100, Height: 30})
+	m := newDash(DashOptions{Source: src, Cwd: "/work", Width: 100, Height: 30, State: DashState{Current: "beta"}})
 	m.setData(src.data)
 
 	// enter on the blocked coordinator attaches to it.
@@ -175,7 +200,10 @@ func TestDashboardKeys(t *testing.T) {
 		t.Fatalf("started %v opened %v", src.started, src.opened)
 	}
 
-	// enter on a thread watches its session.
+	// enter on a thread watches its session. (Attaching alpha's
+	// coordinator made alpha current: back to beta.)
+	m.current = "beta"
+	m.rebuild()
 	m.sel = "th:beta:t-0005"
 	run(m, press(m, "enter"))
 	if m.result.Attach != "s-5" {
@@ -222,7 +250,7 @@ func TestDashboardBell(t *testing.T) {
 func TestDashboardThreadRow(t *testing.T) {
 	src := &fakeSource{data: testData()}
 	src.data.Projects[1].Items = []project.Item{{ID: "x", Kind: "report", Subject: "t-0005", Summary: "t-0005 handed in report 1"}}
-	m := newDash(DashOptions{Source: src, Width: 100, Height: 40})
+	m := newDash(DashOptions{Source: src, Width: 100, Height: 40, State: DashState{Current: "beta"}})
 	m.setData(src.data)
 	m.sel = "th:beta:t-0005"
 	out := screen(m)
@@ -338,7 +366,7 @@ func TestDashboardOverlays(t *testing.T) {
 func TestDashboardSplit(t *testing.T) {
 	src := &fakeSource{data: testData()}
 	ui := filepath.Join(t.TempDir(), "ui.json")
-	m := newDash(DashOptions{Source: src, Width: 140 + sideDefault, Height: 40, UIFile: ui})
+	m := newDash(DashOptions{Source: src, Width: 140 + sideDefault, Height: 40, UIFile: ui, State: DashState{Current: "beta"}})
 	m.setData(src.data)
 
 	m.sel = "th:beta:t-0005"
@@ -452,7 +480,7 @@ func TestDashboardPrefix(t *testing.T) {
 // selected row.
 func TestDashboardFooter(t *testing.T) {
 	src := &fakeSource{data: testData()}
-	m := newDash(DashOptions{Source: src, Width: 100, Height: 30})
+	m := newDash(DashOptions{Source: src, Width: 100, Height: 30, State: DashState{Current: "beta"}})
 	m.setData(src.data)
 	for sel, want := range map[string]string{
 		"n:s-1":          "enter attach · t tasks · i inbox · p projects · , settings · ? help · q quit",
@@ -487,7 +515,7 @@ func TestDashboardPopups(t *testing.T) {
 	press(m, "i")
 	out := screen(m)
 	for _, want := range []string{"╭─ alpha inbox ─", "│ ", "t-0002 handed in report 1", "╰─", "r refresh · esc back",
-		"PROJECTS 2"} { // the list stays in view behind the box
+		"NEEDS YOU 2"} { // the list stays in view behind the box
 		if !strings.Contains(out, want) {
 			t.Errorf("inbox popup lacks %q:\n%s", want, out)
 		}
