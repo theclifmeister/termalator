@@ -15,10 +15,10 @@ Background: the t-0001 feasibility study (`library/t-0001/termalator-feasibility
 ### How to read this document
 
 - **MUST / SHOULD / MAY** have their usual meaning.
-- **OPEN (spike: X)** marks a point that waits on one of the three spikes running in parallel. Section 14 collects them.
-  - `libghostty`: `spikes/libghostty`, the emulator, attach and passthrough.
-  - `claude`: `spikes/claude`, thread t-0004, the Claude Code integration.
-  - `symlinks`: `spikes/symlinks` (t-0005, done), sharing state with sandboxed agents. Its findings shaped the access model in §5.2.
+- Three spikes shaped this spec. Their findings are folded in, and §14 lists what they settled and what is still open:
+  - `libghostty`: `spikes/libghostty` (t-0003), the emulator and the attach design.
+  - `claude`: `spikes/claude` (t-0004), the Claude Code integration.
+  - `symlinks`: `spikes/symlinks` (t-0005), sharing state with sandboxed agents, which shaped the access model in §5.2.
 - Section numbers are cited from the Go package docs; keep them stable.
 
 ---
@@ -110,34 +110,43 @@ The dependency rule: `server`, `session`, `ticker`, `tui`, `project`, `thread` a
 
 ### 3.2 Socket location, permissions, stale sockets
 
-- **Path.** The socket lives at `$TERMALATOR_SOCKET` if that is set. Otherwise, on Linux with `$XDG_RUNTIME_DIR` set, it is `$XDG_RUNTIME_DIR/termalator/tm.sock`; everywhere else it is `~/.termalator/run/tm.sock`.
-  - If the path is longer than the `sun_path` limit (104 bytes on macOS, 108 on Linux), the server falls back to `/tmp/termalator-<uid>/tm.sock`.
-  - `TERMALATOR_HOME` (default `~/.termalator`) moves everything, which is how tests run isolated servers.
+- **Run directory.** Every socket and lock lives in one short, per-user run directory, never under a project path. Project paths can be long, and macOS limits a socket path to 104 bytes (`internal/server/paths.go`).
+  - The run directory is `$XDG_RUNTIME_DIR/termalator` on Linux when that is set, and `~/.termalator/run` otherwise.
+  - If `<run dir>/tm.sock` would be over 100 bytes, the run directory falls back to `/tmp/termalator-<uid>`.
+  - `$TERMALATOR_SOCKET` overrides the socket path, and an override over 100 bytes is refused, not truncated.
+  - `TERMALATOR_HOME` (default `~/.termalator`) moves everything else, which is how tests run isolated servers.
 - **Permissions.**
-  - The socket directory is `0700` and owned by the user; the server refuses to use it otherwise.
+  - The run directory is `0700` and owned by the user; the server refuses to use it otherwise.
   - The socket file is `0600`.
   - On every connection the server checks the peer's credentials (`getpeereid`/`LOCAL_PEERPID` on macOS, `SO_PEERCRED` on Linux) and rejects any other uid.
   - The peer pid is also used to tell **agent calls** from **human calls** (§11.1).
+- **Bind before spawn.** The server binds its socket before it starts any session. A bind failure must never leave an agent running that nobody can reach.
 - **Stale sockets.** A client that gets `ECONNREFUSED` or `ENOENT` tries the lock:
   - If it can take `server.lock`, no server is running. It removes the leftover socket and pid file, then auto-starts a server.
   - If the lock is held but the socket doesn't answer within 2 s, the server is hung. The client reports `server unresponsive (pid N); see ~/.termalator/logs/server.log or run tm server stop --force`. `--force` sends `SIGKILL` to the pid recorded in `server.pid`, but only if that pid still holds the lock.
 
 ### 3.3 Protocol
 
-**Framing.** There is one Unix socket. Every connection starts with a newline-delimited JSON (NDJSON) handshake:
+The libghostty spike (t-0003, `spikes/libghostty/FINDINGS.md`) built this design and verified it end to end with Claude Code 2.1.289:
+- detach mid-stream, close the window outright, and reattach from a new window at a different size;
+- 21 full-state digest comparisons between client and server, with 0 mismatches.
+
+The types are in `internal/proto`.
+
+**Handshake.** There is one Unix socket. Every connection starts with one NDJSON `hello` line from each side:
 
 ```jsonc
 // client → server
-{"hello": {"protocol": 1, "version": "0.1.0", "kind": "control" | "attach" | "hook"}}
+{"protocol": 1, "version": "v0.1.0", "build": "v0.1.0+33da6848d63b+3f2a…", "kind": "control" | "attach" | "hook"}
 // server → client
-{"hello": {"protocol": 1, "version": "0.1.0", "server_pid": 4242}}
+{"protocol": 1, "version": "v0.1.0", "build": "v0.1.0+33da6848d63b+3f2a…", "bin": "/usr/local/bin/tm", "pid": 4242}
 ```
 
-**Versioning.**
-- `protocol` is a single integer, and the server speaks exactly one version.
-  - **Control** connections accept a client whose protocol is less than or equal to the server's. Methods and fields are added only, never changed. Unknown fields are ignored.
-  - **Attach** connections require equal protocol numbers.
-- On a mismatch the client prints `tm server is <v>, this tm is <v>; run 'tm server restart' (agents are resumed, §3.6)` and exits with code 3.
+`build` is `version.BuildID()`: the version, the Ghostty commit, and a hash of the executable.
+
+**Versioning** (`proto.Check`):
+- **Control and hook** connections accept a client whose `protocol` is lower than or equal to the server's. Methods and fields are only ever added, and unknown fields are ignored. A newer client gets `tm server speaks protocol N…; run 'tm server restart' (agents are resumed)` and exits with code 3.
+- **Attach** connections require the **identical build**. The client mirrors the server's emulator from a libghostty snapshot, and libghostty says outright that its snapshot format "does not yet carry a binary-compatibility guarantee". On a mismatch the client **re-execs the server's binary** (`bin` from the server's hello) with the same arguments. Attaching keeps working after an upgrade until the server is restarted.
 - The protocol number goes up when the attach framing or a method's meaning changes.
 
 **Control connections** use NDJSON request and response pairs, `{"id":1,"method":"…","params":{…}}` → `{"id":1,"result":…}` or `{"id":1,"error":{"code":"…","message":"…"}}`. The method set is flat and small. Most CLI commands are thin wrappers:
@@ -147,39 +156,55 @@ The dependency rule: `server`, `session`, `ticker`, `tui`, `project`, `thread` a
 | server | `ping`, `server.status`, `server.stop` |
 | sessions | `session.list`, `session.start`, `session.stop`, `session.read` (screen text), `session.prompt`, `session.keys`, `session.wait` (until a state) |
 | agents | `agent.list`, `agent.reload`, `agent.explain` (which signals and rules produced a session's state) |
-| hooks | `hook.event` (from `tm hook`) |
-| projects | `project.list`, `project.context`, `task.*`, `thread.*`, `inbox.*`, `report.progress` |
+| hooks | `hook.event` (from `tm hook`; also its own connection kind, §8.2) |
+| projects | `project.list`, `project.context`, `task.*`, `thread.*`, `inbox.*`, `report.*`, `status.*` |
 | events | `subscribe` turns the connection into an event stream: `session.state`, `session.exited`, `inbox.new`, `task.changed`, `thread.changed` |
 
 The server MAY serve file-only operations such as `task.*` itself, so that all writes are serialised. The CLI MUST also work without a server for read-only commands (`task list`, `context`), by reading the files directly.
 
-**Attach connections.** After the handshake the client sends `{"attach":{"session":"s-…","cols":C,"rows":R}}`. The connection then switches to binary frames: `type u8 | length u32 BE | payload`.
+**Attach connections: mirror emulators.** The server keeps the **authoritative** emulator for every pane. Each attached client keeps its **own mirror**: it is restored from a snapshot, then fed exactly the same bytes in the same order. The client renders from its mirror and encodes input against the mirror's modes. As a result:
+- the server parses each byte once and only forwards it;
+- input encoding needs no round trip;
+- every client gets its own scrollback and viewport for free;
+- late joiners and lagging clients just get a fresh snapshot.
+
+After the hello the client sends `{"attach":{"session":"s-…","cols":C,"rows":R}}`. The connection then switches to binary frames: `type u8 | length u32 BE | payload`, at most 64 MB each (`proto.WriteFrame`/`ReadFrame`).
 
 | Direction | Frame | Meaning |
 |---|---|---|
-| server → client | `SNAPSHOT` | Bytes that repaint the outer terminal into the pane's current state: reset, the mode replay (alternate screen, cursor keys, bracketed paste, mouse modes, kitty keyboard flags, cursor style and position, scroll region, title), then the visible screen. Produced by libghostty's VT formatter with its "extra" state options. |
-| server → client | `OUTPUT` | Raw PTY output after the snapshot point, passed through unchanged. These are the "diffs": the outer terminal applies them exactly as the pane's own emulator does. |
-| server → client | `STATE` | Agent state, percent and activity, for the client's one-line status bar |
-| server → client | `CLOSED` | The session exited, or another client took over; carries a reason |
-| client → server | `INPUT` | Raw bytes from the outer terminal, minus the client's own keys |
-| client → server | `RESIZE` | New cols and rows |
+| server → client | `SNAPSHOT` | The pane emulator's libghostty snapshot: both screens, scrollback, every mode, cursor and kitty flags. A 160×50 screen with 10k scrollback rows is about 5 KB and takes 68 µs to encode and decode |
+| server → client | `OUTPUT` | Raw PTY output after the snapshot point, in order. The mirror feeds it to its emulator. These are the "diffs" |
+| server → client | `RESIZE` | The pane was resized at exactly this point in the byte stream, so the mirror resizes at the same offset as the server |
+| server → client | `DIGEST` | Full-state digest of the server's emulator at this point (debugging and `tm doctor --attach`) |
+| server → client | `STATE` | JSON: agent state, progress and the current item, for the client's status line |
+| server → client | `CLOSED` | The session exited, or the server is stopping; carries a reason |
+| client → server | `INPUT` | Bytes for the PTY, already encoded for the pane's modes |
+| client → server | `SET_SIZE` | The user really resized their window |
+| client → server | `DIGEST_REQ` | Ask for a `DIGEST` in the stream |
 | client → server | `DETACH` | Leave cleanly |
-| both | `PING`/`PONG` | Liveness check every 10 s; the server drops a client after 30 s of silence |
 
-- **Snapshot then diffs.** The server takes the snapshot and marks the PTY output offset in one critical section. Every byte after that offset goes out as `OUTPUT`, so nothing is lost or duplicated.
-- **Back-pressure.** A slow client never blocks the PTY reader. If a client's queue goes over 4 MB, the server drops the queue and sends a fresh `SNAPSHOT`.
-- **Resize.** Each pane has one size. In v0.1 the most recent attached client that sent input or a resize sets it. The server resizes the PTY (`TIOCSWINSZ`, then `SIGWINCH`) and the emulator together, and sends a new `SNAPSHOT` to every other client attached to that pane.
-- **Several clients.** Any number of clients may connect over time and at once. Each client shows one attached pane in v0.1. Two clients MAY attach to the same pane; both receive output and both may type.
-- **Input.** v0.1 forwards input raw. Nothing is re-encoded, because the inner app has negotiated its modes with the outer terminal through the replayed snapshot. The client's own keys are:
-  - the **detach key**, which returns to the dashboard; it is configurable, and the default is chosen by the libghostty spike from candidates such as `ctrl-\`. The client MUST recognise it in legacy form and in kitty-keyboard CSI-u form, because the inner app may have enabled the kitty protocol on the outer terminal.
-  - nothing else in v0.1.
+**What the server and client must get right:**
 
-- **OPEN (spike: libghostty):**
-  - Is passthrough after a VT-formatter snapshot faithful for Claude Code, Codex and pi?
-  - Does the formatter replay every mode listed above?
-  - What `TERM`/terminfo should panes get? Use `xterm-256color` + `COLORTERM=truecolor` unless the spike says otherwise.
-  - How should mode 2026 (synchronized output) be handled across a snapshot?
-  - Which detach key should be the default?
+- **Snapshot then stream.** The server encodes the snapshot and marks the PTY output offset in one critical section. Everything after that offset goes out as `OUTPUT` or `RESIZE` frames, so nothing is lost or duplicated.
+- **Only the server answers terminal queries.** DA, DSR, kitty queries, `CSI 16t` (cell size) and XTVERSION are answered by the server's emulator, through its write-pty effect. Mirrors register no write-pty effect; otherwise every query would be answered once per client. Effects are registered again after a snapshot `Decode`. The server also wires the size-report and colour-scheme (2031) effects, which Claude uses.
+- **Back-pressure.** The PTY reader never blocks on a client. Each client has a byte-bounded queue of 4 MB, with adjacent `OUTPUT` frames merged. Past the limit the backlog is dropped and replaced by a fresh `SNAPSHOT` (resync). macOS PTYs deliver about 68-byte reads, so the server coalesces reads, reading until `EAGAIN` or for a few hundred µs, and avoids allocating per chunk.
+- **Sizing: no resize on attach.**
+  - A pane keeps its size when a client attaches. A client whose window is a different size renders the pane cropped or padded.
+  - The PTY is resized (`TIOCSWINSZ` + `SIGWINCH`) only when the user really resizes the window of the client they are typing in (`SET_SIZE`).
+  - Reason: in its inline mode, Claude duplicates rows in the scrollback on every resize. Its full-screen mode, the default since 2.1.x, doesn't, but needless resizes still cause full repaints.
+- **Rendering.**
+  - The client draws dirty rows from its mirror (cell renderer, not Bubble Tea `View()` strings), capped at 120 Hz and wrapped in mode 2026.
+  - It honours the app's own 2026 holds through libghostty's render-hold effect, and never paints a torn frame.
+  - Palette and default colours stay symbolic, so the user's theme applies.
+  - After multi-codepoint graphemes (ZWJ, flags, skin tones, VS16) the cursor is re-anchored, because outer terminals disagree about their width.
+- **Input.**
+  - The client pushes kitty "disambiguate" on the outer terminal and decodes its input with ultraviolet. It then re-encodes every key, mouse, focus and paste event with libghostty's encoders against the **mirror's** modes. This is how Shift+Enter (`CSI 13;2u`) reaches Claude intact.
+  - Mouse (1000/1002/1003/1006) and focus (1004) modes are mirrored onto the outer terminal only while the app wants them, so native selection works the rest of the time. Claude 2.1.x is full-screen with any-event mouse tracking, so mouse forwarding is required.
+- **Detach key: Ctrl+\\.** The client recognises it as `0x1c` and as `CSI 92;5u`. It is configurable in `config.toml`. Shift+PgUp/PgDn scroll the client's local scrollback for apps on the main screen (inline mode, shells); full-screen apps get the wheel.
+- **Several clients.** Any number of clients may attach over time and at once, one attached pane per client in v0.1. Two clients MAY attach to the same pane; both receive output and both may type. The pane's size follows the last `SET_SIZE`.
+- **The client's own terminal going away.** SIGHUP, or EOF/EIO on stdin, is a detach: the client exits within about 50 ms, and the server and agent are unaffected. On attach the client paints the snapshot at once, even when the pane is idle.
+- **Fallback considered and rejected.** Replaying the VT formatter's output into a fresh emulator is version-independent, but it loses the inactive screen: primary scrollback and its kitty flags disappear while an app is on the alt screen. It stays a debug aid, not a protocol.
+- **Pane `TERM`:** `xterm-256color`, plus `COLORTERM=truecolor` and `TERM_PROGRAM=termalator`. The spike ran Claude with these, with no issues.
 
 ### 3.4 Session environment
 
@@ -190,32 +215,37 @@ Every hosted process gets these variables, which is how hooks and the CLI find t
 - `TERMALATOR_SOCKET`
 - `TERMALATOR_BIN` (absolute path of `tm`)
 - `TERMALATOR_PROJECT=<slug>` and `TERMALATOR_THREAD=<id>`, when they apply
-- `TERM`, `COLORTERM`
+- `TERM`, `COLORTERM`, `TERM_PROGRAM` (§3.3)
 
-The server removes variables that leak the launching terminal's identity, such as `TMUX`, `TERM_SESSION_ID` and `WINDOWID`.
+The server removes variables that leak the launching terminal's identity, such as `TMUX`, `TERM_SESSION_ID` and `WINDOWID`. Each agent's manifest adds its own `unset_env` list (`agent.FilterEnv`).
+
+For Claude that list is the inherited session variables: `CLAUDECODE`, `CLAUDE_CODE_SESSION_*`, `CLAUDE_CODE_MESSAGING_*`, `CLAUDE_CODE_CHILD_SESSION` and others. Without this, a Claude started from a shell inside another Claude thinks it is a child session and, for example, doesn't save its transcript. The list is not the whole `CLAUDE_CODE_*` prefix, because that prefix also carries user configuration such as `CLAUDE_CODE_USE_BEDROCK`.
 
 ### 3.5 Client crash or disconnect
 
-- The server notices EOF or the ping timeout, drops the subscriber and changes nothing else. The pane keeps running at its last size.
-- The client restores the outer terminal (raw mode off, main screen, cursor shown, kitty keyboard flags popped, bracketed paste off) on normal exit, on `SIGINT`/`SIGTERM`/`SIGHUP`, and on panic. A client killed with `SIGKILL` can leave the terminal in a bad state; `reset` fixes it, and `tm` prints that hint the next time it starts on a TTY in raw mode.
+- The server notices EOF, drops the subscriber and its queue, and changes nothing else. The pane keeps running at its size.
+- The client restores the outer terminal (raw mode off, main screen, cursor shown, kitty keyboard flags popped, mouse and focus modes off, bracketed paste off) on normal exit, on `SIGINT`/`SIGTERM`/`SIGHUP`, and on panic. A client killed with `SIGKILL` can leave the terminal in a bad state; `reset` fixes it, and `tm` prints that hint the next time it starts on a TTY in raw mode.
 
 ### 3.6 Server crash, restart and upgrade
 
-The processes die with the server, because the PTY master closes and the children get `SIGHUP`. v0.1 does not hand PTY file descriptors from one server to the next (§13). Recovery works like herdr's `session.json` combined with resume flags:
+The processes die with the server, because the PTY master closes and the children get `SIGHUP`. Recovery works like herdr's `session.json` combined with resume flags:
 
 - **Persistence.** On every session change the server atomically rewrites `~/.termalator/state/sessions.json`. For each session it records:
   - id, role (coordinator, thread or shell), project and thread
-  - agent name and the agent's own session id (learned from hooks, §8.5)
+  - agent name and the agent's **latest** session id (§8.5; Claude rotates it on `/clear`)
   - cwd, model, yolo flag, created time
   - a `clean_exit` flag
 - **Unclean-shutdown detection.** A clean stop writes `"shutdown": "clean"` last. If a server starts and finds no clean marker, the previous server crashed.
-- **Resume.** On start (both after a crash and after `tm server restart`), the server relaunches every coordinator and thread session that has an agent session id. It uses the agent's resume recipe (`LaunchSpec.Resume`, for example `claude --resume <id>`) in the same cwd, with the same brief and hooks.
+- **Resume.** On start (both after a crash and after `tm server restart`), the server relaunches every coordinator and thread session that has an agent session id. It uses the agent's resume recipe (`LaunchSpec.Resume`, for example `claude --resume <id>`) in the same cwd, with the same brief and hooks. A resume with an empty id is refused, because `claude --resume ""` opens an interactive picker.
   - Shell sessions are not restored in v0.1. They are listed as "lost".
   - Sessions with no recorded agent session id come back as fresh launches of the same thread only if the thread is not resolved. Their brief tells them to read their last report first (`tm report --show`), then continue from the task's unchecked steps.
   - Turns that were running when the server stopped are lost. The resumed agent is idle.
 - **Reporting.** Each restart writes an inbox item (`kind = "server"`) to every affected project: "server restarted after crash; resumed t-0003, t-0005; lost shell s-12". The coordinator decides what to re-prompt.
-- **Upgrade.** Installing a new `tm` doesn't touch a running server. A client with a newer protocol reports the mismatch (§3.3), and the human runs `tm server restart`. Restart warns about how many agents are mid-turn and asks for confirmation on a TTY.
-- **OPEN (spike: libghostty):** should the server persist a libghostty snapshot of each pane, so that a resumed pane shows its old scrollback above the new process's output? This is nice to have, not required.
+- **Upgrade.**
+  - Installing a new `tm` doesn't touch a running server. Attach keeps working, because the client re-execs the server's binary (§3.3).
+  - A control client with a newer protocol asks the human to run `tm server restart`. Restart warns about how many agents are mid-turn and asks for confirmation on a TTY.
+  - **Later, not v0.1:** a live handoff. The old server passes each PTY master to the new one over `SCM_RIGHTS`, with a snapshot of each emulator, so no agent has to restart. Snapshots make this feasible; it needs its own small spike.
+- **Scrollback after a restart.** The server MAY save each pane's snapshot at shutdown and show it above the resumed process's output. This is nice to have, not required for v0.1.
 
 ---
 
@@ -260,13 +290,14 @@ The processes die with the server, because the PTY master closes and the childre
   | `d` | on a task in `review`, mark it `done` (a human action, §6.4) |
   | `n` | new project |
   | `s` | new shell session |
+  | `c` | new Claude (or other agent) session in a chosen directory |
   | `r` | refresh |
   | `?` | help |
   | `q` | quit the client; the server keeps running |
 
-- **Attaching.** Attaching hands the whole screen to the pane (§3.3), with a one-line status bar at the bottom that the client draws. The status bar shows the session name, state, and the detach key. The detach key returns to the dashboard.
-- **Rendering.** The dashboard uses Bubble Tea v2 and Lip Gloss v2. The attached pane bypasses Bubble Tea: the client writes `SNAPSHOT` and `OUTPUT` bytes straight to the terminal.
-- **Notifications.** When a session becomes `blocked`, or a thread reports, the server rings the bell on every attached client's terminal and sends an OS notification (`osascript` on macOS, `notify-send` on Linux, both optional). OSC 9/777 from panes is passed through while attached.
+- **Attaching.** Attaching gives the whole screen to the pane, rendered from the client's mirror emulator (§3.3), with a one-line status bar at the bottom that the client draws. The status bar shows the session name, state, progress and the detach key. Ctrl+\ returns to the dashboard.
+- **Rendering.** The dashboard uses Bubble Tea v2 and Lip Gloss v2. The attached pane bypasses Bubble Tea: a cell renderer draws dirty rows from the mirror (§3.3).
+- **Notifications.** When a session becomes `blocked`, or a thread reports, the server rings the bell on every attached client's terminal and sends an OS notification (`osascript` on macOS, `notify-send` on Linux, both optional). The client re-emits a pane's OSC 9/777 notifications and OSC 52 clipboard writes to the outer terminal while attached. OSC 52 reads are denied.
 
 ---
 
@@ -323,7 +354,7 @@ The processes die with the server, because the PTY master closes and the childre
 **Enforcement uses the agent's own permission settings plus its sandbox, not symlinks.** The core decides the policy per role and passes it to the agent as `LaunchSpec.Access` (a `Read` list and a `NoWrite` list of absolute directories) together with the socket path. The agent's manifest turns that policy into the harness's settings (§8.2). For Claude Code (§8.6) that means:
 
 - a `Read(//<home>/.termalator/projects/<slug>/**)` allow rule, so reads are silent;
-- `Edit(…)` and `Write(…)` deny rules on the same directory, so the file tools can't write there in any permission mode;
+- an `Edit(…)` deny rule on the same directory, which covers Write, Edit and NotebookEdit, so the file tools can't write there in any permission mode, yolo included (verified by t-0004);
 - for threads, the Bash sandbox enabled. It blocks writes outside the worktree at the OS level and checks real paths;
 - the server's socket in `sandbox.network.allowUnixSockets`. Without it, sandboxed `tm` calls fail with `EPERM`.
 
@@ -519,7 +550,7 @@ The format is herdr-projects': an optional `PR:` first line, `## Report`, a requ
 The coordinator learns a thread's exact progress without asking it. Three sources feed it, and the first two need no effort from the agent:
 
 1. **Task steps.** These are the durable plan, kept in `TASKS.md` (§6.5).
-2. **Mirrored todos.** This is the agent's own live todo list: Claude Code's `TodoWrite`, Codex's plan updates, or whatever a manifest maps (§8.2). A hook captures the whole list on every change, and the server stores it. The agent does nothing extra.
+2. **Mirrored todos.** This is the agent's own live todo list: Claude Code's `TaskCreate`/`TaskUpdate`, Codex's plan updates, or whatever a manifest maps (§8.2). Hooks capture every change, either the whole list or a one-item diff, and the server keeps the list. Where the agent keeps its own copy on disk, the server re-reads it to heal the mirror. The agent does nothing extra.
 3. **Self-report.** `tm status --percent 40 --activity "Testing" [--needs-you "question"] | --unknown`. This is the fallback when neither of the first two exists. A self-report expires after 5 minutes.
 
 **Derived percent.** Let *S* = the number of task steps and *s* = checked steps. Let *T* = the number of todo items and *c* = completed todos.
@@ -604,7 +635,7 @@ Threads are grouped as herdr-projects does: Waiting on you → Ready for review 
 6. unhandled inbox items
 7. the last 20 `JOURNAL.md` lines
 
-Sections are capped, and the output says what it left out. Two calls with the same files give identical output. That makes "clearing the coordinator loses nothing" testable: run scripted actions, clear the coordinator, run `tm context`, and compare (milestone M8).
+Sections are capped, and the output says what it left out. Two calls with the same files give identical output. That makes "clearing the coordinator loses nothing" testable: run scripted actions, clear the coordinator, run `tm context`, and compare (M8).
 
 ### 7.7 Standing rules (the skills)
 
@@ -661,126 +692,195 @@ Everything the core needs from a harness goes through `agent.Agent` (`internal/a
 |---|---|
 | `Name()` | the manifest name, used as `--agent` |
 | `Identify(proc)` | is this foreground process this agent? Lets a shell session in which the user started `claude` by hand get agent state |
-| `Launch(spec)` | argv, env and generated files (hook plugin, extension, settings) for a new or **resumed** session. This is where brief injection and the context re-injection hooks are wired |
-| `Hook(event, ctxFn)` | map one structured event to signals (state, reason, the agent's own session id, the agent's live todo list), plus the response the harness expects. Context re-injection after clear/compact is a hook response that calls `ctxFn` |
-| `Rules()` | screen rules used as a cross-check, as data; the core's rule engine evaluates them |
-| `Injector()` / `Prompt()` | how follow-up prompts reach a live session: `paste` (the core sends bracketed paste plus Enter, only while idle), `channel` (structured, implemented in Go), or `none` |
+| `Launch(spec)` | argv, env to set and to unset, and generated files (hook plugin, extension, settings) for a new or **resumed** session. Brief injection and the context re-injection hooks are wired here |
+| `Hook(event, ctxFn)` | map one structured event to signals (state, reason, the agent's latest session id, background-activity counters, a todo-list change), plus the response the harness expects. Context re-injection after clear or compact is a hook response that calls `ctxFn` |
+| `Sources()` | the declarative state sources the core runs besides hooks and the screen: a **status file**, a **JSONL tail**, a **todo snapshot**, and hook payload trimming (§8.2) |
+| `Rules()` | screen rules, as data; the core's rule engine evaluates them |
+| `Injector()` / `Prompt()` | how follow-up prompts reach a live session: `paste` (the core sends bracketed paste plus Enter), `channel` (structured, implemented in Go; any error falls back to paste), or `none` |
 
-Every type in the interface (`State`, `Signal`, `Todo`, `LaunchSpec`, `Access`, `HookEvent`) is harness-neutral. The states are `unknown`, `idle`, `working`, `blocked` (with a reason such as `permission` or `question`) and `exited`. "Done" is not an agent state; it comes from `tm done` (§7.3).
+Every type in the interface (`State`, `Signal`, `Todo`, `TodoChange`, `LaunchSpec`, `Access`, `HookEvent`, `Sources`) is harness-neutral. The states are `unknown`, `idle`, `working`, `blocked` (with a reason such as `permission`, `question` or `trust`) and `exited`. "Done" is not an agent state; it comes from `tm done` (§7.3).
 
 ### 8.2 Manifests: agents as data
 
-An agent is first of all a TOML manifest. `internal/agent/manifests/claude.toml` is the reference. Its sections are:
+An agent is first of all a TOML manifest. `internal/agent/manifests/claude.toml` is the reference, and `internal/agent/agent_test.go` tests it. Its sections are:
 
 | Section | Holds |
 |---|---|
 | `manifest_version`, `name`, `display` | identity; the file name must equal `name` |
-| `[identify] argv0` | process basenames, after the core has unwrapped `node`/`bun`/`sh -c` |
-| `[launch]` | `command`, `args`, `resume_args`, `yolo_args`, `model_args`, `kickoff_args` and `env`. Each value is a Go `text/template` over `LaunchSpec` (`.SessionID`, `.AgentSID`, `.Cwd`, `.RuntimeDir`, `.BriefPath`, `.Kickoff`, `.Resume`, `.Yolo`, `.Model`, `.TMBin`, `.Socket`, `.Role`, `.Access.Read`, `.Access.NoWrite`). An argument that renders empty is dropped |
-| `[[launch.files]]` | templated files written into the session's runtime dir before launch, such as a hook plugin, an extension, or the harness's permission and sandbox settings rendered from `.Access` (helpers: `json`, `rules`, `concat`) |
+| `tested_versions` | version prefixes the manifest was verified against (Claude: `["2.1."]`). Undocumented sources are trusted only for these, and `tm doctor` warns outside them |
+| `[identify]` | `argv0` (process basenames, after the core has unwrapped `node`/`bun`/`sh -c`), `version_args` |
+| `[launch]` | `command`, `args`, `resume_args`, `yolo_args`, `model_args`, `kickoff_args`, `env` and `unset_env`. Values are Go `text/template`s over `LaunchSpec` (`.SessionID`, `.AgentSID`, `.Cwd`, `.RuntimeDir`, `.BriefPath`, `.Kickoff`, `.Resume`, `.Yolo`, `.Model`, `.TMBin`, `.Socket`, `.Role`, `.Access.Read`, `.Access.NoWrite`). An argument that renders empty is dropped. `kickoff_args` always comes last, and must start with `--` when the CLI has variadic flags that would swallow a positional prompt (Claude does). A resume with an empty `AgentSID` is refused. `unset_env` entries ending in `*` match a prefix |
+| `[[launch.files]]` | templated files written into the session's runtime dir before launch: a hook plugin, an extension, the harness's permission and sandbox settings rendered from `.Access` (helpers: `json`, `rules`, `concat`) |
 | `[inject] prompt` | `paste`, `channel` or `none` |
-| `ignore_fields` | drop hook events that carry these payload fields (for example subagent events) |
-| `[[hooks]]` | `event`, optional `match` (payload field equals value), `state`, `reason`, `transient`, `session_field` (where the agent's session id is), and `respond` (a template printed back to the harness; `.Context` renders `tm context` or the brief pointer) |
-| `[[todos]]` | todo mirroring (§7.3): `event` and optional `match` say which event carries the agent's whole todo list; `list` is the dotted payload path to the array (e.g. `tool_input.todos`); `text` and `status` name each item's fields; `status_map` maps the harness's status words to `pending`, `in_progress` or `completed`. The server replaces its stored list on every match. An agent without a todo tool simply has no entry |
-| `[[rules]]` | screen rules: `id`, `state`, `reason`, `priority`, `region` (`title`, `bottom:N`, `screen`), `contains` (all must appear), `regex`, `not` |
+| `session_field` | the payload field carrying the agent's own session id. It is read from **every** hook event, and the latest value wins (Claude rotates the id on `/clear`) |
+| `ignore_fields` | a hook event carrying one of these fields (for example a subagent's `agent_id`) is ignored for state, session id and todos. It still feeds `counter` entries |
+| `[hook]` | payload trimming in `tm hook`: `keep` (top-level fields), `truncate` (field → max bytes), and `[[hook.keep_when]]` (`match` + `fields`) for bulky fields only some events need |
+| `[[hooks]]` | `event`; optional `match`; `state`, `reason`, `transient`; `counter` (`"+name"`/`"-name"`) with `counter_key`; `respond` (a template printed back to the harness, where `.Context` renders the role's context, §7.8). Every matching entry applies |
+| `[status_file]` | a JSON file the agent keeps current with its own state. Keys: `path` (template over `.Home`, `.PID`, `.AgentSID`), `state_field` + `state_map`, `reason_field` + `reason_map`, `session_field`, `version_field` (checked against `tested_versions`), and `fields` (extra named values, e.g. a socket path for an injector) |
+| `[jsonl_tail]` | a JSONL file the agent appends to (transcript, rollout). `path_field` names the hook payload field holding its path; each `[[jsonl_tail.rules]]` entry is `match` + optional `text_field`/`text_prefix` → `state`/`reason` |
+| `[[todos]]` | todo mirroring (§7.3). `op = "replace"`: `list` is the path of the whole list, and `id`/`text`/`active_text`/`status` name each item's fields. `op = "upsert"`: one item per event; `id`/`text`/`active_text`/`status` are payload paths, absent fields keep the stored value, and `status_default` applies to new items. `op = "reset"`: start a new, empty list. `status_map` maps the harness's words to `pending`/`in_progress`/`completed`, or `@remove` to drop the item |
+| `[todos_snapshot]` | a directory of per-item JSON files the agent keeps itself (`dir` template, `glob`, `id`/`text`/`status`, `on` = events after which the core re-reads it to heal the mirror) |
+| `[[rules]]` | screen rules: `id`, `state` (including `unknown`, "the screen can't tell"), `reason`, `priority`, `region` (`title`, `bottom:N`, `screen`), `contains` (all must appear), `regex` (compiled at load), `not`, and `skip_dim` (ignore dim cells, so ghost text isn't read as typed input) |
 
-All generated hook files call `"$TERMALATOR_BIN" hook --agent <name>`. That command reads the harness's JSON payload from stdin, adds `TERMALATOR_SESSION` and a sequence number, and sends it to the server (`hook.event`). It prints whatever the server returns and exits 0 fast. If no server is reachable it prints nothing and exits 0, so a broken termalator never breaks the agent.
+**Match syntax**, the same everywhere: keys are dotted payload paths. A value means equals; `"!value"` means absent or different; `"*"` means present and non-empty; `"!*"` means absent or empty. Numbers and booleans compare as their text.
 
-**Loading.** `tm` loads its built-in manifests (embedded with `go:embed`), then every `~/.termalator/agents/*.toml`. A user file with a built-in's name replaces the built-in. A broken user manifest is reported by `tm agent list` and `tm doctor` and skipped, without blocking the other agents. `tm agent check <file>` validates a manifest, and `tm agent reload` asks the server to re-read them for new sessions.
+**The hook endpoint.** All generated hook files call `"$TERMALATOR_BIN" hook --agent <name>` as a **command** hook. That is the `tm` binary itself, so the hook always exists. The spike measured why each of the following rules matters:
+- **Delivery.** It reads the payload from stdin, trims it with `[hook]`, wraps it in an envelope (`TERMALATOR_SESSION`, a timestamp, the parent pid), and sends it over a **stream** connection of kind `hook` to the server socket.
+  - Datagrams are not usable: macOS caps them at 2048 bytes, and bigger payloads were dropped silently.
+  - About 4 ms per event, end to end.
+- **Deadlines.** Dial 50 ms, write 100 ms, and 500 ms in total when a response (context) is expected. It never waits longer, even when the server is wedged.
+- **Never break the agent.** It always exits 0 and never writes to stderr. If the server is down it prints nothing. An `http` hook is not used, because Claude shows a red error line every time its target is down.
+- **Synchronous.** Hooks are sync, so a pane's events arrive in order, and the server's receive order is the sequence number. They carry a 5 s timeout as an outer safety net.
+
+**Loading.** `tm` loads its built-in manifests (embedded with `go:embed`), then every `~/.termalator/agents/*.toml`. A user file with a built-in's name replaces the built-in. A broken user manifest (bad TOML, unknown keys, a bad regex, a bad status word) is reported by `tm agent list` and `tm doctor` and skipped, without blocking the other agents. `tm agent check <file>` validates a manifest, and `tm agent reload` asks the server to re-read them for new sessions.
 
 ### 8.3 What needs Go, and what doesn't
 
-**No recompiling needed.** Adding an agent whose integration is CLI flags, hook commands or an extension file, plus screen text, is a new manifest in `~/.termalator/agents/`. That covers launch, resume, yolo, model, generated plugin and extension files, the access policy rendered as the harness's own permission settings, hook-to-state mapping, context re-injection through a hook response, todo mirroring, screen rules, and paste-based prompts.
+**No recompiling needed.** Adding an agent whose integration is CLI flags, hook commands or an extension file, a status file, a transcript, plus screen text, is a new manifest in `~/.termalator/agents/`. Data covers:
+- launch, resume, yolo, model, environment cleanup, generated plugin and extension files;
+- the access policy, rendered as the harness's own permission settings;
+- hook-to-state mapping, background counters, session-id tracking, context re-injection;
+- the status-file and JSONL-tail sources;
+- todo mirroring (`replace`/`upsert`/`reset`, plus a snapshot dir);
+- screen rules and paste-based prompts.
 
 **Go needed** (a package `internal/agent/<name>` that wraps `FromManifest` and calls `agent.RegisterGo`) only for:
-- a **live protocol client**. Example: Codex's app-server, where termalator connects as a second JSON-RPC client to read `thread/status/changed`, or sends `turn/start` as a `channel` injector.
-- a **structured prompt channel** that isn't a hook response. Example: talking to a pi extension over a socket to call `sendUserMessage`.
+- a **live protocol client**. Example: Codex's app-server, where termalator connects as a second JSON-RPC client to read `thread/status/changed`, or sends `turn/start`.
+- a **structured prompt channel** with a feature probe. Examples: Claude's `uds-messaging` socket (§8.6); a pi extension's `sendUserMessage`.
 - **payload logic templates can't express**, such as stateful correlation across events.
 - **process identification** beyond argv basenames.
 
-The rule-engine semantics, arbitration (§8.4) and the paste injector are core features. New agents get them for free and never reimplement them.
+The core provides, so no agent reimplements them:
+- the rule engine, arbitration (§8.4) and the paste injector;
+- the status-file watcher (fsnotify plus a 500 ms poll);
+- the JSONL tailer and the todo store (`agent.ApplyTodo`).
 
 ### 8.4 State arbitration (core, agent-neutral)
 
-Per session, the core merges signals:
+Per session, the core merges signals from up to five sources. Each manifest declares which of them exist, and the precedence is fixed:
 
-1. **Exit beats everything.** If the process exits, or a `SessionEnd`-style hook maps to `exited`, the state is `exited`.
-2. **A hook state wins over a screen state.** The exception: **a visible on-screen blocker overrides a hook state that isn't `blocked`**, because permission dialogs can outlive or precede their hooks.
-3. **Stale signals are dropped.** Each source has its own `seq`; a lower `seq` is ignored. `transient` hook signals refresh `working` but never override a `blocked` state that is still visible on screen.
-4. **Debounce.** A move from working to idle on screen evidence alone needs 3 consecutive evaluations, or 700 ms.
-5. **Fallback.** With no hook signal in 30 s while the screen shows output activity, the screen rules decide alone. Their result is labelled `(screen)` in the UI.
+| Rank | Source | Role |
+|---|---|---|
+| 1 | **process exit**, or a hook mapped to `exited` | `exited` beats everything |
+| 2 | **status file** (`[status_file]`) | the primary level signal when present and trusted: it is written by the agent itself and catches cases no hook reports |
+| 3 | **hooks** (`[[hooks]]`) | edges and details: what is being asked for (`tool_name`, `tool_use_id` for `tm thread approve`), counters, session id, todos, context responses |
+| 4 | **JSONL tail** (`[jsonl_tail]`) | cross-check when there is no trusted status file: explicit interrupt and turn-end markers |
+| 5 | **screen rules** (`[[rules]]`) | pre-hook screens (trust dialogs), blockers, and the last resort |
 
-Screen rules run on emulator text (the title, or the bottom N lines of the active screen) at most every 300 ms per session, and only after output. `tm agent explain <session>` prints the last signals from each source, the matching rules and the arbitration result. Hook-only state went stale in herdr, so this command is a day-one feature.
+Rules:
+
+1. **Exit wins.** A dead process makes its status file invalid, even if the file still says `busy`.
+2. **A higher-ranked level signal wins over a lower one.** A status file that is missing, unparsable, stale for a dead pid, or from an untested version (`ErrUntestedVersion`) is skipped. The UI then labels the state with the sources actually used, e.g. `(hooks+screen)`.
+3. **A visible blocker on screen overrides any non-blocked state.** Dialogs can precede their hooks, and some (trust, bypass warning) appear before hooks run at all.
+4. **Background activity.** While any counter (e.g. `bg`, keyed by subagent id) is above zero, `idle` reads as `working`, reason `background`. A repeated `-` for the same key can't go below zero.
+5. **Stale signals are dropped.** Each source has its own sequence number; a lower one is ignored. `transient` hook signals refresh `working` but never override a `blocked` state that is still visible on screen.
+6. **Debounce only for the screen.** A move from working to idle on screen evidence alone needs 3 consecutive evaluations, or 700 ms.
+
+Screen rules run on emulator text (the title, or the bottom N lines of the active screen, with dim cells dropped where `skip_dim` is set) at most every 300 ms per session, and only after output. `tm agent explain <session>` prints the last signal from each source, the matching rules and the arbitration result. It is a day-one feature, because hook-only state goes stale.
 
 ### 8.5 Session identity and resume
 
-The server pre-assigns the agent's own session id where the harness allows it (Claude: `--session-id <uuid>`). Otherwise it learns the id from the first hook carrying `session_field`. The id is stored in `sessions.json` and `thread.toml`, and resume (§3.6) passes it to `resume_args`.
+- **Pre-assigned ids.** The server pre-assigns the agent's own session id where the harness allows it (Claude: `--session-id <uuid>`, for fresh sessions only; reusing an id fails).
+- **Tracking.** After that, `session_field` is read from every hook event, and from the status file. The **latest** id is stored in `sessions.json` and `thread.toml`, because Claude's `/clear` starts a new id.
+- **Resume** (§3.6) passes the latest id to `resume_args`, and never an empty one.
 
 ### 8.6 Claude Code: the reference agent
 
-Claude Code is pure data unless the spike shows otherwise (`manifests/claude.toml`; `internal/agent/claude` starts empty).
+The integration spike verified all of this against Claude Code **2.1.289** on macOS (t-0004, `spikes/claude/FINDINGS.md`). The user approved using two undocumented Claude features, behind a version guard with fallbacks:
+- the session status file `~/.claude/sessions/<pid>.json`;
+- the `uds-messaging` socket.
 
-- **Launch:** `claude --plugin-dir <runtime>/claude-plugin --settings <runtime>/claude-settings.json --session-id <uuid> --append-system-prompt-file <brief> "<kickoff>"`. With resume: `--resume <uuid>` instead of `--session-id` and the kickoff. With yolo: `--dangerously-skip-permissions`.
-- **Access (§5.2):** the generated `claude-settings.json` renders `LaunchSpec.Access`:
+Claude Code is pure data (`manifests/claude.toml`), except for the optional socket injector in `internal/agent/claude`.
+
+- **Launch:**
+
+  ```sh
+  claude --plugin-dir <rt>/claude-plugin --settings <rt>/claude-settings.json \
+         --session-id <uuid> --append-system-prompt-file <brief> -- "<kickoff>"
+  ```
+
+  - Resume: `--resume <latest id>` instead of `--session-id`, and no kickoff. Yolo: `--dangerously-skip-permissions`.
+  - The kickoff goes after `--`, because `--allowedTools`, `--add-dir` and friends are variadic and swallow a following prompt.
+  - `--plugin-dir` hooks and `--settings` are **additive**: the user's own hooks and settings still run.
+  - `--settings` never carries `statusLine`, which would replace the user's own.
+  - The brief, given as `--append-system-prompt-file`, **survives `/clear`**. It is snapshotted until the next compaction, so the brief file is never edited mid-session; dynamic context goes through `SessionStart` instead.
+- **Access (§5.2):** `claude-settings.json` renders `LaunchSpec.Access`:
 
   ```json
   {
     "permissions": {
       "allow": ["Read(//Users/me/.termalator/projects/demo/**)"],
-      "deny":  ["Edit(//Users/me/.termalator/projects/demo/**)", "Write(//Users/me/.termalator/projects/demo/**)"]
+      "deny":  ["Edit(//Users/me/.termalator/projects/demo/**)"]
     },
     "sandbox": {"enabled": true, "network": {"allowUnixSockets": ["/Users/me/.termalator/run/tm.sock"]}}
   }
   ```
 
-  - That is a thread. The coordinator gets a `Read` rule for `~/.termalator/worktrees/<slug>/`, no deny rules and no forced sandbox, but keeps the socket allowance in case the user's own settings turn the sandbox on.
-  - `--settings` lists merge with the user's own settings, so the user's rules still apply.
-  - The rule syntax for an absolute path is `Read(/` + the path, which gives a double slash. Rules name **real paths**, because Claude resolves symlinks before checking. `~/.termalator` itself must not be a symlink; `tm doctor` checks this.
-  - `--add-dir` is not used. It grants writes, and it is variadic, so it would swallow the kickoff prompt.
-- **Hooks:** the generated plugin's `hooks/hooks.json` subscribes to these events, all `async` except `SessionStart`:
-  - `SessionStart`, `UserPromptSubmit`
-  - `PreToolUse`, `PostToolUse`, `PostToolUseFailure`
-  - `PermissionRequest`, `PermissionDenied`
-  - `Notification` (`permission_prompt`, `elicitation_dialog`)
-  - `Stop`, `StopFailure`, `SessionEnd`
+  - **Only `Edit(...)` deny rules.** They cover Write, Edit and NotebookEdit; Claude warns that `Write(...)` rules aren't matched by file checks.
+  - The spike verified that, in interactive mode **and under yolo**, reads are silent, Write is refused by the deny rule, and a Bash write is refused by the sandbox.
+  - The coordinator gets a `Read` rule for `~/.termalator/worktrees/<slug>/`, no deny rules and no forced sandbox, but keeps the socket allowance.
+  - Rules name real paths, because Claude resolves symlinks before checking. `~/.termalator` itself must not be a symlink; `tm doctor` checks this.
+- **State sources, in rank order (§8.4):**
+  1. **Status file** `~/.claude/sessions/<pid>.json`, written atomically by Claude. `status`: `idle` → idle, `busy` → working, `waiting` → blocked, with `waitingFor`: `"permission prompt"` → permission, `"input needed"` → question. It also carries `sessionId`, `version` and `messagingSocketPath`.
 
-  Events with an `agent_id` field come from subagents and are ignored, including their todo lists.
-- **Todo mirroring:** `PostToolUse` with `tool_name = "TodoWrite"`; the list is `tool_input.todos`, and each item has `content` and `status` (`pending`/`in_progress`/`completed`, the same words as ours). Each call carries the whole list.
-- **State mapping:**
+     It was right in every case where hooks go stale. Those cases **fire no closing hook at all**: Esc on a permission dialog, Esc while text streams, Esc during a running tool. It updated within one 100 ms sample of the screen.
 
-  | State | Hook events |
-  |---|---|
-  | working | `UserPromptSubmit`, and tool events as keepalive |
-  | blocked (permission) | `PermissionRequest`, `Notification:permission_prompt` |
-  | blocked (question) | `PreToolUse` with tool `AskUserQuestion`, `Notification:elicitation_dialog` |
-  | idle | `Stop` |
-  | exited | `SessionEnd` |
+     It is trusted only for `tested_versions = ["2.1."]`. The server knows the pid because it spawned `claude` itself.
+  2. **Hooks:**
 
-  Screen rules cross-check: a permission dialog means blocked; `esc to interrupt` or a Braille spinner in the title means working; a `✳` title or an empty `❯` prompt means idle.
-- **Brief injection:** the brief goes in through `--append-system-prompt-file`, and the kickoff prompt is the fixed one from §7.8. Follow-ups use the paste injector.
-- **Re-injection after `/clear` and compaction:** `SessionStart` (sources `startup|resume|clear|compact`) responds with `hookSpecificOutput.additionalContext`:
-  - for the coordinator, the role rules plus `tm context`;
-  - for a thread, the brief pointer plus its current task and report state.
-- **OPEN (spike: claude, t-0004).** Each of these fills in the manifest without changing the interface:
-  0. **Answered by the symlink spike (t-0005):** permissions are checked on real paths; `Read(//…/**)` rules make reads silent; the sandbox needs `allowUnixSockets` for the server's socket.
-  1. Does `--plugin-dir` add its hooks to the user's own hooks, or replace them? Fallback: `--settings` with inline JSON.
-  2. Is `--append-system-prompt-file` kept after `/clear`? Does `SessionStart` fire with `source=clear`/`compact`, with `additionalContext` honoured?
-  3. Is `PermissionRequest` reliable, and does a cancelled turn always end in `Stop`? (herdr removed Claude's state hooks over stale reports. The spike decides whether hooks or screen rules lead for Claude; the arbitration in §8.4 supports either.)
-  4. Are the current screen strings correct for the rules?
-  5. Does bracketed paste followed by a separate Enter submit reliably?
-  6. Does `TERMALATOR_SESSION` reach hook processes?
-  7. Do the `Edit`/`Write` deny rules hold in every mode we launch, including `--dangerously-skip-permissions` (yolo), and does the sandbox block Bash writes to the project folder there too? The symlink spike tested only `-p` mode on macOS.
-  8. **Todo mirroring:** is the `TodoWrite` payload shape above right in current Claude Code? Do newer versions track todos with other tools (e.g. `TaskCreate`/`TaskUpdate`, which have their own `TaskCreated`/`TaskCompleted` hooks) that need extra `[[todos]]` entries? Do `PostToolUse` hooks fire for it in every permission mode?
-  9. Do the interactive TUI's dialogs match the `-p` results (silent reads, prompted or denied writes)?
+     | Event (match) | Signal |
+     |---|---|
+     | `SessionStart` | idle, plus the context response (§7.8) and the new session id |
+     | `UserPromptSubmit` | working |
+     | `PreToolUse` / `PostToolUse` / `PostToolUseFailure` | working, transient |
+     | `PermissionRequest` (`tool_name = AskUserQuestion`) | blocked / question |
+     | `PermissionRequest` (other tools) | blocked / permission, with `tool_name` and `tool_use_id` |
+     | `Notification` `permission_prompt` / `elicitation_dialog` / `agent_needs_input` | blocked (late: about 6 s after the dialog) |
+     | `Notification` `idle_prompt` | idle (60 s after `Stop`) |
+     | `Stop`, `StopFailure` | idle |
+     | `SubagentStart` / `SubagentStop` with `agent_type` | `+bg` / `-bg`, keyed by `agent_id` |
+     | `SubagentStop` without `agent_type` | nothing: this is the prompt-suggestion side agent |
+     | `SessionEnd` with `reason` ≠ `clear` | exited (`/clear` ends and restarts the session at once) |
+
+     - Events carrying `agent_id` (subagents) are ignored for state.
+     - Subagents now run in the background by default, which is why the background counter exists: the main `Stop` comes while they still work.
+     - Hooks are trimmed to about 1 KB; `tool_input` and `tool_response` are kept only for the task tools.
+  3. **Transcript tail** (`transcript_path` from any hook): a user entry starting `[Request interrupted by user` → idle / interrupted; `system`/`turn_duration` → idle.
+  4. **Screen rules** (2.1.289):
+
+     | Rule | Matches |
+     |---|---|
+     | blocked / trust | the folder-trust dialog (`Yes, I trust this folder`) or the bypass warning (`Yes, I accept` + `Bypass Permissions`). Both default to "No, exit" and appear before any hook runs |
+     | blocked / permission | `Do you want to ` + `❯ 1. Yes` + `Esc to cancel` (herdr's rules don't match this version's dialog) |
+     | blocked / question | `Enter to select` + `to navigate` + `Esc to cancel` |
+     | working | title spinner `◐◑◒◓` (or Braille), or the `✢ Churning… (` spinner line. `esc to interrupt` isn't used: a custom statusline hides it |
+     | idle | a `✳` title (ranked below the blockers, because it also shows while blocked), or a `❯` prompt with dim ghost text skipped |
+     | unknown | `showing detailed transcript` |
+- **Todo mirroring:** Claude 2.1 has **no `TodoWrite`**. Its list is managed with `TaskCreate`/`TaskUpdate`, which send **diffs**, one item per call:
+  - `PostToolUse(TaskCreate)` → upsert: id `tool_response.task.id`, text `tool_input.subject`, `activeForm`.
+  - `PostToolUse(TaskUpdate)` → upsert: id `tool_input.taskId`, plus whichever of `status`, `subject` and `activeForm` changed.
+  - `SessionStart(source=clear)` → reset (ids restart at 1); compaction keeps the list.
+  - `~/.claude/tasks/<session id>/*.json` is re-read on `Stop` and `SessionStart` to heal the mirror.
+  - A `replace` mapping for `TodoWrite` stays for other builds.
+  - Subagents have no task tools, so their events never touch the list.
+- **Prompt injection:**
+  - **Paste** (core, always available): bracketed paste, then Enter as a separate write 150 ms later. Only when the state is idle, **no dialog is visible** (an Enter would answer it), and the prompt box is empty, ignoring dim ghost text. After an Esc, Claude puts the cancelled prompt back in the box.
+  - **uds-messaging socket** (Go, `internal/agent/claude`, optional): send one NDJSON line `{"type":"user","message":{"role":"user","content":"…"}}` to `messagingSocketPath` from the status file (optionally preceded by an auth line). It queues correctly both idle and mid-turn, and avoids all three paste hazards.
+    - It is used only when the version is tested, the socket exists, and a probe succeeds.
+    - On any error the core falls back to paste.
+- **Re-injection after `/clear` and compaction:** the `SessionStart` response carries `hookSpecificOutput.additionalContext`, fetched fresh from the server each time (verified for `startup`, `clear` and `compact`; §7.8).
+- **Workspace trust.** Trust gates every hook, ours included. A new worktree of an already-trusted repo shows no trust dialog. Otherwise the dialog shows as blocked / trust, and the human (or the coordinator, if `trust_screens = "coordinator"`) answers it. Keys sent within about 0.5 s of it painting are dropped.
+- **Not verified yet:** Linux (bubblewrap sandbox); `async` hooks; `PermissionDenied`/`StopFailure`/MCP elicitation; auto-compaction; the status file after a Claude crash (treated as invalid when the pid is dead); Ctrl+U to clear the input box; `skipDangerousModePermissionPrompt`; the `deleted` task status.
 
 ### 8.7 Adding a new agent
 
 1. Write `~/.termalator/agents/<name>.toml`, starting from a copy of `claude.toml`. Fill in `[identify]`, `[launch]` (including `resume_args` and the §7.8 kickoff), and the files the harness loads per session (a plugin dir, an `-e` extension, a settings file). Render `.Access` into the harness's permission and sandbox settings, so a thread can read the project but not write it, and can reach the socket. If the harness has no way to enforce read-only, say so in a comment; `tm agent list` then marks it `unenforced`.
-2. Map the harness's hook or extension events to states in `[[hooks]]`. If it has a todo or plan tool, add a `[[todos]]` entry (Codex: its plan updates; t-0004 and the Codex work confirm the event and fields). Add a `respond` template on the event that fires after a context clear, if the harness has one.
-3. Add 3–6 `[[rules]]` for the screen states that hooks miss, especially blocked dialogs.
-4. `tm agent check <file>`, then `tm agent reload`. Start it with `tm session start --agent <name>`, or `tm thread start --agent <name>`. Use `tm agent explain <session>` while driving it through idle → working → blocked → idle.
-5. Only if step 2 can't express the harness's signals (a live protocol, a structured prompt channel): add `internal/agent/<name>/`, which wraps `agent.FromManifest`, calls `agent.RegisterGo` from `init`, and ships the manifest under `internal/agent/manifests/`. Add a golden test like `internal/agent/agent_test.go`.
-6. To make it built-in: move the manifest into `internal/agent/manifests/`, and add fixture tests for its rules (captured emulator text for each state).
+2. Find the agent's best **level** signal. Is there a file it keeps current with its state (`[status_file]`), or a log it appends to (`[jsonl_tail]`)? Pin `tested_versions` if the file is undocumented. Then map hook or extension events in `[[hooks]]`. Check for cases where a hook never fires (cancel with Esc, interrupts), because those are exactly what goes stale. Add a `counter` for background work, `session_field`, and `[hook]` trimming.
+3. If it has a todo or plan tool, add `[[todos]]` entries: `replace` for a whole-list tool, `upsert` for diffs, `reset` on its context reset. Add a `respond` template on the event that fires after a context clear, if the harness has one.
+4. Add 3–6 `[[rules]]` for what only the screen shows: pre-hook dialogs (trust), blockers, and the idle prompt (with `skip_dim` if it shows ghost text).
+5. `tm agent check <file>`, then `tm agent reload`. Start it with `tm session start --agent <name>`, or `tm thread start --agent <name>`. Use `tm agent explain <session>` while driving it through idle → working → blocked → idle.
+6. Only if steps 2–3 can't express the harness's signals (a live protocol, a structured prompt channel): add `internal/agent/<name>/`, which wraps `agent.FromManifest`, calls `agent.RegisterGo` from `init`, and ships the manifest under `internal/agent/manifests/`. Add a golden test like `internal/agent/agent_test.go`.
+7. To make it built-in: move the manifest into `internal/agent/manifests/`, and add fixture tests for its rules (captured emulator text for each state).
 
 Expected next agents: **Codex** (hooks need a trust step, so the better route is the app-server plus `codex --remote`, which needs Go) and **pi** (an `-e` extension file as data; Go only for `sendUserMessage` injection). Neither is in v0.1.
 
@@ -832,7 +932,7 @@ These commands are used by the human, the coordinator and threads alike. Exit co
 | `tm report [--file F] [--attach F]… \| --show` | threads | hand in the report (stdin or file), §7.2 |
 | `tm done ["summary"]` | threads | §7.3 |
 | `tm inbox list \| done <id>…` | coordinator | §7.5 |
-| `tm session list \| start [--agent A] [--cwd D] \| stop <id>` | human | plain sessions outside projects |
+| `tm session list \| start [--agent A] [--cwd D] \| read <id> \| prompt <id> "…" \| stop <id>` | human | sessions outside projects (shells, or an agent such as Claude) |
 | `tm agent list \| check <file> \| reload \| explain <session>` | human | §8 |
 | `tm hook --agent <name>` | harness hooks | §8.2 |
 | `tm doctor [--fix]` | human | toolchain, server, sockets, manifests, hooks, leftovers |
@@ -869,7 +969,7 @@ File access is enforced separately, by the agent's own permission rules and sand
 | Setting | Values | Default | Meaning |
 |---|---|---|---|
 | `start_threads` | `propose` / `auto` | `propose` | `propose`: the coordinator lists proposals, and threads start only after the human's go-ahead (a dashboard key, or the human telling the coordinator; the coordinator then calls `tm thread start --approved-by-user`, which is journaled) |
-| `yolo` | bool | `false` | launch with the manifest's `yolo_args` (Claude `--dangerously-skip-permissions`). Allowed, per the user's decision. It can only be turned on by a human call with a TTY confirmation. The access policy (§5.2) is still applied; whether deny rules and the sandbox hold under yolo is open point 13 (§14) |
+| `yolo` | bool | `false` | launch with the manifest's `yolo_args` (Claude `--dangerously-skip-permissions`). Allowed, per the user's decision. It can only be turned on by a human call with a TTY confirmation. The access policy (§5.2) is still applied, and the deny rule and the sandbox hold under yolo (verified on macOS by t-0004) |
 | `coordinator_approves` | bool | `true` | the coordinator may answer in-scope permission prompts of its own threads with `tm thread approve` |
 
 Rules for `tm thread approve`. It acts only when:
@@ -887,20 +987,34 @@ Never automated, in any mode: merging PRs, force-pushes, deleting branches with 
 ## 12. Toolchain and build
 
 - **Go:** 1.26 or later. `go.mod` says `go 1.26.0`, the floor set by go.mitchellh.com/libghostty.
-- **Zig:** 0.16 or later, to build libghostty-vt. **pkg-config**, which the bindings' cgo directives use. **git**.
-- **libghostty bindings:** go.mitchellh.com/libghostty, pinned by commit in `go.mod`. Its Go API isn't stable yet, so `internal/emu` is the only importer. The `Makefile` pins the Ghostty commit (`GHOSTTY_REV`) that the bindings were developed against. Bump both together.
-- **Linking:** static. The resulting `tm` depends only on libc (and libresolv on macOS).
+- **Zig 0.16 or later**, to build libghostty-vt (Ghostty's `build.zig.zon` declares 0.16.0 as its minimum).
+  - The Zig build **fetches packages over the network** (aro, uucode, highway, simdutf and others) into `~/.cache/zig`, about 110 MB. CI caches it.
+- **pkg-config** is a hard dependency: the bindings link with `#cgo pkg-config: --static libghostty-vt-static`.
+- **git.**
+- **cgo is required.** `CGO_ENABLED=0` doesn't compile the bindings. A pure-Go build would need the import behind a build tag, which is not planned.
+- **libghostty bindings:** go.mitchellh.com/libghostty, pinned by commit in `go.mod`.
+  - The `Makefile` pins the Ghostty commit (`GHOSTTY_REV`) that the bindings were developed against. Bump both together.
+  - Neither the Go API nor the snapshot format is stable, so `internal/emu` is the only importer, and attach requires identical builds (§3.3).
+- **Portable CPU target.** The `Makefile` builds with `-Dcpu=baseline` (override with `GHOSTTY_CPU`). Zig's default, the host CPU, produced an AVX-512 build that crashed with `SIGILL` on another machine.
+- **Build cache.** The `Makefile` names the library build in `CGO_CFLAGS`. Go's build cache ignores pkg-config output and would otherwise keep linking a previous library path.
+- **Linking:** static.
+  - macOS: `tm` depends only on libSystem and libresolv. The spike's binary was 6.7 MB stripped.
+  - Linux: glibc is linked dynamically. For releases, pin the glibc floor in the Zig target (e.g. `x86_64-linux-gnu.2.28`) or try `*-linux-musl` for a fully static binary (untested).
+- **Other dependencies for M1–M2:**
+  - `creack/pty`, for PTYs;
+  - `charmbracelet/ultraviolet`, to decode the outer terminal's input;
+  - Bubble Tea v2 and Lip Gloss v2, for the dashboard only.
 - **Releases (later):** cross-compiled with `zig cc`, one libghostty-vt build per target.
-- **Why not our own bindings:** the libghostty C API changes often. The mitchellh bindings track it, and cover the terminal, formatter, snapshot, render state, and key and mouse encoders, all of which we need. Writing our own would mean following every upstream change ourselves. If the bindings stall, `internal/emu` is the seam where direct cgo calls could replace them.
+- **Why not our own bindings:** the libghostty C API changes often. The mitchellh bindings track it, and cover the terminal, formatter, snapshot, render state, and key, mouse, focus and paste encoders, all of which we need. Writing our own would mean following every upstream change ourselves. If the bindings stall, `internal/emu` is the seam where direct cgo calls could replace them.
 
 ---
 
 ## 13. Non-goals for v0.1
 
-- Splits, tabs, or more than one pane visible per client; copy mode, mouse UI, scrollback browsing inside tm (use the outer terminal's scrollback while attached).
-- Input re-encoding, kitty graphics compositing, and any rendering of panes through Bubble Tea.
+- Splits, tabs, or more than one pane visible per client. No copy mode or mouse UI of our own: the mouse goes to the app, and native selection works while the app doesn't track the mouse. Shift+PgUp/PgDn local scrollback is in.
+- Kitty graphics compositing, and any rendering of panes through Bubble Tea.
 - Windows; SSH remote machines; a web UI.
-- Keeping agent processes alive across a server restart (handing over PTY file descriptors). Agents are resumed instead (§3.6).
+- Keeping agent processes alive across a server restart (a live PTY handoff over `SCM_RIGHTS`). Agents are resumed instead (§3.6); the handoff is a later spike.
 - Agents other than Claude Code. Codex and pi come later through §8.7; plain shell sessions are supported.
 - Headless agent modes (`claude -p`, `codex exec`) for threads.
 - Plugins other than agent manifests; routines and schedules (PR follow-up is built in); several coordinators per project; renaming or archiving projects.
@@ -911,54 +1025,161 @@ Never automated, in any mode: merging PRs, force-pushes, deleting branches with 
 
 ---
 
-## 14. Open points by spike
+## 14. Open points
 
-| # | Point | Spike | Section |
+All three spikes have reported:
+- symlinks: t-0005, PR #1;
+- Claude Code: t-0004, PR #3, `spikes/claude/FINDINGS.md`;
+- libghostty: t-0003, PR #4, `spikes/libghostty/FINDINGS.md`.
+
+**What they settled:**
+
+| Question | Answer | Where |
+|---|---|---|
+| Attach design | Mirror emulator per client: snapshot, then an ordered output/resize stream; input re-encoded against the mirror's modes. Verified with 0 digest mismatches across detach, window close and reattach. Raw passthrough was replaced | 3.3 |
+| Detach key, `TERM` | Ctrl+\\ (legacy and `CSI 92;5u`); `xterm-256color` + `COLORTERM=truecolor` | 3.3 |
+| Mode 2026, wide characters, Shift+Enter, bracketed paste | All correct through the mirror; client honours 2026 holds; re-anchor after graphemes | 3.3 |
+| Resize | Never on attach (Claude's inline mode duplicates scrollback rows on resize) | 3.3 |
+| Snapshot compatibility | None between builds, so attach requires an identical build, and the client re-execs the server's binary | 3.3, 3.6 |
+| Performance | Claude-level output costs < 0.3 % server CPU; keystroke → echo about 1 ms; coalesce PTY reads for firehoses | 3.3 |
+| Hooks merge with the user's | Yes, all additive | 8.6 |
+| Context after `/clear`/compact | `SessionStart` with fresh `additionalContext` works; `--append-system-prompt-file` survives `/clear` | 7.8, 8.6 |
+| Hook reliability | Not enough alone: three Esc cases fire no closing hook. Status file first, then hooks, transcript, screen | 8.4, 8.6 |
+| Hook delivery | Stream socket, about 4 ms, bounded deadlines, sync, exit 0; no datagrams (2 KB cap on macOS), no http hooks | 8.2 |
+| Screen strings | New rules for 2.1.289; herdr's don't match | 8.6 |
+| `TERMALATOR_*` in hooks | Yes | 8.6 |
+| Todos | `TaskCreate`/`TaskUpdate` diffs → `upsert`/`reset` ops plus a snapshot dir | 7.3, 8.2, 8.6 |
+| Read-only project folder | `Read` allow + `Edit` deny + sandbox hold interactively and under yolo, on macOS | 5.2, 8.6 |
+| Kickoff argument | Must follow `--` | 8.6 |
+| Inherited env | Strip Claude's session variables | 3.4 |
+| Socket paths | Short run dir; bind before spawn | 3.2 |
+| Prompt injection | Paste works with preconditions; the `uds-messaging` socket is better (Go, probed, falls back) | 8.6 |
+
+**Still open** (none of these blocks M1–M4):
+
+| # | Point | Affects | Plan |
 |---|---|---|---|
-| 1 | Passthrough attach after a VT-formatter snapshot is faithful for Claude Code (inline main-screen redraw) | libghostty | 3.3 |
-| 2 | The formatter replays all needed modes (alt screen, bracketed paste, kitty flags, mouse, cursor, scroll region) | libghostty | 3.3 |
-| 3 | `TERM`/terminfo for panes; mode 2026 across a snapshot | libghostty | 3.3 |
-| 4 | Default detach key that collides with no agent's bindings | libghostty | 3.3 |
-| 5 | Persisting pane snapshots for display after a restart | libghostty | 3.6 |
-| 6 | `--plugin-dir` hooks merge with the user's hooks | claude (t-0004) | 8.6 |
-| 7 | `SessionStart` with `source=clear/compact` and `additionalContext`; does the appended system prompt survive `/clear` | claude (t-0004) | 8.6, 7.7 |
-| 8 | Hook reliability, versus screen rules, for Claude's states | claude (t-0004) | 8.4, 8.6 |
-| 9 | Current Claude screen strings; paste + Enter reliability | claude (t-0004) | 8.6 |
-| 10 | `TERMALATOR_*` env reaches hooks | claude (t-0004) | 8.6 |
-| 11 | Todo mirroring: Claude's `TodoWrite` payload, newer task tools, hook firing in every mode | claude (t-0004) | 7.3, 8.6 |
-| 12 | Interactive TUI dialogs match the `-p` permission results | claude (t-0004) | 5.2, 8.6 |
-| 13 | `Edit`/`Write` deny rules and the sandbox still hold under yolo (`--dangerously-skip-permissions`) | claude (t-0004), or a follow-up | 5.2, 11.2 |
-| 14 | The same access policy on Linux (bubblewrap sandbox) | follow-up | 5.2 |
-
-**Resolved by the symlink spike (t-0005, PR #1):**
-- Claude checks permissions on real paths, so symlinks give no access.
-- `Read(//abs/**)` rules make reads silent.
-- The Write and Edit tools refuse to write to symlinked files.
-- `git worktree remove` and `git clean -fdx` delete ignored files.
-- The sandbox needs `allowUnixSockets` for the server socket.
-
-These led to the access model in §5.2. Nothing termalator-owned lives in worktrees, so the old points about symlink reads and the mirror fallback are gone.
-
-The spikes' `FINDINGS.md` files resolve these. Each answer changes data (manifests, defaults) or a fallback named here, not the architecture.
+| 1 | Real outer terminals other than libghostty (Ghostty.app, iTerm2, Terminal.app): grapheme widths, terminals without the kitty keyboard protocol | 3.3 | Test during M2; fallbacks for legacy keyboards |
+| 2 | Linux: Claude in a pane, the bubblewrap sandbox with the §5.2 policy | 5.2, 8.6 | Check in M3 and M6 on a Linux box with a Claude login |
+| 3 | Claude edge cases: auto-compaction, `async` hooks, `PermissionDenied`/`StopFailure`/MCP elicitation, the status file after a Claude crash, Ctrl+U, `skipDangerousModePermissionPrompt`, the `deleted` task status | 8.6 | Fixtures in M3; the dead-pid rule covers the crash case |
+| 4 | The undocumented status file and `uds-messaging` socket can change in any Claude release | 8.6 | `tested_versions` guard and fallbacks (in place); `tm doctor` warns |
+| 5 | Live server upgrade (PTY handoff over `SCM_RIGHTS` + snapshots) | 3.6 | Later spike; v0.1 resumes agents instead |
+| 6 | Release binaries: glibc floor or musl on Linux; macOS signing and notarisation | 12 | M8 |
+| 7 | Codex and pi under the same harness | 8.7 | After v0.1 |
 
 ---
 
 ## 15. Milestones
 
-Sizes: **S** ≤ 2 days, **M** 3–5 days, **L** 1–2 weeks, for one developer working with agents. Each milestone ends with tests and a short demo note. The order is a dependency chain except where noted.
+Sizes: **S** ≤ 2 days, **M** 3–5 days, **L** 1–2 weeks, for one developer working with agents. Each milestone ends with tests, a short demo note in its PR, and a "Try it" that the user runs by hand. M5 can start in parallel with M2–M4, because its file layer doesn't need the server.
 
-| # | Milestone | Scope | Size | Depends on |
-|---|---|---|---|---|
-| M0 | Spikes | symlinks done (t-0005; findings folded into §5.2); libghostty and claude (t-0004) in flight; merge their findings into this spec | — | — |
-| M1 | Server core | `tm server run/start/stop/status`, detachment (§3.1), lock, socket paths, permissions and peer checks, stale-socket handling, handshake + versioning, control NDJSON, `session.start/list/stop/read` for **shell** sessions, PTY + emulator per session, `sessions.json`, logging. Tests: start, kill the client, close the tty, server survives | L | M0 (libghostty) |
-| M2 | Attach client | raw mode, `SNAPSHOT` + `OUTPUT` passthrough, input, resize, detach key, several clients, back-pressure resnapshot, terminal restore on exit; `tm attach` | M–L | M1 |
-| M3 | Agent layer | `internal/agent` registry (skeleton exists), `tm hook`, `hook.event`, `internal/detect` rule engine, arbitration (§8.4), `tm agent list/check/reload/explain`, `[[todos]]` mirroring into the session state, Claude manifest finalised from t-0004 (including its access settings and todo mapping), identify-by-process, resume | L | M1, M0 (claude) |
-| M4 | Projects and tasks | `~/.termalator` layout, `mdfile`, `tm project new/list`, `PROJECT.md`, `AGENTS.md`/`CLAUDE.md`, `TASKS.md` + all of `tm task` (§6) with the exit-code contract, the human/coordinator/thread caller checks (§6.4, §11.1), `tm context` | M | M1 (can start in parallel with M2/M3 for the file parts) |
-| M5 | Threads | worktree create/resolve with nothing termalator-owned in the worktree (§9), per-role access policy (§5.2), scoped briefs with absolute paths, `tm skill thread` and the §7.8 learning path, `tm thread start/list/show/read/prompt/approve/ack/stop/restart/resolve`, `tm report` (synchronous validation, storage, attachments), `tm status`, `tm done`, `STATUS.md` with mirrored todos and derived percent (§7.3), plan-as-steps, task ↔ thread links. Test: remove a worktree by hand and lose nothing | L | M3, M4 |
-| M6 | Ticker and inbox | event loop + sweep, inbox items, nudges via the injector, notifications, PR polling with `gh`, auto-resolve after merge | M | M5 |
-| M7 | Dashboard | Bubble Tea dashboard (§4), NEEDS YOU, per-thread progress (percent, done/total, current item), todo and step detail, task view, `d` for done, project and session creation, attach hand-off | M | M2, M5 (M6 for live inbox counts) |
-| M8 | Hardening and release | crash/restart resume end-to-end, the "clear the coordinator" invariant test, `tm doctor [--fix]`, service files, goreleaser + `zig cc` for darwin/linux × amd64/arm64, README and operations docs | M–L | all |
+> **★ M4 is the first local run:** server + attach + dashboard with a live Claude session. Everything before it is groundwork; everything after it adds projects, threads and the coordinator.
 
-Total: about **8–11 weeks** to a usable v0.1, in line with the feasibility study. M4 can run in parallel with M2 and M3, and so can most of M7's layout work against fake data.
+### M1: Server core (L)
+- **Goal:** a detached server that owns shell sessions and survives everything except `tm server stop`.
+- **Deliverables:**
+  - `tm server run|start|stop|status`, with auto-start from any `tm` command;
+  - setsid detachment, `server.lock`, the run dir and socket rules (§3.1–3.2, `internal/server/paths.go`), peer-uid checks;
+  - the `hello` handshake and `proto.Check`; control NDJSON;
+  - `session.start|list|stop|read` for **shell** sessions;
+  - PTY plus authoritative emulator per session, with only the server answering terminal queries;
+  - `sessions.json`, logs;
+  - `tm session start|list|read|stop`.
+- **Try it:** `tm session start` (a shell), `tm session list`, `tm session read <id>` shows its screen as text. Close the terminal window, open a new one: `tm session list` still shows it. `tm server stop` ends it.
+- **Depends on:** nothing (the skeleton, the emulator wrapper and the protocol types exist).
 
-Suggested first tasks for the coordinator: M1 split into (a) lifecycle and socket, (b) protocol and control methods, (c) PTY + emulator sessions; then M4's file layer in parallel.
+### M2: Attach client (L)
+- **Goal:** attach to any session full-screen, detach, and reattach from anywhere, with nothing lost.
+- **Deliverables:**
+  - `tm attach <session>`: attach frames, snapshot + ordered stream, the mirror emulator;
+  - the cell renderer with dirty rows, 2026 holds and the grapheme re-anchor;
+  - input decoding (ultraviolet) and re-encoding with libghostty's key, mouse, focus and paste encoders;
+  - mouse and focus mode mirroring; Ctrl+\\ detach; Shift+PgUp local scrollback;
+  - no resize on attach, plus `SET_SIZE`; byte-bounded queues with resync;
+  - the build check with re-exec; terminal restore on exit and on SIGHUP;
+  - a digest check (`DIGEST_REQ`) used by tests.
+- **Try it:** attach to an M1 shell and run `vim` or `htop`. Detach with Ctrl+\\ and reattach from another window, at another size. Close a window while output streams. Run `claude` in the shell by hand: Shift+Enter, paste and the mouse wheel work.
+- **Depends on:** M1.
+
+### M3: Agent layer and Claude sessions (L)
+- **Goal:** start Claude as a first-class session whose state (working / blocked / idle / exited, with the reason) is right in every case the spike found.
+- **Deliverables:**
+  - the registry and manifest loading (exists); `tm hook` (stream socket, trimming, deadlines, exit 0);
+  - the core sources: status-file watcher, JSONL tailer, todo store with the snapshot re-read;
+  - `internal/detect` (the rule engine, including `skip_dim`); arbitration with source ranking and the background counter (§8.4);
+  - session-id tracking and resume; per-session runtime dir and generated files; `unset_env`;
+  - `tm session start --agent claude`; `tm agent list|check|reload|explain`;
+  - the paste injector with its preconditions, and `tm session prompt`;
+  - the Claude `uds-messaging` injector behind its probe;
+  - fixture tests from the spike's screens and events.
+- **Try it:**
+  1. `tm session start --agent claude` in a trusted repo, then `tm agent explain <id>` while you prompt it, approve a permission dialog, and press Esc on another one: the state follows each step.
+  2. `tm session prompt <id> "…"` while it is working queues the prompt.
+  3. `tm server restart` resumes the session.
+- **Depends on:** M1 (M2 for attaching).
+
+### ★ M4: Dashboard, first local run (M)
+- **Goal:** open `tm`, see every session with its live state, attach to a Claude session and back. This is the first thing to use day to day.
+- **Deliverables:**
+  - the Bubble Tea dashboard: a session list with state, reason, todo progress and age; NEEDS YOU first (blocked sessions);
+  - keys: `enter` attach, `s` new shell, `c` new Claude session in a chosen directory, `?` help, `q` quit;
+  - hand-off to the M2 attach view and back with Ctrl+\\; the status line;
+  - the bell and OS notification when a session becomes blocked.
+- **Try it:** run `tm`, press `c`, pick a repo, give Claude a task, detach, watch the row go working → blocked (a permission dialog) → idle, with the notification. Attach, answer, detach. Close the terminal, run `tm` again: everything is still there.
+- **Depends on:** M2, M3.
+
+### M5: Projects and tasks (M)
+- **Goal:** project folders and the tsk-style task board, usable from the CLI by a human and by the coordinator.
+- **Deliverables:**
+  - the `~/.termalator` layout (§5.1) and `internal/mdfile` (lock + atomic rename);
+  - `tm project new|list|open`, `PROJECT.md`, generated `AGENTS.md` and the `CLAUDE.md` symlink;
+  - safety settings in `config.toml`;
+  - `TASKS.md` and all of `tm task` (§6) with the exit-code contract and `--json`;
+  - the human/coordinator/thread caller checks (§6.4, §11.1);
+  - `tm context`, `tm skill coordinator|thread` (§7.7–7.8), and the `JOURNAL.md` writer.
+- **Try it:**
+  1. `tm project new demo --repo ~/src/x`, then `tm task add`, `tm task list --json`, `tm task steps T1 add …`, `tm task status T1 done` from your own shell.
+  2. `tm project open demo` starts a coordinator Claude session that greets you from `tm context`; try `/clear`, and it still knows the project.
+- **Depends on:** M1 for the server-side checks and `project open` (M3 for the coordinator session). The file layer can start right away.
+
+### M6: Threads (L)
+- **Goal:** the coordinator hands a task to a thread that runs in its own worktree, reads the project read-only, and reports back only through `tm`.
+- **Deliverables:**
+  - worktree create and resolve (§9), with nothing termalator-owned in the worktree;
+  - the per-role access policy (§5.2) rendered by the manifest;
+  - scoped briefs with absolute paths; kickoff and `SessionStart` re-injection (§7.8);
+  - `tm thread start|list|show|read|prompt|approve|ack|stop|restart|resolve` and `tm task delegate`;
+  - `tm report` (synchronous validation, storage, attachments), `tm status`, `tm done`;
+  - `STATUS.md` with mirrored todos and derived percent (§7.3); plan-as-steps.
+- **Try it:**
+  1. In the coordinator, ask for a small change. It proposes a thread; say go. Watch the thread add its plan as steps and tick them, and watch the percent move.
+  2. Try to make the thread write `TASKS.md`: it is refused.
+  3. Delete its worktree by hand: the report is still in `threads/<id>/`.
+- **Depends on:** M3, M5.
+
+### M7: Ticker, inbox and the project dashboard (M)
+- **Goal:** the coordinator learns about everything without being asked, and the dashboard shows projects, threads and tasks.
+- **Deliverables:**
+  - the event loop and 15 s sweep; inbox items (§7.5) and `tm inbox list|done`;
+  - nudges through the injector; PR polling with `gh`; auto-resolve after merge;
+  - the dashboard project view: NEEDS YOU across projects, the per-thread progress line (§7.4), the task view, and `d` to mark a task done.
+- **Try it:** let a thread finish and open a PR. The coordinator gets a nudge with the report, the dashboard shows "Ready for review", you press `d` on the task. Merge the PR on GitHub, and the thread resolves itself.
+- **Depends on:** M4, M6.
+
+### M8: Hardening and release (M–L)
+- **Goal:** v0.1 that someone else can install and trust.
+- **Deliverables:**
+  - crash and restart resume end to end;
+  - the "clear the coordinator loses nothing" invariant test (§7.6);
+  - `tm doctor [--fix]`: toolchain, sockets, manifests, Claude version against `tested_versions`, leftovers;
+  - launchd and systemd service files;
+  - release builds for darwin/linux × amd64/arm64 (glibc floor or musl, signing);
+  - Linux checks for the open points in §14; README and operations docs.
+- **Try it:** install from a release archive on a clean Mac and a Linux box, then run `tm doctor`. `kill -9` the server mid-turn: `tm` brings everything back, and the coordinator gets the "server restarted" item.
+- **Depends on:** all.
+
+**Total:** about **9–12 weeks** to v0.1 (M1–M8), slightly above the feasibility estimate, because the attach client now renders and encodes input itself. **★ M4 lands after about 4–5 weeks.**
+
+**Suggested first tasks:**
+- M1 split into (a) lifecycle, lock and socket, (b) handshake and control methods, (c) PTY + emulator sessions;
+- M5's file layer (`mdfile`, `TASKS.md`, `tm task`) in parallel.
