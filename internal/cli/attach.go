@@ -17,7 +17,10 @@ import (
 	"github.com/theclifmeister/termalator/internal/tui"
 )
 
-const attachUsage = `usage: tm attach [SESSION]   (the newest session when none is named; the prefix, Ctrl+B, then d detaches)`
+const attachUsage = `usage: tm attach [SESSION]   (the newest session when none is named; the prefix, Ctrl+B, then d detaches)
+
+tm attach shows one session in a window of this terminal's own, which
+other consoles don't follow; tm (the dashboard) joins the shared view.`
 
 // reexecEnv marks a tm that was re-executed as the server's binary, so a
 // build mismatch that survives the re-exec fails instead of looping.
@@ -57,22 +60,33 @@ func attachCmd(e *Env, args []string) int {
 	if err != nil {
 		return e.srvFail("attach", err)
 	}
+	var list proto.SessionListResult
+	if err := c.Call(proto.MethodSessionList, nil, &list); err != nil {
+		c.Close()
+		return e.srvFail("attach", err)
+	}
+	c.Close()
 	if id == "" {
-		var res proto.SessionListResult
-		err := c.Call(proto.MethodSessionList, nil, &res)
-		if err != nil {
-			c.Close()
-			return e.srvFail("attach", err)
-		}
-		if id = newest(res.Sessions); id == "" {
-			c.Close()
+		if id = newest(list.Sessions); id == "" {
 			fmt.Fprintln(e.Stderr, "tm attach: no sessions; start one with tm session start")
 			return ExitRefused
 		}
 	}
-	c.Close()
-
-	res, code := e.attach(p, id, false, nil, []string{"attach", id})
+	// A thread's pane is watch-only, and the status bar says so.
+	thread := false
+	for _, s := range list.Sessions {
+		thread = thread || s.ID == id && s.Role == proto.RoleThread
+	}
+	cols, rows, ok := termSize()
+	if !ok {
+		cols, rows = 80, 24
+	}
+	vc, err := tui.JoinView(p, proto.ViewSubscribeParams{Own: true, Bare: true, StatusBar: thread, Session: id, Cols: cols, Rows: rows})
+	if err != nil {
+		return e.srvFail("attach", err)
+	}
+	defer vc.Close()
+	res, code := e.attach(p, vc, nil, []string{"attach", id})
 	if code != ExitOK {
 		return code
 	}
@@ -94,10 +108,11 @@ func (e *Env) tookOver(s proto.SessionInfo) error {
 	return p.TookOver(e.Caller, s.Thread)
 }
 
-// attach runs the attach view on this terminal until the user detaches
-// or the session ends. On a build mismatch it re-execs the server's
-// binary with args (docs/SPEC.md §3.3) and doesn't return.
-func (e *Env) attach(p server.Paths, id string, statusBar bool, side *tui.SidebarOptions, args []string) (tui.Result, int) {
+// attach draws the view's layout on this terminal until it leaves it or
+// the user detaches. On a build mismatch it re-execs the server's binary
+// with args (docs/SPEC.md §3.3) and doesn't return.
+func (e *Env) attach(p server.Paths, vc *tui.ViewConn, side *tui.SidebarOptions, args []string) (tui.Result, int) {
+	id := vc.View().Focus
 	logger := log.New(io.Discard, "", 0)
 	if path := e.Getenv(attachLogEnv); path != "" {
 		if f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
@@ -105,7 +120,7 @@ func (e *Env) attach(p server.Paths, id string, statusBar bool, side *tui.Sideba
 			logger = log.New(f, fmt.Sprintf("attach %s pid %d: ", id, os.Getpid()), log.Lmicroseconds)
 		}
 	}
-	res, err := tui.Attach(tui.Options{Paths: p, Session: id, In: os.Stdin, Out: os.Stdout, Log: logger, StatusBar: statusBar,
+	res, err := tui.Attach(tui.Options{Paths: p, View: vc, In: os.Stdin, Out: os.Stdout, Log: logger,
 		Takeover: e.tookOver, Sidebar: side})
 	var verr *proto.MismatchError
 	if errors.As(err, &verr) && verr.ReExec && e.Getenv(reexecEnv) == "" {

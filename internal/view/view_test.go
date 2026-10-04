@@ -172,33 +172,47 @@ func TestValidNormalize(t *testing.T) {
 
 func TestSidebar(t *testing.T) {
 	def := Sidebar{}.Clamp()
-	if def.Width != SideDefault || def.Slim {
-		t.Fatalf("default %+v", def)
-	}
-	for _, c := range []struct {
+	cases := []struct {
+		name string
 		l    Sidebar
 		w    int
 		want int
 	}{
-		{def, 120, SideDefault},
-		{def, SideDefault + SideRoom, SideDefault},
-		{def, SideDefault + SideRoom - 1, SideSlim}, // too narrow for the full one
-		{Sidebar{Width: 30, Slim: true}, 200, SideSlim},
-		{def, 4, 3},
-	} {
+		{"default", def, 120, SideDefault},
+		{"narrow window: slim strip", def, SideDefault + SideRoom - 1, SideSlim},
+		{"slim asked for", Sidebar{Width: 30, Slim: true}, 200, SideSlim},
+		{"tiny window: still there", def, 4, 3},
+		{"too wide a setting", Sidebar{Width: 99}, 300, SideMax},
+	}
+	for _, c := range cases {
 		if got := c.l.Cols(c.w); got != c.want {
-			t.Errorf("%+v.Cols(%d) = %d, want %d", c.l, c.w, got, c.want)
+			t.Errorf("%s: %d columns, want %d", c.name, got, c.want)
 		}
 	}
+
 	l, msg := def.Key("}", 120)
 	if l.Width != SideDefault+SideStep || msg != "" {
-		t.Fatalf("} %+v %q", l, msg)
+		t.Fatalf("} gave %+v %q", l, msg)
+	}
+	if l, _ = l.Key("{", 120); l.Width != SideDefault {
+		t.Fatalf("{ gave %+v", l)
+	}
+	if l, _ = l.Key("b", 120); !l.Slim || l.Cols(120) != SideSlim {
+		t.Fatalf("b gave %+v", l)
+	}
+	if l, _ = l.Key("}", 120); l.Slim {
+		t.Fatalf("} kept the slim strip: %+v", l)
 	}
 	if _, msg = def.Key("}", 70); !strings.Contains(msg, "too narrow") {
-		t.Fatalf("} narrow: %q", msg)
+		t.Fatalf("} in a narrow window: %q", msg)
+	}
+	// Widening never leaves the panes less than SideRoom.
+	wide := Sidebar{Width: 40}
+	if l, _ = wide.Key("}", 101); l.Width != 41 {
+		t.Fatalf("} in 101 columns: %+v", l)
 	}
 	if l = def.DragTo(3, 120); !l.Slim {
-		t.Fatal("drag to 3")
+		t.Fatalf("drag to 3: %+v", l)
 	}
 	if l = def.DragTo(30, 120); l.Slim || l.Width != 31 {
 		t.Fatalf("drag to 30: %+v", l)
