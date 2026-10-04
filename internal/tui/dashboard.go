@@ -71,6 +71,9 @@ type DashOptions struct {
 type DashResult struct {
 	Attach string
 	State  DashState
+	// TakeOver is the session of Attach to ask about taking over at once:
+	// a thread's "take over…" picked from a menu.
+	TakeOver string
 }
 
 // Dashboard runs the dashboard until the user quits or picks a session.
@@ -111,6 +114,14 @@ type dash struct {
 	errMsg   string    // msg when it reports a failure, drawn as one
 	busy     bool      // an action is running
 	stack    []overlay // views open on top of the list, topmost last
+	geo      *boxGeo   // where the topmost was drawn, for the mouse
+	// lastClick is the last left click, for double-clicks; detailTop is
+	// the details panel's first line, scrolled with the wheel, for the
+	// row detailKey (another row shows from the top).
+	lastClick click
+	detailTop int
+	detailKey string
+	shownKeys string // the footer's hints as drawn: its buttons
 
 	layout   Layout
 	uiFile   string
@@ -328,6 +339,7 @@ func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case actionMsg:
 		m.busy = false
 		if msg.err != nil {
+			m.result.TakeOver = ""
 			m.fail(msg.err)
 			return m, m.load()
 		}
@@ -364,36 +376,8 @@ func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 	case tea.KeyPressMsg:
 		return m, m.key(msg)
-	case tea.MouseClickMsg:
-		if mo := msg.Mouse(); mo.X < m.sideW() {
-			return m, m.sideClick(mo)
-		}
-		mo := msg.Mouse()
-		mo.X -= m.sideW()
-		m.click(mo)
-	case tea.MouseMotionMsg:
-		x := msg.Mouse().X
-		switch {
-		case m.sideDrag:
-			m.layout.Sidebar = m.layout.Sidebar.DragTo(x, m.winW)
-			m.setWidth(m.winW)
-		case m.dragging:
-			m.layout.Split = clampSplit(float64(x-m.sideW()) / float64(max(m.w, 1)))
-		}
-	case tea.MouseReleaseMsg:
-		if m.dragging || m.sideDrag {
-			m.dragging, m.sideDrag = false, false
-			m.saveLayout()
-		}
-	case tea.MouseWheelMsg:
-		if m.top() == nil && msg.Mouse().X >= m.sideW() {
-			switch msg.Mouse().Button {
-			case tea.MouseWheelUp:
-				m.move(-1)
-			case tea.MouseWheelDown:
-				m.move(1)
-			}
-		}
+	case tea.MouseClickMsg, tea.MouseMotionMsg, tea.MouseReleaseMsg, tea.MouseWheelMsg:
+		return m, m.mouse(msg)
 	}
 	return m, nil
 }
@@ -467,26 +451,6 @@ func (m *dash) expand(slug string, open bool) tea.Cmd {
 func (m *dash) tree() []treeRow {
 	return buildTree(m.data.Projects, m.data.Sessions, treeIn{current: listProject(m.data, m.current),
 		expanded: func(slug string) bool { return slices.Contains(m.expanded, slug) }})
-}
-
-// click selects the row under the mouse, or starts dragging the divider.
-func (m *dash) click(mo tea.Mouse) {
-	if m.top() != nil || mo.Button != tea.MouseLeft {
-		return
-	}
-	split, lw := m.split()
-	if split && mo.X == lw {
-		m.dragging = true
-		return
-	}
-	if split && mo.X > lw {
-		return
-	}
-	_, keys, sel := m.listLines(lw, !split)
-	i := scrollTop(sel, m.bodyRows(), len(keys)) + mo.Y - 1
-	if mo.Y >= 1 && mo.Y <= m.bodyRows() && i < len(keys) && keys[i] != "" {
-		m.sel, m.userSel = keys[i], true
-	}
 }
 
 // setData takes a poll's result, rebuilds the rows and rings the bell
@@ -669,6 +633,7 @@ func (m *dash) View() tea.View {
 
 // render draws the sidebar and, beside it, the list or the topmost popup.
 func (m *dash) render() string {
+	m.geo = nil
 	var s string
 	if o := m.top(); o != nil {
 		s = o.render(m)
@@ -706,6 +671,11 @@ func (m *dash) listBody() []string {
 	var right []string
 	if r, ok := m.selected(); ok {
 		right = m.details(r, m.w-lw-1)
+	}
+	if m.detailKey == m.sel {
+		// Scrolled with the wheel.
+		m.detailTop = min(m.detailTop, max(len(right)-room, 0))
+		right = right[m.detailTop:]
 	}
 	body := make([]string, room)
 	for i := range body {
@@ -794,6 +764,7 @@ func (m *dash) frame(title string, body []string, sel int, keys string) string {
 	if m.prefixed {
 		keys = "prefix ▸ any dashboard key · d or esc cancels"
 	}
+	m.shownKeys = keys
 	foot = append(foot, fit(" "+keysLine(keys), m.w)+reset)
 	msg := " " + oneLine(m.msg)
 	switch {

@@ -55,9 +55,16 @@ func (l *settingsList) key(m *dash, k tea.KeyPressMsg) (tea.Cmd, bool) {
 	return nil, true
 }
 
-// lines draws the list w cells wide; sel is the selected row's line.
-func (l *settingsList) lines(m *dash, w int) (out []string, sel int) {
+// lines draws the list w cells wide; sel is the selected row's line,
+// hits what a click on each line picks: a setting's own line is its
+// index, which changes it; its help is helpHit more, which selects it.
+func (l *settingsList) lines(m *dash, w int) (out []string, sel int, hits []int) {
 	sel = -1
+	defer func() {
+		for len(hits) < len(out) {
+			hits = append(hits, noHit)
+		}
+	}()
 	lw := 0
 	for _, r := range l.rows {
 		lw = max(lw, len([]rune(r.label)))
@@ -65,7 +72,9 @@ func (l *settingsList) lines(m *dash, w int) (out []string, sel int) {
 	for i, r := range l.rows {
 		if i > 0 {
 			out = append(out, "")
+			hits = append(hits, noHit)
 		}
+		hits = append(hits, i)
 		text := fit(r.label, lw) + "  " + r.value(m)
 		if i == l.sel {
 			sel = len(out)
@@ -77,8 +86,26 @@ func (l *settingsList) lines(m *dash, w int) (out []string, sel int) {
 		if r.note != nil {
 			out = append(out, r.note(m)...)
 		}
+		for len(hits) < len(out) {
+			hits = append(hits, i+helpHit)
+		}
 	}
-	return out, sel
+	return out, sel, hits
+}
+
+// helpHit marks a setting's help lines in its list's hits.
+const helpHit = 1 << 16
+
+// click selects the clicked setting; a click on its own line changes it,
+// as enter does.
+func (l *settingsList) click(m *dash, item int) tea.Cmd {
+	if item >= helpHit {
+		l.sel = moveSel(item-helpHit, 0, len(l.rows))
+		return nil
+	}
+	l.sel = moveSel(item, 0, len(l.rows))
+	cmd, _ := l.key(m, keyMsg("enter"))
+	return cmd
 }
 
 // onOff is a bool as the settings show it.
@@ -187,11 +214,15 @@ func (sv *settingsView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 
 func (sv *settingsView) render(m *dash) string {
 	w := m.inner(settingsWidth)
-	lines, sel := sv.list.lines(m, w)
+	lines, sel, hits := sv.list.lines(m, w)
 	lines = append(lines, "")
 	lines = append(lines, faintLines("A project's own settings (starting threads, yolo mode, remote control, …) are in its popup: a on the dashboard, prefix+a in a session.", w)...)
-	return m.popup(box{title: "settings", body: lines, sel: sel, keys: "enter change · ↑ ↓ move · esc back", width: settingsWidth})
+	return m.popup(box{title: "settings", body: lines, sel: sel, hits: hits, keys: "enter change · ↑ ↓ move · esc back", width: settingsWidth})
 }
+
+func (sv *settingsView) click(m *dash, item, _ int, _ bool) tea.Cmd { return sv.list.click(m, item) }
+
+func (sv *settingsView) wheel(m *dash, d int) { sv.list.key(m, arrow(d)) }
 
 const settingsWidth = 88
 

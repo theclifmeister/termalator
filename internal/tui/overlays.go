@@ -100,6 +100,8 @@ func (h *helpView) box(m *dash) box {
 
 func (h *helpView) render(m *dash) string { return m.popup(h.box(m)) }
 
+func (h *helpView) wheel(m *dash, d int) { h.key(m, arrow(d)) }
+
 // scrollKeys scroll a long popup: by a line, or by a page.
 var scrollKeys = map[string]int{"up": -1, "k": -1, "down": 1, "j": 1, "pgup": -10, "pgdown": 10}
 
@@ -252,6 +254,7 @@ func (b *boardView) render(m *dash) string {
 	}
 	w := m.inner(popupWidth)
 	var lines []string
+	var hits []int
 	sel := -1
 	var group tasks.Group
 	for i, t := range b.list {
@@ -262,7 +265,9 @@ func (b *boardView) render(m *dash) string {
 				st = styleWarn.Bold(true)
 			}
 			lines = append(lines, m.ruleIn(strings.ToUpper(string(g)), st, w))
+			hits = append(hits, noHit)
 		}
+		hits = append(hits, i)
 		r := row{who: t.Ref(), what: oneLine(t.Title), state: string(t.Status), rest: t.Thread, pct: -1}
 		if len(t.Steps) > 0 {
 			r.pct = pctOf(t.StepsDone(), len(t.Steps))
@@ -283,7 +288,21 @@ func (b *boardView) render(m *dash) string {
 		lines = append(lines, styleFaint.Render("no open tasks"))
 	}
 	lines = append(lines, styleFaint.Render(fmt.Sprintf("done: %d", done)))
-	return m.popup(box{title: title, body: lines, sel: sel, keys: "enter show · r refresh · esc back", width: popupWidth})
+	return m.popup(box{title: title, body: lines, sel: sel, hits: hits, keys: "enter show · r refresh · esc back", width: popupWidth})
+}
+
+// click selects a task; a double-click shows it.
+func (b *boardView) click(_ *dash, item, _ int, double bool) tea.Cmd {
+	if item < len(b.list) {
+		b.sel, b.open = item, double
+	}
+	return nil
+}
+
+func (b *boardView) wheel(m *dash, d int) {
+	if !b.open {
+		b.key(m, arrow(d))
+	}
 }
 
 // switchView is the project switcher: enter opens the selected
@@ -310,7 +329,9 @@ func (sw *switchView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 func (sw *switchView) render(m *dash) string {
 	w := m.inner(popupWidth)
 	var lines []string
+	var hits []int
 	for i, p := range m.data.Projects {
+		hits = append(hits, i)
 		r := row{key: "p:" + p.Slug, mark: "  ", who: p.Slug, what: oneLine(p.Name), state: "—", rest: "no coordinator", pct: -1}
 		for _, s := range m.data.Sessions {
 			if s.Role == proto.RoleCoordinator && s.Project == p.Slug {
@@ -323,8 +344,19 @@ func (sw *switchView) render(m *dash) string {
 		}
 		lines = append(lines, line(r, w, i == sw.sel))
 	}
-	return m.popup(box{title: "projects", body: lines, sel: sw.sel, keys: "enter open its coordinator · esc back", width: popupWidth})
+	return m.popup(box{title: "projects", body: lines, sel: sw.sel, hits: hits, keys: "enter open its coordinator · esc back", width: popupWidth})
 }
+
+// click selects a project; a double-click opens its coordinator.
+func (sw *switchView) click(m *dash, item, _ int, double bool) tea.Cmd {
+	sw.sel = item
+	if double {
+		return sw.key(m, keyMsg("enter"))
+	}
+	return nil
+}
+
+func (sw *switchView) wheel(m *dash, d int) { sw.key(m, arrow(d)) }
 
 // inboxView is a project's unhandled inbox items, read-only: the
 // coordinator handles them.
@@ -357,7 +389,14 @@ func (in *inboxView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 }
 
 func (in *inboxView) render(m *dash) string {
-	lines, sel := inboxLines(in.items(m), in.sel, m.inner(popupWidth))
+	lines, sel, hits := inboxLines(in.items(m), in.sel, m.inner(popupWidth))
 	lines = append(lines, "", styleFaint.Render("The coordinator handles these (tm inbox done)."))
-	return m.popup(box{title: in.slug + " inbox", body: lines, sel: sel, keys: "r refresh · esc back", width: popupWidth})
+	return m.popup(box{title: in.slug + " inbox", body: lines, sel: sel, hits: hits, keys: "r refresh · esc back", width: popupWidth})
 }
+
+func (in *inboxView) click(_ *dash, item, _ int, _ bool) tea.Cmd {
+	in.sel = item
+	return nil
+}
+
+func (in *inboxView) wheel(m *dash, d int) { in.key(m, arrow(d)) }
