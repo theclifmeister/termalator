@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/theclifmeister/termalator/internal/tasks"
 )
@@ -84,6 +85,7 @@ type dash struct {
 	sel     string // key of the selected row
 	current string // project last attached to
 	msg     string
+	errMsg  string // msg when it reports a failure, drawn as one
 	busy    bool      // an action is running
 	stack   []overlay // views open on top of the list, topmost last
 
@@ -150,7 +152,7 @@ func (m *dash) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if msg.err != nil {
-			m.msg = msg.err.Error()
+			m.fail(msg.err)
 			m.close(b)
 			return m, nil
 		}
@@ -159,7 +161,7 @@ func (m *dash) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case actionMsg:
 		m.busy = false
 		if msg.err != nil {
-			m.msg = msg.err.Error()
+			m.fail(msg.err)
 			return m, m.load()
 		}
 		if msg.sel != "" {
@@ -254,6 +256,9 @@ func (m *dash) key(k tea.KeyPressMsg) tea.Cmd {
 	return m.listKey(k.String())
 }
 
+// fail shows err in the footer, as a failure.
+func (m *dash) fail(err error) { m.msg = err.Error(); m.errMsg = m.msg }
+
 // act runs an action in the background; one at a time.
 func (m *dash) act(fn func() actionMsg) tea.Cmd {
 	m.busy = true
@@ -338,19 +343,16 @@ func expandDir(dir, cwd string) string {
 
 // View.
 
-var (
-	styleHead  = lipgloss.NewStyle().Bold(true)
-	styleSel   = lipgloss.NewStyle().Reverse(true)
-	styleFaint = lipgloss.NewStyle().Faint(true)
-)
-
 // rule is a section header drawn across the width: "NEEDS YOU ───…".
-func (m *dash) rule(title string) string {
+func (m *dash) rule(title string) string { return m.ruleIn(title, styleTitle) }
+
+// ruleIn is rule with the title in st.
+func (m *dash) ruleIn(title string, st lipgloss.Style) string {
 	if title == "" {
 		return styleFaint.Render(strings.Repeat("─", m.w))
 	}
 	t := " " + title + " "
-	return styleHead.Render(t) + styleFaint.Render(strings.Repeat("─", max(m.w-len([]rune(t)), 0)))
+	return st.Render(t) + styleFaint.Render(strings.Repeat("─", max(m.w-len([]rune(t)), 0)))
 }
 
 func (m *dash) View() tea.View {
@@ -374,20 +376,20 @@ func (m *dash) renderList() string {
 	sel := -1
 	for _, r := range m.rows {
 		switch {
+		case r.head == "NEEDS YOU":
+			lines = append(lines, m.ruleIn(countLabel(r.head, r.count), styleWarn.Bold(true)))
 		case r.head != "":
-			lines = append(lines, m.rule(r.head))
+			lines = append(lines, m.rule(countLabel(r.head, r.count)))
 		case r.key != "" && r.key == m.sel:
 			sel = len(lines)
-			lines = append(lines, styleSel.Render(fit(r.text(), m.w)))
+			lines = append(lines, m.line(r, true))
 			if r.thread != nil && strings.HasPrefix(r.key, "th:") {
 				for _, l := range threadDetail(r.thread) {
-					lines = append(lines, styleFaint.Render(fit(l, m.w)))
+					lines = append(lines, fit(l, m.w)+reset)
 				}
 			}
-		case r.key == "":
-			lines = append(lines, styleFaint.Render(fit(r.text(), m.w)))
 		default:
-			lines = append(lines, fit(r.text(), m.w))
+			lines = append(lines, m.line(r, false))
 		}
 	}
 	return m.frame("", lines, sel, listKeys)
@@ -396,31 +398,35 @@ func (m *dash) renderList() string {
 // frame draws the header, the body scrolled so line sel shows, and the
 // footer: a rule, the keys or the input prompt, and the message.
 func (m *dash) frame(title string, body []string, sel int, keys string) string {
-	right := "server ok"
+	var right string
 	switch {
 	case !m.loaded:
-		right = "loading…"
+		right = styleFaint.Render("◌ loading…")
 	case !m.data.ServerOK:
-		right = "server down: " + oneLine(m.data.Err)
+		right = styleBad.Render("▲ server down: " + oneLine(m.data.Err))
 	default:
-		right += fmt.Sprintf(" · %d session%s", len(m.data.Sessions), map[bool]string{true: "s"}[len(m.data.Sessions) != 1])
+		n := len(m.data.Sessions)
+		right = styleGood.Render("●") + " server ok" + styleFaint.Render(fmt.Sprintf(" · %d session%s", n, map[bool]string{true: "s"}[n != 1]))
 	}
-	left := " termalator"
+	left := styleTitle.Render(" termalator")
 	if title != "" {
-		left += " · " + title
+		left += styleFaint.Render(" · ") + styleHead.Render(title)
 	}
-	head := fit(left, max(m.w-len([]rune(right))-1, 1)) + " " + right
+	head := fit(left, max(m.w-ansi.StringWidth(right)-1, 1)) + reset + " " + right
 	foot := []string{m.rule("")}
 	if in, ok := m.top().(*inputView); ok {
-		foot = append(foot, fit(" "+in.label+in.text+"█", m.w))
+		foot = append(foot, fit(" "+styleAccent.Render(in.label)+in.text+"█", m.w)+reset)
 	} else {
-		foot = append(foot, styleFaint.Render(fit(" "+keys, m.w)))
+		foot = append(foot, fit(" "+keysLine(keys), m.w)+reset)
 	}
-	msg := m.msg
-	if m.busy {
-		msg = "working…"
+	msg := " " + oneLine(m.msg)
+	switch {
+	case m.busy:
+		msg = styleFaint.Render(" working…")
+	case m.msg != "" && m.msg == m.errMsg:
+		msg = styleBad.Render(msg)
 	}
-	foot = append(foot, fit(" "+oneLine(msg), m.w))
+	foot = append(foot, fit(msg, m.w)+reset)
 
 	room := max(m.h-1-len(foot), 1)
 	top := 0
@@ -431,7 +437,7 @@ func (m *dash) frame(title string, body []string, sel int, keys string) string {
 		top = max(len(body)-room, 0)
 	}
 	end := min(top+room, len(body))
-	out := []string{styleHead.Render(head)}
+	out := []string{head}
 	out = append(out, body[top:end]...)
 	for i := end - top; i < room; i++ {
 		out = append(out, "")

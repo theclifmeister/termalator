@@ -57,6 +57,15 @@ func (m *dash) boardView() *boardView {
 	return nil
 }
 
+// line draws r w cells wide: plain in reverse video when selected,
+// styled otherwise.
+func (m *dash) line(r row, selected bool) string {
+	if selected {
+		return styleSel.Render(fit(r.text(m.w), m.w))
+	}
+	return r.styled(m.w)
+}
+
 // moveSel moves a list selection by d within n items.
 func moveSel(sel, d, n int) int { return min(max(sel+d, 0), max(n-1, 0)) }
 
@@ -191,20 +200,21 @@ func (b *boardView) render(m *dash) string {
 	for i, t := range b.list {
 		if g := tasks.GroupOf(t.Status); g != group {
 			group = g
-			lines = append(lines, m.rule(strings.ToUpper(string(g))))
+			st := styleTitle
+			if g == tasks.NeedsYou {
+				st = styleWarn.Bold(true)
+			}
+			lines = append(lines, m.ruleIn(strings.ToUpper(string(g)), st))
 		}
-		steps := ""
+		r := row{mark: markTop, who: t.Ref(), what: oneLine(t.Title), state: string(t.Status), rest: t.Thread, pct: -1}
 		if len(t.Steps) > 0 {
-			steps = fmt.Sprintf("%d/%d", t.StepsDone(), len(t.Steps))
+			r.pct = pctOf(t.StepsDone(), len(t.Steps))
+			r.rest = joinSp(fmt.Sprintf("%d/%d", t.StepsDone(), len(t.Steps)), t.Thread)
 		}
-		text := cols("  ", t.Ref(), oneLine(t.Title), string(t.Status), joinSp(steps, t.Thread))
 		if i == b.sel {
 			sel = len(lines)
-			text = styleSel.Render(fit(text, m.w))
-		} else {
-			text = fit(text, m.w)
 		}
-		lines = append(lines, text)
+		lines = append(lines, m.line(r, i == b.sel))
 	}
 	done := 0
 	for _, t := range b.board.Tasks {
@@ -213,16 +223,21 @@ func (b *boardView) render(m *dash) string {
 		}
 	}
 	if len(b.list) == 0 {
-		lines = append(lines, " no open tasks")
+		lines = append(lines, styleFaint.Render(" no open tasks"))
 	}
 	lines = append(lines, styleFaint.Render(fmt.Sprintf("  done: %d", done)))
 	return m.frame(b.slug+" tasks", lines, sel, "enter show · d mark done (review) · r refresh · esc back")
 }
 
 func (b *boardView) renderTask(m *dash, t *tasks.Task) string {
+	g, st := stateLook(string(t.Status))
+	status := st.Render(strings.TrimSpace(g + " " + string(t.Status)))
+	if t.Thread != "" {
+		status += styleFaint.Render(" · thread ") + t.Thread
+	}
 	lines := []string{
-		fit(" "+t.Ref()+" "+oneLine(t.Title), m.w),
-		fit(" status: "+string(t.Status)+map[bool]string{true: " · thread " + t.Thread, false: ""}[t.Thread != ""], m.w),
+		fit(" "+styleHead.Render(t.Ref()+" "+oneLine(t.Title)), m.w) + reset,
+		fit(" "+status, m.w) + reset,
 		"",
 	}
 	for _, l := range strings.Split(strings.TrimSpace(t.Notes), "\n") {
@@ -231,13 +246,10 @@ func (b *boardView) renderTask(m *dash, t *tasks.Task) string {
 		}
 	}
 	if len(t.Steps) > 0 {
-		lines = append(lines, "", " steps:")
+		lines = append(lines, "", styleFaint.Render(fmt.Sprintf(" steps %d/%d", t.StepsDone(), len(t.Steps))))
 		for _, s := range t.Steps {
-			box := "[ ]"
-			if s.Done {
-				box = "[x]"
-			}
-			lines = append(lines, fit(fmt.Sprintf("  %s %d %s", box, s.N, oneLine(s.Text)), m.w))
+			box := todoGlyph(map[bool]string{true: "done"}[s.Done])
+			lines = append(lines, fit(fmt.Sprintf("  %s %d %s", box, s.N, oneLine(s.Text)), m.w)+reset)
 		}
 	}
 	return m.frame(b.slug+" "+t.Ref(), lines, -1, "d mark done (review) · esc back")
@@ -267,24 +279,17 @@ func (sw *switchView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 func (sw *switchView) render(m *dash) string {
 	var lines []string
 	for i, p := range m.data.Projects {
-		state := "no coordinator"
+		r := row{key: "p:" + p.Slug, mark: "  ", who: p.Slug, what: oneLine(p.Name), state: "—", rest: "no coordinator", pct: -1}
 		for _, s := range m.data.Sessions {
 			if s.Role == proto.RoleCoordinator && s.Project == p.Slug {
-				state = joinSp(stateWord(s), progress(s))
+				r.state, r.rest, r.pct = stateWord(s), progress(s), sessionPct(s)
 				break
 			}
 		}
-		mark := "  "
 		if p.Slug == m.current {
-			mark = "* "
+			r.mark = "* "
 		}
-		text := cols(mark, p.Slug, oneLine(p.Name), "", state)
-		if i == sw.sel {
-			text = styleSel.Render(fit(text, m.w))
-		} else {
-			text = fit(text, m.w)
-		}
-		lines = append(lines, text)
+		lines = append(lines, m.line(r, i == sw.sel))
 	}
 	return m.frame("projects", lines, sw.sel, "enter open its coordinator · esc back")
 }
@@ -328,17 +333,19 @@ func (in *inboxView) render(m *dash) string {
 		if it.NeedsUser {
 			flag = "!"
 		}
-		text := fmt.Sprintf(" %s %-16s %-6s %s", flag, fit(it.Kind, 16), age(now.Sub(it.Created)), oneLine(it.Summary))
+		when := fmt.Sprintf("%-6s", age(now.Sub(it.Created)))
+		text := fmt.Sprintf(" %s %s %s %s", flag, fit(it.Kind, 16), when, oneLine(it.Summary))
 		if i == in.sel {
 			sel = len(lines)
 			text = styleSel.Render(fit(text, m.w))
 		} else {
-			text = fit(text, m.w)
+			text = fit(fmt.Sprintf(" %s %s %s %s", styleBad.Bold(true).Render(flag), styleWarn.Render(fit(it.Kind, 16)),
+				styleFaint.Render(when), oneLine(it.Summary)), m.w) + reset
 		}
 		lines = append(lines, text)
 	}
 	if len(items) == 0 {
-		lines = append(lines, " inbox empty")
+		lines = append(lines, styleFaint.Render(" inbox empty"))
 	}
 	lines = append(lines, "", styleFaint.Render(fit(" The coordinator handles these (tm inbox done); ! marks the ones for you.", m.w)))
 	return m.frame(in.slug+" inbox", lines, sel, "r refresh · esc back")

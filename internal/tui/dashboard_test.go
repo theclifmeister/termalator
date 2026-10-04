@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/theclifmeister/termalator/internal/agent"
 	"github.com/theclifmeister/termalator/internal/project"
@@ -80,6 +81,9 @@ func testData() Data {
 	}
 }
 
+// screen is the dashboard as text, without its colours.
+func screen(m *dash) string { return ansi.Strip(m.render()) }
+
 func press(m *dash, keys ...string) tea.Cmd {
 	var cmd tea.Cmd
 	for _, k := range keys {
@@ -113,7 +117,7 @@ func TestDashboardRows(t *testing.T) {
 	src := &fakeSource{data: testData()}
 	m := newDash(DashOptions{Source: src, AgentName: "claude", Width: 120, Height: 30})
 	m.setData(src.data)
-	out := m.render()
+	out := screen(m)
 	needs := strings.Index(out, "NEEDS YOU")
 	projs := strings.Index(out, "PROJECTS")
 	sess := strings.Index(out, "SESSIONS")
@@ -124,16 +128,19 @@ func TestDashboardRows(t *testing.T) {
 		t.Errorf("thread session listed besides its thread row:\n%s", out)
 	}
 	for _, want := range []string{
-		"! alpha        t-0002                         blocked   permission",
-		"? alpha        T7 Pick a licence              review",
-		"? alpha        T3 Build it                    confirm   d marks it done",
-		"  alpha        coordinator                    idle",
+		"NEEDS YOU 4 ─",
+		"! alpha        t-0002                         ▲ blocked   permission",
+		"? alpha        T7 Pick a licence              ◆ review",
+		"? alpha        T3 Build it                    ◆ confirm   d marks it done",
+		"  alpha        coordinator                    ○ idle",
 		"    s-2          t-0002",
-		"  beta         coordinator                    —         enter starts the coordinator",
-		"  s-3          /bin/zsh -l                    running",
-		"                 t-0005 Write docs              working   T4  60% 3/5 ▸ Draft §2  report waiting  PR #7",
-		"                 t-0006 Old work                stopped",
-		"? beta         t-0005 Write docs              report    unacknowledged report · a acks",
+		"  beta         coordinator                    —           enter starts the coordinator",
+		"  s-3          /bin/zsh -l                    ● running",
+		"                 t-0005 Write docs              ● working   ▰▰▰▱▱  T4  60% 3/5 ▸ Draft §2  report waiting  PR #7",
+		"                 t-0006 Old work                · stopped",
+		"? beta         t-0005 Write docs              ◆ report    unacknowledged report · a acks",
+		"PROJECTS 2 ─",
+		"● server ok · 4 sessions",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in\n%s", want, out)
@@ -217,8 +224,8 @@ func TestDashboardThreadRow(t *testing.T) {
 	m := newDash(DashOptions{Source: src, Width: 100, Height: 40})
 	m.setData(src.data)
 	m.sel = "th:beta:t-0005"
-	out := m.render()
-	for _, want := range []string{"[x] Outline", "[~] Draft §2", "T4 steps:", "[x] 1 Plan", "[ ] 2 Write",
+	out := screen(m)
+	for _, want := range []string{"✓ Outline", "◐ Draft §2", "T4 steps:", "✓ 1 Plan", "○ 2 Write",
 		"report 1 (new) next:  a acks it", "1 Merge the PR", "2 Delete the branch"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("thread detail lacks %q:\n%s", want, out)
@@ -234,8 +241,8 @@ func TestDashboardThreadRow(t *testing.T) {
 		t.Fatalf("msg %q", m.msg)
 	}
 	press(m, "i")
-	if _, ok := m.top().(*inboxView); !ok || !strings.Contains(m.render(), "t-0005 handed in report 1") {
-		t.Fatalf("inbox view:\n%s", m.render())
+	if _, ok := m.top().(*inboxView); !ok || !strings.Contains(screen(m), "t-0005 handed in report 1") {
+		t.Fatalf("inbox view:\n%s", screen(m))
 	}
 }
 
@@ -283,8 +290,8 @@ func TestDashboardOverlays(t *testing.T) {
 	}
 	m.Update(boardMsg{slug: "alpha", board: &tasks.Board{Tasks: []*tasks.Task{{ID: 1, Title: "One", Status: tasks.Review}}}})
 	press(m, "enter")
-	if !b.open || !strings.Contains(m.render(), "alpha T1") {
-		t.Fatalf("enter on the board:\n%s", m.render())
+	if !b.open || !strings.Contains(screen(m), "alpha T1") {
+		t.Fatalf("enter on the board:\n%s", screen(m))
 	}
 	press(m, "?") // the board takes its own keys; ? isn't one
 	if m.top() != b {
@@ -300,7 +307,7 @@ func TestDashboardOverlays(t *testing.T) {
 	}
 
 	press(m, "?")
-	out := m.render()
+	out := screen(m)
 	for _, a := range actions {
 		if a.label != "" && !strings.Contains(out, " "+a.label+" ") {
 			t.Errorf("help lacks %q:\n%s", a.label, out)

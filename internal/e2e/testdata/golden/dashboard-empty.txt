@@ -1,4 +1,4 @@
- termalator                                                                   server ok · 0 sessions
+ termalator                                                                 ● server ok · 0 sessions
  PROJECTS ──────────────────────────────────────────────────────────────────────────────────────────
   no projects; n creates one
  SESSIONS ──────────────────────────────────────────────────────────────────────────────────────────

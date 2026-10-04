@@ -1,4 +1,4 @@
- termalator · demo inbox                                                                 server ok · 1 session
+ termalator · demo inbox                                                               ● server ok · 1 session
    report           <duration>     t-0001 handed in report 1 (T1)
 
  The coordinator handles these (tm inbox done); ! marks the ones for you.

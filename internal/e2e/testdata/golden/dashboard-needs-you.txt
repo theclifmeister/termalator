@@ -1,11 +1,11 @@
- termalator                                                                    server ok · 1 session
- NEEDS YOU ─────────────────────────────────────────────────────────────────────────────────────────
- ? demo         T1 Write the README            review
- PROJECTS ──────────────────────────────────────────────────────────────────────────────────────────
-  demo         coordinator                    —         enter starts the coordinator
+ termalator                                                                  ● server ok · 1 session
+ NEEDS YOU 1 ───────────────────────────────────────────────────────────────────────────────────────
+ ? demo         T1 Write the README            ◆ review
+ PROJECTS 1 ────────────────────────────────────────────────────────────────────────────────────────
+  demo         coordinator                    —           enter starts the coordinator
     tasks: 1 needs you · 1 in motion · 0 on deck
- SESSIONS ──────────────────────────────────────────────────────────────────────────────────────────
-  <session>          /bin/sh                        running   <duration>  /
+ SESSIONS 1 ────────────────────────────────────────────────────────────────────────────────────────
+  <session>          /bin/sh                        ● running   <duration>  /
 
 
 

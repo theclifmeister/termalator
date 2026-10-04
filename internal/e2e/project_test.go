@@ -36,7 +36,7 @@ func TestSmokeProjectOpenAndSwitch(t *testing.T) {
 	env.WaitState(coord, "idle", agentWait)
 
 	w := env.Window(100, 30)
-	w.WaitFor("alpha        coordinator                    idle", wait)
+	w.WaitFor("alpha        coordinator                    ○ idle", wait)
 	w.WaitFor("beta         coordinator                    —", wait)
 
 	// p, down, enter: beta's coordinator starts and is attached.
