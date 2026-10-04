@@ -156,6 +156,8 @@ func New(t testing.TB) *Env {
 		"PS1=$ ",
 		"TM="+e.Bin,
 		"TERMALATOR_ATTACH_LOG="+e.AttachLog,
+		// No release checks against GitHub (tm doctor, tm update).
+		"TERMALATOR_UPDATE_URL=off",
 	)
 	t.Cleanup(func() {
 		e.cleanup()

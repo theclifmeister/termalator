@@ -138,6 +138,17 @@ jobs:
       - name: Check the archives
         run: scripts/release/check.sh dist
 
+      # The formula the release job will write for these archives, through
+      # Homebrew's own style check.
+      - name: Formula
+        run: |
+          # In a Formula/ directory, or brew style checks it as plain Ruby.
+          mkdir -p "$RUNNER_TEMP/Formula"
+          scripts/release/formula.sh 0.0.0 dist/checksums.txt > "$RUNNER_TEMP/Formula/termalator.rb"
+          # One at a time: together they define the class twice.
+          brew style "$RUNNER_TEMP/Formula/termalator.rb"
+          brew style Formula/termalator.rb
+
       - name: Upload archives
         uses: actions/upload-artifact@v7
         with:

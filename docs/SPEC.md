@@ -263,6 +263,7 @@ The processes die with the server, because the PTY master closes and the childre
 - **Reporting.** Each restart writes an inbox item (`kind = "server-restart"`, raised by the ticker, §7.5) to every affected project with the counts of resumed and lost sessions; the server log names them: "server restarted after crash; resumed coordinator, t-0003; lost shell s-12". The coordinator decides what to re-prompt.
 - **Upgrade.**
   - Installing a new `tm` doesn't touch a running server. Attach keeps working, because the client re-execs the server's binary (§3.3).
+  - The server pins that binary: on start it hard-links its executable to `~/.termalator/server-bin/tm-<build>` (copies it across file systems) and removes the other pins. That path, not the installed one, is what the hello advertises for re-exec and what sessions get as `TERMALATOR_BIN` for their hooks, so both keep working after `tm update` renames a new binary over the old one or `brew upgrade` deletes the old keg.
   - A control client with a newer protocol asks the human to run `tm server restart`. Restart warns about how many agents are mid-turn and asks for confirmation on a TTY.
   - **Later, not v0.1:** a live handoff. The old server passes each PTY master to the new one over `SCM_RIGHTS`, with a snapshot of each emulator, so no agent has to restart. Snapshots make this feasible; it needs its own small spike.
 - **Views.** The server-owned views come back from `views.json` (§3.3, Views), with the panes whose sessions were resumed.
@@ -1027,10 +1028,24 @@ These commands are used by the human, the coordinator and threads alike. Exit co
 | `tm session list \| start [--agent A] [--cwd D] [-- CMD…] \| read <id> [--scrollback] \| keys <id> [--enter] "…" \| prompt <id> "…" \| stop <id>` | human | sessions outside projects (shells, or an agent such as Claude); `keys` types raw text |
 | `tm agent list \| check <file> \| reload \| explain <session>` | human | §8 |
 | `tm hook --agent <name>` | harness hooks | §8.2 |
-| `tm doctor [--fix]` | human | toolchain, server, sockets, manifests, hooks, leftovers |
+| `tm doctor [--fix]` | human | toolchain, install method and newer release, server, sockets, manifests, hooks, leftovers |
+| `tm update [--check [--json]] [--yes] [--restart]` | human | §10.1 |
 | `tm version`, `tm selftest` | anyone | the skeleton's current commands |
 
 Every agent-facing command prints short, stable, plain text. It never prints untrusted text (report bodies, PR comments) except in a clearly delimited block.
+
+### 10.1 Releases, install and update
+
+- **Releases.** A `v*` tag runs `.github/workflows/release.yml` on one macOS runner. goreleaser cross-compiles darwin and linux × amd64 and arm64 with `zig cc` (§12). A build hook (`scripts/release/sign.sh`) signs each darwin binary with the Developer ID (hardened runtime, secure timestamp, identifier `dev.termalator.tm`) and notarises it with `notarytool`, before it is archived. The archives and `checksums.txt` go to a draft release; `scripts/release/check.sh --signed` checks what was uploaded, Gatekeeper's verdict included; then the release is published, and `Formula/termalator.rb` is rewritten from `checksums.txt` in a pull request that merges itself. Snapshots (`make release-snapshot`, CI) skip signing and say so.
+- **Gatekeeper.** A bare Mach-O can't carry a stapled ticket; Apple records the notarisation against its cdhash. A quarantined copy (a browser download) is accepted after an online check; curl and Homebrew formulae set no quarantine flag, so nothing is checked. `spctl --type execute` rejects every bare binary; `spctl --assess --type open --context context:primary-signature` reports `source=Notarized Developer ID`.
+- **Homebrew.** One formula for macOS and Linux (`brew tap theclifmeister/termalator https://github.com/theclifmeister/termalator`, `brew install termalator`), with `on_macos`/`on_linux` × `on_arm`/`on_intel` archives. Not a cask: casks are macOS-only, and the formula installs the signed binary unchanged.
+- **Install method.** `internal/update` tells three apart: a source build (`version.Channel` empty: `make`, `go build`), Homebrew (the resolved executable is under a `Cellar/` or `Caskroom/`), and a direct install (any other release binary).
+- **`tm update`.** Looks up the latest release through the GitHub API, unauthenticated; when the API refuses (60 requests an hour per address) it reads the tag from the `releases/latest` redirect instead.
+  - Source build: refuses (exit 1) and says `git pull && make`.
+  - Homebrew: never touches Homebrew's files; prints `brew upgrade termalator` and runs it after a `y` on a terminal or with `--yes`.
+  - Direct: asks on a terminal (`--yes` skips; without a terminal it needs `--yes`), downloads the platform's archive and `checksums.txt`, checks the sha256, extracts `tm` next to the installed one, checks it on macOS with `codesign` (a valid Developer ID signature with the hardened runtime, of the same team as this build's `version.TeamID`), runs `version` on it, and renames it over the installed file.
+  - The server: it keeps running the old binary (pinned, §3.6). `tm update` says so and how many sessions it has, and that a restart ends running turns (agents resume, shells are lost). It restarts the server only with `--restart`, or after a `y` on a terminal, and then `tm server restart` still asks when agents are mid-turn. Otherwise it prints `tm server restart` for later.
+  - `--check` only reports the install method, path, and latest release (`--json` for scripts). `tm doctor` shows the same as its `install` group; `TERMALATOR_UPDATE_URL=off` turns the network check off (the e2e harness does).
 
 ---
 
@@ -1104,7 +1119,7 @@ Never automated, in any mode: merging PRs, force-pushes, deleting branches with 
   - `creack/pty`, for PTYs;
   - `charmbracelet/ultraviolet`, to decode the outer terminal's input;
   - Bubble Tea v2 and Lip Gloss v2, for the dashboard only.
-- **Releases (later):** cross-compiled with `zig cc`, one libghostty-vt build per target.
+- **Releases:** cross-compiled with `zig cc`, one libghostty-vt build per target; darwin binaries signed and notarised (§10.1).
 - **Why not our own bindings:** the libghostty C API changes often. The mitchellh bindings track it, and cover the terminal, formatter, snapshot, render state, and key, mouse, focus and paste encoders, all of which we need. Writing our own would mean following every upstream change ourselves. If the bindings stall, `internal/emu` is the seam where direct cgo calls could replace them.
 
 ---
@@ -1121,7 +1136,7 @@ Never automated, in any mode: merging PRs, force-pushes, deleting branches with 
 - Threads writing project files directly, and anything termalator-owned inside a worktree (§5.2).
 - Importing `~/.herdr-projects` or `~/.tsk` data.
 - tsk's TUI polish: multi-select, undo, search, wide stage, notices, trash.
-- Self-update, Homebrew tap and installer script (M8 at the earliest).
+- An installer script (`tm update` and the Homebrew tap exist, §10.1).
 
 ---
 
@@ -1164,7 +1179,7 @@ All three spikes have reported:
 | 3 | Claude edge cases: auto-compaction, `async` hooks, `PermissionDenied`/`StopFailure`/MCP elicitation, the status file after a Claude crash, Ctrl+U, `skipDangerousModePermissionPrompt`, the `deleted` task status | 8.6 | Fixtures in M3; the dead-pid rule covers the crash case |
 | 4 | The undocumented status file and `uds-messaging` socket can change in any Claude release | 8.6 | `tested_versions` guard and fallbacks (in place); `tm doctor` warns |
 | 5 | Live server upgrade (PTY handoff over `SCM_RIGHTS` + snapshots) | 3.6 | Later spike; v0.1 resumes agents instead |
-| 6 | Release binaries: macOS signing and notarisation. (Settled in M8: `zig cc` builds with a glibc 2.28 floor, checked on Debian 10; see `.goreleaser.yaml` and docs/OPERATIONS.md) | 12 | Needs an Apple Developer ID; ad hoc signed until then |
+| 6 | Release binaries: macOS signing and notarisation. (Settled in M8: `zig cc` builds with a glibc 2.28 floor, checked on Debian 10; see `.goreleaser.yaml` and docs/OPERATIONS.md) | 12 | Developer ID signing and notarisation in the release workflow (§10.1); needs the Apple secrets |
 | 7 | Codex and pi under the same harness | 8.7 | After v0.1 |
 
 ---

@@ -10,6 +10,7 @@ package doctor
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"github.com/theclifmeister/termalator/internal/server"
+	"github.com/theclifmeister/termalator/internal/update"
 )
 
 // Status of one check.
@@ -58,6 +60,10 @@ type Deps struct {
 	Version, Build string
 	// Selftest checks that libghostty-vt is linked and works; nil skips.
 	Selftest func() error
+	// Install is how this tm was installed; nil skips the install checks.
+	Install *update.Install
+	// Latest returns the latest release's tag; nil skips that check.
+	Latest func() (string, error)
 }
 
 // DefaultDeps uses the real system.
@@ -96,6 +102,7 @@ func firstLine(s string) string {
 func Run(d Deps) []Check {
 	var out []Check
 	out = append(out, Toolchain(d)...)
+	out = append(out, Install(d)...)
 	srv, live := Server(d)
 	out = append(out, srv...)
 	out = append(out, Agents(d)...)
@@ -150,6 +157,44 @@ func Toolchain(d Deps) []Check {
 		out = append(out, Check{Group: g, Name: "gh", Status: Warn, Detail: "not found; tm thread resolve can't tell whether a PR was merged"})
 	} else {
 		out = append(out, Check{Group: g, Name: "gh", Status: OK, Detail: "found"})
+	}
+	return out
+}
+
+// Install reports how this tm was installed and whether a newer release
+// exists (`tm update`).
+func Install(d Deps) []Check {
+	const g = "install"
+	if d.Install == nil {
+		return nil
+	}
+	in := *d.Install
+	out := []Check{{Group: g, Name: "method", Status: OK, Detail: string(in.Method) + ", " + in.Path}}
+	if d.Latest == nil {
+		return out
+	}
+	latest, err := d.Latest()
+	switch {
+	case errors.Is(err, update.ErrOff):
+	case err != nil:
+		out = append(out, Check{Group: g, Name: "release", Status: Warn, Detail: "couldn't check: " + firstLine(err.Error())})
+	default:
+		newer, ok := update.Newer(latest, d.Version)
+		switch {
+		case !ok:
+			out = append(out, Check{Group: g, Name: "release", Status: OK, Detail: "latest is " + latest})
+		case newer:
+			hint := "tm update"
+			switch in.Method {
+			case update.Homebrew:
+				hint = in.Upgrade
+			case update.Dev:
+				hint = "git pull && make"
+			}
+			out = append(out, Check{Group: g, Name: "release", Status: Warn, Detail: latest + " is available: " + hint})
+		default:
+			out = append(out, Check{Group: g, Name: "release", Status: OK, Detail: "up to date (" + latest + ")"})
+		}
 	}
 	return out
 }

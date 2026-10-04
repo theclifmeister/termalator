@@ -237,7 +237,8 @@ func TestSmokeVersionHandshake(t *testing.T) {
 		if served != c.ok {
 			t.Errorf("%s: served=%v, want %v", c.name, served, c.ok)
 		}
-		if reply.PID != st.PID || reply.Build != st.Build || reply.Bin != env.Bin {
+		// The server advertises its pinned copy of env.Bin (§3.6, Upgrade).
+		if reply.PID != st.PID || reply.Build != st.Build || filepath.Dir(reply.Bin) != filepath.Join(env.Home, "server-bin") {
 			t.Errorf("%s: server hello %+v", c.name, reply)
 		}
 		if err := proto.Check(c.h, reply); (err == nil) != c.ok {

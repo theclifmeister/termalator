@@ -15,6 +15,14 @@ import (
 var (
 	Version    = "dev"
 	LibGhostty = "unknown" // the Ghostty commit libghostty-vt was built from
+	// Channel is "release" or "snapshot" for a binary goreleaser built
+	// (.goreleaser.yaml) and empty for a source build: `tm update`
+	// replaces only the former.
+	Channel = ""
+	// TeamID is the Apple team that signs release binaries; `tm update`
+	// on macOS requires the same team on the binary it installs. Empty
+	// for unsigned builds.
+	TeamID = ""
 )
 
 var (

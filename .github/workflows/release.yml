@@ -1,10 +1,19 @@
 name: release
 
-# Builds the release archives for a version tag (git tag v0.1.0 && git
-# push origin v0.1.0) and attaches them, with checksums.txt, to a draft
-# GitHub release that a human reviews and publishes (.goreleaser.yaml).
+# Releases a version tag (git tag v0.1.0 && git push origin v0.1.0):
+#
+#   1. import the Developer ID certificate into a temporary keychain
+#   2. check a snapshot of the commit (nothing signed or uploaded)
+#   3. goreleaser builds every target, signs and notarises the darwin
+#      binaries (scripts/release/sign.sh) and uploads the archives and
+#      checksums.txt to a draft release
+#   4. the uploaded archives are checked again, signatures included, and
+#      only then is the release published
+#   5. Formula/termalator.rb is bumped in a pull request that merges itself
+#
 # Everything runs on one macOS runner: tm needs cgo, the Linux targets are
 # cross-compiled with zig cc, and the darwin targets need the macOS SDK.
+# The secrets are listed in docs/OPERATIONS.md (Releasing).
 
 on:
   push:
@@ -12,14 +21,34 @@ on:
 
 permissions:
   contents: write
+  # The formula bump opens and merges its own pull request.
+  pull-requests: write
 
 jobs:
   release:
     runs-on: macos-latest
+    # The Apple secrets belong in this environment, restricted to v* tags
+    # (docs/OPERATIONS.md, Releasing): no other workflow, and no pull
+    # request, can read them. Repository secrets of the same names work
+    # too, but are readable by any workflow on a branch of this repository.
+    environment: release
     steps:
       - uses: actions/checkout@v7
         with:
+          # Full history: goreleaser's changelog, and the formula bump pushes
+          # a branch, which git refuses from a shallow clone.
           fetch-depth: 0
+
+      - name: Derive version
+        id: version
+        run: |
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          # goreleaser marks v1.2.3-rc1 and the like as prereleases (prerelease:
+          # auto); Homebrew's livecheck skips them, so the formula does too.
+          case "$GITHUB_REF_NAME" in
+          *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+          *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
 
       - uses: actions/setup-go@v7
         with:
@@ -54,15 +83,155 @@ jobs:
           install-only: true
           version: "~> v2"
 
+      # The same Developer ID as toe. The identity is found in the imported
+      # certificate rather than spelled out, and must belong to APPLE_TEAM_ID.
+      - name: Import signing certificate
+        id: cert
+        env:
+          CERT_P12_BASE64: ${{ secrets.SIGNING_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          for v in CERT_P12_BASE64 CERT_PASSWORD KEYCHAIN_PASSWORD APPLE_TEAM_ID; do
+            [ -n "${!v}" ] || { echo "the $v secret is missing (docs/OPERATIONS.md, Releasing)" >&2; exit 1; }
+          done
+          keychain="$RUNNER_TEMP/tm-signing.keychain-db"
+          echo "$CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/tm-release.p12"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security import "$RUNNER_TEMP/tm-release.p12" -k "$keychain" \
+            -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          # Without this codesign blocks on a GUI keychain prompt and the job hangs.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/tm-release.p12"
+
+          # find-identity exits 0 even when it finds nothing. A leaf whose
+          # intermediate is missing from the .p12 is not listed as valid.
+          security find-identity -v -p codesigning "$keychain"
+          identity=$(security find-identity -v -p codesigning "$keychain" |
+            grep -o "\"Developer ID Application: .* ($APPLE_TEAM_ID)\"" | head -1 | tr -d '"')
+          if [ -z "$identity" ]; then
+            echo "no valid Developer ID Application identity for team $APPLE_TEAM_ID — does" >&2
+            echo "SIGNING_CERT_P12_BASE64 include the Developer ID Certification Authority intermediate?" >&2
+            exit 1
+          fi
+          echo "identity=$identity" >> "$GITHUB_OUTPUT"
+
       # Check a snapshot of the same commit before anything is uploaded
-      # (open-source goreleaser can't publish a dist/ built earlier); the
-      # release below rebuilds dist/ from the same libraries and Go cache.
+      # (open-source goreleaser can't publish a dist/ built earlier). The
+      # snapshot is not signed; the release below rebuilds dist/ from the
+      # same libraries and Go cache.
       - name: Check the archives
         run: |
           make release-snapshot
           scripts/release/check.sh dist
 
-      - name: Release
-        run: make release
+      - name: Release (draft)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TM_SIGN_IDENTITY: ${{ steps.cert.outputs.identity }}
+          TM_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NOTARY_KEY_P8_BASE64: ${{ secrets.NOTARY_KEY_P8_BASE64 }}
+          TM_NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          TM_NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          for v in NOTARY_KEY_P8_BASE64 TM_NOTARY_KEY_ID TM_NOTARY_ISSUER; do
+            [ -n "${!v}" ] || { echo "a notary secret is missing ($v; docs/OPERATIONS.md, Releasing)" >&2; exit 1; }
+          done
+          export TM_NOTARY_KEY="$RUNNER_TEMP/notary.p8"
+          trap 'rm -f "$TM_NOTARY_KEY"' EXIT
+          echo "$NOTARY_KEY_P8_BASE64" | base64 --decode > "$TM_NOTARY_KEY"
+          make release
+
+      # What was uploaded is what dist/ holds: checksums, contents, and now
+      # the Developer ID signature, hardened runtime and notarisation.
+      - name: Check the signed archives
+        run: scripts/release/check.sh --signed dist
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false
+
+      # Same as toe's cask bump: open a pull request with the new formula and
+      # merge it, so the release stays one step. Both values come from the
+      # release built above. [skip ci] because the PR merges within seconds
+      # and the branch is deleted under any run it would start; --subject on
+      # the merge keeps the marker out of main.
+      - name: Bump formula
+        if: steps.version.outputs.prerelease == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          branch="formula-$VERSION"
+          git checkout -B "$branch" origin/main
+          scripts/release/formula.sh "$VERSION" dist/checksums.txt > Formula/termalator.rb
+          if git diff --quiet Formula/termalator.rb; then
+            echo "formula already at $VERSION"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Bump termalator formula to $VERSION [skip ci]" Formula/termalator.rb
+          # The branch is named per version and owned by this job: anything
+          # already there is debris from a failed run of this release.
+          git push --force origin "$branch"
+
+          # gh pr create fails if a PR for the branch exists, and GitHub has
+          # bad seconds: check, then create, five times.
+          opened=
+          for attempt in 1 2 3 4 5; do
+            if [ -n "$(gh pr list --head "$branch" --state open --json number -q '.[0].number')" ]; then
+              opened=1
+              break
+            fi
+            if gh pr create --base main --head "$branch" \
+              --title "Bump termalator formula to $VERSION" \
+              --body "Generated by the release job for v$VERSION from its checksums.txt."; then
+              opened=1
+              break
+            fi
+            echo "create attempt $attempt failed, retrying in 10s"
+            sleep 10
+          done
+          if [ -z "$opened" ] && [ -z "$(gh pr list --head "$branch" --state open --json number -q '.[0].number')" ]; then
+            echo "could not open the formula PR for $VERSION — the release is published and" >&2
+            echo "$branch is pushed, so open the pull request by hand." >&2
+            exit 1
+          fi
+
+          git checkout --detach
+          # Mergeability is computed asynchronously: retry. The ruleset on
+          # main must let this PR merge without checks (as toe's does): its
+          # [skip ci] commit starts no CI run.
+          for attempt in 1 2 3 4 5; do
+            if gh pr merge "$branch" --squash --subject "Bump termalator formula to $VERSION"; then
+              git push origin --delete "$branch" || true
+              exit 0
+            fi
+            echo "merge attempt $attempt failed, retrying in 10s"
+            sleep 10
+          done
+          # A ruleset that requires checks or a review refuses the merge:
+          # queue it with auto-merge (if the repository allows it) and say so.
+          if gh pr merge "$branch" --auto --squash --subject "Bump termalator formula to $VERSION"; then
+            echo "::warning::the formula PR for $VERSION waits for the rules on main (auto-merge is on); see docs/OPERATIONS.md, Releasing"
+            exit 0
+          fi
+          echo "could not merge the formula bump for $VERSION — the release is published, but" >&2
+          echo "Formula/termalator.rb on main still names the previous version. Merge the PR by hand." >&2
+          exit 1
+
+      - name: Clean up keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/tm-signing.keychain-db" || true
