@@ -1,0 +1,52 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: pkg-config
+        run: command -v pkg-config || brew install pkgconf
+
+      # libghostty-vt only changes when GHOSTTY_REV in the Makefile changes.
+      - name: Cache libghostty-vt
+        uses: actions/cache@v4
+        with:
+          path: .build/ghostty-*
+          key: ghostty-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Makefile') }}
+
+      - name: gofmt
+        run: test -z "$(gofmt -l . | tee /dev/stderr)"
+
+      - name: build
+        run: make build
+
+      - name: vet
+        run: make vet
+
+      - name: test
+        run: make test
+
+      - name: selftest
+        run: ./bin/tm selftest
