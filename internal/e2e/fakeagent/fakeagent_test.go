@@ -179,6 +179,23 @@ func (a *agent) mark() int {
 	return a.out.Len()
 }
 
+// sendUntil sends keys until cond holds. Trust and bypass dialogs drop
+// keys that arrive soon after they paint, as Claude's do, and on a slow
+// machine "soon" is longer than any fixed sleep.
+func (a *agent) sendUntil(keys string, cond func() bool) {
+	a.t.Helper()
+	deadline := time.Now().Add(8 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			a.t.Fatalf("keys %q never took effect (events %v)", keys, a.events())
+		}
+		a.send(keys)
+		for end := time.Now().Add(500 * time.Millisecond); time.Now().Before(end) && !cond(); {
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+}
+
 func waitUntil(t *testing.T, what string, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(8 * time.Second)
@@ -506,7 +523,7 @@ func TestTrustDialog(t *testing.T) {
 	if len(a.hooks()) != 0 {
 		t.Fatalf("hooks before trust: %v", a.events())
 	}
-	a.send("\x1b[B\r")
+	a.sendUntil("\x1b[B\r", func() bool { return count(a.events(), "SessionStart") > 0 })
 	a.waitEvent("Stop", 1)
 	if ev := a.events(); ev[0] != "SessionStart" || ev[1] != "UserPromptSubmit" {
 		t.Fatalf("events %v", ev)
@@ -535,9 +552,9 @@ func TestBypassAndYolo(t *testing.T) {
 	a := start(t, agentOpts{noBypassOK: true, args: []string{"--dangerously-skip-permissions"}})
 	a.waitScreen(0, "Bypass Permissions")
 	a.waitScreen(0, "Yes, I accept")
-	time.Sleep(350 * time.Millisecond)
-	a.send("2")
-	a.waitStatus("idle", "")
+	// The session file says idle before this dialog shows; SessionStart
+	// is what says the dialog was answered.
+	a.sendUntil("2", func() bool { return count(a.events(), "SessionStart") > 0 })
 	a.send("run permission\r")
 	a.waitEvent("Stop", 1)
 	ev := a.events()

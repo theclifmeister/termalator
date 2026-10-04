@@ -129,10 +129,13 @@ func TestAgentQuestionAndTrust(t *testing.T) {
 	if n := len(env.HookEvents()); n != 0 {
 		t.Fatalf("%d hooks ran before trust", n)
 	}
-	time.Sleep(200 * time.Millisecond) // the dialog drops keys at first
-	env.Keys(s, "\x1b[B")
-	env.Keys(s, "\r")
-	env.WaitState(s, "idle", agentWait)
+	// The dialog drops keys that arrive soon after it paints: repeat.
+	if !Poll(agentWait, func() bool {
+		env.Keys(s, "\x1b[B\r")
+		return Poll(time.Second, func() bool { i, _ := env.Info(s); return i.State == "idle" })
+	}) {
+		t.Fatalf("trust dialog never accepted:\n%s", env.Screen(s))
+	}
 
 	env.Prompt(s, "run question")
 	env.WaitState(s, "blocked/question", agentWait)
