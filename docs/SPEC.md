@@ -61,7 +61,8 @@ One binary, several roles:
 | Package | Responsibility |
 |---|---|
 | `cmd/tm` | Entry point and subcommand dispatch only |
-| `internal/server` | Server lifecycle, control socket, session registry, persistence of `sessions.json` |
+| `internal/server` | Server lifecycle, control socket, session registry, the views (§3.3), persistence of `sessions.json` and `views.json` |
+| `internal/view` | The server-owned view: split tree, actions, geometry (`Lay`), the sidebar's layout; no I/O |
 | `internal/proto` | Wire types: handshake, requests, events, attach frames |
 | `internal/pty` | Spawning on a PTY, resize, reaping (macOS, Linux) |
 | `internal/emu` | The only wrapper around libghostty-vt (go.mitchellh.com/libghostty) |
@@ -74,7 +75,7 @@ One binary, several roles:
 | `internal/thread` | Threads: records, briefs, `STATUS.md`, `REPORT.md` |
 | `internal/worktree` | git worktree create/remove, `info/exclude` |
 | `internal/ticker` | Event loop and sweep: inbox items, nudges, PR polling |
-| `internal/tui` | Dashboard and attach client |
+| `internal/tui` | Dashboard and attach client: the two screens of a view (`ViewConn`) |
 | `internal/cli` | Subcommands and the exit-code contract |
 | `internal/mdfile` | Markdown with TOML front matter, lock files, atomic writes |
 
@@ -138,9 +139,9 @@ The types are in `internal/proto`.
 
 ```jsonc
 // client → server
-{"protocol": 1, "version": "v0.1.0", "build": "v0.1.0+33da6848d63b+3f2a…", "kind": "control" | "attach" | "hook"}
+{"protocol": 2, "version": "v0.1.0", "build": "v0.1.0+33da6848d63b+3f2a…", "kind": "control" | "attach" | "hook"}
 // server → client
-{"protocol": 1, "version": "v0.1.0", "build": "v0.1.0+33da6848d63b+3f2a…", "bin": "/usr/local/bin/tm", "pid": 4242}
+{"protocol": 2, "version": "v0.1.0", "build": "v0.1.0+33da6848d63b+3f2a…", "bin": "/usr/local/bin/tm", "pid": 4242}
 ```
 
 `build` is `version.BuildID()`: the version, the Ghostty commit, and a hash of the executable.
@@ -148,7 +149,7 @@ The types are in `internal/proto`.
 **Versioning** (`proto.Check`):
 - **Control and hook** connections accept a client whose `protocol` is lower than or equal to the server's. Methods and fields are only ever added, and unknown fields are ignored. A newer client gets `tm server speaks protocol N…; run 'tm server restart' (agents are resumed)` and exits with code 3.
 - **Attach** connections require the **identical build**. The client mirrors the server's emulator from a libghostty snapshot, and libghostty says outright that its snapshot format "does not yet carry a binary-compatibility guarantee". On a mismatch the client **re-execs the server's binary** (`bin` from the server's hello) with the same arguments. Attaching keeps working after an upgrade until the server is restarted.
-- The protocol number goes up when the attach framing or a method's meaning changes.
+- The protocol number goes up when the attach framing or a method's meaning changes. Protocol 2 added the views (below), which every console needs.
 
 **Control connections** use NDJSON request and response pairs, `{"id":1,"method":"…","params":{…}}` → `{"id":1,"result":…}` or `{"id":1,"error":{"code":"…","message":"…"}}`. The method set is flat and small. Most CLI commands are thin wrappers:
 
@@ -158,10 +159,20 @@ The types are in `internal/proto`.
 | sessions | `session.list`, `session.start`, `session.stop`, `session.read` (screen text), `session.prompt`, `session.keys`, `session.wait` (until a state) |
 | agents | `agent.list`, `agent.reload`, `agent.explain` (which signals and rules produced a session's state) |
 | hooks | `hook.event` (from `tm hook`; also its own connection kind, §8.2) |
+| views | `view.subscribe` (join a view; the connection then streams `view.changed`), `view.attach`, `view.dashboard`, `view.select`, `view.split`, `view.close`, `view.focus`, `view.zoom`, `view.even`, `view.resize`, `view.sidebar`, `view.size`, `view.input` (below) |
 | projects | `project.list`, `project.context`, `task.*`, `thread.*`, `inbox.*`, `report.*`, `status.*` |
 | events | `subscribe` turns the connection into an event stream: `session.state`, `session.exited`, `inbox.new`, `task.changed`, `thread.changed` |
 
 The server MAY serve file-only operations such as `task.*` itself, so that all writes are serialised. The CLI MUST also work without a server for read-only commands (`task list`, `context`), by reading the files directly.
+
+**Views (server-owned).** What a console shows is the server's, as in tmux, so every console joined to the same view shows the same screen. The model is `internal/view`; the server keeps the views (`internal/server/views.go`).
+- **A view holds** the screen (`mode`: the dashboard, or the layout of attached sessions), the split tree of session ids with each split's ratio, the focus and zoom, the dashboard's selected row, the current project (the sidebar's highlight, where `]` and `[` count from), the projects sidebar's width and slim strip (§4), and its **latest** client with that client's window size. Each change bumps its `seq`.
+- **Joining.** `tm` joins view `main`; `tm --own` gets a view of its own, which goes away with it. `tm attach` and `tm project open` also get their own, a *bare* one without dashboard or sidebar, which ends on a detach (§10). A console joins with `view.subscribe` (its window size, and the sidebar from its `ui.json` for a view it creates). The answer is its client id and the view; the connection then carries a `view.changed` line with the whole view, which is small, for every new version, until the console hangs up, which leaves the view.
+- **Actions** are control methods on a second connection, each with the client id: `view.attach` (show a session: it gets the focus when the layout holds it, else the layout becomes that one pane), `view.dashboard`, `view.select`, `view.split` (the server starts the shell in the focused pane's directory, at the size its pane will have), `view.close`, `view.focus` (a session, the next pane, or a direction), `view.zoom`, `view.even`, `view.resize` (the divider nearest the focus), `view.sidebar`, `view.size` (the console's window) and `view.input` (below). Each answers the view as it is afterwards, and the console draws that at once.
+- **Clients render the view.** A console opens one attach connection per pane of the layout and closes those that left it, and lays the tree out with the same function as the server (`view.Lay`), at the view's size: every console computes the same rectangles. The dashboard's selection, current project and sidebar come from the view too; this console's own selections win while they are on their way. A console whose dashboard is showing switches to the layout when the view does, and back.
+- **What stays per console:** the window's size, the outer terminal's modes (mouse, focus reports, kitty flags), the local scrollback position, native text selection, popups and overlays (help, the inbox, the switcher, a prompt being typed: their results are view actions), the prefix state and status-bar notes, takeovers of watch-only panes (§4), and the dashboard's details panel (`ui.json`).
+- **Sessions ending** leave every view; a layout without panes goes back to the dashboard.
+- **Persistence.** Every view but the own ones is saved in `~/.termalator/state/views.json` on each change. After a restart the server loads them, drops the panes whose sessions didn't come back (shells, §3.6) and forgets the latest client: a console that joins sees the same screen and layout.
 
 **Attach connections: mirror emulators.** The server keeps the **authoritative** emulator for every pane. Each attached client keeps its **own mirror**: it is restored from a snapshot, then fed exactly the same bytes in the same order. The client renders from its mirror and encodes input against the mirror's modes. As a result:
 - the server parses each byte once and only forwards it;
@@ -180,8 +191,8 @@ After the hello the client sends `{"attach":{"session":"s-…","cols":C,"rows":R
 | server → client | `STATE` | JSON: agent state, progress and the current item, for the client's status line |
 | server → client | `CLOSED` | The session exited, or the server is stopping; carries a reason |
 | client → server | `INPUT` | Bytes for the PTY, already encoded for the pane's modes |
-| client → server | `SET_SIZE` | The user really resized their window or changed its split panes |
-| client → server | `CLAIM_SIZE` | The user typed into this console, where the pane's rectangle has this size (§3.3, sizing) |
+| client → server | `SET_SIZE` | Resize the pane to this size. tm's consoles size panes through their view (`view.size`, `view.input`) and no longer send it |
+| client → server | `CLAIM_SIZE` | The same, unless the agent's `resize` is `explicit`. Also no longer sent |
 | client → server | `DIGEST_REQ` | Ask for a `DIGEST` in the stream |
 | client → server | `DETACH` | Leave cleanly |
 | client → server | `COLOR_SCHEME` | One byte, 1 dark or 2 light: the scheme the client's terminal reported (§3.3, colour scheme) |
@@ -193,13 +204,13 @@ After the hello the client sends `{"attach":{"session":"s-…","cols":C,"rows":R
 - **Colour scheme.** The client turns on mode 2031 on its own terminal and asks it for the scheme (`CSI ? 996 n`). Each answer or update goes to the server as `COLOR_SCHEME`. The server answers the program's `CSI ? 996 n` with the last scheme a client reported (none until one has), and sends a program that enabled 2031 a report whenever the scheme changes. New sessions start with the scheme last reported to the server.
 - **Scrollback limits.** libghostty trims scrollback page by page, and a snapshot carries no limits. Server emulators and mirrors therefore both use a line limit only (10,000 lines, no byte limit), and `DIGEST` covers the screen plus the last 1,000 rows of scrollback: a mirror's page layout differs from the server's, so the two may keep a few hundred more or fewer of the oldest rows.
 - **Back-pressure.** The PTY reader never blocks on a client. Each client has a byte-bounded queue of 4 MB, with adjacent `OUTPUT` frames merged. Past the limit the backlog is dropped and replaced by a fresh `SNAPSHOT` (resync). macOS PTYs deliver about 68-byte reads, so the server coalesces reads, reading until `EAGAIN` or for a few hundred µs, and avoids allocating per chunk.
-- **Sizing: the console you type in.** A pane's PTY has one size, kept by the server. Each console lays out its own split panes, and the pane follows the console that last typed into it, as tmux's `window-size latest` does.
-  - **Attaching never resizes.** A console whose window is a different size shows the pane cropped or padded, and when it has fewer rows than the pane it shows the rows around the cursor. A console that only watches never resizes anything, and neither does a watch-only thread pane (§4) until it is taken over.
-  - **Typing claims the size.** A key, a paste, a mouse click or the wheel sent from a console first resizes every pane that console shows to its rectangle there (`CLAIM_SIZE`, only for panes whose size differs and wasn't already asked for). Focus reports and mouse motion don't count. The pane then keeps that size until another console claims it.
-  - **Window resizes and split changes always resize.** When the user really resizes a console's window, or changes its split panes (split, close, zoom, resize a divider, switch layout; §4) or its projects sidebar's width (§4), every pane whose rectangle changed is resized to it (`SET_SIZE`), whichever console typed last. The panes' area is the window less the sidebar and the status bar.
-  - **Coalescing.** The server resizes a session at most once per 250 ms (`TIOCSWINSZ` + `SIGWINCH`). A request inside that time waits until it is over, and later requests replace it. Two consoles typed into in turn, or a window being dragged, can't flood the program with SIGWINCH.
-  - **Inline renderers opt out.** An agent whose manifest says `[screen] resize = "explicit"` (§8.2) ignores `CLAIM_SIZE`: its panes change size only on a window resize or a split change. Inline renderers duplicate or tear rows in their scrollback on every resize. Claude's inline mode does this, while its full-screen mode, the default since 2.1.x, only repaints once.
-  - Split panes: each pane is its own attach connection with its own mirror and renderer. A pane's renderer draws into its rectangle of the shared window and erases only up to its edge (`ECH`, never `EL` or `ED`); the client draws the dividers and the status bar and wraps the whole frame in one mode 2026 update, ending with the focused pane's cursor. With one pane the renderer has the window to itself, as before.
+- **Sizing: the console you type in, per view.** A pane's PTY has one size, kept by the server. The view is laid out at the window of its **latest** client, as tmux's `window-size latest` does, and the server resizes the sessions it shows to their rectangles there; the other consoles show the same frame from the top left, cropped when their window is smaller (a cropped pane shows the rows around its cursor), padded when it is larger.
+  - **Attaching never resizes.** Joining a view, showing a session and watching change nothing; a view nobody sized yet takes the first console's window, without resizing anything. When the latest client leaves, the console active last takes its place, again without resizing.
+  - **Typing claims the size.** A key, a paste, a mouse click or the wheel sent from a console that isn't the view's latest, or whose panes don't have their rectangles' sizes, first calls `view.input`: the console becomes the latest and the panes it shows are resized to their rectangles at its window. Watch-only thread panes (§4) are left alone unless they are the one typed into (taken over), and so are agents whose manifest says `[screen] resize = "explicit"` (§8.2). Focus reports and mouse motion don't count. A console claims once per version of the view.
+  - **Window resizes and layout changes always resize.** When the user really resizes a console's window (`view.size` with `resize`), or changes the layout from a console (split, close, zoom, a divider, the layout switch, focus while zoomed, or the sidebar's width; §4), that console becomes the latest and every pane the view shows is resized to its rectangle, whichever console typed last and whatever the agent. The panes' area is the window less the sidebar and the status bar.
+  - **Coalescing.** The server resizes a session at most once per 250 ms (`TIOCSWINSZ` + `SIGWINCH`). A request inside that time waits until it is over, and later requests replace it; a request for the size the session already has is no resize. Two consoles typed into in turn, or a window being dragged, can't flood the program with SIGWINCH.
+  - **Inline renderers opt out.** Inline renderers duplicate or tear rows in their scrollback on every resize. Claude's inline mode does this, while its full-screen mode, the default since 2.1.x, only repaints once. Their agents say `resize = "explicit"`.
+  - Split panes: each pane is its own attach connection with its own mirror and renderer, opened and closed as the view's layout changes. A pane's renderer draws into its rectangle of the shared window and erases only up to its edge (`ECH`, never `EL` or `ED`); the client draws the dividers and the status bar and wraps the whole frame in one mode 2026 update, ending with the focused pane's cursor. With one pane the renderer has the window to itself, as before.
 - **Rendering.**
   - The client draws dirty rows from its mirror (cell renderer, not Bubble Tea `View()` strings), capped at 120 Hz and wrapped in mode 2026.
   - It honours the app's own 2026 holds through libghostty's render-hold effect, and never paints a torn frame.
@@ -209,7 +220,7 @@ After the hello the client sends `{"attach":{"session":"s-…","cols":C,"rows":R
   - The client pushes kitty "disambiguate" on the outer terminal and decodes its input with ultraviolet. It then re-encodes every key, mouse, focus and paste event with libghostty's encoders against the **mirror's** modes. This is how Shift+Enter (`CSI 13;2u`) reaches Claude intact.
   - Mouse (1000/1002/1003/1006) and focus (1004) modes are mirrored onto the outer terminal only while the app wants them, so native selection works the rest of the time. Claude 2.1.x is full-screen with any-event mouse tracking, so mouse forwarding is required.
 - **Prefix key: Ctrl+B,** tmux's default. The client recognises it as `0x02` and as `CSI 98;5u`. It starts a key command, as in tmux: prefix then `d` detaches, and prefix twice sends the prefix itself to the program, so Claude Code's own Ctrl+B (background a running task) still works (§4 lists the commands). It is `[keys] prefix` in `config.toml`; the older `[keys] detach` names the same key. Inside tmux, which takes Ctrl+B itself, users set another one (e.g. `ctrl+a`). Hints in the UI never show the key: they read `prefix+d`, `prefix+u` and so on; only the help popup's header (`prefix = ctrl+b`) and the settings popup name the configured key. Shift+PgUp/PgDn scroll the client's local scrollback for apps on the main screen (inline mode, shells); full-screen apps get the wheel.
-- **Several clients.** Any number of clients may attach over time and at once, one attached pane per client in v0.1. Two clients MAY attach to the same pane; both receive output and both may type. The pane's size follows the console that last typed into it, resized its window or changed its split panes (sizing, above). Each console's split layout is its own.
+- **Several clients.** Any number of consoles may attach over time and at once. Consoles joined to one view show the same screen and layout; consoles of different views may show the same pane. Every console attached to a pane receives its output and may type into it. The pane's size follows the view's latest console: the one that last typed, resized its window or changed the layout (sizing, above).
 - **The client's own terminal going away.** SIGHUP, or EOF/EIO on stdin, is a detach: the client exits within about 50 ms, and the server and agent are unaffected. On attach the client paints the snapshot at once, even when the pane is idle.
 - **Fallback considered and rejected.** Replaying the VT formatter's output into a fresh emulator is version-independent, but it loses the inactive screen: primary scrollback and its kitty flags disappear while an app is on the alt screen. It stays a debug aid, not a protocol.
 - **Pane `TERM`:** `xterm-256color`, plus `COLORTERM=truecolor` and `TERM_PROGRAM=termalator`. The spike ran Claude with these, with no issues.
@@ -254,13 +265,14 @@ The processes die with the server, because the PTY master closes and the childre
   - Installing a new `tm` doesn't touch a running server. Attach keeps working, because the client re-execs the server's binary (§3.3).
   - A control client with a newer protocol asks the human to run `tm server restart`. Restart warns about how many agents are mid-turn and asks for confirmation on a TTY.
   - **Later, not v0.1:** a live handoff. The old server passes each PTY master to the new one over `SCM_RIGHTS`, with a snapshot of each emulator, so no agent has to restart. Snapshots make this feasible; it needs its own small spike.
+- **Views.** The server-owned views come back from `views.json` (§3.3, Views), with the panes whose sessions were resumed.
 - **Scrollback after a restart.** The server MAY save each pane's snapshot at shutdown and show it above the resumed process's output. This is nice to have, not required for v0.1.
 
 ---
 
 ## 4. Dashboard
 
-`tm` with no arguments opens the dashboard. It is a client and holds no state.
+`tm` with no arguments opens the dashboard. It is a client and holds no state: it is one of the two screens of the console's view (§3.3, Views), whose selection, current project and sidebar it shows. Every console running `tm` joins view `main`, so when one opens a session, goes back to the dashboard, splits or moves the sidebar, the others follow; `tm --own` opens a console with a view of its own.
 
 **The coordinator owns all communication.** The user talks only to coordinators, and threads talk only to their coordinator. The dashboard shows threads, tasks and the inbox so the user can see where things stand, but it has no keys that act on them: acknowledging a report, sending a thread its next prompt and marking a task done are the coordinator's `tm` commands (§10), which it runs when the user asks. A thread's pane opens watch-only.
 
@@ -287,7 +299,7 @@ The processes die with the server, because the PTY master closes and the childre
   - the time since the last change, and the linked task id.
 
   Selecting a thread row shows its full todo list, its task's steps and its report's `## Next` lines, to read: in the details panel beside the list, or under the row when the window is too narrow for the panel. Threads are ordered as in §7.4; a row says `report waiting`, or `ready for review` once the thread called `tm done`, and the PR number from the report.
-- **Details panel.** When the dashboard (the window less the sidebar) is at least 120 columns wide, a panel right of the list shows everything about the selected row: a thread's state, task, progress, PR, report and the lines above; a task's notes and steps; a session's directory, command and progress; a project's coordinator, counts and inbox. `<` and `>` narrow and widen the list, dragging the divider with the mouse does the same, and `|` hides or shows the panel. The layout is kept in `ui.json` (§5.1), not `config.toml`, which `tm` never writes.
+- **Details panel.** When the dashboard (the window less the sidebar) is at least 120 columns wide, a panel right of the list shows everything about the selected row: a thread's state, task, progress, PR, report and the lines above; a task's notes and steps; a session's directory, command and progress; a project's coordinator, counts and inbox. `<` and `>` narrow and widen the list, dragging the divider with the mouse does the same, and `|` hides or shows the panel. This layout is each console's own, kept in `ui.json` (§5.1), not `config.toml`, which `tm` never writes.
 - **Look.** Colours are the terminal's 16 ANSI colours, so they follow the user's theme; `NO_COLOR` turns them off. Every state also has its own glyph (● working, ▲ blocked, ○ idle, ◌ starting, ◆ needs you, ✓ done), so colour is never the only signal. A row shows a five-cell progress bar when it still fits.
 - **Help** (`?`) lists every key; its header names the configured prefix (`prefix = ctrl+b`), the one place besides the settings that shows it.
 - **Popups.** Help, the inbox, the task board, the project switcher, prompts and the settings open as bordered boxes over the dimmed dashboard; `esc` closes the topmost. The footer lists the popup's keys and still shows messages.
@@ -302,11 +314,11 @@ The processes die with the server, because the PTY master closes and the childre
 
   - The current project is marked `▸` and drawn in reverse video: on the dashboard the project last attached to (else the selected row's); while attached, the focused pane's project (else the dashboard's). The status bar names the project too (`s-4 · termalator coordinator · …`), so the context is never lost.
   - A click on a project opens its coordinator (started if none runs), from the dashboard, under a popup, or while attached, split panes included: the attach view detaches and the dashboard opens it at once. The prefix then `p`, `]` and `[` and the switcher do the same from the keys.
-  - It is 24 columns wide by default (its border included), 14 to 48. Dragging its border, `{` and `}` (2 columns) on the dashboard, or the prefix then `{` or `}` while attached, change the width; `b` (prefix then `b` while attached) turns it into the slim strip and back. The width is kept in `ui.json` (§5.1).
+  - It is 24 columns wide by default (its border included), 14 to 48. Dragging its border, `{` and `}` (2 columns) on the dashboard, or the prefix then `{` or `}` while attached, change the width; `b` (prefix then `b` while attached) turns it into the slim strip and back. The width is the view's, so every console of the view follows; `ui.json` (§5.1) keeps the last one set as the width of new views.
   - When a full sidebar would leave less than 60 columns, it shrinks to the slim strip, 7 columns of a marker, the glyph and the slug's first four letters (`▸●term`). It never disappears.
-  - Panes and the dashboard get the window less the sidebar. A width change is a layout change: it resizes the panes it touches (`SET_SIZE`, §3.3). Watch-only thread panes stay watch-only and never claim a size.
+  - Panes and the dashboard get the window less the sidebar. A width change is a layout change: the panes the view shows are resized to their new rectangles (§3.3). Watch-only thread panes stay watch-only and never claim a size.
   - While a sidebar is shown, the attach view keeps the outer terminal's mouse reporting on (button events and drags) so the sidebar can be clicked whatever the focused program wants; the program still only gets mouse events it asked for. Selecting text natively in a pane then needs Shift, as on the dashboard.
-  - Its state (width, slim) is `SidebarLayout`, kept apart from the rest of the layout so it can move into a server-owned view later.
+  - Its state (width, slim) is part of the view (`view.Sidebar`, §3.3).
 - **Footer.** It lists only the keys that apply to the selected row: `enter attach`, `enter watch` on a thread, `enter show` or `enter open`. `?` lists every key.
 - **Mouse.** A click selects a row, the wheel moves the selection, and the divider and the sidebar's border can be dragged; a click on the sidebar opens a project. Holding Shift selects text as usual in most terminals.
 - **Keys** (small and fixed in v0.1):
@@ -329,12 +341,12 @@ The processes die with the server, because the PTY master closes and the childre
   | `?` | help |
   | `q` | quit the client; the server keeps running |
 
-- **Attaching.** Attaching gives the whole screen to the pane, rendered from the client's mirror emulator (§3.3), with a one-line status bar at the bottom that the client draws. The projects sidebar stays on the left, and the status bar runs under the panes, right of it. The status bar shows the session, its project and role, state, progress and `prefix+d dashboard`; after the prefix it lists the commands instead. The client polls `session.list` for it, and the project folders for the sidebar. Sessions started from the dashboard get the window's size less the sidebar and that row, so nothing is cropped. (`tm attach` and `tm project open` keep the whole window for the pane and have no sidebar; `tm attach` has no status bar either.)
+- **Attaching.** `enter` shows the selected session in the view (`view.attach`), on every console of the view. Attaching gives the whole screen to the pane, rendered from the client's mirror emulator (§3.3), with a one-line status bar at the bottom that the client draws. The projects sidebar stays on the left, and the status bar runs under the panes, right of it. The status bar shows the session, its project and role, state, progress and `prefix+d dashboard`; after the prefix it lists the commands instead. The client polls `session.list` for it, and the project folders for the sidebar. Sessions started from the dashboard get the window's size less the sidebar and that row, so nothing is cropped. (`tm attach` and `tm project open` keep the whole window for the pane in a view of their own and have no sidebar; `tm attach` has no status bar either, except on a thread's pane.)
 - **Prefix commands.** While attached, the prefix (Ctrl+B by default; hints write `prefix+<key>`) then:
 
   | Key | Action |
   |---|---|
-  | `d` | back to the dashboard; the session keeps running |
+  | `d` | back to the dashboard, on every console of the view; the session keeps running |
   | `p`, `]`, `[`, `i`, `t`, `,`, `?` | back to the dashboard, which runs that key: the switcher, next / previous project, inbox, tasks, settings, help |
   | `%` / `"` | split the focused pane: a new shell in its directory beside it / below it |
   | arrows, `o` | focus the pane in that direction / the next pane |
@@ -349,8 +361,8 @@ The processes die with the server, because the PTY master closes and the childre
   | anything else | cancel |
 
   Only `d`, the pane commands, `u` and the prefix work in `tm attach` and `tm project open`, which have no dashboard to go back to.
-- **Watch-only threads.** A pane whose session is a thread's is watch-only, in the dashboard's attach, in split panes and in `tm attach` (which then shows the status bar too): keys, paste, the mouse and focus reports don't reach it, and the status bar says `watch-only, prefix+u takes over`. Shift+PgUp/PgDn still scroll the local scrollback. The prefix then `u` asks in the status bar whether to take the thread over; `y` unlocks typing in that pane for the rest of the attach, and the status bar says `taken over`; any other key keeps watching. Taking over adds a `takeover` inbox item for the thread's coordinator and a journal line (`human thread.takeover t-0004`), so the coordinator learns that the user intervened. The next attach is watch-only again.
-- **Split panes.** A split attaches the new shell as another pane of the same window; the panes share it with one-cell dividers, those around the focused pane in the accent colour, and the status bar names the focused pane's session with `pane 2/3`. Keys, paste and the cursor go to the focused pane; a click focuses the pane under it (when the outer terminal reports the mouse, i.e. while the focused program tracks it). When a pane's session exits, the pane closes and the status bar says why; when the last one does, the attach ends as before. Detaching (`d`) detaches every pane. Splits last as long as the attach: back on the dashboard, `enter` attaches one session. On the dashboard the prefix then a key is that key, so the same keys do the same things in both places.
+- **Watch-only threads.** A pane whose session is a thread's is watch-only, and never claims a size (§3.3), in the dashboard's attach, in split panes and in `tm attach` (which then shows the status bar too): keys, paste, the mouse and focus reports don't reach it, and the status bar says `watch-only, prefix+u takes over`. Shift+PgUp/PgDn still scroll the local scrollback. The prefix then `u` asks in the status bar whether to take the thread over; `y` unlocks typing in that pane, in this console only, for the rest of the attach, and the status bar says `taken over`; any other key keeps watching. Taking over adds a `takeover` inbox item for the thread's coordinator and a journal line (`human thread.takeover t-0004`), so the coordinator learns that the user intervened. The next attach is watch-only again.
+- **Split panes.** A split attaches the new shell as another pane of the same window; the panes share it with one-cell dividers, those around the focused pane in the accent colour, and the status bar names the focused pane's session with `pane 2/3`. Keys, paste and the cursor go to the focused pane; a click focuses the pane under it (when the outer terminal reports the mouse, i.e. while the focused program tracks it). When a pane's session exits, the pane closes and the status bar says why; when the last one does, the view goes back to the dashboard. The layout is the view's (§3.3): a split, a focus change or a zoom shows on every console of the view, and the layout stays while the dashboard shows. `enter` on a session in the layout shows the layout again with that pane focused; on any other session it shows that one alone. On the dashboard the prefix then a key is that key, so the same keys do the same things in both places.
 - **Project switching.** While attached, the prefix then `p` opens the project switcher, and the prefix then `]` or `[` jumps to the next or previous project's coordinator. These run on the dashboard, so they are the dashboard's own keys and no key is taken from the pane but the prefix. "Next" is relative to the project last attached to; the status bar always names the current project.
 - **Projects.** A project row with no running coordinator says so; `enter` on it starts the coordinator (as `tm project open` does) and attaches.
 - **Rendering.** The dashboard uses Bubble Tea v2 and Lip Gloss v2. The attached panes bypass Bubble Tea: a cell renderer per pane draws dirty rows from its mirror (§3.3).
@@ -365,10 +377,11 @@ The processes die with the server, because the PTY master closes and the childre
 ```
 ~/.termalator/                         TERMALATOR_HOME
   config.toml                          user settings: default agent, keys, per-project safety (§11.2)   [human only]
-  ui.json                              the layout: details panel on or off, list width, projects sidebar width and slim strip (§4)  [tm]
+  ui.json                              this console's layout: details panel on or off, list width; the projects sidebar new views start with (§4)  [tm]
   agents/<name>.toml                   user agent manifests (§8.2)                   [human]
   run/  tm.sock server.lock server.pid                                               [server]
   state/sessions.json                  live sessions, for resume (§3.6)              [server]
+  state/views.json                     the server-owned views but own ones: screen, layout, focus, selection, current project, sidebar (§3.3)  [server]
   logs/server.log                                                                    [server]
   worktrees/<slug>/<id>-<title-slug>/  thread worktrees: plain git checkouts, nothing termalator-owned inside (§9)
   projects/<slug>/                     one project = the coordinator's cwd
@@ -779,7 +792,7 @@ An agent is first of all a TOML manifest. `internal/agent/manifests/claude.toml`
 | `[launch]` | `command`, `args`, `resume_args`, `yolo_args`, `model_args`, `kickoff_args`, `env` and `unset_env`. Values are Go `text/template`s over `LaunchSpec` (`.SessionID`, `.AgentSID`, `.Cwd`, `.RuntimeDir`, `.BriefPath`, `.Kickoff`, `.Resume`, `.Yolo`, `.Model`, `.TMBin`, `.Socket`, `.Role`, `.Access.Read`, `.Access.NoWrite`). An argument that renders empty is dropped. `kickoff_args` always comes last, and must start with `--` when the CLI has variadic flags that would swallow a positional prompt (Claude does). A resume with an empty `AgentSID` is refused. `unset_env` entries ending in `*` match a prefix |
 | `[[launch.files]]` | templated files written into the session's runtime dir before launch: a hook plugin, an extension, the harness's permission and sandbox settings rendered from `.Access` (helpers: `json`, `rules`, `concat`) |
 | `[inject] prompt` | `paste`, `channel` or `none` |
-| `[screen] resize` | `follow` (the default): typing in a console resizes the agent's pane to that console's rectangle. `explicit`: only a window resize or a split change does, for inline renderers that garble their scrollback on resize (§3.3, sizing) |
+| `[screen] resize` | `follow` (the default): typing in a console resizes the agent's pane to that console's rectangle. `explicit`: only a window resize or a layout change does, for inline renderers that garble their scrollback on resize (§3.3, sizing) |
 | `session_field` | the payload field carrying the agent's own session id. It is read from **every** hook event, and the latest value wins (Claude rotates the id on `/clear`) |
 | `ignore_fields` | a hook event carrying one of these fields (for example a subagent's `agent_id`) is ignored for state, session id and todos. It still feeds `counter` entries |
 | `[hook]` | payload trimming in `tm hook`: `keep` (top-level fields), `truncate` (field → max bytes), and `[[hook.keep_when]]` (`match` + `fields`) for bulky fields only some events need |
@@ -992,9 +1005,10 @@ These commands are used by the human, the coordinator and threads alike. Exit co
 
 | Command | Who | What |
 |---|---|---|
-| `tm` / `tm attach <session>` | human | dashboard / attach |
+| `tm [--own]` | human | a console of view `main` (§3.3, Views): the dashboard or the layout it shows, as every other console of `main`; `--own` gives the console a view of its own |
+| `tm attach [<session>]` | human | one session (the newest when none is named) in a bare view of this console's own, which no other console follows; the prefix then `d` leaves |
 | `tm server run\|start\|stop\|restart\|status\|service` | human | §3.1 |
-| `tm project new <name> [--repo PATH]… \| list \| open <slug> [--agent A]` | human | create a project folder; `open` starts the coordinator (role coordinator, cwd the project folder) unless one runs, then attaches with the status bar; without a terminal it prints the session id |
+| `tm project new <name> [--repo PATH]… \| list \| open <slug> [--agent A]` | human | create a project folder; `open` starts the coordinator (role coordinator, cwd the project folder) unless one runs, then attaches with the status bar, in a bare view of its own as `tm attach`; without a terminal it prints the session id |
 | `tm project repo add\|remove PATH` | human, coordinator | change the project's repo list in `PROJECT.md`; `tm thread start` defaults to the first repo |
 | `tm context [--project]` | coordinator | §7.6 |
 | `tm skill coordinator\|thread` | agents | print the standing rules, versioned with the binary (§7.8) |
@@ -1365,6 +1379,7 @@ What the harness provides (M1 built `Env`, `Window` without `Key`/`Paste`/`Wheel
   - `Type`, `Key` (libghostty's key encoder, honouring the kitty flags the client pushed), `Paste`, `Wheel`, `Resize`;
   - `CloseWindow` (close the PTY master), `KillClient` (`SIGKILL`);
   - `WaitFor`, `Quiet`, `Screen`.
+- **Several consoles.** A scenario opens several `tm` windows at once, of different sizes, to check that a view's consoles show the same thing (`TestSmokeViewsShared`: screens, splits, focus, zoom, the sidebar, latest-typist sizing with padding in the larger window, `--own` kept apart) and that the view survives `tm server restart` (`TestSmokeViewSurvivesRestart`).
 - **Golden screens.** `testdata/golden/*.txt` holds the plain text of the viewport, plus an optional attribute layer (later). `make e2e E2E_FLAGS=-update` rewrites them. Volatile parts (session ids, pids, durations) are masked by named regexes (`e2e.Mask`, `e2e.DefaultMasks`) and read `<name>` in the file.
 - **Consistency checks.** `AssertMirrorsServer` signals the client (`SIGUSR1`), which asks for an in-stream `DIGEST` and logs whether its mirror matches (`TERMALATOR_ATTACH_LOG`): modes, the active screen, recent scrollback.
 - **Artifacts on failure:** every window's last screen and raw bytes, the server log and `sessions.json` (from M3: `tm agent explain` for each session), saved under `$E2E_ARTIFACTS/<test>` and uploaded by CI.

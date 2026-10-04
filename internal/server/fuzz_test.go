@@ -45,6 +45,7 @@ func FuzzControlDecode(f *testing.F) {
 			for _, v := range []any{
 				&proto.ServerStopParams{}, &proto.SessionStartParams{}, &proto.SessionIDParams{},
 				&proto.SessionReadParams{}, &proto.SessionKeysParams{},
+				&proto.ViewSubscribeParams{}, &proto.ViewParams{},
 			} {
 				decodeParams(req.Params, v)
 			}

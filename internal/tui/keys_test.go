@@ -15,6 +15,7 @@ import (
 	"github.com/theclifmeister/termalator/internal/emu"
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/server"
+	"github.com/theclifmeister/termalator/internal/view"
 )
 
 func TestParseChord(t *testing.T) {
@@ -152,7 +153,8 @@ func TestWatchOnlyPane(t *testing.T) {
 	c.takeover = func(s proto.SessionInfo) error { told <- s; return nil }
 	// No connection: a key sent to the program would panic.
 	p := &pane{watch: true, info: proto.SessionInfo{ID: "s-2", Role: proto.RoleThread, Project: "demo", Thread: "t-0001"}}
-	c.root, c.focus = &node{leaf: p}, p
+	c.v = view.View{Mode: view.ModeLayout, Root: &view.Node{Session: "s-2"}, Focus: "s-2"}
+	c.panes["s-2"], c.focus = p, p
 	c.status()
 	if !strings.Contains(c.statusText, `watch-only, prefix+u takes over`) {
 		t.Fatalf("status %q", c.statusText)
