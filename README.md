@@ -7,9 +7,11 @@ Claude Code is the first supported agent. Other agents plug in through a manifes
 **Status:** pre-alpha; see the [v0.1 specification](docs/SPEC.md). What works:
 - the background server (milestone M1): it hosts shell sessions that survive closing your terminal (`tm server …`, `tm session …`);
 - the attach client (milestone M2): `tm attach` shows a session full-screen; Ctrl+\ detaches and leaves it running;
-- the file layer of projects and tasks (milestone M5): `tm project new|list`, `tm skill`, `tm task …`, `tm context` and `tm inbox list|done`. These work on the files directly; the server takes over writes later.
+- agent sessions (milestone M3): `tm session start --agent claude` runs Claude Code with its live state (working / blocked / idle), todos and resume;
+- the dashboard (milestone M4): `tm` lists every session and project with live state, attaches with `enter` and comes back with Ctrl+\;
+- projects and tasks (milestone M5): `tm project new|list|open`, `tm skill`, `tm task …`, `tm context` and `tm inbox list|done`.
 
-Agents and the dashboard come next.
+Threads come next.
 
 ## Try it
 
@@ -17,9 +19,10 @@ Agents and the dashboard come next.
 make run
 ```
 
-This builds `bin/tm`, starts the background server, starts a session running your shell, types a line into it and attaches you to it. Press Ctrl+\ to detach. The session keeps running after you detach, and after you close the terminal:
+This builds `bin/tm`, starts the background server and opens the dashboard. Press `c` to start Claude Code in a directory (the current one by default) or `s` for a shell; either attaches right away, with a status bar at the bottom. Ctrl+\ brings you back to the dashboard, where a session that waits for you (a permission dialog, say) shows under NEEDS YOU; `enter` attaches again. `?` lists the keys, `q` quits the dashboard. Sessions keep running after you quit, and after you close the terminal:
 
 ```sh
+bin/tm                                 # the dashboard again
 bin/tm attach s-1                      # attach again, from any terminal, at any size
 bin/tm attach                          # the newest session
 bin/tm session list                    # sessions in the server
@@ -29,7 +32,7 @@ bin/tm session stop s-1
 bin/tm server status | stop
 ```
 
-`make run RUN_ARGS=top` runs another command instead of your shell. Attaching never resizes the session; resizing the window you attached from does. Shift+PgUp/PgDn scroll back through a shell's output; full-screen programs get the mouse wheel. The detach key can be changed in `~/.termalator/config.toml` (`[keys]` `detach = "ctrl+]"`). The server keeps its state in `~/.termalator`; set `TERMALATOR_HOME` to use somewhere else.
+`make run RUN_ARGS=top` also starts a session running `top`. Attaching never resizes the session; resizing the window you attached from does. Shift+PgUp/PgDn scroll back through a shell's output; full-screen programs get the mouse wheel. The detach key can be changed in `~/.termalator/config.toml` (`[keys]` `detach = "ctrl+]"`). The server keeps its state in `~/.termalator`; set `TERMALATOR_HOME` to use somewhere else.
 
 ## Try projects and tasks
 
@@ -102,7 +105,7 @@ internal/server      background server: lifecycle, socket, sessions.json; also t
 internal/session     one hosted process: PTY + libghostty-vt emulator + attach subscribers
 internal/proto       wire protocol: handshake, control NDJSON, attach frames
 internal/emu         the libghostty-vt wrapper: emulator, snapshots, renderer, input encoders
-internal/tui         the attach client (tm attach)
+internal/tui         the dashboard and the attach client
 internal/e2e         end-to-end test harness and scenarios
 internal/agent       agent interface, manifests (manifests/claude.toml), registry
 internal/…           see docs/SPEC.md §2.1

@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/theclifmeister/termalator/internal/agent"
+	"github.com/theclifmeister/termalator/internal/emu"
 )
 
 const realWait = 90 * time.Second
@@ -210,4 +211,64 @@ func TestRealThreadAccess(t *testing.T) {
 		}
 		env.MustCLI("session", "stop", s.ID)
 	}
+}
+
+// TestRealFirstLocalRun is M4's "Try it" against Claude: c in the
+// dashboard starts Claude in a chosen directory and attaches; a prompt
+// typed there blocks on a permission dialog; Ctrl+\ shows it under NEEDS
+// YOU; enter attaches again to approve; the session survives the window.
+func TestRealFirstLocalRun(t *testing.T) {
+	env := realEnv(t)
+	env.Setenv("ANTHROPIC_MODEL", "haiku") // the c key passes no --model
+	dir := env.Workdir()
+
+	w := env.Window(120, 40)
+	w.WaitFor("no sessions", wait)
+	w.Type("c")
+	w.WaitFor("claude session in directory:", wait)
+	w.Key(emu.Key{Rune: 'u', Mods: emu.ModCtrl})
+	w.Type(dir)
+	w.Key(Enter)
+	s := agentSession(env)
+	w.WaitUntil("attached", realWait, func(sc string) bool { return lastLine(sc, `ctrl+\ dashboard`) })
+	if !Poll(realWait, func() bool {
+		i, _ := env.Info(s)
+		return i.State == "idle" || i.Reason == "trust"
+	}) {
+		t.Fatalf("claude never came up:\n%s", w.Screen())
+	}
+	if i, _ := env.Info(s); i.Reason == "trust" {
+		time.Sleep(time.Second) // keys within ~0.5 s of the dialog are dropped
+		w.Key(keyDown)          // the default is "No, exit"
+		time.Sleep(200 * time.Millisecond)
+		w.Key(Enter)
+	}
+	env.WaitState(s, "idle", realWait)
+	time.Sleep(time.Second)
+
+	w.Type("Create a file named a.txt containing hi, using the Write tool. Nothing else.")
+	time.Sleep(300 * time.Millisecond)
+	w.Key(Enter)
+	env.WaitState(s, "blocked/permission", realWait)
+	w.WaitUntil("blocked in the status bar", wait, func(sc string) bool { return lastLine(sc, "blocked permission") })
+
+	w.Key(CtrlBackslash)
+	w.WaitFor("NEEDS YOU", wait)
+	w.Key(Enter)
+	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, `ctrl+\ dashboard`) })
+	time.Sleep(time.Second)
+	w.Type("1")
+	env.WaitState(s, "idle", realWait)
+	if _, err := os.Stat(filepath.Join(dir, "a.txt")); err != nil {
+		t.Errorf("approved write: %v", err)
+	}
+	w.Key(CtrlBackslash)
+	w.WaitUntil("NEEDS YOU gone", wait, func(sc string) bool { return !strings.Contains(sc, "NEEDS YOU") })
+
+	w.CloseWindow()
+	env.AssertAlive(s)
+	w2 := env.Window(120, 40)
+	w2.WaitFor(s.ID, wait)
+	w2.Type("q")
+	w2.WaitExit(wait)
 }

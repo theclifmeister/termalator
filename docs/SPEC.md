@@ -296,13 +296,17 @@ The processes die with the server, because the PTY master closes and the childre
   | `n` | new project |
   | `s` | new shell session |
   | `c` | new Claude (or other agent) session in a chosen directory |
+  | `p` | project switcher: every project with its coordinator's state; `enter` opens that project's coordinator (started if none runs) |
+  | `]` / `[` | open the next / previous project's coordinator |
   | `r` | refresh |
   | `?` | help |
   | `q` | quit the client; the server keeps running |
 
-- **Attaching.** Attaching gives the whole screen to the pane, rendered from the client's mirror emulator (§3.3), with a one-line status bar at the bottom that the client draws. The status bar shows the session name, state, progress and the detach key. Ctrl+\ returns to the dashboard.
+- **Attaching.** Attaching gives the whole screen to the pane, rendered from the client's mirror emulator (§3.3), with a one-line status bar at the bottom that the client draws. The status bar shows the session, its project and role, state, progress and the detach key; the client polls `session.list` for it. Sessions started from the dashboard get the window's size less that row, so nothing is cropped. Ctrl+\ returns to the dashboard. (`tm attach` keeps the whole window for the pane and has no status bar.)
+- **Project switching.** While attached, Ctrl+\ then `p` opens the project switcher, and Ctrl+\ then `]` or `[` jumps to the next or previous project's coordinator. Ctrl+\ always lands on the dashboard first, so these are the dashboard's own keys and no key is taken from the pane. "Next" is relative to the project last attached to; the status bar always names the current project.
+- **Projects.** A project row with no running coordinator says so; `enter` on it starts the coordinator (as `tm project open` does) and attaches. A done confirmation the coordinator raised (§6.4) is a NEEDS YOU row on which `d` completes it.
 - **Rendering.** The dashboard uses Bubble Tea v2 and Lip Gloss v2. The attached pane bypasses Bubble Tea: a cell renderer draws dirty rows from the mirror (§3.3).
-- **Notifications.** When a session becomes `blocked`, or a thread reports, the server rings the bell on every attached client's terminal and sends an OS notification (`osascript` on macOS, `notify-send` on Linux, both optional). The client re-emits a pane's OSC 9/777 notifications and OSC 52 clipboard writes to the outer terminal while attached. OSC 52 reads are denied.
+- **Notifications.** When a session becomes `blocked`, or a thread reports, every client (dashboard or attached) rings the bell on its terminal, and the server sends an OS notification (`osascript` on macOS, `notify-send` on Linux, both optional). The client re-emits a pane's OSC 9/777 notifications and OSC 52 clipboard writes to the outer terminal while attached. OSC 52 reads are denied.
 
 ---
 
@@ -930,7 +934,7 @@ These commands are used by the human, the coordinator and threads alike. Exit co
 |---|---|---|
 | `tm` / `tm attach <session>` | human | dashboard / attach |
 | `tm server run\|start\|stop\|restart\|status\|service` | human | §3.1 |
-| `tm project new <name> [--repo PATH]… \| list \| open <slug>` | human | create a project folder; `open` starts or attaches its coordinator |
+| `tm project new <name> [--repo PATH]… \| list \| open <slug> [--agent A]` | human | create a project folder; `open` starts the coordinator (role coordinator, cwd the project folder) unless one runs, then attaches with the status bar; without a terminal it prints the session id |
 | `tm context [--project]` | coordinator | §7.6 |
 | `tm skill coordinator\|thread` | agents | print the standing rules, versioned with the binary (§7.8) |
 | `tm task …` | all | §6.3; threads only read, and add or tick steps on their own task (§6.4) |
@@ -957,7 +961,7 @@ Every agent-facing command prints short, stable, plain text. It never prints unt
 
 ### 11.1 Human calls and agent calls
 
-The server tells them apart by the caller's pid (§3.2):
+The server tells them apart by the caller's pid (§3.2). `tm task`, `tm inbox` and `tm project` ask it with `caller.who` (since M4): the server walks the peer pid's ancestors to a hosted session. The CLI combines that answer with the session environment (§3.4) and keeps the narrower of the two, so neither unsetting the variables nor leaving the session's process tree widens an agent's rights. Without a server, read-only commands still work and the environment alone decides:
 
 - If the calling process descends from a hosted session's process **and** that session's role is `coordinator` or `thread`, the call is an **agent call**.
 - Everything else is a **human call**: a shell outside termalator, or a hosted `shell` session.
@@ -1153,6 +1157,7 @@ Sizes: **S** ≤ 2 days, **M** 3–5 days, **L** 1–2 weeks, for one developer 
   - keys: `enter` attach, `s` new shell, `c` new Claude session in a chosen directory, `?` help, `q` quit;
   - hand-off to the M2 attach view and back with Ctrl+\\; the status line;
   - the bell and OS notification when a session becomes blocked.
+- **Also (user decisions):** the project switcher and `]`/`[` (§4), `tm project open`, the server-side caller check (§11.1), and `make run` opening the dashboard.
 - **Try it:** run `tm`, press `c`, pick a repo, give Claude a task, detach, watch the row go working → blocked (a permission dialog) → idle, with the notification. Attach, answer, detach. Close the terminal, run `tm` again: everything is still there.
 - **Tests:**
   - dashboard golden screens (empty, several sessions, NEEDS YOU);

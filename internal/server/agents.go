@@ -212,7 +212,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 	r.Argv = launch.Argv
 	home, _ := os.UserHomeDir()
 	sess, err := session.Start(session.Config{
-		ID: r.ID, Role: r.Role, Argv: launch.Argv, Cwd: r.Cwd, Env: env,
+		ID: r.ID, Role: r.Role, Project: r.Project, Thread: r.Thread, Argv: launch.Argv, Cwd: r.Cwd, Env: env,
 		Cols: l.cols, Rows: l.rows, Created: r.Created,
 		Xtversion: "termalator " + version.Version,
 		Scheme:    s.scheme,
@@ -278,9 +278,18 @@ func (s *Server) agentChanged(sess *session.Session) {
 	if !ok {
 		return
 	}
+	info := sess.Info()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.log.Printf("session %s: %s %s/%s (%s)", sess.ID(), st.Agent, st.State, st.Reason, st.Sources)
+	if blocked := st.State == agent.StateBlocked; blocked != s.blocked[sess.ID()] {
+		if blocked {
+			s.blocked[sess.ID()] = true
+			go notify(s.log, blockedMessage(info, st.Reason))
+		} else {
+			delete(s.blocked, sess.ID())
+		}
+	}
 	r, ok := s.records[sess.ID()]
 	if !ok || st.Observed {
 		return

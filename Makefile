@@ -7,7 +7,7 @@
 # system-wide.
 #
 #   make            build bin/tm
-#   make run        build, start the server and a session, show its screen
+#   make run        build, start the server and open the dashboard
 #   make test       go test -race ./... (unit + integration + fuzz seed corpora)
 #   make e2e        every end-to-end scenario (internal/e2e) against bin/tm
 #   make e2e-smoke  the core scenarios, as on every PR
@@ -76,8 +76,8 @@ build: $(STAMP)
 	$(GO) build -ldflags '$(LDFLAGS)' -o bin/tm ./cmd/tm
 
 # `make run` is the way to try termalator: scripts/run.sh starts the server
-# and a session and shows it. RUN_ARGS is the session's command (default:
-# your shell), e.g. make run RUN_ARGS="top".
+# and opens the dashboard. RUN_ARGS starts a session with that command
+# first, e.g. make run RUN_ARGS="top".
 run: build
 	@TM=bin/tm ./scripts/run.sh $(RUN_ARGS)
 

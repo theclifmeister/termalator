@@ -52,6 +52,10 @@ type Options struct {
 	// Log receives diagnostics (digest checks, key encodings); nil
 	// discards them.
 	Log *log.Logger
+	// StatusBar draws the status bar (docs/SPEC.md §4) on the window's
+	// last row, kept current by polling the server; the pane is shown in
+	// the rows above it.
+	StatusBar bool
 }
 
 // Result says how an attach ended.
@@ -84,19 +88,27 @@ func Attach(opts Options) (res Result, err error) {
 	if err != nil || cols <= 0 || rows <= 0 {
 		cols, rows = 80, 24
 	}
+	paneRows := rows
+	if opts.StatusBar {
+		paneRows = max(rows-1, 1)
+	}
 	conn, info, err := server.Attach(opts.Paths, proto.AttachParams{
-		Session: opts.Session, Cols: uint16(cols), Rows: uint16(rows)})
+		Session: opts.Session, Cols: uint16(cols), Rows: uint16(paneRows)})
 	if err != nil {
 		return res, err
 	}
 	defer conn.Close()
 
-	c, err := newClient(conn, opts.Log, uint16(cols), uint16(rows))
+	c, err := newClient(conn, opts.Log, uint16(cols), uint16(paneRows))
 	if err != nil {
 		return res, err
 	}
 	defer c.close()
 	c.detach = detach
+	c.statusBar, c.cols, c.paneRows = opts.StatusBar, cols, paneRows
+	if c.statusBar {
+		c.r.SetStatus(statusLine(*info, detach, cols))
+	}
 	// The stream starts with the pane's snapshot.
 	typ, payload, err := conn.ReadFrame()
 	if err != nil {
@@ -142,6 +154,9 @@ func Attach(opts Options) (res Result, err error) {
 	defer cancel()
 	go c.readLoop()
 	go c.inputLoop(ctx, opts.In)
+	if c.statusBar {
+		go c.pollState(ctx, opts.Paths, *info)
+	}
 	c.poke() // paint the snapshot now, even if the pane is idle
 	res = c.renderLoop(opts.Out)
 	restore()
@@ -163,6 +178,10 @@ type client struct {
 	scrolled bool // the local viewport is scrolled back
 	outer    map[int]bool
 	detach   chord
+
+	statusBar      bool
+	cols, paneRows int  // the window's columns and the rows given to the pane
+	bell           bool // ring the outer terminal's bell with the next frame
 
 	// detaching is set before DETACH is written. The server may hang up
 	// as soon as it reads it, so from then on a failed write or a closed
@@ -329,6 +348,10 @@ func (c *client) signals(sigs <-chan os.Signal, fd int) {
 			if !c.lock() {
 				return
 			}
+			if c.statusBar {
+				rows = max(rows-1, 1)
+			}
+			c.cols, c.paneRows = cols, rows
 			c.r.SetSize(uint16(cols), uint16(rows))
 			c.mu.Unlock()
 			c.send(proto.FrameSetSize, proto.Size(uint16(cols), uint16(rows)))
@@ -435,6 +458,10 @@ func (c *client) mouse(ev uv.Event) {
 	if !ok || !c.lock() {
 		return
 	}
+	if m.Y >= c.paneRows { // the status bar
+		c.mu.Unlock()
+		return
+	}
 	m.Y += c.r.Top()
 	cols, rows := c.mirror.Size()
 	var b []byte
@@ -504,6 +531,10 @@ func (c *client) renderLoop(out io.Writer) Result {
 		b, err := c.r.Frame(c.mirror, c.held)
 		if err == nil {
 			b = append(c.outerModes(), b...)
+			if c.bell {
+				b = append(b, '\a')
+				c.bell = false
+			}
 		}
 		held := c.held
 		c.mu.Unlock()
@@ -528,4 +559,59 @@ func errString(err error) string {
 		return "EOF"
 	}
 	return err.Error()
+}
+
+// statePoll is how often the status bar asks the server for state.
+const statePoll = 500 * time.Millisecond
+
+// pollState keeps the status bar current and rings the bell when any
+// session becomes blocked (docs/SPEC.md §4). It polls session.list; a
+// lost server is noticed by the attach stream itself.
+func (c *client) pollState(ctx context.Context, p server.Paths, info proto.SessionInfo) {
+	var ctl *server.Client
+	defer func() {
+		if ctl != nil {
+			ctl.Close()
+		}
+	}()
+	blocked := map[string]bool{}
+	first := true
+	tick := time.NewTicker(statePoll)
+	defer tick.Stop()
+	for {
+		if ctl == nil {
+			ctl, _ = server.Connect(p, false)
+		}
+		var res proto.SessionListResult
+		if ctl != nil {
+			if err := ctl.Call(proto.MethodSessionList, nil, &res); err != nil {
+				ctl.Close()
+				ctl = nil
+			}
+		}
+		ring := false
+		for _, s := range res.Sessions {
+			if s.ID == info.ID {
+				info = s
+			}
+			if s.State == "blocked" && !blocked[s.ID] && !first {
+				ring = true
+			}
+			blocked[s.ID] = s.State == "blocked"
+		}
+		first = false
+		if c.lock() {
+			c.r.SetStatus(statusLine(info, c.detach, c.cols))
+			c.bell = c.bell || ring
+			c.mu.Unlock()
+			c.poke()
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-c.end:
+			return
+		case <-tick.C:
+		}
+	}
 }

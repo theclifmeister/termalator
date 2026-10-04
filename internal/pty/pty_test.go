@@ -3,6 +3,7 @@ package pty
 import (
 	"bytes"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -44,5 +45,18 @@ func TestProcArgs(t *testing.T) {
 	}
 	if len(argv) != 2 || argv[0] != "/bin/sleep" || argv[1] != "5" {
 		t.Fatalf("argv %q", argv)
+	}
+}
+
+func TestParentPID(t *testing.T) {
+	cmd := exec.Command("/bin/sleep", "5")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer cmd.Wait()
+	defer cmd.Process.Kill()
+	got, err := ParentPID(cmd.Process.Pid)
+	if err != nil || got != os.Getpid() {
+		t.Fatalf("ParentPID = %d, %v; want %d", got, err, os.Getpid())
 	}
 }

@@ -275,3 +275,17 @@ type HookEventParams struct {
 type HookEventResult struct {
 	Stdout string `json:"stdout,omitempty"`
 }
+
+// MethodCallerWho asks the server who the calling process is (M4,
+// docs/SPEC.md §11.1): the server walks the peer pid's ancestors to a
+// hosted session.
+const MethodCallerWho = "caller.who"
+
+// CallerInfo is the result of caller.who. Kind is "human", "coordinator"
+// or "thread"; Session is the hosted session the caller descends from.
+type CallerInfo struct {
+	Kind    string `json:"kind"`
+	Session string `json:"session,omitempty"`
+	Project string `json:"project,omitempty"`
+	Thread  string `json:"thread,omitempty"`
+}

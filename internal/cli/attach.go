@@ -71,25 +71,9 @@ func attachCmd(e *Env, args []string) int {
 	}
 	c.Close()
 
-	logger := log.New(io.Discard, "", 0)
-	if path := e.Getenv(attachLogEnv); path != "" {
-		if f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
-			defer f.Close()
-			logger = log.New(f, fmt.Sprintf("attach %s pid %d: ", id, os.Getpid()), log.Lmicroseconds)
-		}
-	}
-	res, err := tui.Attach(tui.Options{Paths: p, Session: id, In: os.Stdin, Out: os.Stdout, Log: logger})
-	var verr *proto.MismatchError
-	if errors.As(err, &verr) && verr.ReExec && e.Getenv(reexecEnv) == "" {
-		// The snapshot format is only stable within one build: become the
-		// server's binary and attach again (docs/SPEC.md §3.3).
-		logger.Printf("re-exec %s: %v", verr.Bin, err)
-		argv := append([]string{verr.Bin, "attach"}, id)
-		err = syscall.Exec(verr.Bin, argv, append(os.Environ(), reexecEnv+"=1"))
-		return e.srvFail("attach", fmt.Errorf("re-exec %s: %w", verr.Bin, err))
-	}
-	if err != nil {
-		return e.srvFail("attach", err)
+	res, code := e.attach(p, id, false, []string{"attach", id})
+	if code != ExitOK {
+		return code
 	}
 	if res.Detached {
 		fmt.Fprintf(e.Stdout, "[%s from %s]\n", res.Reason, id)
@@ -97,6 +81,33 @@ func attachCmd(e *Env, args []string) int {
 	}
 	fmt.Fprintf(e.Stdout, "[%s: %s]\n", id, res.Reason)
 	return ExitOK
+}
+
+// attach runs the attach view on this terminal until the user detaches
+// or the session ends. On a build mismatch it re-execs the server's
+// binary with args (docs/SPEC.md §3.3) and doesn't return.
+func (e *Env) attach(p server.Paths, id string, statusBar bool, args []string) (tui.Result, int) {
+	logger := log.New(io.Discard, "", 0)
+	if path := e.Getenv(attachLogEnv); path != "" {
+		if f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
+			defer f.Close()
+			logger = log.New(f, fmt.Sprintf("attach %s pid %d: ", id, os.Getpid()), log.Lmicroseconds)
+		}
+	}
+	res, err := tui.Attach(tui.Options{Paths: p, Session: id, In: os.Stdin, Out: os.Stdout, Log: logger, StatusBar: statusBar})
+	var verr *proto.MismatchError
+	if errors.As(err, &verr) && verr.ReExec && e.Getenv(reexecEnv) == "" {
+		// The snapshot format is only stable within one build: become the
+		// server's binary and attach again.
+		logger.Printf("re-exec %s: %v", verr.Bin, err)
+		argv := append([]string{verr.Bin}, args...)
+		err = syscall.Exec(verr.Bin, argv, append(os.Environ(), reexecEnv+"=1"))
+		return res, e.srvFail("attach", fmt.Errorf("re-exec %s: %w", verr.Bin, err))
+	}
+	if err != nil {
+		return res, e.srvFail("attach", err)
+	}
+	return res, ExitOK
 }
 
 // newest returns the id of the most recently created session.

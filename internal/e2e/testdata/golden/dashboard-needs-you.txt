@@ -1,0 +1,23 @@
+ termalator                                                                    server ok · 1 session
+ NEEDS YOU ─────────────────────────────────────────────────────────────────────────────────────────
+ ? demo         T1 Write the README            review
+ PROJECTS ──────────────────────────────────────────────────────────────────────────────────────────
+  demo         coordinator                    —         enter starts the coordinator
+    tasks: 1 needs you · 1 in motion · 0 on deck
+ SESSIONS ──────────────────────────────────────────────────────────────────────────────────────────
+  <session>          /bin/sh                        running   <duration>  /
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ enter attach · s shell · c claude · n project · t tasks · d done · p projects · ? help · q quit

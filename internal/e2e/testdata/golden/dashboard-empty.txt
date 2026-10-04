@@ -1,0 +1,23 @@
+ termalator                                                                   server ok · 0 sessions
+ PROJECTS ──────────────────────────────────────────────────────────────────────────────────────────
+  no projects; n creates one
+ SESSIONS ──────────────────────────────────────────────────────────────────────────────────────────
+  no sessions; s starts a shell, c an agent
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ enter attach · s shell · c claude · n project · t tasks · d done · p projects · ? help · q quit

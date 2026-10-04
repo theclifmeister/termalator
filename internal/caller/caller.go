@@ -69,3 +69,25 @@ func FromLookup(getenv func(string) string) Caller {
 	}
 	return Caller{Kind: Human}
 }
+
+// rank orders kinds by how much they may do: the narrower, the higher.
+func rank(k Kind) int {
+	switch k {
+	case Thread:
+		return 2
+	case Coordinator:
+		return 1
+	}
+	return 0
+}
+
+// Narrower returns whichever of a and b has fewer rights; b wins a tie.
+// The environment's view (a, §3.4) and the server's (b, from the peer
+// pid, §11.1) are combined this way, so neither unsetting the variables
+// nor a process that left its session's tree widens an agent's rights.
+func Narrower(a, b Caller) Caller {
+	if rank(b.Kind) >= rank(a.Kind) {
+		return b
+	}
+	return a
+}

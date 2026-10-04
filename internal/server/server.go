@@ -60,6 +60,7 @@ type Server struct {
 	mu       sync.Mutex
 	sessions map[string]*session.Session
 	records  map[string]SessionRecord
+	blocked  map[string]bool // sessions whose agent is blocked, for notifications
 	nextID   int
 	stopping bool
 	prevShut string
@@ -126,6 +127,7 @@ func Run(ctx context.Context, opts Options) error {
 		stopReq:  make(chan struct{}),
 		sessions: map[string]*session.Session{},
 		records:  map[string]SessionRecord{},
+		blocked:  map[string]bool{},
 		nextID:   1,
 		conns:    map[net.Conn]struct{}{},
 	}
@@ -324,7 +326,13 @@ func (s *Server) serveControl(c net.Conn, br *bufio.Reader, peerPID int) {
 		if err := readJSONLine(br, &req); err != nil {
 			return
 		}
-		result, perr := s.dispatch(req)
+		var result any
+		var perr *proto.Error
+		if req.Method == proto.MethodCallerWho {
+			result = s.whoIs(peerPID)
+		} else {
+			result, perr = s.dispatch(req)
+		}
 		resp := proto.Response{ID: req.ID, Error: perr}
 		if perr == nil {
 			b, err := json.Marshal(result)
@@ -596,6 +604,7 @@ func (s *Server) sessionExited(sess *session.Session) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.sessions, sess.ID())
+	delete(s.blocked, sess.ID())
 	if s.stopping {
 		return // keep the record: shutdown writes it for resume
 	}

@@ -29,6 +29,9 @@ type Env struct {
 	Getenv func(string) string
 	Cwd    string
 	Caller caller.Caller
+	// Identify asks the server who the caller is (§11.1); ok is false
+	// when no server answers. Nil skips the check.
+	Identify func() (c caller.Caller, ok bool)
 }
 
 // OSEnv is the process's real environment.
@@ -37,6 +40,7 @@ func OSEnv() *Env {
 	return &Env{
 		Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr,
 		Getenv: os.Getenv, Cwd: cwd, Caller: caller.FromEnv(),
+		Identify: identifyByServer,
 	}
 }
 
@@ -55,14 +59,23 @@ var commands = map[string]command{
 	"skill":   runSkill,
 }
 
+// checked are the commands whose rights depend on the caller: for them
+// the server's view of the caller is combined with the environment's.
+var checked = map[string]bool{"project": true, "task": true, "inbox": true}
+
 // Run dispatches args (without the program name).
 func (e *Env) Run(args []string) (code int, handled bool) {
 	if len(args) == 0 {
-		return 0, false
+		return e.dashboardCmd(), true
 	}
 	cmd, ok := commands[args[0]]
 	if !ok {
 		return 0, false
+	}
+	if checked[args[0]] && e.Identify != nil {
+		if c, ok := e.Identify(); ok {
+			e.Caller = caller.Narrower(e.Caller, c)
+		}
 	}
 	return e.report("tm "+args[0], cmd(e, args[1:])), true
 }

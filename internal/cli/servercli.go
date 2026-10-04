@@ -12,6 +12,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/theclifmeister/termalator/internal/caller"
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/server"
 )
@@ -91,4 +92,26 @@ func termSize() (cols, rows uint16, ok bool) {
 		}
 	}
 	return 0, 0, false
+}
+
+// identifyByServer asks a running server who this process is, from its
+// pid (docs/SPEC.md §11.1). It never starts a server: read-only task
+// commands work without one, and then only the environment decides.
+func identifyByServer() (caller.Caller, bool) {
+	c, _, err := connect(false)
+	if err != nil {
+		return caller.Caller{}, false
+	}
+	defer c.Close()
+	var info proto.CallerInfo
+	if err := c.Call(proto.MethodCallerWho, nil, &info); err != nil {
+		return caller.Caller{}, false
+	}
+	switch caller.Kind(info.Kind) {
+	case caller.Coordinator:
+		return caller.Caller{Kind: caller.Coordinator, Project: info.Project}, true
+	case caller.Thread:
+		return caller.Caller{Kind: caller.Thread, Project: info.Project, Thread: info.Thread}, true
+	}
+	return caller.Caller{Kind: caller.Human}, true
 }

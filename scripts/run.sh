@@ -1,73 +1,31 @@
 #!/bin/sh
-# Try termalator in one command (`make run`): start the background server,
-# start a session in it, and show that session.
+# Try termalator in one command (`make run`): start the background server
+# and open the dashboard.
 #
-#   scripts/run.sh            a Claude Code session in the current directory
-#                             (your shell if claude isn't installed)
-#   scripts/run.sh top        a session running `top`
+#   scripts/run.sh            the dashboard: c starts Claude Code in a
+#                             directory you choose, s a shell
+#   scripts/run.sh top        also start a session running `top` first
 #
-# Milestones change two steps here:
-#   - START (M3, done): start an agent session with `tm session start --agent claude`.
-#   - SHOW  (M2, done): attach to the session; Ctrl+\ detaches.
+# Without a terminal (CI, a pipe) it lists the sessions instead.
 set -eu
 TM=${TM:-tm}
 
 "$TM" server start
 
-# START: the session. Without arguments it starts Claude Code, or your
-# login shell when claude isn't on PATH.
-agent=
 if [ $# -gt 0 ]; then
 	id=$("$TM" session start -- "$@")
-elif command -v claude >/dev/null 2>&1; then
-	id=$("$TM" session start --agent claude)
-	agent=claude
-else
-	echo "claude is not on PATH; starting your shell instead"
-	id=$("$TM" session start)
-fi
-echo "started session $id"
-
-if [ -n "$agent" ]; then
-	# The agent's state: idle once it's ready, blocked/trust if Claude asks
-	# whether to trust this folder.
-	state=$("$TM" session wait "$id" --state idle,blocked --timeout 30s || true)
-	echo "$agent is $state"
-else
-	# Wait for the program to draw something (a shell prompt, say).
-	i=0
-	while [ $i -lt 50 ] && [ -z "$("$TM" session read "$id" | tr -d '[:space:]')" ]; do
-		sleep 0.1
-		i=$((i + 1))
-	done
-	if [ $# -eq 0 ]; then
-		"$TM" session keys "$id" --enter 'echo "hello from termalator session $TERMALATOR_SESSION"'
-		i=0
-		while [ $i -lt 50 ] && ! "$TM" session read "$id" | grep -q '^hello from termalator session'; do
-			sleep 0.1
-			i=$((i + 1))
-		done
-	fi
+	echo "started session $id"
 fi
 
-# SHOW: attach to the session in this terminal. Without a terminal (CI,
-# a pipe), print the server's view of the screen instead.
 if [ -t 0 ] && [ -t 1 ]; then
-	echo "attaching to $id; detach with Ctrl+\\"
-	"$TM" attach "$id"
+	"$TM"
 else
-	echo "──── tm session read $id ────"
-	"$TM" session read "$id"
-	echo "─────────────────────────────"
+	"$TM" session list
 fi
 cat <<HINT
-$id keeps running in the background server, even if you close this terminal.
-  $TM attach $id                         attach again (Ctrl+\\ detaches)
+Sessions keep running in the background server, even if you close this terminal.
+  $TM                                    the dashboard again (enter attaches, Ctrl+\\ comes back)
   $TM session list                       list sessions (with the agent's state)
-  $TM session prompt $id 'say hi'      prompt the agent (pasted once it is idle)
-  $TM agent explain $id                  which signals decided the agent's state
-  $TM session keys $id --enter 'ls'     type into it
-  $TM session read $id                   show its screen as text
-  $TM session stop $id                   stop it
+  $TM project new NAME                   a project; $TM project open SLUG starts its coordinator
   $TM server stop                        stop the server and every session
 HINT

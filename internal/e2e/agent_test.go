@@ -7,7 +7,6 @@ package e2e
 import (
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -431,8 +430,9 @@ func TestAgentCommands(t *testing.T) {
 	}
 }
 
-// TestSmokeMakeRun: `make run` (scripts/run.sh) starts a Claude session
-// when claude is on PATH (here the fake behind a shim).
+// TestSmokeMakeRun: `make run` (scripts/run.sh) opens the dashboard,
+// where c starts a Claude session in the current directory (here the
+// fake behind a claude shim on PATH) and attaches to it.
 func TestSmokeMakeRun(t *testing.T) {
 	env := New(t)
 	env.FakeClaude()
@@ -444,19 +444,24 @@ func TestSmokeMakeRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(filepath.Join(root, "scripts", "run.sh"))
-	cmd.Dir = dir
-	cmd.Env = append(append([]string{}, env.Vars...), "PATH="+shim+":"+filepath.Dir(env.Bin)+":/usr/bin:/bin")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("run.sh: %v\n%s", err, out)
-	}
-	if !strings.Contains(string(out), "claude is idle") || !strings.Contains(string(out), "Fake Claude Code") {
-		t.Fatalf("run.sh output:\n%s", out)
-	}
+	env.Vars = append(env.Vars, "PATH="+shim+":"+filepath.Dir(env.Bin)+":/usr/bin:/bin")
+	w := env.WindowCmd(100, 30, "/bin/sh", "-c", "cd "+dir+" && exec "+filepath.Join(root, "scripts", "run.sh"))
+	w.WaitFor("no sessions; s starts a shell, c an agent", wait)
+	w.Type("c")
+	w.WaitFor("claude session in directory: /", wait)
+	w.Key(Enter)
+	w.WaitFor("Fake Claude Code", agentWait)
+	w.WaitUntil("idle in the status bar", agentWait, func(sc string) bool { return lastLine(sc, "claude · idle") })
 	for _, s := range env.Sessions() {
 		env.track(s.PID, "session "+s.ID)
+		if real, _ := filepath.EvalSymlinks(dir); s.Cwd != dir && s.Cwd != real {
+			t.Errorf("session cwd %s, want %s", s.Cwd, dir)
+		}
 	}
+	w.Key(CtrlBackslash)
+	w.WaitFor("SESSIONS", wait)
+	w.Type("q")
+	w.WaitExit(wait)
 }
 
 // agentWait bounds waits in agent scenarios. Every hook the fake fires
