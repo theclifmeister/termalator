@@ -82,8 +82,8 @@ var checked = map[string]bool{"project": true, "task": true, "inbox": true}
 
 // Run dispatches args (without the program name).
 func (e *Env) Run(args []string) (code int, handled bool) {
-	if len(args) == 0 {
-		return e.dashboardCmd(), true
+	if len(args) == 0 || len(args) == 1 && args[0] == "--own" {
+		return e.dashboardCmd(len(args) == 1), true
 	}
 	cmd, ok := commands[args[0]]
 	if !ok {

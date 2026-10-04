@@ -4,20 +4,24 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/theclifmeister/termalator/internal/caller"
 	"github.com/theclifmeister/termalator/internal/home"
 	"github.com/theclifmeister/termalator/internal/project"
+	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/tui"
+	"github.com/theclifmeister/termalator/internal/view"
 )
 
 // defaultAgent runs coordinators and the dashboard's c key.
 const defaultAgent = "claude"
 
-// dashboardCmd is `tm` with no arguments: the dashboard, and the attach
-// view in between (docs/SPEC.md §4). The prefix (Ctrl+B) then d in a
-// session comes back here.
-func (e *Env) dashboardCmd() int {
+// dashboardCmd is `tm` with no arguments, or `tm --own`: a console of
+// the server-owned view (docs/SPEC.md §3.3, §4), view main unless own.
+// It shows the view's screen, the dashboard or the attached layout, and
+// follows it when this console or another changes it.
+func (e *Env) dashboardCmd(own bool) int {
 	if !isTTY(os.Stdin) || !isTTY(os.Stdout) {
 		fmt.Fprintln(e.Stderr, "tm: the dashboard needs a terminal; see tm session list")
 		return ExitUsage
@@ -42,28 +46,49 @@ func (e *Env) dashboardCmd() int {
 	if d, err := home.Dir(); err == nil {
 		uiFile = filepath.Join(d, "ui.json")
 	}
+	cols, rows, ok := termSize()
+	if !ok {
+		cols, rows = 80, 24
+	}
+	side := tui.LoadLayout(uiFile).Sidebar
+	vc, err := tui.JoinView(p, proto.ViewSubscribeParams{Own: own, Cols: cols, Rows: rows, Sidebar: &side})
+	if err != nil {
+		return e.srvFail("dashboard", err)
+	}
+	defer vc.Close()
+	args := []string{}
+	if own {
+		args = []string{"--own"}
+	}
 	var st tui.DashState
+	attach := vc.View().Mode == view.ModeLayout
 	for {
+		if attach {
+			ares, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile}, args)
+			if code != ExitOK {
+				return code
+			}
+			if ares.Quit {
+				return ExitOK
+			}
+			st.Message = strings.TrimPrefix(ares.Session+": "+ares.Reason, ": ")
+			st.Then = ares.Then // prefix then p, ], [, … in the session
+		}
 		res, err := tui.Dashboard(tui.DashOptions{Source: src, In: os.Stdin, Out: os.Stdout,
-			Cwd: e.Cwd, State: st, UIFile: uiFile, Prefix: tui.ConfigPrefix()})
+			Cwd: e.Cwd, State: st, UIFile: uiFile, Prefix: tui.ConfigPrefix(), View: vc})
 		if err != nil {
 			return e.srvFail("dashboard", err)
 		}
 		if res.Attach == "" {
 			return ExitOK
 		}
-		st = res.State
-		ares, code := e.attach(p, res.Attach, true, &tui.SidebarOptions{UIFile: uiFile, Current: st.Current}, []string{})
-		if code != ExitOK {
-			return code
-		}
-		st.Message = res.Attach + ": " + ares.Reason
-		st.Then = ares.Then // prefix then p, ], [, … in the session
+		attach, st = true, tui.DashState{}
 	}
 }
 
 // openCmd is `tm project open <slug>`: start or attach the project's
-// coordinator. Without a terminal it prints the session id.
+// coordinator, in a bare view of this console's own. Without a terminal
+// it prints the session id.
 func (e *Env) openCmd(slug, agentName string) error {
 	if _, err := project.Open(slug); err != nil {
 		return err
@@ -85,7 +110,12 @@ func (e *Env) openCmd(slug, agentName string) error {
 		fmt.Fprintln(e.Stdout, id)
 		return nil
 	}
-	res, code := e.attach(p, id, true, nil, []string{"project", "open", slug, "--agent", agentName})
+	vc, err := tui.JoinView(p, proto.ViewSubscribeParams{Own: true, Bare: true, StatusBar: true, Session: id, Cols: cols, Rows: rows})
+	if err != nil {
+		return err
+	}
+	defer vc.Close()
+	res, code := e.attach(p, vc, nil, []string{"project", "open", slug, "--agent", agentName})
 	if code != ExitOK {
 		return &exitError{code}
 	}

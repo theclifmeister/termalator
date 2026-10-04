@@ -2,6 +2,7 @@ package tui
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -11,7 +12,9 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/tasks"
+	"github.com/theclifmeister/termalator/internal/view"
 )
 
 // The dashboard (docs/SPEC.md §4): NEEDS YOU across projects, then each
@@ -55,10 +58,16 @@ type DashOptions struct {
 	UIFile string
 	// Prefix is the prefix key ("ctrl+b"); empty is the default.
 	Prefix string
+	// View is the server-owned view the dashboard is a screen of
+	// (docs/SPEC.md §3.3): its selection, current project and sidebar are
+	// the view's, and the dashboard ends when the view shows sessions,
+	// from this console or another. Nil keeps them here (tests).
+	View *ViewConn
 }
 
 // DashResult says why the dashboard ended: Attach names a session to
-// attach to; empty means the user quit.
+// attach to (with a View: the view shows sessions now); empty means the
+// user quit.
 type DashResult struct {
 	Attach string
 	State  DashState
@@ -67,6 +76,10 @@ type DashResult struct {
 // Dashboard runs the dashboard until the user quits or picks a session.
 func Dashboard(opts DashOptions) (DashResult, error) {
 	m := newDash(opts)
+	defer close(m.done)
+	if m.stopWatch != nil {
+		defer m.stopWatch()
+	}
 	popts := []tea.ProgramOption{tea.WithInput(opts.In), tea.WithOutput(opts.Out)}
 	if opts.Width > 0 && opts.Height > 0 {
 		popts = append(popts, tea.WithWindowSize(opts.Width, opts.Height))
@@ -108,6 +121,19 @@ type dash struct {
 	alerts uint64
 	seen   bool // the first poll arrived (no bell for old alerts)
 
+	// The view (nil without one). viewSeq is its version when the
+	// dashboard opened; selPending counts this console's selections on
+	// their way, which the view's own doesn't overwrite meanwhile.
+	view       *ViewConn
+	viewSeq    uint64
+	viewSide   SidebarLayout // the view's sidebar, as last sent or seen
+	watch      <-chan struct{}
+	stopWatch  func()
+	selPending int
+	userSel    bool // the user moved the selection: tell the view
+	sized      bool // the first window size came
+	done       chan struct{}
+
 	result DashResult
 }
 
@@ -119,7 +145,15 @@ func newDash(o DashOptions) *dash {
 	m := &dash{src: o.Source, cwd: o.Cwd, h: h,
 		sel: o.State.Selected, current: o.State.Current, msg: o.State.Message,
 		layout: LoadLayout(o.UIFile), uiFile: o.UIFile,
-		prefix: cmp.Or(o.Prefix, DefaultPrefixKey), then: o.State.Then}
+		prefix: cmp.Or(o.Prefix, DefaultPrefixKey), then: o.State.Then, done: make(chan struct{})}
+	if vc := o.View; vc != nil {
+		v := vc.View()
+		m.view, m.viewSeq = vc, v.Seq
+		m.sel = cmp.Or(v.Selected, m.sel)
+		m.current = v.Current
+		m.layout.Sidebar, m.viewSide = v.Sidebar, v.Sidebar
+		m.watch, m.stopWatch = vc.Watch()
+	}
 	m.setWidth(w)
 	return m
 }
@@ -132,10 +166,18 @@ func (m *dash) setWidth(w int) {
 }
 
 // sideW is the sidebar's width in this window.
-func (m *dash) sideW() int { return m.layout.Sidebar.cols(m.winW) }
+func (m *dash) sideW() int { return m.layout.Sidebar.Cols(m.winW) }
 
 type dataMsg Data
 type tickMsg struct{}
+
+// viewMsg: the view has a new version. viewDoneMsg: a call on it
+// answered.
+type viewMsg struct{}
+type viewDoneMsg struct {
+	sel bool // a selection
+	err error
+}
 type boardMsg struct {
 	slug  string
 	board *tasks.Board
@@ -165,13 +207,97 @@ func (m *dash) loadBoard(slug string) tea.Cmd {
 	}
 }
 
-func (m *dash) Init() tea.Cmd { return m.load() }
+func (m *dash) Init() tea.Cmd { return tea.Batch(m.load(), m.waitView()) }
 
+// waitView waits for the view's next version.
+func (m *dash) waitView() tea.Cmd {
+	if m.view == nil {
+		return nil
+	}
+	watch, done := m.watch, m.done
+	return func() tea.Msg {
+		select {
+		case <-watch:
+			return viewMsg{}
+		case <-done:
+			return nil
+		}
+	}
+}
+
+// call runs a view action in the background.
+func (m *dash) call(method string, p proto.ViewParams) tea.Cmd {
+	vc, sel := m.view, method == proto.MethodViewSelect
+	if sel {
+		m.selPending++
+	}
+	return func() tea.Msg {
+		_, err := vc.Do(method, p)
+		return viewDoneMsg{sel: sel, err: err}
+	}
+}
+
+// fromView takes the view's new version: its selection (unless one of
+// this console's is on its way), current project and sidebar. When it
+// shows sessions now, from here or another console, the dashboard ends.
+func (m *dash) fromView() tea.Cmd {
+	v := m.view.View()
+	if v.Mode == view.ModeLayout && v.Root != nil && v.Seq != m.viewSeq {
+		m.result.Attach = cmp.Or(v.Focus, "view")
+		return tea.Quit
+	}
+	if m.selPending == 0 && v.Selected != "" {
+		m.sel = v.Selected
+	}
+	m.current = v.Current
+	if !m.sideDrag && v.Sidebar != m.viewSide {
+		m.layout.Sidebar, m.viewSide = v.Sidebar, v.Sidebar
+		m.setWidth(m.winW)
+	}
+	return m.waitView()
+}
+
+// Update runs update, then tells the view what this console changed in
+// it: the selection and the sidebar.
 func (m *dash) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	_, cmd := m.update(msg)
+	if m.view == nil {
+		return m, cmd
+	}
+	cmds := []tea.Cmd{cmd}
+	if m.userSel {
+		m.userSel = false
+		cmds = append(cmds, m.call(proto.MethodViewSelect, proto.ViewParams{Key: m.sel}))
+	}
+	if l := m.layout.Sidebar; !m.sideDrag && l != m.viewSide {
+		m.viewSide = l
+		cmds = append(cmds, m.call(proto.MethodViewSidebar, proto.ViewParams{Sidebar: &l}))
+	}
+	return m, tea.Batch(cmds...)
+}
+
+func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.h = msg.Height
 		m.setWidth(msg.Width)
+		if m.view != nil {
+			// The first size is the window as it was; later ones are the
+			// user resizing it (docs/SPEC.md §3.3).
+			resize := m.sized
+			m.sized = true
+			return m, m.call(proto.MethodViewSize, proto.ViewParams{Cols: uint16(msg.Width), Rows: uint16(msg.Height), Resize: resize})
+		}
+		return m, nil
+	case viewMsg:
+		return m, m.fromView()
+	case viewDoneMsg:
+		if msg.sel {
+			m.selPending--
+		}
+		if msg.err != nil && !errors.Is(msg.err, ErrViewDown) {
+			m.fail(msg.err)
+		}
 		return m, nil
 	case dataMsg:
 		return m, m.setData(Data(msg))
@@ -196,14 +322,25 @@ func (m *dash) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.load()
 		}
 		if msg.sel != "" {
-			m.sel = msg.sel
+			m.sel, m.userSel = msg.sel, true
 		}
 		m.msg = msg.msg
 		if msg.attach != "" {
-			m.result.Attach = msg.attach
 			if msg.current != "" {
 				m.current = msg.current
 			}
+			if m.view != nil {
+				// The view shows it, on every console; the dashboard ends
+				// when that version comes.
+				id, project := msg.attach, msg.current
+				vc := m.view
+				m.busy = true
+				return m, func() tea.Msg {
+					_, err := vc.Do(proto.MethodViewAttach, proto.ViewParams{Session: id, Project: project})
+					return actionMsg{err: err}
+				}
+			}
+			m.result.Attach = msg.attach
 			return m, tea.Quit
 		}
 		cmds := []tea.Cmd{m.load()}
@@ -234,7 +371,7 @@ func (m *dash) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		x := msg.Mouse().X
 		switch {
 		case m.sideDrag:
-			m.layout.Sidebar = m.layout.Sidebar.dragTo(x, m.winW)
+			m.layout.Sidebar = m.layout.Sidebar.DragTo(x, m.winW)
 			m.setWidth(m.winW)
 		case m.dragging:
 			m.layout.Split = clampSplit(float64(x-m.sideW()) / float64(max(m.w, 1)))
@@ -299,7 +436,7 @@ func (m *dash) click(mo tea.Mouse) {
 	_, keys, sel := m.listLines(lw, !split)
 	i := scrollTop(sel, m.bodyRows(), len(keys)) + mo.Y - 1
 	if mo.Y >= 1 && mo.Y <= m.bodyRows() && i < len(keys) && keys[i] != "" {
-		m.sel = keys[i]
+		m.sel, m.userSel = keys[i], true
 	}
 }
 
@@ -364,7 +501,7 @@ func (m *dash) move(d int) {
 	i := m.selIndex()
 	for j := i + d; j >= 0 && j < len(m.rows); j += d {
 		if m.rows[j].selectable() {
-			m.sel = m.rows[j].key
+			m.sel, m.userSel = m.rows[j].key, true
 			return
 		}
 	}

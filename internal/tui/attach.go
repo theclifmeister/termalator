@@ -21,28 +21,37 @@ import (
 	"github.com/theclifmeister/termalator/internal/emu"
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/server"
+	"github.com/theclifmeister/termalator/internal/view"
 )
 
-// The attach client (docs/SPEC.md §3.3). For each pane it keeps a mirror
-// of the session's emulator: restored from the server's snapshot, then
-// fed exactly the bytes and resizes the server's emulator gets, in the
-// same order. It draws the outer terminal from the mirrors and encodes
-// input against the focused mirror's modes, so neither needs a round
-// trip.
+// The attach client (docs/SPEC.md §3.3). It draws a server-owned view's
+// layout: one pane per session in the view's split tree, each with its
+// own attach connection and a mirror of the session's emulator, restored
+// from the server's snapshot, then fed exactly the bytes and resizes the
+// server's emulator gets, in the same order. It draws the outer terminal
+// from the mirrors and encodes input against the focused mirror's modes,
+// so neither needs a round trip.
 //
-// A window starts with one pane, the session attached to. The prefix
-// then % or " splits the focused pane and starts a shell beside or below
-// it (panes.go holds the layout); each pane has its own connection,
-// mirror and renderer.
+// The layout is the view's, not the client's: the prefix then % splits,
+// arrows focus and so on are view.* calls, and every console joined to
+// the view redraws from the version that comes back. The panes'
+// rectangles are laid out at the view's size, the window of its latest
+// client; a smaller window shows the same frame cropped, a larger one
+// padded. What stays here is this console's own: its window, the outer
+// terminal's modes, the local scrollback, the prefix and the takeovers.
 //
 // A thread's pane is watch-only: the user talks to coordinators, and
 // threads to their coordinator (docs/SPEC.md §4). Keys, paste and the
 // mouse don't reach it until the user takes it over with the prefix then
-// u and confirms; the thread's coordinator is then told.
+// u and confirms; the thread's coordinator is then told. A takeover is
+// this console's, for this attach.
 
 const (
 	frameInterval = time.Second / 120 // render cap
 	maxHold       = time.Second       // an app that never ends a 2026 hold is drawn anyway
+	// endWait is how long the last pane's session may be gone before the
+	// view says so; then the attach ends anyway.
+	endWait = 3 * time.Second
 )
 
 // Outer terminal setup: alternate screen, bracketed paste, kitty keyboard
@@ -57,35 +66,27 @@ const (
 // Options configure Attach.
 type Options struct {
 	Paths server.Paths
-	// Session is the session to attach to.
-	Session string
+	// View is the view drawn, in its layout mode. A bare view (tm attach,
+	// tm project open) has no dashboard to go back to: detaching leaves.
+	View *ViewConn
 	// In and Out are the outer terminal; In must be a TTY.
 	In, Out *os.File
 	// Log receives diagnostics (digest checks, key encodings); nil
 	// discards them.
 	Log *log.Logger
-	// StatusBar draws the status bar (docs/SPEC.md §4) on the window's
-	// last row, kept current by polling the server; the pane is shown in
-	// the rows above it. It also means there is a dashboard to go back
-	// to. A thread's pane gets the status bar anyway, to show that it is
-	// watch-only.
-	StatusBar bool
 	// Takeover tells a thread's coordinator that the user took over the
 	// thread's pane; nil tells no one.
 	Takeover func(s proto.SessionInfo) error
-	// Sidebar shows the projects sidebar left of the panes (docs/SPEC.md
-	// §4); nil shows none (tm attach). It needs StatusBar.
+	// Sidebar configures the projects sidebar, which every view but a
+	// bare one shows (docs/SPEC.md §4).
 	Sidebar *SidebarOptions
 }
 
 // SidebarOptions configure the attach view's projects sidebar.
 type SidebarOptions struct {
-	// UIFile is ui.json, where its width is kept; empty keeps it in
-	// memory only.
+	// UIFile is ui.json, where its width is kept as the default of new
+	// views; empty keeps it nowhere.
 	UIFile string
-	// Current is the project the dashboard was on, highlighted while the
-	// focused pane belongs to none.
-	Current string
 }
 
 // Result says how an attach ended.
@@ -94,17 +95,23 @@ type Result struct {
 	Reason string
 	// Detached is true when the session is still running.
 	Detached bool
+	// Session is the session that had the focus.
+	Session string
 	// Then is the dashboard key to run once back on the dashboard: the
 	// key typed after the prefix (p, ], [, i, t, , or ?), or "".
 	Then string
+	// Quit is set when the console itself went away (its terminal closed,
+	// a signal): the client exits rather than show the dashboard.
+	Quit bool
 }
 
 // ErrNotTTY is returned when stdin is not a terminal.
 var ErrNotTTY = errors.New("tm attach needs a terminal")
 
-// Attach attaches to a session and runs until the user detaches, the
-// last pane's session ends or the outer terminal goes away. The outer
-// terminal is restored on every path out, panics included.
+// Attach draws the view until it leaves its layout mode (detached, the
+// last pane closed or ended), the user detaches from a bare view or the
+// outer terminal goes away. The outer terminal is restored on every path
+// out, panics included.
 func Attach(opts Options) (res Result, err error) {
 	if opts.Log == nil {
 		opts.Log = log.New(io.Discard, "", 0)
@@ -126,24 +133,27 @@ func Attach(opts Options) (res Result, err error) {
 		return res, err
 	}
 	defer c.close()
-	c.prefix, c.statusBar, c.dashboard, c.takeover = prefix, opts.StatusBar, opts.StatusBar, opts.Takeover
-	if so := opts.Sidebar; so != nil && opts.StatusBar {
-		c.side = &sidebar{layout: LoadLayout(so.UIFile).Sidebar, uiFile: so.UIFile, current: so.Current,
-			items: sideItems(loadSideProjects(), nil)}
+	vc := opts.View
+	v := vc.View()
+	c.vc, c.me = vc, vc.Client()
+	c.prefix, c.takeover = prefix, opts.Takeover
+	c.bare, c.dashboard = v.Bare, !v.Bare
+	if !v.Bare {
+		so := opts.Sidebar
+		if so == nil {
+			so = &SidebarOptions{}
+		}
+		c.side = &sidebar{uiFile: so.UIFile, items: sideItems(loadSideProjects(), nil)}
 	}
 	c.setWindow(cols, rows)
-	p, err := c.open(opts.Session, c.paneCols, c.paneRows)
-	if err != nil {
+	watch, stopWatch := vc.Watch()
+	defer stopWatch()
+	if err := c.sync(v); err != nil {
 		return res, err
 	}
-	if p.watch && !c.statusBar {
-		c.statusBar = true // says the pane is watch-only
-		c.setWindow(cols, rows)
+	if c.empty() {
+		return Result{Reason: "no session to show", Detached: true}, nil
 	}
-	c.mu.Lock()
-	c.root, c.focus = &node{leaf: p}, p
-	c.relayout(false) // attaching never resizes the session (§3.3)
-	c.mu.Unlock()
 
 	old, err := term.MakeRaw(fd)
 	if err != nil {
@@ -176,9 +186,9 @@ func Attach(opts Options) (res Result, err error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go c.readLoop(p)
+	go c.viewLoop(watch)
 	go c.inputLoop(ctx, opts.In)
-	if c.statusBar {
+	if c.statusBar || c.side != nil {
 		go c.pollState(ctx)
 	}
 	c.poke() // paint the snapshot now, even if the pane is idle
@@ -200,8 +210,7 @@ type pane struct {
 	scrolled bool // the local viewport is scrolled back
 	watch    bool // a thread's pane, not taken over: no input reaches it
 	info     proto.SessionInfo
-	rect     rect      // where it is in the window (panes.go)
-	asked    [2]uint16 // the size last sent, until the server's RESIZE
+	rect     view.Rect // where it is in this window; empty when cropped away
 	gone     bool      // closed or ended: its goroutines stop
 }
 
@@ -210,15 +219,27 @@ type client struct {
 	paths server.Paths
 	log   *log.Logger
 	enc   *emu.Encoder
+	vc    *ViewConn
+	me    string // this console's id in the view
+	// syncMu serialises sync: the view loop, and actions drawing their
+	// answer at once.
+	syncMu sync.Mutex
 
 	mu       sync.Mutex // guards everything below, and the panes' state
-	root     *node      // the layout
-	focus    *pane      // keys, paste and the cursor go here
-	zoomed   bool       // the focused pane fills the window
-	dividers []divider
+	v        view.View  // the version drawn
+	geo      view.Geometry
+	panes    map[string]*pane
+	focus    *pane // keys, paste and the cursor go here; nil without panes
+	dividers []view.Divider
 	single   bool // one pane shown: its renderer has the window to itself
 	full     bool // the next frame repaints the whole window
 	closed   bool
+	// claimSeq is the view's version when this console last claimed the
+	// size by typing: it claims again only once the view changed.
+	claimSeq uint64
+	claimed  bool
+	// lastReason is why the last pane's session ended, for the result.
+	lastReason string
 
 	prefix      chord
 	pending     bool      // the prefix was typed: the next key is a command
@@ -227,10 +248,11 @@ type client struct {
 	confirm     *pane     // asking whether to take over this watch-only pane
 	takeover    func(proto.SessionInfo) error
 
-	statusBar   bool
+	bare        bool     // the view has no dashboard: detaching leaves
+	statusBar   bool     // the view's chrome has the status bar
 	dashboard   bool     // there is a dashboard to go back to
 	side        *sidebar // the projects sidebar, nil for none
-	sideW       int      // its width in this window, 0 without one
+	sideW       int      // its width, 0 without one
 	cols, rows  int      // the window
 	paneCols    int      // the columns right of the sidebar
 	paneRows    int      // the rows above the status bar
@@ -261,32 +283,36 @@ func newClient(p server.Paths, l *log.Logger) (*client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &client{paths: p, log: l, enc: enc, outer: map[int]bool{},
+	return &client{paths: p, log: l, enc: enc, outer: map[int]bool{}, panes: map[string]*pane{},
 		wake: make(chan struct{}, 1), end: make(chan struct{})}, nil
 }
 
 // setWindow records the window's size. c.mu held, or no other goroutine
 // running.
 func (c *client) setWindow(cols, rows int) {
-	c.cols, c.rows, c.paneRows = cols, rows, rows
+	c.cols, c.rows = cols, rows
+	c.paneCols = max(cols-c.sideW, 1)
+	c.paneRows = rows
 	if c.statusBar {
 		c.paneRows = max(rows-1, 1)
 	}
-	c.sideW = 0
-	if c.side != nil {
-		c.sideW = c.side.layout.cols(cols)
-	}
-	c.paneCols = max(cols-c.sideW, 1)
 }
 
-// open attaches to session id as a new pane of cols×rows, its snapshot
-// loaded. The pane isn't in the layout yet.
-func (c *client) open(id string, cols, rows int) (*pane, error) {
-	conn, info, err := server.Attach(c.paths, proto.AttachParams{Session: id, Cols: uint16(cols), Rows: uint16(rows)})
+// empty says whether no pane is open.
+func (c *client) empty() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.panes) == 0
+}
+
+// open attaches to session id as a new pane, its snapshot loaded. The
+// pane isn't in the window yet.
+func (c *client) open(id string) (*pane, error) {
+	conn, info, err := server.Attach(c.paths, proto.AttachParams{Session: id, Cols: uint16(c.cols), Rows: uint16(c.rows)})
 	if err != nil {
 		return nil, err
 	}
-	r, err := emu.NewRenderer(uint16(cols), uint16(rows))
+	r, err := emu.NewRenderer(uint16(c.cols), uint16(c.rows))
 	if err != nil {
 		conn.Close()
 		return nil, err
@@ -310,13 +336,152 @@ func (c *client) open(id string, cols, rows int) (*pane, error) {
 	return p, nil
 }
 
+// sync makes the window show v: it opens a pane for every session new to
+// the layout, closes those that left it, and lays the window out again.
+// A build mismatch is returned (the client re-execs); a session that
+// can't be attached is skipped with a note in the status bar.
+func (c *client) sync(v view.View) error {
+	c.mu.Lock()
+	have := map[string]bool{}
+	for id := range c.panes {
+		have[id] = true
+	}
+	c.mu.Unlock()
+	var opened []*pane
+	var note string
+	for _, id := range v.Root.Leaves() {
+		if have[id] {
+			continue
+		}
+		p, err := c.open(id)
+		var verr *proto.MismatchError
+		if errors.As(err, &verr) {
+			for _, p := range opened {
+				p.conn.Close()
+			}
+			return err
+		}
+		if err != nil {
+			c.log.Printf("view %s: %s: %v", v.Name, id, err)
+			note = id + ": " + err.Error()
+			continue
+		}
+		opened = append(opened, p)
+	}
+	if !c.lock() || v.Name == c.v.Name && v.Seq < c.v.Seq {
+		// Closed, or a newer version was drawn meanwhile.
+		if !c.closed {
+			c.mu.Unlock()
+		}
+		for _, p := range opened {
+			p.conn.Close()
+			p.r.Close()
+			p.mirror.Close()
+		}
+		return nil
+	}
+	var gone []*pane
+	for id, p := range c.panes {
+		if !v.Root.Has(id) {
+			gone = append(gone, p)
+			delete(c.panes, id)
+			c.free(p)
+		}
+	}
+	for _, p := range opened {
+		c.panes[p.info.ID] = p
+	}
+	if note != "" {
+		c.flash = note
+	}
+	c.v = v
+	c.relayout()
+	c.mu.Unlock()
+	for _, p := range gone {
+		c.send(p, proto.FrameDetach, nil)
+		p.conn.Close()
+	}
+	for _, p := range opened {
+		go c.readLoop(p)
+	}
+	c.poke()
+	return nil
+}
+
+// viewLoop follows the view: each new version is drawn, and the attach
+// ends when the view leaves its layout mode or the server goes away.
+func (c *client) viewLoop(watch <-chan struct{}) {
+	for {
+		select {
+		case <-c.end:
+			return
+		case <-watch:
+		}
+		if !c.vc.Up() {
+			c.finish(Result{Reason: "lost the server"})
+			return
+		}
+		v := c.vc.View()
+		if !c.lock() {
+			return
+		}
+		same := v.Name == c.v.Name && v.Seq == c.v.Seq
+		c.mu.Unlock()
+		if same {
+			continue
+		}
+		if v.Mode != view.ModeLayout || v.Root == nil {
+			c.finish(c.endResult())
+			return
+		}
+		c.syncMu.Lock()
+		err := c.sync(v)
+		c.syncMu.Unlock()
+		if err != nil {
+			c.finish(Result{Reason: err.Error()})
+			return
+		}
+	}
+}
+
+// apply draws v now when it is newer than what the window shows and
+// still a layout; the view loop handles the rest.
+func (c *client) apply(v view.View) {
+	if !c.lock() {
+		return
+	}
+	newer := v.Name == c.v.Name && v.Seq > c.v.Seq
+	c.mu.Unlock()
+	if newer && v.Mode == view.ModeLayout && v.Root != nil {
+		c.syncMu.Lock()
+		defer c.syncMu.Unlock()
+		c.sync(v)
+	}
+}
+
+// endResult is how the attach ends when the view leaves its layout: a
+// detach (here or from another console), or the last session ending.
+func (c *client) endResult() Result {
+	if c.detaching.Load() {
+		return c.detachResult()
+	}
+	c.mu.Lock()
+	reason := c.lastReason
+	c.mu.Unlock()
+	if reason != "" {
+		return Result{Reason: reason}
+	}
+	return detached
+}
+
 // close frees every pane. Goroutines still running see c.closed through
 // lock and stop.
 func (c *client) close() {
 	c.mu.Lock()
 	c.closed = true
-	ps := c.root.leaves(nil)
-	for _, p := range ps {
+	var ps []*pane
+	for _, p := range c.panes {
+		ps = append(ps, p)
 		c.free(p)
 	}
 	c.enc.Close()
@@ -337,6 +502,12 @@ func (c *client) free(p *pane) {
 		p.r.Close()
 		p.r = nil
 	}
+	if c.focus == p {
+		c.focus = nil
+	}
+	if c.confirm == p {
+		c.confirm = nil
+	}
 }
 
 // lock takes c.mu unless the client is closed.
@@ -352,6 +523,13 @@ func (c *client) lock() bool {
 // finish ends the attach with res; the first call wins.
 func (c *client) finish(res Result) {
 	c.endOnce.Do(func() {
+		c.mu.Lock()
+		if c.focus != nil {
+			res.Session = c.focus.info.ID
+		} else if res.Session == "" {
+			res.Session = c.v.Focus
+		}
+		c.mu.Unlock()
 		c.result = res
 		c.log.Printf("end: %s", res.Reason)
 		close(c.end)
@@ -403,7 +581,6 @@ func (c *client) loadSnapshot(p *pane, payload []byte) error {
 	}
 	p.mirror = mirror
 	p.held, p.scrolled = false, false
-	p.asked = [2]uint16{}
 	p.r.Invalidate()
 	// Runs inside mirror.Write with c.mu held. At hold start the terminal
 	// still shows the last complete frame: capture it and keep drawing it.
@@ -441,7 +618,6 @@ func (c *client) readLoop(p *pane) {
 			if cols, rows, err = proto.ParseSize(payload); err == nil {
 				err = p.mirror.Resize(cols, rows)
 				p.r.Invalidate()
-				p.asked = [2]uint16{}
 			}
 		case proto.FrameDigest:
 			mine, derr := p.mirror.Digest()
@@ -464,119 +640,190 @@ func (c *client) readLoop(p *pane) {
 	}
 }
 
-// ended handles p's session ending (or its stream failing) with reason:
-// the attach ends with the last pane; otherwise the pane goes and the
-// status bar says why.
+// ended handles p's session ending (or its stream failing) with reason.
+// The server takes the session out of the view, which every console then
+// draws; here the pane goes at once and the status bar says why. With
+// the last pane gone the attach ends once the view says so, or after
+// endWait.
 func (c *client) ended(p *pane, reason string) {
 	if !c.lock() {
 		return
 	}
-	if c.root.leaf == p {
+	if p.gone {
 		c.mu.Unlock()
-		c.finish(Result{Reason: reason})
 		return
 	}
-	c.flash = p.info.ID + ": " + reason
-	sizes := c.remove(p)
+	delete(c.panes, p.info.ID)
+	c.free(p)
+	last := len(c.panes) == 0
+	if last {
+		c.lastReason = reason
+	} else {
+		c.flash = paneName(p.info) + ": " + reason
+		c.relayout()
+	}
 	c.mu.Unlock()
 	p.conn.Close()
-	c.sendSizes(sizes)
+	if last {
+		time.AfterFunc(endWait, func() { c.finish(Result{Reason: reason}) })
+	}
 	c.poke()
 }
 
-// remove takes p out of the layout and frees it; the sizes to send
-// follow. c.mu held.
-func (c *client) remove(p *pane) []resize {
-	c.root = removeLeaf(c.root, p)
-	c.free(p)
-	if c.focus == p {
-		c.focus = c.root.leaves(nil)[0]
+// relayout places the panes in the window after a change of the view or
+// the window. The view is laid out at its size, the window of its latest
+// client (docs/SPEC.md §3.3), and drawn into this window from the top
+// left: cropped when this one is smaller, padded when it is larger. c.mu
+// held.
+func (c *client) relayout() {
+	vcols, vrows := int(c.v.Cols), int(c.v.Rows)
+	if vcols == 0 || vrows == 0 {
+		vcols, vrows = c.cols, c.rows
 	}
-	c.zoomed = false
-	return c.relayout(true)
-}
-
-// resize is a pane whose session must take its new size.
-type resize struct {
-	p          *pane
-	cols, rows uint16
-	claim      bool // from typing (CLAIM_SIZE), not a window or split change
-}
-
-// relayout places the panes in the window after a change and returns the
-// sessions to resize, when send is set. The caller sends them once c.mu
-// is released (sendSizes). c.mu held.
-func (c *client) relayout(send bool) []resize {
-	area := rect{c.sideW, 0, c.paneCols, c.paneRows}
+	c.geo = c.v.Lay(vcols, vrows)
+	c.sideW = 0
+	if c.side != nil {
+		c.sideW = min(c.geo.SideW, max(c.cols-1, 1))
+	}
+	c.statusBar = c.geo.Status > 0
+	c.paneCols = max(c.cols-c.sideW, 1)
+	c.paneRows = max(c.rows-c.geo.Status, 1)
+	own := view.Rect{X: c.sideW, Y: 0, W: c.paneCols, H: c.paneRows}
+	if p := c.panes[c.v.Focus]; p != nil {
+		c.focus = p
+	} else if c.focus == nil || c.focus.gone {
+		c.focus = nil
+		for _, id := range c.v.Root.Leaves() {
+			if p := c.panes[id]; p != nil {
+				c.focus = p
+				break
+			}
+		}
+	}
 	vis := c.visible()
-	if c.zoomed {
-		c.focus.rect, c.dividers = area, nil
-	} else {
-		c.dividers = c.root.layout(area, nil)
-	}
 	// One pane draws alone, unless it shares the window with the sidebar.
 	c.single = len(vis) == 1 && c.side == nil
-	var out []resize
 	for _, p := range vis {
 		if c.single {
-			p.r.SetSize(uint16(area.w), uint16(area.h))
-		} else {
-			p.r.SetRect(p.rect.x, p.rect.y, p.rect.w, p.rect.h)
+			p.rect = own
+			p.r.SetSize(uint16(own.W), uint16(own.H))
+			continue
 		}
-		if cols, rows := p.mirror.Size(); send && (int(cols) != p.rect.w || int(rows) != p.rect.h) {
-			p.asked = [2]uint16{uint16(p.rect.w), uint16(p.rect.h)}
-			out = append(out, resize{p, p.asked[0], p.asked[1], false})
+		p.rect = clip(c.geo.Panes[p.info.ID], own)
+		if p.rect.W > 0 && p.rect.H > 0 {
+			p.r.SetRect(p.rect.X, p.rect.Y, p.rect.W, p.rect.H)
+		}
+	}
+	c.dividers = c.dividers[:0]
+	for _, d := range c.geo.Dividers {
+		if d.At = clip(d.At, own); d.At.W > 0 && d.At.H > 0 {
+			c.dividers = append(c.dividers, d)
 		}
 	}
 	c.full = true
 	c.status()
-	return out
 }
 
-// claimSizes: the console typed in sizes the panes it shows (docs/SPEC.md
-// §3.3). It returns the visible panes, other than watch-only ones, whose
-// session has another size than their rectangle, unless that size was
-// already asked for. c.mu held.
-func (c *client) claimSizes() []resize {
-	var out []resize
-	for _, p := range c.visible() {
-		if p.watch { // watching never resizes
-			continue
-		}
-		want := [2]uint16{uint16(p.rect.w), uint16(p.rect.h)}
-		if cols, rows := p.mirror.Size(); (cols == want[0] && rows == want[1]) || p.asked == want {
-			continue
-		}
-		p.asked = want
-		out = append(out, resize{p, want[0], want[1], true})
+// clip is r within area; empty when they don't meet.
+func clip(r, area view.Rect) view.Rect {
+	x0, y0 := max(r.X, area.X), max(r.Y, area.Y)
+	x1, y1 := min(r.X+r.W, area.X+area.W), min(r.Y+r.H, area.Y+area.H)
+	if x1 <= x0 || y1 <= y0 {
+		return view.Rect{}
 	}
-	return out
+	return view.Rect{X: x0, Y: y0, W: x1 - x0, H: y1 - y0}
 }
 
-func (c *client) sendSizes(sizes []resize) {
-	for _, s := range sizes {
-		typ := proto.FrameSetSize
-		if s.claim {
-			typ = proto.FrameClaimSize
-		}
-		c.send(s.p, typ, proto.Size(s.cols, s.rows))
-	}
-}
-
-// visible are the panes drawn: all, or the zoomed one. c.mu held.
+// visible are the panes drawn: all the view shows that are open here.
+// c.mu held.
 func (c *client) visible() []*pane {
-	if c.zoomed {
-		return []*pane{c.focus}
+	var out []*pane
+	for _, id := range c.v.Visible() {
+		if p := c.panes[id]; p != nil {
+			out = append(out, p)
+		}
 	}
-	return c.root.leaves(nil)
+	return out
+}
+
+// shown are the visible panes that aren't cropped away. c.mu held.
+func (c *client) shown() []*pane {
+	var out []*pane
+	for _, p := range c.visible() {
+		if p.rect.W > 0 && p.rect.H > 0 {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// leaves are the open panes in the layout's order. c.mu held.
+func (c *client) leaves() []*pane {
+	var out []*pane
+	for _, id := range c.v.Root.Leaves() {
+		if p := c.panes[id]; p != nil {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// needClaim says whether typing into this console must first claim the
+// view's size (docs/SPEC.md §3.3): when another console sizes the view,
+// or a pane it shows has another size than its rectangle. It claims once
+// per version of the view. c.mu held.
+func (c *client) needClaim() bool {
+	if c.claimed && c.claimSeq == c.v.Seq {
+		return false
+	}
+	need := c.v.Latest != c.me
+	for _, p := range c.visible() {
+		r := c.geo.Panes[p.info.ID]
+		if cols, rows := p.mirror.Size(); !p.watch && (int(cols) != r.W || int(rows) != r.H) {
+			need = true
+		}
+	}
+	if need {
+		c.claimSeq, c.claimed = c.v.Seq, true
+	}
+	return need
+}
+
+// claim tells the server that the user typed into session id here.
+func (c *client) claim(id string) {
+	if _, err := c.vc.Do(proto.MethodViewInput, proto.ViewParams{Session: id}); err != nil {
+		c.log.Printf("claim %s: %v", id, err)
+	}
+}
+
+// act runs a view action; a failure shows in the status bar. The view
+// it answers is drawn before act returns, so the next event already sees
+// it here.
+func (c *client) act(method string, p proto.ViewParams) {
+	v, err := c.vc.Do(method, p)
+	if err == nil {
+		c.apply(v)
+		return
+	}
+	if c.lock() {
+		var perr *proto.Error
+		msg := err.Error()
+		if errors.As(err, &perr) {
+			msg = perr.Message
+		}
+		c.flash = msg
+		c.status()
+		c.mu.Unlock()
+		c.poke()
+	}
 }
 
 func (c *client) signals(sigs <-chan os.Signal, fd int) {
 	for sig := range sigs {
 		switch sig {
 		case syscall.SIGWINCH:
-			// The user really resized the window: only now do the panes
-			// follow; attaching never resizes (docs/SPEC.md §3.3).
+			// The user really resized the window: the view takes its size
+			// and its panes follow, whoever typed last (docs/SPEC.md §3.3).
 			cols, rows, err := term.GetSize(fd)
 			if err != nil || cols <= 0 || rows <= 0 {
 				continue
@@ -585,9 +832,9 @@ func (c *client) signals(sigs <-chan os.Signal, fd int) {
 				return
 			}
 			c.setWindow(cols, rows)
-			sizes := c.relayout(true)
+			c.relayout()
 			c.mu.Unlock()
-			c.sendSizes(sizes)
+			c.act(proto.MethodViewSize, proto.ViewParams{Cols: uint16(cols), Rows: uint16(rows), Resize: true})
 			c.poke()
 		case syscall.SIGUSR1:
 			// Consistency check: the server puts its digest into the
@@ -595,10 +842,12 @@ func (c *client) signals(sigs <-chan os.Signal, fd int) {
 			if c.lock() {
 				p := c.focus
 				c.mu.Unlock()
-				c.send(p, proto.FrameDigestReq, nil)
+				if p != nil {
+					c.send(p, proto.FrameDigestReq, nil)
+				}
 			}
 		default:
-			c.finish(Result{Reason: "detached (" + sig.String() + ")", Detached: true})
+			c.finish(Result{Reason: "detached (" + sig.String() + ")", Detached: true, Quit: true})
 		}
 	}
 }
@@ -608,7 +857,7 @@ func (c *client) inputLoop(ctx context.Context, in *os.File) {
 	go func() {
 		err := uv.NewTerminalReader(in, os.Getenv("TERM")).StreamEvents(ctx, events)
 		// EOF or EIO: the outer terminal is gone. That is a detach.
-		c.finish(Result{Reason: "detached (terminal closed: " + errString(err) + ")", Detached: true})
+		c.finish(Result{Reason: "detached (terminal closed: " + errString(err) + ")", Detached: true, Quit: true})
 	}()
 	for {
 		select {
@@ -618,15 +867,6 @@ func (c *client) inputLoop(ctx context.Context, in *os.File) {
 			c.handle(ev)
 		}
 	}
-}
-
-// focused is the focused pane, nil once closed.
-func (c *client) focused() *pane {
-	if !c.lock() {
-		return nil
-	}
-	defer c.mu.Unlock()
-	return c.focus
 }
 
 func (c *client) handle(ev uv.Event) {
@@ -644,14 +884,16 @@ func (c *client) handle(ev uv.Event) {
 			return
 		}
 		p := c.focus
-		if p.watch {
+		if p == nil || p.watch {
 			c.mu.Unlock()
 			return
 		}
 		b, err := emu.Paste(p.mirror, []byte(e.Content))
-		sizes := c.claimSizes()
+		claim := c.needClaim()
 		c.mu.Unlock()
-		c.sendSizes(sizes)
+		if claim {
+			c.claim(p.info.ID)
+		}
 		if err == nil {
 			c.send(p, proto.FrameInput, b)
 		}
@@ -663,7 +905,7 @@ func (c *client) handle(ev uv.Event) {
 		if !c.lock() {
 			return
 		}
-		ps := c.root.leaves(nil)
+		ps := c.leaves()
 		c.mu.Unlock()
 		for _, p := range ps {
 			c.send(p, proto.FrameColorScheme, []byte{byte(scheme)})
@@ -764,14 +1006,20 @@ func prefixStep(prefix chord, pending, repeat bool, k uv.Key, dashboard bool) pr
 	return prefixDo{}
 }
 
-// detachThen detaches every pane; then is the dashboard key to run
-// afterwards.
+// detachThen leaves the layout; then is the dashboard key to run
+// afterwards. A shared view goes back to its dashboard, on every console;
+// a bare one has none, so this console leaves it.
 func (c *client) detachThen(then string) {
 	c.then = then
 	c.detaching.Store(true) // publishes then to lost
+	if !c.bare {
+		if _, err := c.vc.Do(proto.MethodViewDashboard, proto.ViewParams{}); err != nil {
+			c.log.Printf("view.dashboard: %v", err)
+		}
+	}
 	var ps []*pane
 	if c.lock() {
-		ps = c.root.leaves(nil)
+		ps = c.leaves()
 		c.mu.Unlock()
 	}
 	for _, p := range ps {
@@ -788,65 +1036,46 @@ func (c *client) detachResult() Result {
 	return res
 }
 
-// paneCommand runs a split-pane command.
+// paneCommand runs a split-pane command: a view action, which every
+// console joined to the view then shows.
 func (c *client) paneCommand(cmd string) {
 	switch cmd {
 	case "%", `"`:
-		c.split(cmd == "%")
-		return
+		// The server starts the shell; that takes a moment.
+		go c.act(proto.MethodViewSplit, proto.ViewParams{Side: cmd == "%"})
 	case "x":
-		c.closePane()
-		return
+		if !c.lock() {
+			return
+		}
+		p, last := c.focus, len(c.v.Root.Leaves()) == 1
+		c.mu.Unlock()
+		switch {
+		case p == nil:
+		case last && c.bare:
+			c.detachThen("")
+		default:
+			c.act(proto.MethodViewClose, proto.ViewParams{Session: p.info.ID})
+		}
 	case "{", "}", "b":
 		c.sideKey(cmd)
-		return
-	}
-	if !c.lock() {
-		return
-	}
-	var sizes []resize
-	switch cmd {
 	case "left", "right", "up", "down":
 		d := directions[cmd]
-		if c.zoomed {
-			c.zoomed = false
-			sizes = c.relayout(true)
-		}
-		if n := neighbour(c.root.leaves(nil), c.focus, d[0], d[1]); n != nil {
-			c.setFocus(n)
-		}
+		c.act(proto.MethodViewFocus, proto.ViewParams{DX: d[0], DY: d[1]})
 	case "o":
-		ps := c.root.leaves(nil)
-		for i, p := range ps {
-			if p == c.focus {
-				c.setFocus(ps[(i+1)%len(ps)])
-				break
-			}
-		}
-		if c.zoomed {
-			sizes = c.relayout(true)
-		}
+		c.act(proto.MethodViewFocus, proto.ViewParams{Next: true})
 	case "z":
-		if c.root.leaf == nil {
-			c.zoomed = !c.zoomed
-			sizes = c.relayout(true)
-		}
+		c.act(proto.MethodViewZoom, proto.ViewParams{})
 	case "space":
-		if c.root.leaf == nil {
-			c.root = even(c.root.leaves(nil), !c.root.side)
-			c.zoomed = false
-			sizes = c.relayout(true)
-		}
+		c.act(proto.MethodViewEven, proto.ViewParams{})
 	case "ctrl+left", "ctrl+right", "ctrl+up", "ctrl+down":
 		side := cmd == "ctrl+left" || cmd == "ctrl+right"
 		cells := map[string]int{"ctrl+left": -2, "ctrl+right": 2, "ctrl+up": -1, "ctrl+down": 1}[cmd]
-		if !c.zoomed && resizeTowards(c.focus, c.root, side, cells) {
-			sizes = c.relayout(true)
+		if c.lock() {
+			c.repeatUntil = time.Now().Add(resizeRepeat)
+			c.mu.Unlock()
 		}
-		c.repeatUntil = time.Now().Add(resizeRepeat)
+		c.act(proto.MethodViewResize, proto.ViewParams{Side: side, Cells: cells})
 	}
-	c.mu.Unlock()
-	c.sendSizes(sizes)
 	c.poke()
 }
 
@@ -857,119 +1086,17 @@ var directions = map[string][2]int{"left": {-1, 0}, "right": {1, 0}, "up": {0, -
 // prefix, as tmux's repeat-time.
 const resizeRepeat = 500 * time.Millisecond
 
-// setFocus moves the focus to p. c.mu held.
-func (c *client) setFocus(p *pane) {
-	if p != c.focus {
-		c.focus = p
-		c.full = true // the dividers' colours, the cursor, the title
-		c.status()
-	}
-}
-
-// split starts a shell in the focused pane's directory and shows it
-// beside (side) or below the focused pane, which shrinks to make room.
-// Starting and attaching run in the background; the panes change once
-// the new one is ready.
-func (c *client) split(side bool) {
-	if !c.lock() {
-		return
-	}
-	if c.zoomed {
-		c.zoomed = false
-		sizes := c.relayout(true)
-		defer c.sendSizes(sizes)
-	}
-	at := c.focus
-	r := at.rect
-	cols, rows := r.w, r.h
-	if side {
-		_, cols = splitSizes(r.w, 0.5)
-	} else {
-		_, rows = splitSizes(r.h, 0.5)
-	}
-	cwd := at.info.Cwd
-	if cols < 2 || rows < 1 {
-		c.flash = "no room to split"
-		c.status()
-		c.mu.Unlock()
-		c.poke()
-		return
-	}
-	c.mu.Unlock()
-	go func() {
-		p, err := c.startPane(cwd, cols, rows)
-		if err != nil {
-			if c.lock() {
-				c.flash = "split: " + err.Error()
-				c.status()
-				c.mu.Unlock()
-				c.poke()
-			}
-			return
-		}
-		if !c.lock() { // the window closed meanwhile
-			p.conn.Close()
-			p.mirror.Close()
-			p.r.Close()
-			return
-		}
-		if c.root.find(at) == nil {
-			at = c.focus // closed meanwhile: split what has the focus now
-		}
-		c.root = splitLeaf(c.root, at, p, side)
-		c.focus = p
-		sizes := c.relayout(true)
-		c.mu.Unlock()
-		c.sendSizes(sizes)
-		go c.readLoop(p)
-		c.poke()
-	}()
-}
-
-// startPane starts a shell of cols×rows in cwd and attaches to it.
-func (c *client) startPane(cwd string, cols, rows int) (*pane, error) {
-	ctl, err := server.Connect(c.paths, false)
-	if err != nil {
-		return nil, err
-	}
-	var res proto.SessionStartResult
-	err = ctl.Call(proto.MethodSessionStart, proto.SessionStartParams{Cwd: cwd, Cols: uint16(cols), Rows: uint16(rows)}, &res)
-	ctl.Close()
-	if err != nil {
-		return nil, err
-	}
-	return c.open(res.Session.ID, cols, rows)
-}
-
-// closePane detaches the focused pane; its session keeps running. The
-// last pane detaches the window.
-func (c *client) closePane() {
-	if !c.lock() {
-		return
-	}
-	p := c.focus
-	if c.root.leaf == p {
-		c.mu.Unlock()
-		c.detachThen("")
-		return
-	}
-	sizes := c.remove(p)
-	c.mu.Unlock()
-	c.send(p, proto.FrameDetach, nil)
-	p.conn.Close()
-	c.sendSizes(sizes)
-	c.poke()
-}
-
 // askTakeover asks, in the status bar, whether to take over the focused
 // pane when it is watch-only.
 func (c *client) askTakeover() {
 	if !c.lock() {
 		return
 	}
-	if c.focus.watch {
+	switch {
+	case c.focus == nil:
+	case c.focus.watch:
 		c.confirm = c.focus
-	} else {
+	default:
 		c.flash = "this pane takes your keys already"
 	}
 	c.status()
@@ -977,8 +1104,9 @@ func (c *client) askTakeover() {
 	c.poke()
 }
 
-// answerTakeover takes over p on yes: it takes keys from now on, for this
-// attach, and its coordinator is told. c.mu held; released here.
+// answerTakeover takes over p on yes: it takes keys from now on, in this
+// console, for this attach, and its coordinator is told. c.mu held;
+// released here.
 func (c *client) answerTakeover(p *pane, yes bool) {
 	c.confirm = nil
 	yes = yes && !p.gone
@@ -1033,14 +1161,14 @@ func (c *client) status() {
 	case c.focus.info.Role == proto.RoleThread:
 		where = "taken over"
 	}
-	if ps := c.root.leaves(nil); len(ps) > 1 {
+	if ps := c.leaves(); len(ps) > 1 {
 		where = strings.TrimPrefix(where+" · ", " · ")
 		for i, p := range ps {
 			if p == c.focus {
 				where += fmt.Sprintf("pane %d/%d", i+1, len(ps))
 			}
 		}
-		if c.zoomed {
+		if c.v.Zoom {
 			where += " zoomed"
 		}
 	}
@@ -1061,6 +1189,10 @@ func (c *client) input(k uv.Key) {
 		return
 	}
 	p := c.focus
+	if p == nil {
+		c.mu.Unlock()
+		return
+	}
 	// Shift+PgUp/PgDn scroll this client's own scrollback, for programs on
 	// the main screen (shells, inline apps). Full-screen apps get the key.
 	if k.Mod == uv.ModShift && (k.Code == uv.KeyPgUp || k.Code == uv.KeyPgDown) && !p.mirror.Modes().AltScreen {
@@ -1090,9 +1222,11 @@ func (c *client) input(k uv.Key) {
 	if ok {
 		b, err = c.enc.Key(p.mirror, ek)
 	}
-	sizes := c.claimSizes()
+	claim := c.needClaim()
 	c.mu.Unlock()
-	c.sendSizes(sizes)
+	if claim {
+		c.claim(p.info.ID)
+	}
 	c.log.Printf("key %s -> %q %v", k, b, err)
 	if err == nil && len(b) > 0 {
 		c.send(p, proto.FrameInput, b)
@@ -1112,30 +1246,36 @@ func (c *client) mouse(ev uv.Event) {
 		return
 	}
 	var p *pane
-	for _, q := range c.visible() {
-		if r := q.rect; m.X >= r.x && m.X < r.x+r.w && m.Y >= r.y && m.Y < r.y+r.h {
+	for _, q := range c.shown() {
+		if r := q.rect; m.X >= r.X && m.X < r.X+r.W && m.Y >= r.Y && m.Y < r.Y+r.H {
 			p = q
 		}
 	}
-	if p == nil { // the status bar or a divider
+	if p == nil { // the status bar, a divider or padding
 		c.mu.Unlock()
 		return
 	}
 	_, click := ev.(uv.MouseClickEvent)
-	if click && p != c.focus {
-		c.setFocus(p)
-		c.poke()
+	refocus := click && p != c.focus
+	if refocus {
+		c.focus = p // at once here; the view follows
+		c.full = true
+		c.status()
 	}
 	if p.watch {
 		c.mu.Unlock()
+		if refocus {
+			c.act(proto.MethodViewFocus, proto.ViewParams{Session: p.info.ID})
+			c.poke()
+		}
 		return
 	}
-	var sizes []resize
+	claim := false
 	if _, wheel := ev.(uv.MouseWheelEvent); click || wheel {
-		sizes = c.claimSizes()
+		claim = c.needClaim()
 	}
-	m.X -= p.rect.x
-	m.Y -= p.rect.y
+	m.X -= p.rect.X
+	m.Y -= p.rect.Y
 	m.Y += p.r.Top()
 	cols, rows := p.mirror.Size()
 	var b []byte
@@ -1144,7 +1284,13 @@ func (c *client) mouse(ev uv.Event) {
 		b, err = c.enc.Mouse(p.mirror, m)
 	}
 	c.mu.Unlock()
-	c.sendSizes(sizes)
+	if refocus {
+		c.act(proto.MethodViewFocus, proto.ViewParams{Session: p.info.ID})
+		c.poke()
+	}
+	if claim {
+		c.claim(p.info.ID)
+	}
 	if err == nil && len(b) > 0 {
 		c.send(p, proto.FrameInput, b)
 	}
@@ -1155,7 +1301,7 @@ func (c *client) focusReport(gained bool) {
 		return
 	}
 	p := c.focus
-	if p.watch {
+	if p == nil || p.watch {
 		c.mu.Unlock()
 		return
 	}
@@ -1175,7 +1321,10 @@ func (c *client) focusReport(gained bool) {
 // the mode it set to the one it wants, never resetting one after setting
 // another.
 func (c *client) outerModes() []byte {
-	m := c.focus.mirror.Modes()
+	var m emu.Modes
+	if c.focus != nil {
+		m = c.focus.mirror.Modes()
+	}
 	track := 0
 	switch {
 	case m.AnyMouse:
@@ -1237,7 +1386,7 @@ func (c *client) renderLoop(out io.Writer) Result {
 		if !c.lock() {
 			continue
 		}
-		vis := c.visible()
+		vis := c.shown()
 		held := false
 		for _, p := range vis {
 			if p.held && time.Since(p.heldAt) > maxHold {
@@ -1247,10 +1396,12 @@ func (c *client) renderLoop(out io.Writer) Result {
 		}
 		var b []byte
 		var err error
-		if c.single {
+		switch {
+		case c.focus == nil:
+		case c.single && len(vis) == 1:
 			c.full = false // the renderer repaints after SetSize
 			b, err = vis[0].r.Frame(vis[0].mirror, vis[0].held)
-		} else {
+		default:
 			b, err = c.frameSplit(vis)
 		}
 		if err == nil {
@@ -1267,7 +1418,7 @@ func (c *client) renderLoop(out io.Writer) Result {
 		}
 		if len(b) > 0 {
 			if _, err := out.Write(b); err != nil {
-				c.finish(Result{Reason: "detached (terminal closed: " + err.Error() + ")", Detached: true})
+				c.finish(Result{Reason: "detached (terminal closed: " + err.Error() + ")", Detached: true, Quit: true})
 				continue
 			}
 		}
@@ -1277,9 +1428,10 @@ func (c *client) renderLoop(out io.Writer) Result {
 	}
 }
 
-// frameSplit draws a window of several panes: the dividers, each pane's
-// changes, the status bar, then the focused pane's cursor, all in one
-// synchronised update; nil when nothing changed. c.mu held.
+// frameSplit draws a window of several panes (or one beside the
+// sidebar): the dividers, each pane's changes, the status bar, then the
+// focused pane's cursor, all in one synchronised update; nil when nothing
+// changed. c.mu held.
 func (c *client) frameSplit(vis []*pane) ([]byte, error) {
 	b := append(c.buf[:0], "\x1b[?2026h\x1b[?25l"...)
 	wrote := false
@@ -1312,7 +1464,10 @@ func (c *client) frameSplit(vis []*pane) ([]byte, error) {
 		b = append(b, "\x1b[0m"...)
 		c.statusDrawn, wrote = c.statusText, true
 	}
-	cur := string(c.focus.r.Cursor())
+	var cur string // the focused pane cropped away: no cursor
+	if r := c.focus.rect; r.W > 0 && r.H > 0 {
+		cur = string(c.focus.r.Cursor())
+	}
 	title := oneLine(c.focus.mirror.Title())
 	if !wrote && cur == c.lastCursor && title == c.title {
 		c.buf = b
@@ -1336,19 +1491,19 @@ func (c *client) frameSplit(vis []*pane) ([]byte, error) {
 func (c *client) appendDividers(b []byte) []byte {
 	for _, d := range c.dividers {
 		st := styleFaint
-		if d.n.contains(c.focus) {
+		if d.Focused {
 			st = styleAccent
 		}
-		if d.side {
+		if d.Side {
 			cell := st.Render("│")
-			for y := range d.at.h {
-				b = append(b, fmt.Sprintf("\x1b[%d;%dH", d.at.y+y+1, d.at.x+1)...)
+			for y := range d.At.H {
+				b = append(b, fmt.Sprintf("\x1b[%d;%dH", d.At.Y+y+1, d.At.X+1)...)
 				b = append(b, cell...)
 			}
 			continue
 		}
-		b = append(b, fmt.Sprintf("\x1b[%d;%dH", d.at.y+1, d.at.x+1)...)
-		b = append(b, st.Render(strings.Repeat("─", d.at.w))...)
+		b = append(b, fmt.Sprintf("\x1b[%d;%dH", d.At.Y+1, d.At.X+1)...)
+		b = append(b, st.Render(strings.Repeat("─", d.At.W))...)
 	}
 	return b
 }
@@ -1363,10 +1518,10 @@ func errString(err error) string {
 // statePoll is how often the status bar asks the server for state.
 const statePoll = 500 * time.Millisecond
 
-// pollState keeps the status bar current and rings the bell when the
-// server sent a notification (a session blocked, a thread reported;
-// docs/SPEC.md §4). It polls session.list; a lost server is noticed by
-// the attach streams themselves.
+// pollState keeps the status bar and the sidebar current and rings the
+// bell when the server sent a notification (a session blocked, a thread
+// reported; docs/SPEC.md §4). It polls session.list; a lost server is
+// noticed by the attach streams themselves.
 func (c *client) pollState(ctx context.Context) {
 	var ctl *server.Client
 	defer func() {
@@ -1402,7 +1557,7 @@ func (c *client) pollState(ctx context.Context) {
 			if c.side != nil {
 				c.side.items = sideItems(projects, res.Sessions)
 			}
-			for _, p := range c.root.leaves(nil) {
+			for _, p := range c.panes {
 				for _, s := range res.Sessions {
 					if s.ID == p.info.ID {
 						p.info = s

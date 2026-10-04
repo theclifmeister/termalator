@@ -8,55 +8,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-func TestSidebarLayout(t *testing.T) {
-	def := SidebarLayout{}.clamp()
-	cases := []struct {
-		name string
-		l    SidebarLayout
-		w    int
-		want int
-	}{
-		{"default", def, 120, sideDefault},
-		{"narrow window: slim strip", def, sideDefault + sideRoom - 1, sideSlim},
-		{"slim asked for", SidebarLayout{Width: 30, Slim: true}, 200, sideSlim},
-		{"tiny window: still there", def, 4, 3},
-		{"too wide a setting", SidebarLayout{Width: 99}, 300, sideMax},
-	}
-	for _, c := range cases {
-		if got := c.l.cols(c.w); got != c.want {
-			t.Errorf("%s: %d columns, want %d", c.name, got, c.want)
-		}
-	}
-
-	l, msg := def.sideKey("}", 120)
-	if l.Width != sideDefault+sideStep || msg != "" {
-		t.Fatalf("} gave %+v %q", l, msg)
-	}
-	if l, _ = l.sideKey("{", 120); l.Width != sideDefault {
-		t.Fatalf("{ gave %+v", l)
-	}
-	if l, _ = l.sideKey("b", 120); !l.Slim || l.cols(120) != sideSlim {
-		t.Fatalf("b gave %+v", l)
-	}
-	if l, _ = l.sideKey("}", 120); l.Slim {
-		t.Fatalf("} kept the slim strip: %+v", l)
-	}
-	if _, msg = def.sideKey("}", 70); !strings.Contains(msg, "too narrow") {
-		t.Fatalf("} in a narrow window: %q", msg)
-	}
-	// Widening never leaves the panes less than sideRoom.
-	wide := SidebarLayout{Width: 40}
-	if l, _ = wide.sideKey("}", 101); l.Width != 41 {
-		t.Fatalf("} in 101 columns: %+v", l)
-	}
-	if l = def.dragTo(3, 120); !l.Slim {
-		t.Fatalf("drag to 3: %+v", l)
-	}
-	if l = def.dragTo(30, 120); l.Slim || l.Width != 31 {
-		t.Fatalf("drag to 30: %+v", l)
-	}
-}
-
 // TestDashboardSidebar: every project with its glyph and thread count,
 // the current one marked; a click opens a project's coordinator, the
 // border drags and is saved, and a narrow window gets the slim strip.
