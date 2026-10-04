@@ -71,3 +71,53 @@ func TestNoOrigin(t *testing.T) {
 		t.Fatalf("%q %v", b, err)
 	}
 }
+
+// TestUnsaved: uncommitted changes and commits no remote has are
+// unsaved; a pushed commit, or one the merged PR's head had, is not.
+func TestUnsaved(t *testing.T) {
+	root := t.TempDir()
+	origin, repo := filepath.Join(root, "origin.git"), filepath.Join(root, "repo")
+	run(t, root, "init", "--bare", "-q", origin)
+	run(t, root, "clone", "-q", origin, repo)
+	os.WriteFile(filepath.Join(repo, "f"), []byte("x"), 0o644)
+	run(t, repo, "add", ".")
+	run(t, repo, "commit", "-q", "-m", "c")
+	run(t, repo, "push", "-q", "origin", "HEAD:main")
+	run(t, repo, "fetch", "-q", "origin")
+	dir := filepath.Join(root, "wt")
+	if _, err := Create(repo, dir, "tm/x", "origin/main"); err != nil {
+		t.Fatal(err)
+	}
+	check := func(pushed, want string) {
+		t.Helper()
+		if got, err := Unsaved(dir, pushed); err != nil || got != want {
+			t.Fatalf("unsaved %q %v, want %q", got, err, want)
+		}
+	}
+	check("", "")
+	os.WriteFile(filepath.Join(dir, "g"), []byte("y"), 0o644)
+	check("", "uncommitted changes")
+	run(t, dir, "add", ".")
+	run(t, dir, "commit", "-q", "-m", "g")
+	check("", "1 unpushed commit")
+	run(t, dir, "push", "-q", "origin", "tm/x")
+	check("", "")
+	// The merge deleted the remote branch: its head still counts.
+	head := revParse(t, dir)
+	run(t, dir, "push", "-q", "origin", ":tm/x")
+	run(t, dir, "fetch", "-q", "--prune", "origin")
+	check("", "1 unpushed commit")
+	check(head, "")
+	check("0123456789012345678901234567890123456789", "1 unpushed commit")
+	os.RemoveAll(dir)
+	check("", "")
+}
+
+func revParse(t *testing.T, dir string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out[:40])
+}

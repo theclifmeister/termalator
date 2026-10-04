@@ -132,3 +132,43 @@ func BranchExists(repo, branch string) bool {
 	_, err := git(repo, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch)
 	return err == nil
 }
+
+// Unsaved says what removing a worktree would lose: "uncommitted
+// changes", "<n> unpushed commit(s)", or "" for nothing. Commits count as
+// pushed when a remote-tracking branch, or pushed (a commit the remote
+// had, e.g. a merged PR's head, whose branch the merge deleted), has
+// them. A repo without remotes has nowhere to push: its commits stay on
+// the branch, which resolve keeps. A worktree already gone loses
+// nothing.
+func Unsaved(dir, pushed string) (string, error) {
+	if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	out, err := git(dir, "status", "--porcelain")
+	if err != nil {
+		return "", err
+	}
+	if out != "" {
+		return "uncommitted changes", nil
+	}
+	if remotes, err := git(dir, "remote"); err != nil || remotes == "" {
+		return "", err
+	}
+	args := []string{"rev-list", "--count", "HEAD", "--not", "--remotes"}
+	if pushed != "" {
+		if _, err := git(dir, "cat-file", "-e", pushed+"^{commit}"); err == nil {
+			args = append(args, pushed)
+		}
+	}
+	n, err := git(dir, args...)
+	if err != nil {
+		return "", err
+	}
+	switch n {
+	case "0":
+		return "", nil
+	case "1":
+		return "1 unpushed commit", nil
+	}
+	return n + " unpushed commits", nil
+}

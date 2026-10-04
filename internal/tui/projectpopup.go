@@ -211,7 +211,7 @@ func (pv *projectView) box(m *dash) box {
 		body, sel, hits = pv.taskLines(w)
 	case tabSettings:
 		body, sel, hits = pv.settings.lines(m, w)
-		keys = "enter change · ↑ ↓ move · " + keys
+		keys = "enter change · + - number · ↑ ↓ move · " + keys
 	case tabKeys:
 		// The same list as the help, scrolled the same way.
 		body = keyLines(w)
@@ -244,7 +244,7 @@ func (pv *projectView) click(m *dash, item, col int, _ bool) tea.Cmd {
 		return nil
 	}
 	if pv.tab == tabSettings {
-		return pv.settings.click(m, item)
+		return pv.settings.click(m, item, col)
 	}
 	pv.sel[pv.tab] = item
 	return nil

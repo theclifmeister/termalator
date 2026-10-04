@@ -49,7 +49,7 @@ var popupKeys = []keyHelp{
 // mouseKeys are the mouse's ways, in the help beside the keys: every
 // key has one (TestEveryKeyHasMousePath).
 var mouseKeys = []keyHelp{
-	{"click", "a row selects it; a footer hint presses its key; a popup's tab, row or setting picks it; outside a popup, or its ×, closes it"},
+	{"click", "a row selects it; a footer hint presses its key; a popup's tab, row or setting picks it (a number's − + step it); outside a popup, or its ×, closes it"},
 	{"double-click", "a row opens it: a coordinator attaches, a thread watches, a task shows; in a session, a pane whose program doesn't take the mouse zooms, and back"},
 	{"right-click", "a row of the list or the sidebar: a menu of its actions (open, watch, take over, its popup, …); in a session, the status bar or a pane that doesn't take the mouse: the session's menu"},
 	{menuButton + " menu", "every action, first in the footer; in a session, every prefix command, on the status bar"},

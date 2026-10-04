@@ -14,6 +14,7 @@ import (
 	"github.com/theclifmeister/termalator/internal/project"
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/tasks"
+	"github.com/theclifmeister/termalator/internal/thread"
 )
 
 // keyPress sends a named key: tab, shift+tab, esc, space, enter, up,
@@ -57,6 +58,12 @@ func popupData(t *testing.T) (*fakeSource, *dash) {
 	alpha := &src.data.Projects[0]
 	alpha.Name, alpha.Goal, alpha.Repos = "Alpha", "Ship the alpha", []string{"/src/alpha"}
 	alpha.Items = []project.Item{{ID: "x", Kind: "report", Summary: "t-0002 handed in report 1"}}
+	// t-0002 is blocked (it counts toward the cap), t-0003 idle.
+	alpha.Threads = []ThreadRow{
+		{Record: &thread.Record{ID: "t-0002", Title: "README", State: thread.Running, Session: "s-2"}},
+		{Record: &thread.Record{ID: "t-0003", Title: "Idle", State: thread.Running, Session: "s-9"}},
+	}
+	src.data.Sessions = append(src.data.Sessions, proto.SessionInfo{ID: "s-9", Role: proto.RoleThread, Project: "alpha", Thread: "t-0003", State: "idle"})
 	src.board = &tasks.Board{Tasks: []*tasks.Task{
 		{ID: 1, Title: "Write the README", Status: tasks.Started, Thread: "t-0002",
 			Steps: []tasks.Step{{N: 1, Text: "Draft", Done: true}, {N: 2, Text: "Review"}}},
@@ -107,7 +114,8 @@ func TestProjectPopup(t *testing.T) {
 		t.Fatalf("shift+tab: tab %d", pv.tab)
 	}
 	out = screen(m)
-	for _, want := range []string{"Start threads", "ask first", "Yolo mode", "Coordinator approves", "Auto-close finished threads",
+	for _, want := range []string{"Start threads", "ask first", "Yolo mode", "Coordinator approves", "Parallel threads", "10 · 1 working now",
+		"Auto-close finished threads", "when its pull request merges",
 		"Pull request follow-up", "Remote control"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("settings tab lacks %q:\n%s", want, out)
@@ -158,7 +166,7 @@ func TestProjectSettingsToggle(t *testing.T) {
 
 	// Remote control: the row, and a note when the running coordinator
 	// differs.
-	for range 4 {
+	for range 5 {
 		keyPress(m, "down")
 	}
 	src.data.Sessions[0].RemoteControl = true
@@ -181,6 +189,51 @@ func TestProjectSettingsToggle(t *testing.T) {
 }
 
 func must(s config.Safety, _ error) config.Safety { return s }
+
+// TestProjectSettingsNumbers: parallel threads steps with enter and
+// + / -; auto-close cycles off, merged, days, and + / - set the days.
+func TestProjectSettingsNumbers(t *testing.T) {
+	src, m := popupData(t)
+	keyPress(m, "a")
+	keyPress(m, "4")
+	for range 3 {
+		keyPress(m, "down")
+	}
+	act(m, src, "enter") // 10 → 15
+	act(m, src, "-")
+	act(m, src, "-")
+	if out := screen(m); !strings.Contains(out, "13 · 1 working now") {
+		t.Fatalf("parallel threads:\n%s", out)
+	}
+	keyPress(m, "down")
+	act(m, src, "enter")
+	if out := screen(m); !strings.Contains(out, "7 days after it finishes") {
+		t.Fatalf("auto-close days:\n%s", out)
+	}
+	act(m, src, "+")
+	act(m, src, "+")
+	if out := screen(m); !strings.Contains(out, "9 days after it finishes") {
+		t.Fatalf("auto-close +:\n%s", out)
+	}
+	act(m, src, "enter")
+	if out := screen(m); !strings.Contains(out, "Auto-close finished threads  off") {
+		t.Fatalf("auto-close off:\n%s", out)
+	}
+	cfg, _ := config.Load()
+	if s := must(cfg.Safety("alpha")); s.ParallelThreads != 13 || s.AutoClose != config.CloseOff || s.AutoCloseDays != 9 {
+		t.Fatalf("saved %+v", s)
+	}
+	path, _ := config.Path()
+	data, _ := os.ReadFile(path)
+	if want := "[projects.alpha]\nparallel_threads = 13\nauto_close = \"off\"\nauto_close_days = 9\n"; string(data) != want {
+		t.Fatalf("file:\n%s", data)
+	}
+	for _, bad := range []string{"config", "toml", "auto_close", "parallel_threads"} {
+		if strings.Contains(screen(m), bad) {
+			t.Fatalf("the popup names %q:\n%s", bad, screen(m))
+		}
+	}
+}
 
 // TestProjectRepos: + adds a repository from a typed path, x removes the
 // selected one after a y.

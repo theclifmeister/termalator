@@ -139,6 +139,50 @@ func TestEveryKeyHasMousePath(t *testing.T) {
 	}
 }
 
+// TestNumberSettingButtons: every setting changed with + and - (the
+// project popup's numbers) has − and + buttons after its value, and a
+// click on them does what - and + do.
+func TestNumberSettingButtons(t *testing.T) {
+	src, m := popupData(t)
+	m.Update(tea.WindowSizeMsg{Width: 160, Height: 60})
+	keyPress(m, "a")
+	keyPress(m, "4")
+	pv := m.top().(*projectView)
+	n := 0
+	for _, r := range pv.settings.rows {
+		if r.adjust == nil {
+			continue
+		}
+		n++
+		var got []string
+		for _, b := range []string{"+", "−"} {
+			_, y := at(t, m, r.label)
+			line := strings.Split(screen(m), "\n")[y]
+			i := strings.Index(line, r.label)
+			j := strings.Index(line[i:], b)
+			if j < 0 {
+				t.Fatalf("%s lacks %s: %q", r.label, b, line)
+			}
+			before := len(src.settings)
+			mouseAt(m, tea.MouseLeft, m.sideW()+ansi.StringWidth(line[:i+j]), y)
+			if len(src.settings) != before+1 {
+				t.Fatalf("a click on %s's %s changed nothing (%v)", r.label, b, src.settings)
+			}
+			got = append(got, src.settings[len(src.settings)-1])
+			m.setData(src.Load())
+		}
+		// + then −: back to where it was, one up first.
+		_, up, _ := strings.Cut(got[0], "=")
+		_, down, _ := strings.Cut(got[1], "=")
+		if up == down || len(up) == 0 {
+			t.Errorf("%s: + gave %s, − gave %s", r.label, got[0], got[1])
+		}
+	}
+	if n == 0 {
+		t.Fatal("no setting with + and -")
+	}
+}
+
 // TestDashboardClicks: a click selects a row and a double-click opens
 // it; the wheel moves the selection; the footer's hints are buttons.
 func TestDashboardClicks(t *testing.T) {

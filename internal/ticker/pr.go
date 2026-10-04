@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // PR is the fixed set of fields the ticker keeps of a pull request
@@ -16,10 +17,14 @@ type PR struct {
 	Checks string `json:"checks,omitempty"` // pass, fail, pending, or "" with no checks
 	Failed int    `json:"failed,omitempty"` // failing checks
 	Review string `json:"review,omitempty"` // APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED, ""
+	// MergedAt is when it merged (when the ticker first saw it merged,
+	// if gh doesn't say); Head is its head commit.
+	MergedAt time.Time `json:"merged_at,omitzero"`
+	Head     string    `json:"head,omitempty"`
 }
 
 // prFields is what `gh pr view --json` is asked for.
-const prFields = "number,url,state,reviewDecision,statusCheckRollup"
+const prFields = "number,url,state,reviewDecision,statusCheckRollup,mergedAt,headRefOid"
 
 // ghPR is gh's answer. statusCheckRollup mixes check runs (status,
 // conclusion) and commit statuses (state).
@@ -28,6 +33,8 @@ type ghPR struct {
 	URL            string `json:"url"`
 	State          string `json:"state"`
 	ReviewDecision string `json:"reviewDecision"`
+	MergedAt       string `json:"mergedAt"`
+	HeadRefOid     string `json:"headRefOid"`
 	Rollup         []struct {
 		Status     string `json:"status"`
 		Conclusion string `json:"conclusion"`
@@ -37,6 +44,7 @@ type ghPR struct {
 
 var (
 	upperRE = regexp.MustCompile(`^[A-Z_]{0,32}$`)
+	oidRE   = regexp.MustCompile(`^[0-9a-f]{40}$`)
 	urlRE   = regexp.MustCompile(`^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._-]+){2}/pull/[0-9]{1,9}$`)
 )
 
@@ -59,6 +67,12 @@ func ParsePR(data []byte) (PR, error) {
 	}
 	if upperRE.MatchString(g.ReviewDecision) {
 		pr.Review = g.ReviewDecision
+	}
+	if at, err := time.Parse(time.RFC3339, g.MergedAt); err == nil && pr.State == "MERGED" && at.Year() > 2000 {
+		pr.MergedAt = at.UTC()
+	}
+	if oidRE.MatchString(g.HeadRefOid) {
+		pr.Head = g.HeadRefOid
 	}
 	pending := false
 	for _, c := range g.Rollup {
