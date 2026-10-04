@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/theclifmeister/termalator/internal/cli"
 	"github.com/theclifmeister/termalator/internal/emu"
 	"github.com/theclifmeister/termalator/internal/version"
 )
@@ -24,8 +25,11 @@ func main() {
 		fmt.Println("libghostty-vt: ok")
 		return
 	}
+	if code, ok := cli.Run(os.Args[1:]); ok {
+		os.Exit(code)
+	}
 	fmt.Fprintln(os.Stderr, "tm: not implemented yet; see docs/SPEC.md")
-	fmt.Fprintln(os.Stderr, "usage: tm version | tm selftest")
+	fmt.Fprintln(os.Stderr, "usage: tm version | tm selftest | tm project | tm task | tm context | tm skill | tm inbox")
 	os.Exit(2)
 }
 

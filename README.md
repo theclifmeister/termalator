@@ -4,7 +4,23 @@
 
 Claude Code is the first supported agent. Other agents plug in through a manifest; see [docs/SPEC.md §8](docs/SPEC.md#8-agents).
 
-**Status:** pre-alpha. The repository has the skeleton and the [v0.1 specification](docs/SPEC.md). `tm` itself only implements `version` and `selftest` so far. `selftest` shows that the terminal emulator is linked.
+**Status:** pre-alpha. The repository has the skeleton and the [v0.1 specification](docs/SPEC.md). `tm` implements `version`, `selftest` (shows that the terminal emulator is linked), and the file layer of projects and tasks (milestone M5): `tm project new|list`, `tm skill`, `tm task …`, `tm context` and `tm inbox list|done`. These work on the files directly; the server takes over writes later.
+
+## Try projects and tasks
+
+```sh
+export TERMALATOR_HOME=$(mktemp -d)        # leave ~/.termalator alone while trying it
+./bin/tm project new "Demo" --goal "Try tm"
+export TERMALATOR_PROJECT=demo             # or cd into $TERMALATOR_HOME/projects/demo
+./bin/tm task add "Fix login redirect" --step "Reproduce" --step "Fix"
+./bin/tm task status T1 started
+./bin/tm task steps T1 check 1
+./bin/tm task list                         # add --json for machine-readable output
+./bin/tm context                           # what the coordinator reads every turn
+./bin/tm skill coordinator                 # the coordinator's standing rules, versioned with tm
+```
+
+`tm task help` lists every task command. Exit codes: 0 done or already true, 1 refused (with a stable code such as `human-only`), 2 usage error, 3 I/O error.
 
 ## Requirements
 

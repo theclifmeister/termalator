@@ -215,6 +215,7 @@ Every hosted process gets these variables, which is how hooks and the CLI find t
 - `TERMALATOR_SOCKET`
 - `TERMALATOR_BIN` (absolute path of `tm`)
 - `TERMALATOR_PROJECT=<slug>` and `TERMALATOR_THREAD=<id>`, when they apply
+- `TERMALATOR_ROLE=coordinator|thread|shell`. Until the server serves project calls, `tm` derives the caller (§11.1) from this and `TERMALATOR_SESSION`; the server will use the peer pid instead
 - `TERM`, `COLORTERM`, `TERM_PROGRAM` (§3.3)
 
 The server removes variables that leak the launching terminal's identity, such as `TMUX`, `TERM_SESSION_ID` and `WINDOWID`. Each agent's manifest adds its own `unset_env` list (`agent.FilterEnv`).
@@ -333,7 +334,7 @@ The processes die with the server, because the PTY master closes and the childre
     uploads/                           files the user gave the project               [human]
 ```
 
-- **Writer discipline.** Every write is a write to a temp file followed by `rename`, under a per-file lock (`<file>.lock`, `flock`). Files marked `[tm]` are only ever rewritten by `tm`. A human hand-editing `TASKS.md` is tolerated: `tm` re-parses the file, and if it can't, it refuses to write and reports the line number.
+- **Writer discipline.** Every write is a write to a temp file followed by `rename`, under a per-file lock (a hidden `.<file>.lock`, `flock`). Files marked `[tm]` are only ever rewritten by `tm`. A human hand-editing `TASKS.md` is tolerated: `tm` re-parses the file, and if it can't, it refuses to write and reports the line number.
 - **Front matter** is TOML between `+++` lines, as in herdr-projects.
 - **Worktrees live outside the project folder.** Claude Code loads `CLAUDE.md` from parent directories, so a worktree under the project folder would inherit the coordinator's role file.
 
