@@ -1,0 +1,40 @@
+ PROJECTS 1            │ termalator                                                             ● server ok · 0 sessions
+▾· demo              0 │ demo ──────────────────────────────────────────────────────────────────────────────────────────
+  · coordinator        │  coordinator                           —          enter starts the coordinator
+                       │  tasks: 0 needs you · 1 in motion · 1 on deck
+                       │ SESSIONS ──────────────────────────────────────────────────────────────────────────────────────
+                       │  no sessions; s starts a shell
+                       │  ╭─ demo · prefix = ctrl+b ─────────────────────────────────────────────────────────────────╮
+                       │  │  1 Overview   2 Inbox   3 Tasks   4 Settings   5 Keys                                    │
+                       │  │                                                                                          │
+                       │  │ Start threads                ask first                                                   │
+                       │  │ Ask first: the coordinator proposes threads and starts them after your go-ahead.         │
+                       │  │ Automatically: it starts them itself.                                                    │
+                       │  │                                                                                          │
+                       │  │ Yolo mode                    off                                                         │
+                       │  │ New threads skip the agent's permission prompts; the file rules and the sandbox still    │
+                       │  │ hold. Turning it on asks first.                                                          │
+                       │  │                                                                                          │
+                       │  │ Coordinator approves         on                                                          │
+                       │  │ The coordinator may answer its threads' in-scope permission prompts (allow once, never   │
+                       │  │ always).                                                                                 │
+                       │  │                                                                                          │
+                       │  │ Auto-close finished threads  on                                                          │
+                       │  │ Close a thread once its pull request merged and its agent is idle; its worktree is       │
+                       │  │ removed only when nothing is lost.                                                       │
+                       │  │                                                                                          │
+                       │  │ Pull request follow-up       on                                                          │
+                       │  │ Prompt a thread when its pull request's checks fail or a reviewer asks for changes.      │
+                       │  │                                                                                          │
+                       │  │ Remote control               off                                                         │
+                       │  │ New coordinators start so you can continue them from another device. prefix+r changes    │
+                       │  │ the running one.                                                                         │
+                       │  ╰──────────────────────────────────────────────────────────────────────────────────────────╯
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │────────────────────────────────────────────────────────────────────────────────────────────────
+                       │ enter change · ↑ ↓ move · tab next tab · 1-5 pick one · esc close
+                       │

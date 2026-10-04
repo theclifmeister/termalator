@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/theclifmeister/termalator/internal/caller"
+	"github.com/theclifmeister/termalator/internal/config"
 	"github.com/theclifmeister/termalator/internal/home"
 	"github.com/theclifmeister/termalator/internal/project"
 	"github.com/theclifmeister/termalator/internal/proto"
@@ -21,7 +22,9 @@ const defaultAgent = "claude"
 // the server-owned view (docs/SPEC.md §3.3, §4), view main unless own.
 // It shows the view's screen, the dashboard or the attached layout, and
 // follows it when this console or another changes it.
-func (e *Env) dashboardCmd(own bool) int { return e.fullConsole(own, nil, defaultAgent) }
+func (e *Env) dashboardCmd(own bool) int {
+	return e.fullConsole(own, nil, config.DefaultAgent(defaultAgent))
+}
 
 // uiFile is ui.json, the console's layout (docs/SPEC.md §5.1); "" when
 // there is no home.
@@ -55,7 +58,7 @@ func (e *Env) fullConsole(own bool, goTo *tui.Target, agentName string) int {
 			who = caller.Narrower(who, c)
 		}
 	}
-	src := &tui.ServerSource{Paths: p, Agent: defaultAgent, Caller: who}
+	src := &tui.ServerSource{Paths: p, Agent: agentName, Caller: who}
 	defer src.Close()
 	uiFile := uiFile()
 	cols, rows, ok := termSize()

@@ -1,0 +1,40 @@
+ PROJECTS 1            │ termalator                                                             ● server ok · 0 sessions
+▾· demo              0 │ demo ──────────────────────────────────────────────────────────────────────────────────────────
+  · coordinator        │  coordinator                           —          enter starts the coordinator
+                       │  tasks: 0 needs you · 1 in motion · 1 on deck
+                       │ SESSIONS ──────────────────────────────────────────────────────────────────────────────────────
+                       │  no sessions; s starts a shell
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │  ╭─ demo · prefix = ctrl+b ─────────────────────────────────────────────────────────────────╮
+                       │  │  1 Overview   2 Inbox   3 Tasks   4 Settings   5 Keys                                    │
+                       │  │                                                                                          │
+                       │  │ IN MOTION                                                                                │
+                       │  │ T1    Write the README  started · 1/2                                                    │
+                       │  │       ✓ Draft                                                                            │
+                       │  │       ○ Review                                                                           │
+                       │  │                                                                                          │
+                       │  │ ON DECK                                                                                  │
+                       │  │ T2    Ship it  open                                                                      │
+                       │  │                                                                                          │
+                       │  │ done: 0 · read-only: the coordinator changes tasks                                       │
+                       │  ╰──────────────────────────────────────────────────────────────────────────────────────────╯
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │
+                       │────────────────────────────────────────────────────────────────────────────────────────────────
+                       │ tab next tab · 1-5 pick one · esc close
+                       │

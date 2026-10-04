@@ -179,17 +179,3 @@ func (c *client) reattach(p *pane) {
 // remoteMark follows a project's name in the sidebar while its
 // coordinator's remote control is on.
 const remoteMark = "⌁"
-
-// remoteRow is the settings popup's remote control row, in plain words:
-// how a new coordinator starts, and the running one's state when prefix+r
-// changed it since.
-func remoteRow(setting bool, sessions []proto.SessionInfo, slug string) []string {
-	word := map[bool]string{true: "on", false: "off"}
-	out := []string{"Remote control: " + word[setting] + styleFaint.Render("  continue this project's coordinator from another device")}
-	for _, s := range sessions {
-		if s.Role == proto.RoleCoordinator && s.Project == slug && s.RemoteControl != setting {
-			out = append(out, styleFaint.Render("  the running coordinator has it "+word[s.RemoteControl]+" (prefix+r), until it is started anew"))
-		}
-	}
-	return out
-}

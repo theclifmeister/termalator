@@ -9,6 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/theclifmeister/termalator/internal/config"
 	"github.com/theclifmeister/termalator/internal/emu"
 	"github.com/theclifmeister/termalator/internal/project"
 	"github.com/theclifmeister/termalator/internal/proto"
@@ -555,7 +556,7 @@ func (c *client) sideGo(t Target) {
 		return
 	}
 	go func() {
-		if err := OpenTarget(c.paths, c.vc, c.side.agent, t); err != nil {
+		if err := OpenTarget(c.paths, c.vc, config.DefaultAgent(c.side.agent), t); err != nil {
 			var perr *proto.Error
 			msg := err.Error()
 			if errors.As(err, &perr) {

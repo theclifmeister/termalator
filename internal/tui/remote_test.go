@@ -54,7 +54,7 @@ func TestRemoteWording(t *testing.T) {
 		}
 	}
 	texts = append(texts, remoteQuestion(proto.SessionInfo{Project: "demo"}), remoteQuestion(proto.SessionInfo{Project: "demo", RemoteControl: true}))
-	texts = append(texts, remoteRow(false, []proto.SessionInfo{{Role: proto.RoleCoordinator, Project: "demo", RemoteControl: true}}, "demo")...)
+	texts = append(texts, remoteNote(false, []proto.SessionInfo{{Role: proto.RoleCoordinator, Project: "demo", RemoteControl: true}}, "demo")...)
 	for _, s := range texts {
 		for _, bad := range []string{"config", "toml", "coordinator_remote_control", "Claude"} {
 			if strings.Contains(s, bad) {
@@ -62,7 +62,7 @@ func TestRemoteWording(t *testing.T) {
 			}
 		}
 	}
-	if row := ansi.Strip(strings.Join(remoteRow(true, nil, "demo"), "\n")); !strings.HasPrefix(row, "Remote control: on") {
-		t.Errorf("settings row = %q", row)
+	if note := remoteNote(true, nil, "demo"); note != nil {
+		t.Errorf("a note without a running coordinator: %q", note)
 	}
 }

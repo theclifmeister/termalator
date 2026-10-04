@@ -26,5 +26,5 @@
                        │                                                                                           │
                        │                                                                                           │
                        │────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-                       │ enter watch · t tasks · i inbox · , settings · ? help · q quit
+                       │ enter watch · a project · t tasks · i inbox · , settings · ? help · q quit
                        │

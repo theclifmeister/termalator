@@ -1,0 +1,408 @@
+package tui
+
+import (
+	"cmp"
+	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/theclifmeister/termalator/internal/config"
+	"github.com/theclifmeister/termalator/internal/project"
+	"github.com/theclifmeister/termalator/internal/proto"
+	"github.com/theclifmeister/termalator/internal/tasks"
+)
+
+// The project popup (a on the dashboard, prefix+a in a session;
+// docs/SPEC.md §4): everything about one project in tabs. Only the
+// repositories and the settings change here, on the human's keypress;
+// the inbox and the tasks are read-only, since the coordinator handles
+// them. Which tab is open is this console's own, as every popup.
+
+// The tabs, in order.
+const (
+	tabOverview = iota
+	tabInbox
+	tabTasks
+	tabSettings
+	tabKeys
+	tabCount
+)
+
+var tabNames = [tabCount]string{"Overview", "Inbox", "Tasks", "Settings", "Keys"}
+
+type projectView struct {
+	slug string
+	tab  int
+	// sel is each tab's selection: a repository, an inbox item, a task,
+	// a setting, a line of the keys.
+	sel      [tabCount]int
+	board    *tasks.Board
+	settings settingsList
+}
+
+func (m *dash) projectPopup(string) tea.Cmd {
+	slug := m.needProject()
+	if slug == "" {
+		return nil
+	}
+	pv := &projectView{slug: slug, settings: settingsList{rows: projectSettings(slug)}}
+	m.push(pv)
+	return m.loadBoard(slug)
+}
+
+// projectPopupView is the open project popup, if any.
+func (m *dash) projectPopupView() *projectView {
+	for i := len(m.stack) - 1; i >= 0; i-- {
+		if p, ok := m.stack[i].(*projectView); ok {
+			return p
+		}
+	}
+	return nil
+}
+
+func (pv *projectView) data(m *dash) ProjectData {
+	if p := m.projectData(pv.slug); p != nil {
+		return *p
+	}
+	return ProjectData{Slug: pv.slug}
+}
+
+func (pv *projectView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
+	switch s := k.String(); s {
+	case "esc", "q", "a":
+		m.pop()
+		return nil
+	case "tab", "right", "l":
+		pv.tab = (pv.tab + 1) % tabCount
+		return nil
+	case "shift+tab", "left", "h":
+		pv.tab = (pv.tab + tabCount - 1) % tabCount
+		return nil
+	case "1", "2", "3", "4", "5":
+		pv.tab = int(s[0] - '1')
+		return nil
+	case "r":
+		return tea.Batch(m.load(), m.loadBoard(pv.slug))
+	}
+	if pv.tab == tabSettings {
+		cmd, _ := pv.settings.key(m, k)
+		return cmd
+	}
+	d := 0
+	switch k.String() {
+	case "up", "k":
+		d = -1
+	case "down", "j":
+		d = 1
+	}
+	if pv.tab == tabKeys {
+		d = scrollKeys[k.String()]
+	}
+	pv.sel[pv.tab] = moveSel(pv.sel[pv.tab], d, pv.count(m))
+	if pv.tab == tabOverview {
+		return pv.repoKey(m, k)
+	}
+	return nil
+}
+
+// count is how many things the tab selects among.
+func (pv *projectView) count(m *dash) int {
+	switch pv.tab {
+	case tabOverview:
+		return len(pv.data(m).Repos)
+	case tabInbox:
+		return len(pv.data(m).Items)
+	case tabTasks:
+		return len(pv.tasks())
+	case tabKeys:
+		return len(keyLines(m.inner(m.w)))
+	}
+	return 0
+}
+
+// repoKey adds (+) or removes (x) a repository.
+func (pv *projectView) repoKey(m *dash, k tea.KeyPressMsg) tea.Cmd {
+	slug, repos := pv.slug, pv.data(m).Repos
+	switch k.String() {
+	case "+", "n":
+		m.prompt("add a repository (its directory): ", m.cwd, func(path string) tea.Cmd {
+			path = absPath(path, m.cwd)
+			return m.setRepo(slug, path, true, "added "+path)
+		})
+	case "x", "delete", "backspace":
+		i := pv.sel[tabOverview]
+		if i >= len(repos) {
+			return nil
+		}
+		path := repos[i]
+		m.confirm("Remove "+path+" from "+slug+"'s repositories? The directory itself stays.", func() tea.Cmd {
+			return m.setRepo(slug, path, false, "removed "+path)
+		})
+	}
+	return nil
+}
+
+func (m *dash) setRepo(slug, path string, add bool, msg string) tea.Cmd {
+	src := m.src
+	return m.act(func() actionMsg {
+		if err := src.SetRepo(slug, path, add); err != nil {
+			return actionMsg{err: err}
+		}
+		return actionMsg{msg: msg}
+	})
+}
+
+// absPath reads a typed path: ~ is the home directory, a relative path
+// is from cwd, links are resolved.
+func absPath(p, cwd string) string {
+	if rest, ok := strings.CutPrefix(p, "~"); ok && (rest == "" || rest[0] == '/') {
+		if h, err := os.UserHomeDir(); err == nil {
+			p = h + rest
+		}
+	}
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(cwd, p)
+	}
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		return r
+	}
+	return filepath.Clean(p)
+}
+
+// tasks are the live tasks in board order: needs you, in motion, on deck.
+func (pv *projectView) tasks() []*tasks.Task {
+	if pv.board == nil {
+		return nil
+	}
+	var out []*tasks.Task
+	for _, g := range []tasks.Group{tasks.NeedsYou, tasks.InMotion, tasks.OnDeck} {
+		for _, t := range pv.board.Tasks {
+			if tasks.GroupOf(t.Status) == g {
+				out = append(out, t)
+			}
+		}
+	}
+	return out
+}
+
+func (pv *projectView) render(m *dash) string { return m.popup(pv.box(m)) }
+
+func (pv *projectView) box(m *dash) box {
+	w := m.inner(m.w)
+	p := pv.data(m)
+	lines := []string{pv.tabBar(p), ""}
+	var body []string
+	sel := -1
+	keys := "tab next tab · 1-5 pick one · esc close"
+	switch pv.tab {
+	case tabOverview:
+		body, sel = pv.overview(m, p, w)
+		keys = "+ add repository · x remove it · " + keys
+	case tabInbox:
+		body, sel = inboxLines(p.Items, pv.sel[tabInbox], w)
+		body = append(body, "", styleFaint.Render("Read-only: the coordinator handles these."))
+	case tabTasks:
+		body, sel = pv.taskLines(w)
+	case tabSettings:
+		body, sel = pv.settings.lines(m, w)
+		keys = "enter change · ↑ ↓ move · " + keys
+	case tabKeys:
+		// The same list as the help, scrolled the same way.
+		body = keyLines(w)
+		keys = "↑ ↓ scroll · " + keys
+	}
+	scroll := 0
+	if sel >= 0 {
+		sel += len(lines)
+	} else if pv.tab == tabKeys {
+		scroll = pv.sel[tabKeys]
+	}
+	lines = append(lines, body...)
+	return box{title: pv.slug + " · prefix = " + m.prefix, body: lines, sel: sel, scroll: scroll, keys: keys, width: m.w}
+}
+
+// tabBar names the tabs, the open one in reverse video, with the inbox's
+// count.
+func (pv *projectView) tabBar(p ProjectData) string {
+	var parts []string
+	for i, n := range tabNames {
+		label := fmt.Sprintf("%d %s", i+1, n)
+		if i == tabInbox && len(p.Items) > 0 {
+			label += fmt.Sprintf(" %d", len(p.Items))
+		}
+		if i == pv.tab {
+			parts = append(parts, styleSel.Render(" "+label+" "))
+		} else {
+			parts = append(parts, styleFaint.Render(" "+label+" "))
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+// overview is the project's name, goal, repositories, machine and
+// agents.
+func (pv *projectView) overview(m *dash, p ProjectData, w int) ([]string, int) {
+	field := func(label string) string { return styleFaint.Render(fmt.Sprintf("%-14s", label)) }
+	var out []string
+	out = append(out, field("Project")+styleHead.Render(cmp.Or(oneLine(p.Name), p.Slug))+styleFaint.Render("  "+p.Slug))
+	if g := strings.TrimSpace(p.Goal); g == "" {
+		out = append(out, field("Goal")+styleFaint.Render("none set; ask the coordinator to set one"))
+	} else {
+		for i, l := range wrapLines(oneLine(g), w-14) {
+			label := field("")
+			if i == 0 {
+				label = field("Goal")
+			}
+			out = append(out, label+l)
+		}
+	}
+	out = append(out, "")
+	sel := -1
+	if len(p.Repos) == 0 {
+		out = append(out, field("Repositories")+styleFaint.Render("none; + adds one"))
+	}
+	for i, r := range p.Repos {
+		label := field("")
+		if i == 0 {
+			label = field("Repositories")
+		}
+		if i == pv.sel[tabOverview] {
+			sel = len(out)
+			out = append(out, label+styleSel.Render(fit(r, w-14)))
+			continue
+		}
+		out = append(out, label+r)
+	}
+	out = append(out, "")
+	host, _ := os.Hostname()
+	out = append(out, field("Machines")+"this one"+styleFaint.Render("  "+host))
+	out = append(out, "")
+	out = append(out, field("Coordinator")+pv.coordinatorLine(m, p))
+	threads := map[string][]string{}
+	for _, t := range p.Threads {
+		a := cmp.Or(t.Agent, DefaultAgent)
+		threads[a] = append(threads[a], t.ID)
+	}
+	if len(threads) == 0 {
+		out = append(out, field("Threads")+styleFaint.Render("none open"))
+	}
+	agents := make([]string, 0, len(threads))
+	for a := range threads {
+		agents = append(agents, a)
+	}
+	slices.Sort(agents)
+	for i, a := range agents {
+		label := field("")
+		if i == 0 {
+			label = field("Threads")
+		}
+		out = append(out, label+a+styleFaint.Render(" · "+strings.Join(threads[a], " ")))
+	}
+	s := config.Defaults
+	if p.Safety != nil {
+		s = *p.Safety
+	}
+	modes := []string{map[bool]string{true: "start after asking you", false: "start automatically"}[s.StartThreads != config.StartAuto]}
+	if s.Yolo {
+		modes = append(modes, "yolo mode")
+	}
+	out = append(out, field("")+styleFaint.Render(strings.Join(modes, " · ")+" (Settings tab)"))
+	c := p.Counts
+	out = append(out, "", field("Tasks")+fmt.Sprintf("%d needs you · %d in motion · %d on deck · %d done", c["needs_you"], c["in_motion"], c["on_deck"], c["done"]))
+	if p.Err != "" {
+		out = append(out, "", styleBad.Render("error: "+oneLine(p.Err)))
+	}
+	return out, sel
+}
+
+// coordinatorLine is the coordinator's agent and state, or the agent a
+// new one runs.
+func (pv *projectView) coordinatorLine(m *dash, p ProjectData) string {
+	for _, s := range m.data.Sessions {
+		if s.Role == proto.RoleCoordinator && s.Project == p.Slug {
+			line := cmp.Or(s.Agent, DefaultAgent) + styleFaint.Render(" · "+s.ID+" "+stateWord(s))
+			if s.RemoteControl {
+				line += styleFaint.Render(" · remote control on")
+			}
+			return line
+		}
+	}
+	return config.DefaultAgent(DefaultAgent) + styleFaint.Render(" · not running; enter on the project starts it")
+}
+
+// taskLines are the live tasks, grouped, each with its steps.
+func (pv *projectView) taskLines(w int) ([]string, int) {
+	if pv.board == nil {
+		return []string{styleFaint.Render("loading…")}, -1
+	}
+	var out []string
+	sel := -1
+	var group tasks.Group
+	for i, t := range pv.tasks() {
+		if g := tasks.GroupOf(t.Status); g != group {
+			group = g
+			st := styleTitle
+			if g == tasks.NeedsYou {
+				st = styleWarn.Bold(true)
+			}
+			if len(out) > 0 {
+				out = append(out, "")
+			}
+			out = append(out, st.Render(strings.ToUpper(string(g))))
+		}
+		head := fmt.Sprintf("%-5s %s", t.Ref(), oneLine(t.Title))
+		tail := string(t.Status)
+		if len(t.Steps) > 0 {
+			tail += fmt.Sprintf(" · %d/%d", t.StepsDone(), len(t.Steps))
+		}
+		if t.Thread != "" {
+			tail += " · " + t.Thread
+		}
+		if i == pv.sel[tabTasks] {
+			sel = len(out)
+			out = append(out, styleSel.Render(fit(head+"  "+tail, w)))
+		} else {
+			out = append(out, fit(head+"  "+styleFaint.Render(tail), w))
+		}
+		for _, s := range t.Steps {
+			out = append(out, fit("      "+todoGlyph(map[bool]string{true: "done"}[s.Done])+" "+oneLine(s.Text), w))
+		}
+	}
+	done := 0
+	for _, t := range pv.board.Tasks {
+		if t.Status == tasks.Done {
+			done++
+		}
+	}
+	if len(out) == 0 {
+		out = append(out, styleFaint.Render("no open tasks"))
+	}
+	out = append(out, "", styleFaint.Render(fmt.Sprintf("done: %d · read-only: the coordinator changes tasks", done)))
+	return out, sel
+}
+
+// inboxLines are a project's unhandled inbox items, sel selected.
+func inboxLines(items []project.Item, sel, w int) ([]string, int) {
+	var lines []string
+	at := -1
+	now := time.Now()
+	for i, it := range items {
+		when := fmt.Sprintf("%-6s", age(now.Sub(it.Created)))
+		if i == sel {
+			at = len(lines)
+			lines = append(lines, styleSel.Render(fit(fmt.Sprintf("%s %s %s", fit(it.Kind, 16), when, oneLine(it.Summary)), w)))
+			continue
+		}
+		lines = append(lines, fit(fmt.Sprintf("%s %s %s", styleWarn.Render(fit(it.Kind, 16)),
+			styleFaint.Render(when), oneLine(it.Summary)), w)+reset)
+	}
+	if len(items) == 0 {
+		lines = append(lines, styleFaint.Render("inbox empty"))
+	}
+	return lines, at
+}

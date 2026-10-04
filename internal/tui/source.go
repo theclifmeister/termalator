@@ -2,8 +2,11 @@ package tui
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 
+	"github.com/theclifmeister/termalator/internal/agent"
 	"github.com/theclifmeister/termalator/internal/caller"
 	"github.com/theclifmeister/termalator/internal/config"
 	"github.com/theclifmeister/termalator/internal/project"
@@ -30,7 +33,11 @@ type Data struct {
 type ProjectData struct {
 	Slug   string
 	Name   string
+	Goal   string
+	Repos  []string
 	Counts map[string]int
+	// Safety are the project's settings; nil when they can't be read.
+	Safety *config.Safety
 	// Unread counts every unhandled inbox item; Items are all of them,
 	// for the inbox view.
 	Unread int
@@ -63,6 +70,14 @@ type Source interface {
 	// OpenProject returns the project's coordinator session, started
 	// first if none runs.
 	OpenProject(slug string, cols, rows int) (string, error)
+	// SetSetting changes a setting, on the human's keypress in a settings
+	// popup (docs/SPEC.md §11.2): key in table "" (the top level), "keys"
+	// or "projects.<slug>". It is refused when tm runs inside an agent.
+	SetSetting(table, key string, value any) error
+	// SetRepo adds or removes one of a project's repositories.
+	SetRepo(slug, path string, add bool) error
+	// Agents lists the agents tm can run.
+	Agents() []string
 }
 
 // ServerSource is the real Source: the control socket plus the project
@@ -123,7 +138,8 @@ func (s *ServerSource) Load() Data {
 		d.Err = err.Error()
 	}
 	for _, sum := range list {
-		pd := ProjectData{Slug: sum.Slug, Name: sum.Name, Counts: sum.Counts, Err: sum.Error}
+		pd := ProjectData{Slug: sum.Slug, Name: sum.Name, Goal: sum.Goal, Repos: sum.Repos,
+			Counts: sum.Counts, Safety: sum.Safety, Err: sum.Error}
 		if p, err := project.Open(sum.Slug); err == nil {
 			b, err := p.Tasks().Load()
 			if err != nil {
@@ -187,7 +203,52 @@ func (s *ServerSource) NewProject(name string) (string, error) {
 const coordinatorKickoff = "You are this project's coordinator. Greet the user: say in a few lines where the project stands, from your context, then ask what to do next."
 
 func (s *ServerSource) OpenProject(slug string, cols, rows int) (string, error) {
-	return OpenCoordinator(s.call, slug, s.Agent, cols, rows)
+	return OpenCoordinator(s.call, slug, config.DefaultAgent(s.Agent), cols, rows)
+}
+
+// errHumanOnly refuses a settings change from inside an agent.
+var errHumanOnly = errors.New("human-only: settings are changed by the human")
+
+func (s *ServerSource) SetSetting(table, key string, value any) error {
+	if s.Caller.IsAgent() {
+		return errHumanOnly
+	}
+	slug, isProject := strings.CutPrefix(table, "projects.")
+	if !isProject {
+		return config.Set(table, key, value)
+	}
+	if err := config.SetProject(slug, key, value); err != nil {
+		return err
+	}
+	// The project's journal records the change, as every tm action.
+	if p, err := project.Open(slug); err == nil {
+		p.Journal(s.Caller, "settings."+key, slug, fmt.Sprint(value))
+	}
+	return nil
+}
+
+func (s *ServerSource) SetRepo(slug, path string, add bool) error {
+	if s.Caller.IsAgent() {
+		return errHumanOnly
+	}
+	p, err := project.Open(slug)
+	if err != nil {
+		return err
+	}
+	changed, err := p.SetRepo(path, add)
+	if err != nil || !changed {
+		return err
+	}
+	verb := map[bool]string{true: "add", false: "remove"}[add]
+	return p.Journal(s.Caller, "project.repo."+verb, slug, path)
+}
+
+func (s *ServerSource) Agents() []string {
+	reg, _ := agent.Load(s.Paths.AgentsDir())
+	if reg == nil {
+		return nil
+	}
+	return reg.Names()
 }
 
 // OpenCoordinator returns the id of the project's coordinator session,

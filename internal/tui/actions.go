@@ -39,7 +39,7 @@ func withProject(word string) func(*dash, row, bool) string {
 }
 
 // actions is set in init: the ? action opens the help, which lists the
-// actions.
+// actions (keymap.go).
 var actions []action
 
 func init() {
@@ -71,6 +71,8 @@ func init() {
 				return ""
 			},
 			run: (*dash).newProject},
+		{keys: []string{"a"}, label: "a", help: "the project popup: overview, inbox, tasks, settings and keys",
+			foot: withProject("project"), run: (*dash).projectPopup},
 		{keys: []string{"t"}, label: "t", help: "the project's tasks, read-only; enter shows one",
 			foot: withProject("tasks"), run: (*dash).taskBoard},
 		{keys: []string{"i"}, label: "i", help: "the project's inbox, read-only: what the coordinator is told about",
@@ -98,12 +100,12 @@ func init() {
 				m.setLayout(l)
 				return nil
 			}},
-		{keys: []string{","}, label: ",", help: "settings: the prefix key, the project's safety settings, the layout",
-			foot: always("settings"), run: func(m *dash, _ string) tea.Cmd { m.openSettings(m.projectHere()); return nil }},
+		{keys: []string{","}, label: ",", help: "settings for every project: the prefix key, the default agent, the layout (a project's own are under a)",
+			foot: always("settings"), run: func(m *dash, _ string) tea.Cmd { m.openSettings(); return nil }},
 		{keys: []string{"r"}, label: "r", help: "refresh",
 			run: func(m *dash, _ string) tea.Cmd { return m.load() }},
 		{keys: []string{"?"}, label: "?", help: "help",
-			foot: always("help"), run: func(m *dash, _ string) tea.Cmd { m.push(helpView{}); return nil }},
+			foot: always("help"), run: func(m *dash, _ string) tea.Cmd { m.push(&helpView{}); return nil }},
 		{keys: []string{"q"}, label: "q", help: "quit (the server keeps running)",
 			foot: always("quit"), run: func(*dash, string) tea.Cmd { return tea.Quit }},
 	}
@@ -135,34 +137,6 @@ func (m *dash) footKeys() string {
 		}
 	}
 	return strings.Join(out, " · ")
-}
-
-func helpLines() []string {
-	var out []string
-	for _, a := range actions {
-		if a.label != "" {
-			out = append(out, fmt.Sprintf("%-9s %s", a.label, a.help))
-		}
-	}
-	return append(out,
-		fmt.Sprintf("%-9s %s", "click", "in the sidebar: ▸ ▾ open or close a project; a project shows its dashboard, its coordinator"),
-		fmt.Sprintf("%-9s %s", "", "attaches, a thread watches it; the same from a session, tm attach and tm project open"),
-		"",
-		styleHead.Render("In a session")+" (prefix+<key> is the prefix, then the key):",
-		fmt.Sprintf("%-16s %s", "prefix+d", "back to this dashboard, on every console of the view (the session keeps running)"),
-		fmt.Sprintf("%-16s %s", "prefix+p ] [", "back here and switch project"),
-		fmt.Sprintf("%-16s %s", "prefix+i t , ?", "back here with the inbox, tasks, settings or help open"),
-		fmt.Sprintf("%-16s %s", `prefix+% "`, "split the window: a new shell beside / below"),
-		fmt.Sprintf("%-16s %s", "prefix+arrows o", "focus another pane;  ctrl+arrows resize, z zooms, x closes, space switches the layout"),
-		fmt.Sprintf("%-16s %s", "prefix+{ } b", "narrow / widen the sidebar, or make it a slim strip"),
-		fmt.Sprintf("%-16s %s", "prefix+u", "take over a watch-only thread pane and type into it (asks first; its coordinator is told)"),
-		fmt.Sprintf("%-16s %s", "prefix+r", "turn remote control of a coordinator on or off, to continue it from another device (asks first)"),
-		fmt.Sprintf("%-16s %s", "prefix+prefix", "send the prefix key itself to the program"),
-		"",
-		styleFaint.Render("Every tm shows the same view: what one does, the others show, sized by the one typed in. tm --own keeps to itself."),
-		styleFaint.Render("You talk to coordinators; they run the threads, their reports and the tasks (tm thread, tm task)."),
-		styleFaint.Render("Here, prefix+<key> is that key. The prefix is in the settings (,); inside tmux, pick another."),
-	)
 }
 
 func (m *dash) enter(string) tea.Cmd {
