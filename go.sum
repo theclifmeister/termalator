@@ -1,0 +1,4 @@
+github.com/BurntSushi/toml v1.6.0 h1:dRaEfpa2VI55EwlIW72hMRHdWouJeRF7TPYhI+AUQjk=
+github.com/BurntSushi/toml v1.6.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
+go.mitchellh.com/libghostty v0.0.0-20261001181910-76867c77a212 h1:dQXt/X3C8rCmlUh3wh9z+0E6BLxY0V9tFSZft+KGKiU=
+go.mitchellh.com/libghostty v0.0.0-20261001181910-76867c77a212/go.mod h1:sx8yDvnDrQC/PzsrFfYx7ROmH8my91nz7lOxQb6sbo0=

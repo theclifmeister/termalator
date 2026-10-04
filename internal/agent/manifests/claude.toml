@@ -1,0 +1,181 @@
+# Claude Code: the reference agent manifest (docs/SPEC.md §8).
+#
+# DRAFT. Flags, hook names and screen text are taken from the t-0001
+# research (herdr src/detect/manifests/claude.toml and the Claude Code hooks
+# docs). The Claude integration spike (t-0004, spikes/claude) confirms or
+# corrects every line marked "spike".
+
+manifest_version = 1
+name = "claude"
+display = "Claude Code"
+
+# Subagent events carry agent_id; they must not move the pane's state.
+ignore_fields = ["agent_id"]
+
+[identify]
+argv0 = ["claude"]
+
+[launch]
+command = "claude"
+# --session-id pre-assigns Claude's session id so hook events map to the
+# session without guessing. --plugin-dir loads our hooks for this session
+# only, without touching ~/.claude (spike: hooks are added to the user's own
+# hooks, not replacing them). The brief goes in as an appended system prompt.
+args = [
+  "--plugin-dir", "{{.RuntimeDir}}/claude-plugin",
+  "{{if not .Resume}}--session-id{{end}}", "{{if not .Resume}}{{.AgentSID}}{{end}}",
+  "{{if .BriefPath}}--append-system-prompt-file{{end}}", "{{.BriefPath}}",
+]
+resume_args = ["--resume", "{{.AgentSID}}"]
+yolo_args = ["--dangerously-skip-permissions"]
+model_args = ["--model", "{{.Model}}"]
+kickoff_args = ["{{.Kickoff}}"]
+
+[launch.env]
+TERMALATOR_SESSION = "{{.SessionID}}"
+TERMALATOR_SOCKET = "{{.Socket}}"
+TERMALATOR_BIN = "{{.TMBin}}"
+
+[[launch.files]]
+path = "claude-plugin/.claude-plugin/plugin.json"
+template = '''
+{"name": "termalator", "description": "termalator session hooks", "version": "0.1.0"}
+'''
+
+# Every event goes to `tm hook --agent claude`, which forwards the payload
+# to the server and prints whatever the matching [[hooks]] entry responds.
+# async hooks don't block Claude; SessionStart must be sync to return context.
+[[launch.files]]
+path = "claude-plugin/hooks/hooks.json"
+template = '''
+{{- $cmd := printf "%q hook --agent claude" .TMBin -}}
+{{- $async := printf `[{"hooks":[{"type":"command","command":%s,"async":true}]}]` (json $cmd) -}}
+{"hooks": {
+  "SessionStart":       [{"hooks":[{"type":"command","command":{{json $cmd}}}]}],
+  "UserPromptSubmit":   {{$async}},
+  "PreToolUse":         {{$async}},
+  "PostToolUse":        {{$async}},
+  "PostToolUseFailure": {{$async}},
+  "PermissionRequest":  {{$async}},
+  "PermissionDenied":   {{$async}},
+  "Notification":       {{$async}},
+  "Stop":               {{$async}},
+  "StopFailure":        {{$async}},
+  "SessionEnd":         {{$async}}
+}}
+'''
+
+[inject]
+# Follow-up prompts: bracketed paste + Enter while idle (core). Channels
+# (research preview) could make this structured later.
+prompt = "paste"
+
+# Context re-injection: SessionStart fires on startup, resume, clear and
+# compact (spike), and its additionalContext is how the role/brief pointer
+# and `tm context` come back after /clear.
+[[hooks]]
+event = "SessionStart"
+state = "idle"
+session_field = "session_id"
+respond = '''{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":{{json .Context}}}}'''
+
+[[hooks]]
+event = "UserPromptSubmit"
+state = "working"
+
+[[hooks]]
+event = "PreToolUse"
+match = { tool_name = "AskUserQuestion" }
+state = "blocked"
+reason = "question"
+
+[[hooks]]
+event = "PreToolUse"
+state = "working"
+transient = true
+
+[[hooks]]
+event = "PostToolUse"
+state = "working"
+transient = true
+
+[[hooks]]
+event = "PostToolUseFailure"
+state = "working"
+transient = true
+
+[[hooks]]
+event = "PermissionRequest"
+state = "blocked"
+reason = "permission"
+
+[[hooks]]
+event = "PermissionDenied"
+state = "working"
+transient = true
+
+[[hooks]]
+event = "Notification"
+match = { notification_type = "permission_prompt" }
+state = "blocked"
+reason = "permission"
+
+[[hooks]]
+event = "Notification"
+match = { notification_type = "elicitation_dialog" }
+state = "blocked"
+reason = "question"
+
+[[hooks]]
+event = "Stop"
+state = "idle"
+
+[[hooks]]
+event = "StopFailure"
+state = "idle"
+reason = "error"
+
+[[hooks]]
+event = "SessionEnd"
+state = "exited"
+
+# Screen rules: a cross-check, never the primary signal (docs/SPEC.md §8.4).
+# Highest priority wins. Spike: verify each against current Claude Code.
+
+[[rules]]
+id = "blocked-permission-dialog"
+state = "blocked"
+reason = "permission"
+priority = 30
+region = "bottom:15"
+contains = ["Do you want to"]
+regex = '(?i)esc to cancel'
+
+[[rules]]
+id = "working-interrupt-hint"
+state = "working"
+priority = 20
+region = "bottom:6"
+contains = ["esc to interrupt"]
+
+[[rules]]
+id = "working-title-spinner"
+state = "working"
+priority = 10
+region = "title"
+regex = '^[\x{2801}-\x{28FF}]'
+
+[[rules]]
+id = "idle-title"
+state = "idle"
+priority = 5
+region = "title"
+regex = '^✳'
+
+[[rules]]
+id = "idle-prompt-line"
+state = "idle"
+priority = 0
+region = "bottom:10"
+regex = '(?m)^\s*❯'
+not = ["esc to interrupt"]
