@@ -253,9 +253,7 @@ func buildRows(d Data, project string) []row {
 		for i := range threads {
 			t := &threads[i]
 			tr := row{key: "th:" + p.Slug + ":" + t.ID, project: p.Slug, thread: t, mark: markTop, pct: -1}
-			if t.Status != nil && t.Status.PercentSource != "" {
-				tr.pct = t.Status.Percent
-			}
+			tr.pct = t.Status.Progress().Percent
 			var reason string
 			tr.state, reason, tr.session = threadState(t, byID)
 			switch {
@@ -325,7 +323,7 @@ func buildRows(d Data, project string) []row {
 }
 
 // sessionPct is a session's todo percent, -1 without todos.
-func sessionPct(s proto.SessionInfo) int { return pctOf(s.TodosDone, s.TodosTotal) }
+func sessionPct(s proto.SessionInfo) int { return sessionProgress(s).Percent }
 
 // threadGroup orders a project's threads as §7.4 does: waiting on you,
 // ready for review, working, idle, then the rest.

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/theclifmeister/termalator/internal/emu"
 	"github.com/theclifmeister/termalator/internal/project"
@@ -62,6 +63,7 @@ type treeRow struct {
 	open    bool // a project: expanded
 	current bool // a project: the current one, always expanded
 	hint    bool // a project: one of its threads is blocked or waiting
+	remote  bool // a project or coordinator row: its coordinator's remote control is on
 	threads int  // a project: its open threads
 	here    bool // the row you are on
 }
@@ -90,7 +92,7 @@ func buildTree(ps []ProjectData, sessions []proto.SessionInfo, in treeIn) []tree
 		pr.open = pr.current || in.expanded != nil && in.expanded(p.Slug)
 		for _, s := range sessions {
 			if s.Role == proto.RoleCoordinator && s.Project == p.Slug {
-				pr.session, pr.state = s.ID, stateWord(s)
+				pr.session, pr.state, pr.remote = s.ID, stateWord(s), s.RemoteControl
 				break
 			}
 		}
@@ -103,15 +105,13 @@ func buildTree(ps []ProjectData, sessions []proto.SessionInfo, in treeIn) []tree
 			t := &threads[i]
 			tr := treeRow{kind: treeThread, slug: p.Slug, thread: t.ID, title: oneLine(t.Title), pct: -1}
 			tr.state, _, tr.session = threadState(t, byID)
-			if t.Status != nil && t.Status.PercentSource != "" {
-				tr.pct = t.Status.Percent
-			}
+			tr.pct = t.Status.Progress().Percent
 			pr.hint = pr.hint || tr.state == "blocked" || t.Status != nil && t.Status.NeedsYou != ""
 			kids = append(kids, tr)
 		}
 		out = append(out, pr)
 		if pr.open {
-			out = append(out, treeRow{kind: treeCoordinator, slug: p.Slug, session: pr.session, state: pr.state, pct: -1})
+			out = append(out, treeRow{kind: treeCoordinator, slug: p.Slug, session: pr.session, state: pr.state, remote: pr.remote, pct: -1})
 			out = append(out, kids...)
 		}
 	}
@@ -216,10 +216,16 @@ func coordLook(state string) (string, lipgloss.Style) {
 //	"  ● t-0002 Bootstr 40%" a thread, with its progress
 //
 // The slim strip shows projects alone, "▸●term", the current one marked.
+// A coordinator with remote control on gets "⌁" after the project's name,
+// in either width, and after "coordinator".
 // The row you are on is in reverse video (and, in the slim strip, marked),
 // so colour is never the only signal.
 func treeLine(r treeRow, cw int, slim bool) string {
 	sel := styleSel.Bold(true)
+	rc := ""
+	if r.remote {
+		rc = remoteMark
+	}
 	if slim {
 		mark := " "
 		if r.current {
@@ -230,11 +236,11 @@ func treeLine(r treeRow, cw int, slim bool) string {
 			g, st = "◆", styleWarn
 		}
 		name := []rune(r.slug)
-		name = name[:min(len(name), max(cw-2, 0))]
+		name = name[:min(len(name), max(cw-2-len([]rune(rc)), 0))]
 		if r.here {
-			return sel.Render(fit(mark+g+string(name), cw))
+			return sel.Render(fit(mark+g+string(name)+rc, cw))
 		}
-		return fit(mark+st.Render(g)+string(name), cw)
+		return fit(mark+st.Render(g)+string(name)+rc, cw)
 	}
 	switch r.kind {
 	case treeProject:
@@ -248,7 +254,11 @@ func treeLine(r treeRow, cw int, slim bool) string {
 			hint = "◆"
 		}
 		count := fmt.Sprintf(" %d ", r.threads)
-		name := fit(r.slug, max(cw-3-1-len(count), 1))
+		nw := max(cw-3-1-len(count), 1)
+		name := fit(r.slug, nw)
+		if rc != "" {
+			name = fit(ansi.Truncate(r.slug, max(nw-1, 0), "…")+rc, nw)
+		}
 		if r.here {
 			return sel.Render(fit(toggle+g+" "+name+hint+count, cw))
 		}
@@ -264,13 +274,13 @@ func treeLine(r treeRow, cw int, slim bool) string {
 	case treeCoordinator:
 		g, st := coordLook(r.state)
 		if r.here {
-			return sel.Render(fit("  "+g+" coordinator", cw))
+			return sel.Render(fit("  "+g+" coordinator"+rc, cw))
 		}
 		label := "coordinator"
 		if r.state == "" {
 			label = styleFaint.Render(label)
 		}
-		return fit("  "+st.Render(g)+" "+label, cw)
+		return fit("  "+st.Render(g)+" "+label+rc, cw)
 	}
 	g, st := stateLook(r.state)
 	if g == "" {

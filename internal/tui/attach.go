@@ -20,8 +20,10 @@ import (
 	"golang.org/x/term"
 
 	"github.com/theclifmeister/termalator/internal/emu"
+	"github.com/theclifmeister/termalator/internal/project"
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/server"
+	"github.com/theclifmeister/termalator/internal/thread"
 	"github.com/theclifmeister/termalator/internal/view"
 )
 
@@ -218,8 +220,12 @@ type pane struct {
 	scrolled bool // the local viewport is scrolled back
 	watch    bool // a thread's pane, not taken over: no input reaches it
 	info     proto.SessionInfo
-	rect     view.Rect // where it is in this window; empty when cropped away
-	gone     bool      // closed or ended: its goroutines stop
+	status   *thread.Status // a thread's STATUS.md, for the status bar
+	rect     view.Rect      // where it is in this window; empty when cropped away
+	gone     bool           // closed or ended: its goroutines stop
+	// restarting: the server relaunches its session under the same id
+	// (proto.ClosedRestarting); a failing write isn't a lost server then.
+	restarting bool
 }
 
 // client is the attached window: its panes and everything they share.
@@ -254,7 +260,10 @@ type client struct {
 	repeatUntil time.Time // until then, a resize key repeats without the prefix
 	flash       string    // a note for the status bar until the next key
 	confirm     *pane     // asking whether to take over this watch-only pane
-	takeover    func(proto.SessionInfo) error
+	// confirmRemote: asking whether to turn this coordinator's remote
+	// control on or off.
+	confirmRemote *pane
+	takeover      func(proto.SessionInfo) error
 
 	bare        bool     // the view has no dashboard: detaching leaves
 	statusBar   bool     // the view's chrome has the status bar
@@ -326,7 +335,8 @@ func (c *client) open(id string) (*pane, error) {
 		conn.Close()
 		return nil, err
 	}
-	p := &pane{conn: conn, r: r, info: *info, watch: info.Role == proto.RoleThread}
+	p := &pane{conn: conn, r: r, info: *info, watch: info.Role == proto.RoleThread,
+		status: threadStatuses([]proto.SessionInfo{*info})[info.ID]}
 	// The stream starts with the pane's snapshot.
 	typ, payload, err := conn.ReadFrame()
 	if err == nil && typ != proto.FrameSnapshot {
@@ -561,7 +571,7 @@ func (c *client) lost(p *pane, err error) {
 		return
 	}
 	c.mu.Lock()
-	gone := p.gone || c.closed
+	gone := p.gone || c.closed || p.restarting
 	c.mu.Unlock()
 	if !gone {
 		c.finish(Result{Reason: "lost the server: " + errString(err)})
@@ -636,6 +646,15 @@ func (c *client) readLoop(p *pane) {
 				c.log.Printf("digest mismatch server=%s client=%s %v", payload, mine, derr)
 			}
 		case proto.FrameClosed:
+			if string(payload) == proto.ClosedRestarting {
+				p.restarting = true
+				c.flash = paneName(p.info) + " is restarting"
+				c.status()
+				c.mu.Unlock()
+				c.poke()
+				go c.reattach(p)
+				return
+			}
 			c.mu.Unlock()
 			c.ended(p, string(payload))
 			return
@@ -932,6 +951,10 @@ func (c *client) key(k uv.Key) {
 		c.answerTakeover(p, keyName(k) == "y")
 		return
 	}
+	if p := c.confirmRemote; p != nil {
+		c.answerRemote(p, keyName(k) == "y")
+		return
+	}
 	pending := c.pending
 	do := prefixStep(c.prefix, pending, time.Now().Before(c.repeatUntil), k, c.dashboard)
 	c.pending = do.arm
@@ -953,6 +976,8 @@ func (c *client) key(k uv.Key) {
 		c.paneCommand(do.pane)
 	case do.takeover:
 		c.askTakeover()
+	case do.remote:
+		c.askRemote()
 	}
 }
 
@@ -965,6 +990,9 @@ type prefixDo struct {
 	pane   string // a split-pane command (paneCommands)
 	// takeover asks to take over the focused watch-only pane.
 	takeover bool
+	// remote asks to turn the focused coordinator's remote control on
+	// or off.
+	remote bool
 }
 
 // paneCommands are the keys that, after the prefix, act on the window's
@@ -1007,6 +1035,8 @@ func prefixStep(prefix chord, pending, repeat bool, k uv.Key, dashboard bool) pr
 		return prefixDo{detach: true}
 	case name == "u":
 		return prefixDo{takeover: true}
+	case name == "r":
+		return prefixDo{remote: true}
 	case prefixCommands[name] && dashboard:
 		return prefixDo{detach: true, then: name}
 	case paneCommands[name]:
@@ -1155,6 +1185,14 @@ func (c *client) status() {
 	if !c.statusBar || c.focus == nil {
 		return
 	}
+	if p := c.confirmRemote; p != nil {
+		line := "\x1b[7m" + fit(" "+remoteQuestion(p.info)+" y yes · any other key no", c.paneCols) + "\x1b[27m"
+		if c.single {
+			c.focus.r.SetStatus(line)
+		}
+		c.statusText = line
+		return
+	}
 	if p := c.confirm; p != nil {
 		line := "\x1b[7m" + fit(" take over "+paneName(p.info)+" and type into it? Its coordinator is told. y yes · any other key no", c.paneCols) + "\x1b[27m"
 		if c.single {
@@ -1184,7 +1222,7 @@ func (c *client) status() {
 	if c.flash != "" {
 		where = strings.TrimPrefix(where+" · "+c.flash, " · ")
 	}
-	line := statusLine(c.focus.info, c.pending, c.paneCols, where)
+	line := statusLine(c.focus.info, c.focus.status, c.pending, c.paneCols, where)
 	if c.single {
 		c.focus.r.SetStatus(line)
 	}
@@ -1524,6 +1562,24 @@ func errString(err error) string {
 	return err.Error()
 }
 
+// threadStatuses reads the STATUS.md of every thread session, by
+// session id, so the status bar shows the progress the dashboard shows
+// (docs/SPEC.md §7.3).
+func threadStatuses(sessions []proto.SessionInfo) map[string]*thread.Status {
+	out := map[string]*thread.Status{}
+	for _, s := range sessions {
+		if s.Role != proto.RoleThread || s.Project == "" || s.Thread == "" {
+			continue
+		}
+		if p, err := project.Open(s.Project); err == nil {
+			if st, err := thread.ReadStatus(p, s.Thread); err == nil {
+				out[s.ID] = st
+			}
+		}
+	}
+	return out
+}
+
 // statePoll is how often the status bar asks the server for state.
 const statePoll = 500 * time.Millisecond
 
@@ -1562,6 +1618,7 @@ func (c *client) pollState(ctx context.Context) {
 		if c.side != nil {
 			projects = loadSideProjects()
 		}
+		statuses := threadStatuses(res.Sessions)
 		if c.lock() {
 			if c.side != nil {
 				c.side.projects, c.side.sessions = projects, res.Sessions
@@ -1569,7 +1626,7 @@ func (c *client) pollState(ctx context.Context) {
 			for _, p := range c.panes {
 				for _, s := range res.Sessions {
 					if s.ID == p.info.ID {
-						p.info = s
+						p.info, p.status = s, statuses[s.ID]
 					}
 				}
 			}

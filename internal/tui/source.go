@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/theclifmeister/termalator/internal/caller"
+	"github.com/theclifmeister/termalator/internal/config"
 	"github.com/theclifmeister/termalator/internal/project"
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/server"
@@ -206,10 +207,17 @@ func OpenCoordinator(call func(method string, params, result any) error, slug, a
 			return s.ID, nil
 		}
 	}
+	// The project's remote control setting; a broken config.toml shows
+	// in the settings popup, it doesn't keep the coordinator from starting.
+	safety := config.Defaults
+	if cfg, err := config.Load(); err == nil {
+		safety, _ = cfg.Safety(slug)
+	}
 	var started proto.SessionStartResult
 	err = call(proto.MethodSessionStart, proto.SessionStartParams{
 		Agent: agentName, Role: proto.RoleCoordinator, Project: slug, Cwd: p.Dir,
-		Cols: uint16(cols), Rows: uint16(rows), Kickoff: coordinatorKickoff}, &started)
+		Cols: uint16(cols), Rows: uint16(rows), Kickoff: coordinatorKickoff,
+		RemoteControl: safety.CoordinatorRemoteControl}, &started)
 	if err != nil {
 		return "", err
 	}

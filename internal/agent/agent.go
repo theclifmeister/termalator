@@ -37,8 +37,12 @@ type LaunchSpec struct {
 	Resume     bool   // resume AgentSID instead of starting fresh; AgentSID must be set
 	Yolo       bool   // skip the agent's own permission prompts (project setting)
 	Model      string // optional
-	TMBin      string // absolute path of the running tm binary, for hooks
-	Socket     string // server socket path; the agent's sandbox must allow it
+	// RemoteControl starts the agent reachable from another device
+	// ([remote_control] args), listed there as RemoteName.
+	RemoteControl bool
+	RemoteName    string
+	TMBin         string // absolute path of the running tm binary, for hooks
+	Socket        string // server socket path; the agent's sandbox must allow it
 
 	// Access is the policy the core decided for this role. The manifest
 	// turns it into the agent's own permission and sandbox settings.
