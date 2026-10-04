@@ -330,3 +330,68 @@ func TestRestartServer(t *testing.T) {
 		t.Fatalf("status after restart: %+v", st)
 	}
 }
+
+// longHome moves env to a TERMALATOR_HOME too long for a socket under it,
+// without the harness's TERMALATOR_SOCKET override, so the server's run
+// directory falls back to /tmp. It returns the home.
+func longHome(env *Env) string {
+	h := filepath.Join(env.T.TempDir(), strings.Repeat("h", 100), "termalator")
+	var vars []string
+	for _, kv := range env.Vars {
+		if !strings.HasPrefix(kv, "TERMALATOR_SOCKET=") && !strings.HasPrefix(kv, "TERMALATOR_HOME=") {
+			vars = append(vars, kv)
+		}
+	}
+	env.Vars = append(vars, "TERMALATOR_HOME="+h)
+	env.Home = h
+	return h
+}
+
+// serverSocket asks the running server for its socket path.
+func serverSocket(env *Env) string {
+	env.T.Helper()
+	for _, l := range strings.Split(env.MustCLI("server", "status"), "\n") {
+		if v, ok := strings.CutPrefix(l, "socket"); ok {
+			return strings.TrimSpace(v)
+		}
+	}
+	env.T.Fatal("server status names no socket")
+	return ""
+}
+
+// TestSmokeLongHomesSeparateServers: two TERMALATOR_HOMEs too long for a
+// socket under them each get their own fallback run directory under /tmp,
+// and so their own server and sessions (docs/SPEC.md §3.2).
+func TestSmokeLongHomesSeparateServers(t *testing.T) {
+	a, b := New(t), New(t)
+	longHome(a)
+	longHome(b)
+	sa := a.Start("printer", "-lines", "1")
+	sb := b.Start("printer", "-lines", "2")
+	a.Socket, b.Socket = serverSocket(a), serverSocket(b)
+	t.Cleanup(func() { // runs before the harness's own cleanup
+		a.CLI("server", "stop")
+		b.CLI("server", "stop")
+		os.RemoveAll(filepath.Dir(a.Socket))
+		os.RemoveAll(filepath.Dir(b.Socket))
+	})
+	if a.Socket == b.Socket {
+		t.Fatalf("both homes use the socket %s", a.Socket)
+	}
+	for _, s := range []string{a.Socket, b.Socket} {
+		if !strings.HasPrefix(s, "/tmp/termalator-") || len(s) > 100 {
+			t.Fatalf("fallback socket %s", s)
+		}
+	}
+	if pa, pb := a.ServerPID(), b.ServerPID(); pa == 0 || pa == pb {
+		t.Fatalf("server pids %d and %d", pa, pb)
+	}
+	if la, lb := a.Sessions(), b.Sessions(); len(la) != 1 || len(lb) != 1 || la[0].PID == lb[0].PID {
+		t.Fatalf("sessions: %+v and %+v", la, lb)
+	}
+	a.WaitFor(sa, "line 1", wait)
+	b.WaitFor(sb, "line 2", wait)
+	// Stopping one server leaves the other running.
+	a.MustCLI("server", "stop")
+	b.AssertAlive(sb)
+}

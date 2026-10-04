@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -163,6 +164,11 @@ type client struct {
 	outer    map[int]bool
 	detach   chord
 
+	// detaching is set before DETACH is written. The server may hang up
+	// as soon as it reads it, so from then on a failed write or a closed
+	// stream is the detach completing, not a lost server.
+	detaching atomic.Bool
+
 	wake    chan struct{}
 	endOnce sync.Once
 	end     chan struct{}
@@ -220,9 +226,20 @@ func (c *client) send(typ proto.FrameType, payload []byte) {
 	c.wmu.Lock()
 	defer c.wmu.Unlock()
 	if err := c.conn.WriteFrame(typ, payload); err != nil {
-		c.finish(Result{Reason: "lost the server: " + err.Error()})
+		c.lost(err)
 	}
 }
+
+// lost ends the attach after the connection failed with err.
+func (c *client) lost(err error) {
+	if c.detaching.Load() {
+		c.finish(detached)
+		return
+	}
+	c.finish(Result{Reason: "lost the server: " + errString(err)})
+}
+
+var detached = Result{Reason: "detached", Detached: true}
 
 func (c *client) poke() {
 	select {
@@ -261,7 +278,7 @@ func (c *client) readLoop() {
 	for {
 		typ, payload, err := c.conn.ReadFrame()
 		if err != nil {
-			c.finish(Result{Reason: "lost the server: " + errString(err)})
+			c.lost(err)
 			return
 		}
 		if !c.lock() {
@@ -371,8 +388,9 @@ func (c *client) handle(ev uv.Event) {
 
 func (c *client) key(k uv.Key) {
 	if c.detach.match(k) {
+		c.detaching.Store(true)
 		c.send(proto.FrameDetach, nil)
-		c.finish(Result{Reason: "detached", Detached: true})
+		c.finish(detached)
 		return
 	}
 	if !c.lock() {

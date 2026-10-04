@@ -173,8 +173,9 @@ func TestSlowClientIsResynced(t *testing.T) {
 	}
 	defer sub.Detach()
 	// Nobody drains the subscriber while this runs.
-	s.Input([]byte("i=0; while [ $i -lt 2000 ]; do echo flood-$i; i=$((i+1)); done; echo flood-done\r"))
-	eventually(t, "flood to finish", func() bool { return strings.Contains(screen(t, s), "flood-done") })
+	// The echoed command line must not match: wait for computed output.
+	s.Input([]byte("i=0; while [ $i -lt 2000 ]; do echo flood-$i; i=$((i+1)); done; echo done-$((6*7))\r"))
+	eventually(t, "flood to finish", func() bool { return strings.Contains(screen(t, s), "done-42") })
 	if sub.Resyncs() == 0 {
 		t.Fatal("expected at least one resync")
 	}

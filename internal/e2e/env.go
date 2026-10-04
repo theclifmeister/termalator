@@ -46,7 +46,7 @@ var (
 
 // apps are the deterministic programs under internal/e2e/apps/ that
 // sessions can run by name.
-var apps = []string{"printer", "fullscreen"}
+var apps = []string{"printer", "fullscreen", "termquery"}
 
 // build compiles tm and the apps once per test process. E2E_RACE=1 builds
 // tm with the race detector (the smoke set in CI).
