@@ -130,12 +130,11 @@ func (c *client) reattach(p *pane) {
 			return
 		}
 		gone, id := p.gone, p.info.ID
-		cols, rows := p.rect.w, p.rect.h
 		c.mu.Unlock()
 		if gone {
 			return
 		}
-		np, err := c.open(id, cols, rows)
+		np, err := c.open(id)
 		if err == nil {
 			p.wmu.Lock()
 			if !c.lock() {
@@ -152,9 +151,9 @@ func (c *client) reattach(p *pane) {
 				p.r.Close()
 			}
 			p.conn, p.mirror, p.r, p.info = np.conn, np.mirror, np.r, np.info
-			p.restarting, p.asked = false, [2]uint16{}
+			p.restarting = false
 			// Place the new renderer; like any attach, no resize.
-			c.relayout(false)
+			c.relayout()
 			c.flash = paneName(p.info) + " is back"
 			c.status()
 			c.mu.Unlock()

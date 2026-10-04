@@ -147,7 +147,7 @@ func helpLines() []string {
 	return append(out,
 		"",
 		styleHead.Render("In a session")+" (prefix+<key> is the prefix, then the key):",
-		fmt.Sprintf("%-16s %s", "prefix+d", "back to this dashboard (the session keeps running)"),
+		fmt.Sprintf("%-16s %s", "prefix+d", "back to this dashboard, on every console of the view (the session keeps running)"),
 		fmt.Sprintf("%-16s %s", "prefix+p ] [", "back here and switch project; a click on the sidebar does too"),
 		fmt.Sprintf("%-16s %s", "prefix+i t , ?", "back here with the inbox, tasks, settings or help open"),
 		fmt.Sprintf("%-16s %s", `prefix+% "`, "split the window: a new shell beside / below"),
@@ -157,6 +157,7 @@ func helpLines() []string {
 		fmt.Sprintf("%-16s %s", "prefix+r", "turn remote control of a coordinator on or off, to continue it from another device (asks first)"),
 		fmt.Sprintf("%-16s %s", "prefix+prefix", "send the prefix key itself to the program"),
 		"",
+		styleFaint.Render("Every tm shows the same view: what one does, the others show, sized by the one typed in. tm --own keeps to itself."),
 		styleFaint.Render("You talk to coordinators; they run the threads, their reports and the tasks (tm thread, tm task)."),
 		styleFaint.Render("Here, prefix+<key> is that key. The prefix is [keys] prefix in config.toml; inside tmux, pick another."),
 	)
@@ -252,7 +253,7 @@ func (m *dash) resize(key string) tea.Cmd {
 func (m *dash) sideKey(key string) tea.Cmd {
 	l := m.layout
 	var msg string
-	l.Sidebar, msg = l.Sidebar.sideKey(key, m.winW)
+	l.Sidebar, msg = l.Sidebar.Key(key, m.winW)
 	m.setLayout(l)
 	if msg != "" {
 		m.msg = msg

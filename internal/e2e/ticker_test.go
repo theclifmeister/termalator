@@ -236,7 +236,8 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	Golden(t, w.Screen(), "dashboard-thread.txt", dashMasks...)
 
 	// 140 columns wide: the details beside the list instead of under it.
-	wide := env.Window(140+24, 30)
+	// A console of its own, so its selection doesn't move w's.
+	wide := env.Window(140+24, 30, "--own")
 	wide.WaitFor("t-0001 Fix the login", wait)
 	wide.Type("j")
 	wide.WaitFor("enter watches it", wait)

@@ -47,7 +47,7 @@ func LoadLayout(path string) Layout {
 		return DefaultLayout
 	}
 	l.Split = clampSplit(l.Split)
-	l.Sidebar = l.Sidebar.clamp()
+	l.Sidebar = l.Sidebar.Clamp()
 	return l
 }
 
@@ -92,7 +92,7 @@ func (m *dash) split() (bool, int) {
 // setLayout changes the layout and saves it.
 func (m *dash) setLayout(l Layout) {
 	l.Split = clampSplit(l.Split)
-	l.Sidebar = l.Sidebar.clamp()
+	l.Sidebar = l.Sidebar.Clamp()
 	if l != m.layout {
 		side := l.Sidebar != m.layout.Sidebar
 		m.layout = l
@@ -118,6 +118,6 @@ func (m *dash) saveLayout() {
 // the file: the attach client changes only the sidebar.
 func SaveSidebar(path string, s SidebarLayout) error {
 	l := LoadLayout(path)
-	l.Sidebar = s.clamp()
+	l.Sidebar = s.Clamp()
 	return SaveLayout(path, l)
 }

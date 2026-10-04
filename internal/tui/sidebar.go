@@ -10,6 +10,7 @@ import (
 	"github.com/theclifmeister/termalator/internal/project"
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/thread"
+	"github.com/theclifmeister/termalator/internal/view"
 )
 
 // The projects sidebar (docs/SPEC.md §4): a column on the left of every
@@ -18,90 +19,23 @@ import (
 // current project is highlighted; a click opens a project's coordinator.
 // Its border column can be dragged, and { } b change it from the keys.
 //
-// Its state is SidebarLayout, kept on its own in ui.json, so it can move
-// into a server-owned view later; the rest here only draws and hit-tests.
+// Its state is SidebarLayout, part of the server-owned view; the rest here
+// only draws and hit-tests.
 
 // ThenOpen, then a project's slug, is the dashboard key (Result.Then) of
 // a click on the sidebar while attached: open that project's coordinator.
 const ThenOpen = "open:"
 
-// SidebarLayout is the sidebar's part of ui.json.
-type SidebarLayout struct {
-	// Width is the full sidebar's width in columns, its border included.
-	Width int `json:"width"`
-	// Slim keeps the slim strip (glyphs and short names) in any window.
-	Slim bool `json:"slim"`
-}
+// SidebarLayout is the sidebar's layout: part of the server-owned view
+// (docs/SPEC.md §3.3), and kept in ui.json as the layout new views start
+// with.
+type SidebarLayout = view.Sidebar
 
 const (
-	sideDefault = 24 // a full sidebar's width
-	sideMin     = 14 //
-	sideMax     = 48 //
-	sideSlim    = 7  // the slim strip: a marker, a glyph, 4 letters, the border
-	sideRoom    = 60 // a full sidebar leaves the panes at least this many columns
-	sideStep    = 2  // { and } change the width this much
+	sideDefault = view.SideDefault
+	sideSlim    = view.SideSlim
+	sideRoom    = view.SideRoom
 )
-
-// clamp keeps the width in range; 0 is the default.
-func (s SidebarLayout) clamp() SidebarLayout {
-	if s.Width == 0 {
-		s.Width = sideDefault
-	}
-	s.Width = min(max(s.Width, sideMin), sideMax)
-	return s
-}
-
-// cols is the sidebar's width in a window w columns wide: the full width,
-// or the slim strip when asked for or when the window is narrow. It never
-// disappears.
-func (s SidebarLayout) cols(w int) int {
-	full := s.clamp().Width
-	if s.Slim || w-full < sideRoom {
-		return min(sideSlim, max(w-1, 1))
-	}
-	return full
-}
-
-// full says whether the sidebar is at its full width in a window w wide.
-func (s SidebarLayout) full(w int) bool { return s.cols(w) > sideSlim }
-
-// sideKey applies a sidebar key ({ narrower, } wider, b slim strip on or
-// off) to s in a window w wide; msg says why nothing changed.
-func (s SidebarLayout) sideKey(key string, w int) (out SidebarLayout, msg string) {
-	s = s.clamp()
-	switch key {
-	case "b":
-		s.Slim = !s.Slim
-		if !s.Slim && !s.full(w) {
-			msg = fmt.Sprintf("the window is too narrow for the full sidebar (it needs %d columns)", s.Width+sideRoom)
-		}
-		return s, msg
-	case "{", "}":
-		if s.Slim || !s.full(w) {
-			s.Slim = false
-			if !s.full(w) {
-				return s, fmt.Sprintf("the window is too narrow for the full sidebar (it needs %d columns)", s.Width+sideRoom)
-			}
-			return s, ""
-		}
-		d := sideStep
-		if key == "{" {
-			d = -d
-		}
-		// Never wider than the window allows: the panes keep sideRoom.
-		s.Width = min(max(s.Width+d, sideMin), sideMax, max(w-sideRoom, sideMin))
-	}
-	return s, ""
-}
-
-// dragTo is s with its border dragged to column x of a window w wide.
-func (s SidebarLayout) dragTo(x, w int) SidebarLayout {
-	s.Slim = x+1 <= sideSlim
-	if !s.Slim {
-		s.Width = min(max(x+1, sideMin), sideMax, max(w-sideRoom, sideMin))
-	}
-	return s.clamp()
-}
 
 // sideProject is a project as the sidebar lists it.
 type sideProject struct {
@@ -258,24 +192,22 @@ func sideHit(items []sideItem, current string, w, h, x, y int) (slug string, bor
 	return "", false
 }
 
-// sidebar is the attach client's sidebar: its layout and what it shows.
-// Guarded by client.mu.
+// sidebar is the attach client's sidebar: what it shows. Its layout is
+// the view's. Guarded by client.mu.
 type sidebar struct {
-	layout  SidebarLayout
-	uiFile  string
-	current string // the dashboard's project
-	items   []sideItem
-	drag    bool     // the mouse is moving its border
-	drawn   []string // the lines on screen; nil repaints them all
+	uiFile string
+	items  []sideItem
+	drag   bool     // the mouse is moving its border
+	drawn  []string // the lines on screen; nil repaints them all
 }
 
 // sideCurrent is the project the attach view's sidebar highlights: the
-// focused pane's, else the one the dashboard was on. c.mu held.
+// focused pane's, else the view's current one. c.mu held.
 func (c *client) sideCurrent() string {
 	if c.focus != nil && c.focus.info.Project != "" {
 		return c.focus.info.Project
 	}
-	return c.side.current
+	return c.v.Current
 }
 
 // appendSidebar draws the sidebar's changed lines. c.mu held.
@@ -293,25 +225,23 @@ func (c *client) appendSidebar(b []byte, wrote bool) ([]byte, bool) {
 	return b, wrote
 }
 
-// setSideLayout changes the sidebar's layout: a layout change, so the
-// panes whose rectangle changed are resized (docs/SPEC.md §3.3). It
-// returns those sizes and whether ui.json needs saving. c.mu held.
-func (c *client) setSideLayout(l SidebarLayout) ([]resize, bool) {
-	if l == c.side.layout {
-		return nil, false
+// viewCols is the width the view is laid out at. c.mu held.
+func (c *client) viewCols() int {
+	if c.v.Cols > 0 {
+		return int(c.v.Cols)
 	}
-	c.side.layout = l
-	c.setWindow(c.cols, c.rows)
-	return c.relayout(true), true
+	return c.cols
 }
 
-// saveSide writes the sidebar's width to ui.json; a failure shows in the
-// status bar.
-func (c *client) saveSide() {
-	if !c.lock() {
+// setSidebar changes the view's sidebar: a layout change, so every
+// console's panes follow (docs/SPEC.md §3.3). save also keeps it in
+// ui.json, as the default of new views.
+func (c *client) setSidebar(l SidebarLayout, save bool) {
+	c.act(proto.MethodViewSidebar, proto.ViewParams{Sidebar: &l})
+	if !save || !c.lock() {
 		return
 	}
-	path, l := c.side.uiFile, c.side.layout
+	path := c.side.uiFile
 	c.mu.Unlock()
 	if path == "" {
 		return
@@ -333,16 +263,15 @@ func (c *client) sideKey(key string) {
 		c.mu.Unlock()
 		return
 	}
-	l, msg := c.side.layout.sideKey(key, c.cols)
-	sizes, save := c.setSideLayout(l)
+	l, msg := c.v.Sidebar.Key(key, c.viewCols())
+	same := l == c.v.Sidebar
 	if msg != "" {
 		c.flash = msg
 		c.status()
 	}
 	c.mu.Unlock()
-	c.sendSizes(sizes)
-	if save {
-		c.saveSide()
+	if !same {
+		c.setSidebar(l, true)
 	}
 	c.poke()
 }
@@ -354,15 +283,19 @@ func (c *client) sideMouse(m emu.Mouse) {
 	sd := c.side
 	switch {
 	case sd.drag && m.Action == emu.MouseMotion:
-		sizes, _ := c.setSideLayout(sd.layout.dragTo(m.X, c.cols))
+		l := c.v.Sidebar.DragTo(m.X, c.viewCols())
+		same := l == c.v.Sidebar
 		c.mu.Unlock()
-		c.sendSizes(sizes)
+		if !same {
+			c.setSidebar(l, false)
+		}
 		c.poke()
 		return
 	case sd.drag && m.Action == emu.MouseRelease:
 		sd.drag = false
+		l := c.v.Sidebar
 		c.mu.Unlock()
-		c.saveSide()
+		c.setSidebar(l, true)
 		return
 	case m.Action != emu.MousePress || m.Button != emu.MouseLeft:
 		c.mu.Unlock()
@@ -373,7 +306,7 @@ func (c *client) sideMouse(m emu.Mouse) {
 	case border:
 		sd.drag = true
 	case slug == "":
-	case c.focus.info.Role == proto.RoleCoordinator && c.focus.info.Project == slug:
+	case c.focus != nil && c.focus.info.Role == proto.RoleCoordinator && c.focus.info.Project == slug:
 		c.flash = "you are on " + slug + "'s coordinator"
 		c.status()
 	default:

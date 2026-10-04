@@ -9,6 +9,7 @@ Claude Code is the first supported agent. Other agents plug in through a manifes
 - the attach client (milestone M2): `tm attach` shows a session full-screen; Ctrl+B then `d` detaches and leaves it running;
 - agent sessions (milestone M3): `tm session start --agent claude` runs Claude Code with its live state (working / blocked / idle), todos and resume;
 - the dashboard (milestone M4): `tm` lists every session and project with live state, attaches with `enter` and comes back with Ctrl+B then `d`; a projects sidebar on the left of every screen shows which project you are in, and a click on another opens its coordinator;
+- server-owned views: every `tm` you open, in any terminal, shows the same screen, as tmux's sessions do. Open a session, split, focus, zoom or move the sidebar in one, and the others follow; `tm --own` opens one that keeps to itself;
 - projects and tasks (milestone M5): `tm project new|list|open`, `tm skill`, `tm task …`, `tm context` and `tm inbox list|done`;
 - threads (milestone M6): `tm thread start|prompt|restart|resolve`, agents in git worktrees reporting through `tm`;
 - hardening (milestone M8): agents resume after a server crash or restart, `tm doctor [--fix]`, an optional login service (`tm server service install`), and release archives.
@@ -33,7 +34,8 @@ make run
 This builds `bin/tm`, starts the background server and opens the dashboard. Press `n` to create a project, then `enter` on it to start its coordinator (Claude Code), or `s` for a shell; either attaches right away, with a status bar at the bottom. You talk to the coordinator; it runs the threads, whose panes you can watch (`enter` on a thread) but not type into unless you take one over (Ctrl+B then `u`). Ctrl+B is the prefix key, as in tmux (the UI writes it `prefix+<key>`, e.g. `prefix+d`): Ctrl+B then `d` brings you back to the dashboard (then `p`, `]` or `[` switches project, `i` opens the inbox), where a session that waits for you (a permission dialog, say) shows under NEEDS YOU; `enter` attaches again. `?` lists the keys, `q` quits the dashboard. Sessions keep running after you quit, and after you close the terminal:
 
 ```sh
-bin/tm                                 # the dashboard again
+bin/tm                                 # the dashboard again, or the session it showed
+bin/tm --own                           # a console of its own, which no other follows
 bin/tm attach s-1                      # attach again, from any terminal, at any size
 bin/tm attach                          # the newest session
 bin/tm session list                    # sessions in the server
@@ -43,7 +45,7 @@ bin/tm session stop s-1
 bin/tm server status | stop
 ```
 
-`make run RUN_ARGS=top` also starts a session running `top`. Attaching never resizes the session; resizing the window you attached from does. Ctrl+B then `%` or `"` splits the window and starts a shell beside or below (Ctrl+B then an arrow moves between panes, Ctrl+arrows resize, `z` zooms, `x` closes a pane and leaves its session running). Shift+PgUp/PgDn scroll back through a shell's output; full-screen programs get the mouse wheel. The prefix key can be changed in `~/.termalator/config.toml` (`[keys]` `prefix = "ctrl+a"`); do that when you run `tm` inside tmux, which takes Ctrl+B itself. Ctrl+B twice sends Ctrl+B to the program (Claude Code uses it to background a running task). The projects sidebar is resizable: drag its border, or `{` `}` (Ctrl+B then `{` `}` in a session); `b` makes it a slim strip. When the dashboard has 120 columns or more beside the sidebar the dashboard shows the selected row's details beside the list (`<` `>` resize it, `|` hides it, `,` shows the settings). The server keeps its state in `~/.termalator`; set `TERMALATOR_HOME` to use somewhere else.
+`make run RUN_ARGS=top` also starts a session running `top`. Consoles of different sizes show the same screen: the one you type in, or resize, sizes the panes, and a larger one shows the frame padded, a smaller one cropped. Attaching and watching never resize anything. Ctrl+B then `%` or `"` splits the window and starts a shell beside or below (Ctrl+B then an arrow moves between panes, Ctrl+arrows resize, `z` zooms, `x` closes a pane and leaves its session running). Shift+PgUp/PgDn scroll back through a shell's output; full-screen programs get the mouse wheel. The prefix key can be changed in `~/.termalator/config.toml` (`[keys]` `prefix = "ctrl+a"`); do that when you run `tm` inside tmux, which takes Ctrl+B itself. Ctrl+B twice sends Ctrl+B to the program (Claude Code uses it to background a running task). The projects sidebar is resizable: drag its border, or `{` `}` (Ctrl+B then `{` `}` in a session); `b` makes it a slim strip. When the dashboard has 120 columns or more beside the sidebar the dashboard shows the selected row's details beside the list (`<` `>` resize it, `|` hides it, `,` shows the settings). The server keeps its state in `~/.termalator`; set `TERMALATOR_HOME` to use somewhere else.
 
 To pick up a coordinator from the Claude desktop or mobile app (Claude Code's Remote Control), set `coordinator_remote_control = true` under `[projects.<slug>]` in `~/.termalator/config.toml`: the coordinator then starts with remote control, listed under the project's slug. Ctrl+B then `r` on the coordinator's pane, or `tm project remote on|off <slug>`, turns it on or off in the running session, and the conversation continues; that lasts until the coordinator is started anew. The sidebar shows `⌁` after the project and the status bar says `remote control on` while it is.
 
@@ -115,11 +117,12 @@ The bindings' API is not stable either. That is why `internal/emu` is the only p
 
 ```
 cmd/tm/              entry point
-internal/server      background server: lifecycle, socket, sessions.json; also the client side
+internal/server      background server: lifecycle, socket, sessions.json, the views; also the client side
+internal/view        the server-owned view: layout tree, actions, geometry
 internal/session     one hosted process: PTY + libghostty-vt emulator + attach subscribers
 internal/proto       wire protocol: handshake, control NDJSON, attach frames
 internal/emu         the libghostty-vt wrapper: emulator, snapshots, renderer, input encoders
-internal/tui         the dashboard and the attach client
+internal/tui         the dashboard and the attach client, both screens of a view
 internal/e2e         end-to-end test harness and scenarios
 internal/agent       agent interface, manifests (manifests/claude.toml), registry
 internal/…           see docs/SPEC.md §2.1

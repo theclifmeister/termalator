@@ -171,8 +171,8 @@ func (s *Server) setRemote(id string, on bool) {
 
 // relaunchLocked starts an agent session again under the same id, after
 // remote stopped it: resumed, or fresh if it was never prompted (there
-// is nothing to resume then). s.mu held.
-func (s *Server) relaunchLocked(old *session.Session, remote bool) {
+// is nothing to resume then). ok is false when it couldn't. s.mu held.
+func (s *Server) relaunchLocked(old *session.Session, remote bool) (ok bool) {
 	id := old.ID()
 	r := s.records[id]
 	r.RemoteControl = remote
@@ -188,7 +188,9 @@ func (s *Server) relaunchLocked(old *session.Session, remote bool) {
 		if err := s.saveLocked(""); err != nil {
 			s.log.Printf("sessions.json: %v", err)
 		}
+		return false
 	}
+	return true
 }
 
 // agentOr is the loaded agent of that name, or nil. s.mu held.

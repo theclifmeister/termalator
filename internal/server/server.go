@@ -682,12 +682,12 @@ func (s *Server) startSession(p proto.SessionStartParams) (any, *proto.Error) {
 
 func (s *Server) sessionExited(sess *session.Session) {
 	s.mu.Lock()
-	stopping := s.stopping
+	// The views keep the panes of a stopping server, and of a session
+	// relaunched under its id: they come back with it.
+	gone := !s.stopping
 	defer func() {
 		s.mu.Unlock()
-		// The views keep the panes of a stopping server: they come back
-		// with the resumed sessions.
-		if !stopping {
+		if gone {
 			s.views.sessionGone(sess.ID())
 		}
 	}()
@@ -701,7 +701,7 @@ func (s *Server) sessionExited(sess *session.Session) {
 	}
 	if on, ok := s.relaunch[sess.ID()]; ok {
 		delete(s.relaunch, sess.ID())
-		s.relaunchLocked(sess, on)
+		gone = !s.relaunchLocked(sess, on)
 		return
 	}
 	os.RemoveAll(s.runtimeDir(sess.ID()))
