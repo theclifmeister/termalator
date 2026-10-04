@@ -282,3 +282,15 @@ func WaitStopped(p Paths, timeout time.Duration) bool {
 		time.Sleep(50 * time.Millisecond)
 	}
 }
+
+// WaitExited waits until pid no longer exists.
+func WaitExited(pid int, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for alive(pid) {
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return true
+}

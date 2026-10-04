@@ -117,7 +117,7 @@ func TestSmokeServerSurvivesClientAndTerminal(t *testing.T) {
 	if out := env.MustCLI("server", "stop"); !strings.Contains(out, "stopped") {
 		t.Fatalf("server stop: %s", out)
 	}
-	if Alive(spid) || Alive(s.PID) {
+	if !Poll(3*time.Second, func() bool { return !Alive(spid) && !Alive(s.PID) }) {
 		t.Fatal("server or session still running after stop")
 	}
 	if _, err := os.Stat(env.Socket); !os.IsNotExist(err) {
@@ -321,7 +321,7 @@ func TestRestartServer(t *testing.T) {
 	if pid := env.ServerPID(); pid == old || !Alive(pid) {
 		t.Fatal("restart did not start a new server")
 	}
-	if Alive(s.PID) {
+	if !Poll(3*time.Second, func() bool { return !Alive(s.PID) }) {
 		t.Fatal("shell sessions are not kept across a restart in v0.1")
 	}
 	var st proto.ServerStatus

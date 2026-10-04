@@ -170,7 +170,8 @@ func serverStop(e Env, args []string) int {
 	if err != nil {
 		return e.fail("server stop", err)
 	}
-	if !server.WaitStopped(p, server.StopGrace+5*time.Second) {
+	// The lock goes first; the process exits a moment later.
+	if !server.WaitStopped(p, server.StopGrace+5*time.Second) || !server.WaitExited(pid, 3*time.Second) {
 		fmt.Fprintf(e.Stderr, "tm server stop: pid %d still running; see %s\n", pid, p.Log)
 		return ExitIO
 	}
