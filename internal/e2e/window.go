@@ -24,6 +24,7 @@ type Window struct {
 
 	mu     sync.Mutex
 	term   *emu.Terminal
+	enc    *emu.Encoder // input encoder, made on first use
 	raw    []byte
 	last   time.Time // when output last arrived
 	screen string    // last screen, kept after CloseWindow
@@ -51,6 +52,8 @@ func (e *Env) WindowCmd(cols, rows uint16, argv ...string) *Window {
 		Cols: cols, Rows: rows, Scrollback: 1000,
 		WritePty:  func(b []byte) { w.ptmx.Write(b) },
 		Xtversion: "termalator-e2e",
+		// Like a terminal on a dark desktop, it answers CSI ? 996 n.
+		ColorScheme: func() (emu.Scheme, bool) { return emu.SchemeDark, true },
 	})
 	if err != nil {
 		e.T.Fatal(err)
@@ -193,6 +196,10 @@ func (w *Window) CloseWindow() {
 	w.ptmx.Close()
 	w.term.Close()
 	w.term = nil
+	if w.enc != nil {
+		w.enc.Close()
+		w.enc = nil
+	}
 }
 
 // Exited is closed when the window's command has exited.

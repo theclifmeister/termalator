@@ -215,6 +215,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		ID: r.ID, Role: r.Role, Argv: launch.Argv, Cwd: r.Cwd, Env: env,
 		Cols: l.cols, Rows: l.rows, Created: r.Created,
 		Xtversion: "termalator " + version.Version,
+		Scheme:    s.scheme,
 		Logf:      s.log.Printf,
 		OnExit:    s.sessionExited,
 		Agent: &session.AgentConfig{

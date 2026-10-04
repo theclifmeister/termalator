@@ -20,9 +20,9 @@ jobs:
   fuzz:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -31,7 +31,7 @@ jobs:
           version: 0.16.0
 
       - name: Cache libghostty-vt
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .build/ghostty-*
           key: ghostty-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Makefile') }}
@@ -43,7 +43,7 @@ jobs:
       # becomes a regression test on every PR.
       - name: Upload crashers
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fuzz-crashers
           path: internal/**/testdata/fuzz/
@@ -55,9 +55,9 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -69,7 +69,7 @@ jobs:
         run: command -v pkg-config || brew install pkgconf
 
       - name: Cache libghostty-vt
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .build/ghostty-*
           key: ghostty-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Makefile') }}
@@ -81,7 +81,7 @@ jobs:
 
       - name: Upload e2e artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-artifacts-${{ matrix.os }}
           path: ${{ runner.temp }}/e2e-artifacts

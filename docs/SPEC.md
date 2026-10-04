@@ -183,14 +183,17 @@ After the hello the client sends `{"attach":{"session":"s-…","cols":C,"rows":R
 | client → server | `SET_SIZE` | The user really resized their window |
 | client → server | `DIGEST_REQ` | Ask for a `DIGEST` in the stream |
 | client → server | `DETACH` | Leave cleanly |
+| client → server | `COLOR_SCHEME` | One byte, 1 dark or 2 light: the scheme the client's terminal reported (§3.3, colour scheme) |
 
 **What the server and client must get right:**
 
 - **Snapshot then stream.** The server encodes the snapshot and marks the PTY output offset in one critical section. Everything after that offset goes out as `OUTPUT` or `RESIZE` frames, so nothing is lost or duplicated.
 - **Only the server answers terminal queries.** DA, DSR, kitty queries, `CSI 16t` (cell size) and XTVERSION are answered by the server's emulator, through its write-pty effect. Mirrors register no write-pty effect; otherwise every query would be answered once per client. Effects are registered again after a snapshot `Decode`. The server also wires the size-report and colour-scheme (2031) effects, which Claude uses.
+- **Colour scheme.** The client turns on mode 2031 on its own terminal and asks it for the scheme (`CSI ? 996 n`). Each answer or update goes to the server as `COLOR_SCHEME`. The server answers the program's `CSI ? 996 n` with the last scheme a client reported (none until one has), and sends a program that enabled 2031 a report whenever the scheme changes. New sessions start with the scheme last reported to the server.
+- **Scrollback limits.** libghostty trims scrollback page by page, and a snapshot carries no limits. Server emulators and mirrors therefore both use a line limit only (10,000 lines, no byte limit), and `DIGEST` covers the screen plus the last 1,000 rows of scrollback: a mirror's page layout differs from the server's, so the two may keep a few hundred more or fewer of the oldest rows.
 - **Back-pressure.** The PTY reader never blocks on a client. Each client has a byte-bounded queue of 4 MB, with adjacent `OUTPUT` frames merged. Past the limit the backlog is dropped and replaced by a fresh `SNAPSHOT` (resync). macOS PTYs deliver about 68-byte reads, so the server coalesces reads, reading until `EAGAIN` or for a few hundred µs, and avoids allocating per chunk.
 - **Sizing: no resize on attach.**
-  - A pane keeps its size when a client attaches. A client whose window is a different size renders the pane cropped or padded.
+  - A pane keeps its size when a client attaches. A client whose window is a different size renders the pane cropped or padded. When the window has fewer rows than the pane, the client shows the rows around the cursor.
   - The PTY is resized (`TIOCSWINSZ` + `SIGWINCH`) only when the user really resizes the window of the client they are typing in (`SET_SIZE`).
   - Reason: in its inline mode, Claude duplicates rows in the scrollback on every resize. Its full-screen mode, the default since 2.1.x, doesn't, but needless resizes still cause full repaints.
 - **Rendering.**
@@ -1293,7 +1296,7 @@ What the harness provides (M1 built `Env`, `Window` without `Key`/`Paste`/`Wheel
   - `CloseWindow` (close the PTY master), `KillClient` (`SIGKILL`);
   - `WaitFor`, `Quiet`, `Screen`.
 - **Golden screens.** `testdata/golden/*.txt` holds the plain text of the viewport, plus an optional attribute layer (later). `make e2e E2E_FLAGS=-update` rewrites them. Volatile parts (session ids, pids, durations) are masked by named regexes (`e2e.Mask`, `e2e.DefaultMasks`) and read `<name>` in the file.
-- **Consistency checks.** `AssertMirrorsServer` asks for an in-stream `DIGEST` and compares client and server emulator state: modes, both screens, scrollback.
+- **Consistency checks.** `AssertMirrorsServer` signals the client (`SIGUSR1`), which asks for an in-stream `DIGEST` and logs whether its mirror matches (`TERMALATOR_ATTACH_LOG`): modes, the active screen, recent scrollback.
 - **Artifacts on failure:** every window's last screen and raw bytes, the server log and `sessions.json` (from M3: `tm agent explain` for each session), saved under `$E2E_ARTIFACTS/<test>` and uploaded by CI.
 - **Deterministic apps.** Scenarios use small purpose-built TUIs under `internal/e2e/apps/`: a stream printer, a full-screen mouse app, an inline redraw app. Real programs such as `vim` and `htop` vary between machines.
 

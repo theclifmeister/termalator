@@ -7,8 +7,8 @@
 #   scripts/run.sh top        a session running `top`
 #
 # Milestones change two steps here:
-#   - START (M3): start an agent session with `tm session start --agent claude`.
-#   - SHOW  (M2): replace the screen dump with `exec "$TM" attach "$id"`.
+#   - START (M3, done): start an agent session with `tm session start --agent claude`.
+#   - SHOW  (M2, done): attach to the session; Ctrl+\ detaches.
 set -eu
 TM=${TM:-tm}
 
@@ -50,18 +50,24 @@ else
 	fi
 fi
 
-# SHOW: until the attach client lands (M2), print the server's view of the
-# screen.
-echo "──── tm session read $id ────"
-"$TM" session read "$id"
-echo "─────────────────────────────"
+# SHOW: attach to the session in this terminal. Without a terminal (CI,
+# a pipe), print the server's view of the screen instead.
+if [ -t 0 ] && [ -t 1 ]; then
+	echo "attaching to $id; detach with Ctrl+\\"
+	"$TM" attach "$id"
+else
+	echo "──── tm session read $id ────"
+	"$TM" session read "$id"
+	echo "─────────────────────────────"
+fi
 cat <<HINT
 $id keeps running in the background server, even if you close this terminal.
+  $TM attach $id                         attach again (Ctrl+\\ detaches)
   $TM session list                       list sessions (with the agent's state)
   $TM session prompt $id 'say hi'      prompt the agent (pasted once it is idle)
   $TM agent explain $id                  which signals decided the agent's state
   $TM session keys $id --enter 'ls'     type into it
-  $TM session read $id                   show its screen again
+  $TM session read $id                   show its screen as text
   $TM session stop $id                   stop it
   $TM server stop                        stop the server and every session
 HINT

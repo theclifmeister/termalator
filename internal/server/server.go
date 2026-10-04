@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/theclifmeister/termalator/internal/agent"
+	"github.com/theclifmeister/termalator/internal/emu"
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/session"
 	"github.com/theclifmeister/termalator/internal/version"
@@ -68,6 +69,9 @@ type Server struct {
 
 	agents    *agent.Registry
 	agentErrs []string
+	// scheme is the colour scheme a client last reported; new sessions
+	// start with it.
+	scheme emu.Scheme
 }
 
 // Run runs a server until ctx is cancelled or a client calls server.stop.
@@ -562,6 +566,7 @@ func (s *Server) startSession(p proto.SessionStartParams) (any, *proto.Error) {
 		ID: id, Role: role, Argv: argv, Cwd: cwd, Env: env,
 		Cols: cols, Rows: rows, Created: created,
 		Xtversion: "termalator " + version.Version,
+		Scheme:    s.scheme,
 		Logf:      s.log.Printf,
 		OnExit:    s.sessionExited,
 		// A shell gets agent state while an agent the user started by
@@ -674,6 +679,15 @@ loop:
 			}
 		case proto.FrameDigestReq:
 			sess.RequestDigest(sub)
+		case proto.FrameColorScheme:
+			if len(payload) == 1 {
+				scheme := emu.Scheme(payload[0])
+				if err := sess.SetColorScheme(scheme); err == nil {
+					s.mu.Lock()
+					s.scheme = scheme
+					s.mu.Unlock()
+				}
+			}
 		case proto.FrameDetach:
 			reason = "detach"
 			break loop

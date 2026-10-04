@@ -45,6 +45,35 @@ type Options struct {
 	WritePty func([]byte)
 	// Xtversion is the name reported for XTVERSION queries.
 	Xtversion string
+	// ColorScheme answers colour-scheme queries (CSI ? 996 n) when
+	// WritePty is set: the scheme, and false while it is unknown (the
+	// query then goes unanswered).
+	ColorScheme func() (Scheme, bool)
+}
+
+// Scheme is a light or dark colour scheme (mode 2031 reports).
+type Scheme uint8
+
+const (
+	SchemeDark  Scheme = 1
+	SchemeLight Scheme = 2
+)
+
+func (s Scheme) lib() libghostty.ColorScheme {
+	if s == SchemeLight {
+		return libghostty.ColorSchemeLight
+	}
+	return libghostty.ColorSchemeDark
+}
+
+// SchemeReport is the unsolicited report (CSI ? 997 ; 1|2 n) a terminal
+// sends a program that enabled mode 2031 when the scheme changes.
+func SchemeReport(s Scheme) []byte {
+	b, err := libghostty.ColorSchemeReportEncode(s.lib())
+	if err != nil {
+		return nil
+	}
+	return b
 }
 
 // New returns an emulator of the given size with default options.
@@ -60,7 +89,6 @@ func NewWith(o Options) (*Terminal, error) {
 	}
 	opts := []libghostty.TerminalOption{
 		libghostty.WithSize(o.Cols, o.Rows),
-		libghostty.WithMaxScrollbackLines(sb),
 		// Snapshots then also carry half-received escape sequences, so a
 		// mirror restored mid-sequence parses the rest of it correctly.
 		libghostty.WithContinuationMaxBytes(4096),
@@ -78,6 +106,13 @@ func NewWith(o Options) (*Terminal, error) {
 					CellWidth: cellWidthPx, CellHeight: cellHeightPx}, true
 			}),
 		)
+		if o.ColorScheme != nil {
+			fn := o.ColorScheme
+			opts = append(opts, libghostty.WithColorScheme(func(*libghostty.Terminal) (libghostty.ColorScheme, bool) {
+				s, ok := fn()
+				return s.lib(), ok
+			}))
+		}
 		if o.Xtversion != "" {
 			name := o.Xtversion
 			opts = append(opts, libghostty.WithXtversion(func(*libghostty.Terminal) string { return name }))
@@ -87,11 +122,31 @@ func NewWith(o Options) (*Terminal, error) {
 	if err != nil {
 		return nil, fmt.Errorf("emu: new terminal: %w", err)
 	}
+	if err := setScrollback(t, sb); err != nil {
+		t.Close()
+		return nil, err
+	}
 	return &Terminal{t: t}, nil
 }
 
+// setScrollback limits scrollback by lines only. libghostty also has a
+// byte limit, on by default and small (a few hundred 80-column rows);
+// a terminal restored from a snapshot doesn't carry it over, so a mirror
+// and the server would trim at different points.
+func setScrollback(t *libghostty.Terminal, lines uint) error {
+	err := t.SetScrollbackMaxBytes(nil)
+	if err == nil {
+		err = t.SetScrollbackMaxLines(&lines)
+	}
+	if err != nil {
+		return fmt.Errorf("emu: scrollback limit: %w", err)
+	}
+	return nil
+}
+
 // Decode rebuilds a terminal from a Snapshot. The result has no effects
-// wired (no WritePty), which is what a client mirror wants.
+// wired (no WritePty), which is what a client mirror wants, and the
+// scrollback limit of a server pane (DefaultScrollback).
 func Decode(snapshot []byte) (*Terminal, error) {
 	dec, err := libghostty.NewSnapshotDecoderBytesCopy(snapshot)
 	if err != nil {
@@ -101,6 +156,12 @@ func Decode(snapshot []byte) (*Terminal, error) {
 	t, err := dec.Decode()
 	if err != nil {
 		return nil, fmt.Errorf("emu: decode snapshot: %w", err)
+	}
+	// The snapshot carries the screens, not the limits: give the mirror
+	// the server's, or it trims scrollback differently and drifts.
+	if err := setScrollback(t, DefaultScrollback); err != nil {
+		t.Close()
+		return nil, err
 	}
 	return &Terminal{t: t}, nil
 }
@@ -169,16 +230,45 @@ func (t *Terminal) VT() ([]byte, error) {
 	return []byte(s), nil
 }
 
-// Digest is a short hash of the full emulator state (both screens' visible
-// content, styles, modes, cursor, keyboard flags). A mirror and the server
-// with equal digests show the same thing.
+// digestHistory is how many scrollback rows Digest covers. libghostty
+// trims scrollback page by page, and a terminal restored from a snapshot
+// lays out its pages differently, so a mirror and the server can hold a
+// few hundred rows more or less of old history. Both keep far more than
+// this many.
+const digestHistory = 1000
+
+// Digest is a short hash of the emulator state: the active screen with
+// styles, the last digestHistory rows of its scrollback, modes, cursor
+// and keyboard flags. A mirror and the server with equal digests show the
+// same thing.
 func (t *Terminal) Digest() (string, error) {
 	vt, err := t.VT()
 	if err != nil {
 		return "", err
 	}
-	h := sha256.Sum256(vt)
+	_, rows := t.Size()
+	h := sha256.Sum256(trimHistory(vt, int(rows)+digestHistory))
 	return hex.EncodeToString(h[:8]), nil
+}
+
+// trimHistory drops all but the last keep rows of formatter output: the
+// preamble up to the first cursor-home, then rows separated by CRLF.
+func trimHistory(vt []byte, keep int) []byte {
+	home := bytes.Index(vt, []byte("\x1b[H"))
+	if home < 0 {
+		return vt
+	}
+	body := vt[home+3:]
+	cut := len(body)
+	for n := 0; n < keep; n++ {
+		i := bytes.LastIndex(body[:cut], []byte("\r\n"))
+		if i < 0 {
+			return vt
+		}
+		cut = i
+	}
+	out := append([]byte(nil), vt[:home+3]...)
+	return append(out, body[cut:]...)
 }
 
 // PlainText returns the whole active screen, scrollback included, as
