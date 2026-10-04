@@ -20,6 +20,8 @@ import (
 type Config struct {
 	ID      string
 	Role    string
+	Project string // the project slug, for coordinator and thread roles
+	Thread  string // the thread id, for the thread role
 	Argv    []string
 	Cwd     string
 	Env     []string // the complete environment of the child
@@ -173,6 +175,8 @@ func (s *Session) Info() proto.SessionInfo {
 	info := proto.SessionInfo{
 		ID:      s.cfg.ID,
 		Role:    s.cfg.Role,
+		Project: s.cfg.Project,
+		Thread:  s.cfg.Thread,
 		Argv:    s.cfg.Argv,
 		Cwd:     s.cfg.Cwd,
 		PID:     s.cmd.Process.Pid,

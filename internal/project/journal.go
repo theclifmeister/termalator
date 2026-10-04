@@ -130,6 +130,10 @@ func (e events) Journal(c caller.Caller, action, ref, detail string) error {
 	return e.p.Journal(c, action, ref, detail)
 }
 
+// KindConfirmDone is the kind of the inbox item that asks the human to
+// confirm a task as done (§6.4); its subject is the task ref.
+const KindConfirmDone = kindConfirm
+
 const kindConfirm = "confirm-done"
 
 // RequestDone raises one NEEDS YOU confirmation per task; asking again
