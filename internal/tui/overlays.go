@@ -204,7 +204,7 @@ func (b *boardView) render(m *dash) string {
 			if g == tasks.NeedsYou {
 				st = styleWarn.Bold(true)
 			}
-			lines = append(lines, m.ruleIn(strings.ToUpper(string(g)), st))
+			lines = append(lines, m.ruleIn(strings.ToUpper(string(g)), st, m.w))
 		}
 		r := row{mark: markTop, who: t.Ref(), what: oneLine(t.Title), state: string(t.Status), rest: t.Thread, pct: -1}
 		if len(t.Steps) > 0 {

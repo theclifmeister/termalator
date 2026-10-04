@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/theclifmeister/termalator/internal/caller"
+	"github.com/theclifmeister/termalator/internal/home"
 	"github.com/theclifmeister/termalator/internal/project"
 	"github.com/theclifmeister/termalator/internal/tui"
 )
@@ -38,10 +40,14 @@ func (e *Env) dashboardCmd() int {
 	}
 	src := &tui.ServerSource{Paths: p, Agent: defaultAgent, Caller: who, Run: e.quietRun(who)}
 	defer src.Close()
+	var uiFile string // ui.json: the dashboard's layout (docs/SPEC.md §5.1)
+	if d, err := home.Dir(); err == nil {
+		uiFile = filepath.Join(d, "ui.json")
+	}
 	var st tui.DashState
 	for {
 		res, err := tui.Dashboard(tui.DashOptions{Source: src, In: os.Stdin, Out: os.Stdout,
-			Cwd: e.Cwd, AgentName: defaultAgent, State: st})
+			Cwd: e.Cwd, AgentName: defaultAgent, State: st, UIFile: uiFile})
 		if err != nil {
 			return e.srvFail("dashboard", err)
 		}

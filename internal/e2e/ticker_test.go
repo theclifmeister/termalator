@@ -229,6 +229,15 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	w.WaitFor("1-9 sends that line to the thread", wait)
 	Golden(t, w.Screen(), "dashboard-thread.txt", dashMasks...)
 
+	// 140 columns wide: the details beside the list instead of under it.
+	wide := env.Window(140, 30)
+	wide.WaitFor("unacknowledged report", wait)
+	wide.Type("jj")
+	wide.WaitFor("1-9 sends that line to the thread", wait)
+	Golden(t, wide.Screen(), "dashboard-split.txt", dashMasks...)
+	wide.Type("q")
+	wide.WaitExit(wait)
+
 	w.Type("a")
 	w.WaitFor("t-0001 report 1 acknowledged", wait)
 	if r := env.MustCLI("thread", "show", "t-0001", "--project", "demo"); !strings.Contains(r, "report: acked") {

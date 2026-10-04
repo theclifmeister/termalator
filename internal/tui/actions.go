@@ -49,6 +49,15 @@ func init() {
 			run: (*dash).switcher},
 		{keys: []string{"]", "["}, label: "] [", help: "next / previous project's coordinator",
 			run: func(m *dash, key string) tea.Cmd { return m.cycleProject(key == "]") }},
+		{keys: []string{"<", ">"}, label: "< >", help: "narrow / widen the list beside the details panel (or drag the divider)",
+			run: (*dash).resize},
+		{keys: []string{"|"}, label: "|", help: "show or hide the details panel (windows 120 columns or wider)",
+			run: func(m *dash, _ string) tea.Cmd {
+				l := m.layout
+				l.Details = !l.Details
+				m.setLayout(l)
+				return nil
+			}},
 		{keys: []string{"r"}, label: "r", help: "refresh",
 			run: func(m *dash, _ string) tea.Cmd { return m.load() }},
 		{keys: []string{"?"}, label: "?", help: "help",
@@ -212,4 +221,19 @@ func (m *dash) sendNext(key string) tea.Cmd {
 		err := m.src.PromptNext(slug, id, n)
 		return actionMsg{msg: id + " ← " + oneLine(line), err: err}
 	})
+}
+
+func (m *dash) resize(key string) tea.Cmd {
+	if split, _ := m.split(); !split {
+		m.msg = fmt.Sprintf("the details panel shows in windows %d columns or wider; | turns it on", splitMin)
+		return nil
+	}
+	l := m.layout
+	if key == "<" {
+		l.Split -= splitStep
+	} else {
+		l.Split += splitStep
+	}
+	m.setLayout(l)
+	return nil
 }

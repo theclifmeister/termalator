@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -116,6 +118,7 @@ func run(m *dash, cmd tea.Cmd) {
 func TestDashboardRows(t *testing.T) {
 	src := &fakeSource{data: testData()}
 	m := newDash(DashOptions{Source: src, AgentName: "claude", Width: 120, Height: 30})
+	m.layout.Details = false // one column: the rows at full width
 	m.setData(src.data)
 	out := screen(m)
 	needs := strings.Index(out, "NEEDS YOU")
@@ -323,5 +326,87 @@ func TestDashboardOverlays(t *testing.T) {
 	m.Update(boardMsg{slug: "alpha", err: fmt.Errorf("no TASKS.md")})
 	if m.top() != nil || m.msg != "no TASKS.md" {
 		t.Fatalf("board error: overlay %T msg %q", m.top(), m.msg)
+	}
+}
+
+// TestDashboardSplit: a wide window shows the selected row's details
+// beside the list; < > | change the layout and ui.json keeps it; the
+// mouse selects rows and drags the divider.
+func TestDashboardSplit(t *testing.T) {
+	src := &fakeSource{data: testData()}
+	ui := filepath.Join(t.TempDir(), "ui.json")
+	m := newDash(DashOptions{Source: src, AgentName: "claude", Width: 140, Height: 40, UIFile: ui})
+	m.setData(src.data)
+
+	m.sel = "th:beta:t-0005"
+	out := screen(m)
+	for _, want := range []string{"│ t-0005 Write docs", "● working", "task      T4", "progress  ▰▰▰▱▱ 60% 3/5",
+		"PR        https://github.com/o/r/pull/7", "report    1, new · a acks it", "✓ Outline", "1 Merge the PR"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("details lack %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "        todos:") {
+		t.Errorf("details shown under the row as well as beside it:\n%s", out)
+	}
+	m.sel = "p:beta"
+	if out := screen(m); !strings.Contains(out, "no coordinator; enter starts it") {
+		t.Errorf("project details:\n%s", out)
+	}
+	m.sel = "i:alpha:i1"
+	if out := screen(m); !strings.Contains(out, "│ the coordinator asks: coordinator asks to mark T3") {
+		t.Errorf("confirmation details:\n%s", out)
+	}
+
+	// < narrows the list and saves the layout; | hides the panel.
+	_, before := m.split()
+	press(m, "<")
+	if _, after := m.split(); after >= before {
+		t.Fatalf("< kept the list at %d columns", after)
+	}
+	press(m, "|")
+	if split, _ := m.split(); split {
+		t.Fatal("| left the panel shown")
+	}
+	if l := LoadLayout(ui); l.Details || l.Split != defaultSplit-splitStep {
+		t.Fatalf("ui.json holds %+v", l)
+	}
+	press(m, "|")
+
+	// A click selects the row under it; dragging the divider resizes.
+	m.Update(tea.MouseClickMsg{X: 3, Y: 3, Button: tea.MouseLeft}) // NEEDS YOU's second row
+	if m.sel != "t:alpha:7" {
+		t.Fatalf("click selected %q", m.sel)
+	}
+	_, lw := m.split()
+	m.Update(tea.MouseClickMsg{X: lw, Y: 5, Button: tea.MouseLeft})
+	m.Update(tea.MouseMotionMsg{X: 70, Y: 5, Button: tea.MouseLeft})
+	m.Update(tea.MouseReleaseMsg{X: 70, Y: 5, Button: tea.MouseLeft})
+	if _, lw := m.split(); lw != 70 || LoadLayout(ui).Split != 0.5 {
+		t.Fatalf("drag: list %d wide, ui.json %+v", lw, LoadLayout(ui))
+	}
+
+	// Too narrow a window: one column, and < says why.
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	press(m, "<")
+	if !strings.Contains(m.msg, "120 columns") {
+		t.Fatalf("msg %q", m.msg)
+	}
+}
+
+func TestLayoutFile(t *testing.T) {
+	dir := t.TempDir()
+	if l := LoadLayout(filepath.Join(dir, "none.json")); l != DefaultLayout {
+		t.Fatalf("missing file: %+v", l)
+	}
+	bad := filepath.Join(dir, "bad.json")
+	os.WriteFile(bad, []byte("{"), 0o644)
+	if l := LoadLayout(bad); l != DefaultLayout {
+		t.Fatalf("bad file: %+v", l)
+	}
+	far := filepath.Join(dir, "far.json")
+	os.WriteFile(far, []byte(`{"details":true,"split":5}`), 0o644)
+	if l := LoadLayout(far); l.Split != maxSplit {
+		t.Fatalf("split out of range: %+v", l)
 	}
 }

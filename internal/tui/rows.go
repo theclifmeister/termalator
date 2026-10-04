@@ -293,9 +293,9 @@ func prRef(url string) string {
 }
 
 // threadDetail is what shows under a selected thread row (§4): its full
-// todo list, its task's steps and its report's ## Next lines, styled.
-func threadDetail(t *ThreadRow) []string {
-	const ind = "        "
+// todo list, its task's steps and its report's ## Next lines, styled and
+// indented by ind.
+func threadDetail(t *ThreadRow, ind string) []string {
 	var out []string
 	if t.Status != nil && len(t.Status.Todos) > 0 {
 		out = append(out, ind+styleFaint.Render("todos:"))

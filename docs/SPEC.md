@@ -285,7 +285,10 @@ The processes die with the server, because the PTY master closes and the childre
   - the derived percent, done/total, and the current todo or step after `▸` (§7.3); the self-reported activity appears only when there are no todos or steps;
   - the time since the last change, and the linked task id.
 
-  Selecting a thread row shows its full todo list, its task's steps and its report's `## Next` lines under it. Threads are ordered as in §7.4; a row says `report waiting`, or `ready for review` once the thread called `tm done`, and the PR number from the report.
+  Selecting a thread row shows its full todo list, its task's steps and its report's `## Next` lines: in the details panel beside the list, or under the row when the window is too narrow for the panel. Threads are ordered as in §7.4; a row says `report waiting`, or `ready for review` once the thread called `tm done`, and the PR number from the report.
+- **Details panel.** In a window at least 120 columns wide, a panel right of the list shows everything about the selected row: a thread's state, task, progress, PR, report and the lines above; a task's notes and steps; a session's directory, command and progress; a project's coordinator, counts and inbox. `<` and `>` narrow and widen the list, dragging the divider with the mouse does the same, and `|` hides or shows the panel. The layout is kept in `ui.json` (§5.1), not `config.toml`, which `tm` never writes.
+- **Look.** Colours are the terminal's 16 ANSI colours, so they follow the user's theme; `NO_COLOR` turns them off. Every state also has its own glyph (● working, ▲ blocked, ○ idle, ◌ starting, ◆ needs you, ✓ done), so colour is never the only signal. A row shows a five-cell progress bar when it still fits.
+- **Mouse.** A click selects a row, the wheel moves the selection, and the divider can be dragged. Holding Shift selects text as usual in most terminals.
 - **Keys** (small and fixed in v0.1):
 
   | Key | Action |
@@ -301,6 +304,8 @@ The processes die with the server, because the PTY master closes and the childre
   | `i` | the project's inbox: every unhandled item, `!` on those for the human |
   | `a` | on a thread with an unacknowledged report, acknowledge it (`tm thread ack`) |
   | `1`–`9` | on a thread, send that `## Next` line of its report as its next prompt (`tm thread prompt --next N`) |
+  | `<` / `>` | narrow / widen the list beside the details panel |
+  | `\|` | show or hide the details panel |
   | `r` | refresh |
   | `?` | help |
   | `q` | quit the client; the server keeps running |
@@ -320,6 +325,7 @@ The processes die with the server, because the PTY master closes and the childre
 ```
 ~/.termalator/                         TERMALATOR_HOME
   config.toml                          user settings: default agent, keys, per-project safety (§11.2)   [human only]
+  ui.json                              the dashboard's layout: details panel on or off, list width (§4)  [tm]
   agents/<name>.toml                   user agent manifests (§8.2)                   [human]
   run/  tm.sock server.lock server.pid                                               [server]
   state/sessions.json                  live sessions, for resume (§3.6)              [server]

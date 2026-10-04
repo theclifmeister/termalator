@@ -48,6 +48,9 @@ type DashOptions struct {
 	// Width and Height size the first frame before the terminal reports
 	// its size (tests).
 	Width, Height int
+	// UIFile is ui.json, where the layout is kept; empty keeps it in
+	// memory only (tests).
+	UIFile string
 }
 
 // DashResult says why the dashboard ended: Attach names a session to
@@ -89,6 +92,10 @@ type dash struct {
 	busy    bool      // an action is running
 	stack   []overlay // views open on top of the list, topmost last
 
+	layout   Layout
+	uiFile   string
+	dragging bool // the mouse is moving the divider
+
 	alerts uint64
 	seen   bool // the first poll arrived (no bell for old alerts)
 
@@ -101,7 +108,8 @@ func newDash(o DashOptions) *dash {
 		w, h = 80, 24
 	}
 	return &dash{src: o.Source, cwd: o.Cwd, agentName: o.AgentName, w: w, h: h,
-		sel: o.State.Selected, current: o.State.Current, msg: o.State.Message}
+		sel: o.State.Selected, current: o.State.Current, msg: o.State.Message,
+		layout: LoadLayout(o.UIFile), uiFile: o.UIFile}
 }
 
 type dataMsg Data
@@ -182,8 +190,48 @@ func (m *dash) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 	case tea.KeyPressMsg:
 		return m, m.key(msg)
+	case tea.MouseClickMsg:
+		m.click(msg.Mouse())
+	case tea.MouseMotionMsg:
+		if m.dragging {
+			m.layout.Split = clampSplit(float64(msg.Mouse().X) / float64(max(m.w, 1)))
+		}
+	case tea.MouseReleaseMsg:
+		if m.dragging {
+			m.dragging = false
+			m.saveLayout()
+		}
+	case tea.MouseWheelMsg:
+		if m.top() == nil {
+			switch msg.Mouse().Button {
+			case tea.MouseWheelUp:
+				m.move(-1)
+			case tea.MouseWheelDown:
+				m.move(1)
+			}
+		}
 	}
 	return m, nil
+}
+
+// click selects the row under the mouse, or starts dragging the divider.
+func (m *dash) click(mo tea.Mouse) {
+	if m.top() != nil || mo.Button != tea.MouseLeft {
+		return
+	}
+	split, lw := m.split()
+	if split && mo.X == lw {
+		m.dragging = true
+		return
+	}
+	if split && mo.X > lw {
+		return
+	}
+	_, keys, sel := m.listLines(lw, !split)
+	i := scrollTop(sel, m.bodyRows(), len(keys)) + mo.Y - 1
+	if mo.Y >= 1 && mo.Y <= m.bodyRows() && i < len(keys) && keys[i] != "" {
+		m.sel = keys[i]
+	}
 }
 
 // setData takes a poll's result, rebuilds the rows and rings the bell
@@ -344,20 +392,21 @@ func expandDir(dir, cwd string) string {
 // View.
 
 // rule is a section header drawn across the width: "NEEDS YOU ───…".
-func (m *dash) rule(title string) string { return m.ruleIn(title, styleTitle) }
+func (m *dash) rule(title string) string { return m.ruleIn(title, styleTitle, m.w) }
 
-// ruleIn is rule with the title in st.
-func (m *dash) ruleIn(title string, st lipgloss.Style) string {
+// ruleIn is a rule w cells wide with the title in st.
+func (m *dash) ruleIn(title string, st lipgloss.Style, w int) string {
 	if title == "" {
-		return styleFaint.Render(strings.Repeat("─", m.w))
+		return styleFaint.Render(strings.Repeat("─", w))
 	}
 	t := " " + title + " "
-	return st.Render(t) + styleFaint.Render(strings.Repeat("─", max(m.w-len([]rune(t)), 0)))
+	return st.Render(t) + styleFaint.Render(strings.Repeat("─", max(w-len([]rune(t)), 0)))
 }
 
 func (m *dash) View() tea.View {
 	v := tea.NewView(m.render())
 	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
 	v.WindowTitle = "termalator"
 	return v
 }
@@ -372,27 +421,80 @@ func (m *dash) render() string {
 const listKeys = "enter attach · t tasks · i inbox · a ack · d done · n project · p projects · ? help · q quit"
 
 func (m *dash) renderList() string {
-	var lines []string
-	sel := -1
+	split, lw := m.split()
+	lines, _, sel := m.listLines(lw, !split)
+	if !split {
+		return m.frame("", lines, sel, listKeys)
+	}
+	// The list scrolls on its own; the details panel shows the selected
+	// row from the top.
+	room := m.bodyRows()
+	top := scrollTop(sel, room, len(lines))
+	var right []string
+	if r, ok := m.selected(); ok {
+		right = m.details(r, m.w-lw-1)
+	}
+	body := make([]string, room)
+	for i := range body {
+		var l, d string
+		if top+i < len(lines) {
+			l = lines[top+i]
+		}
+		if i < len(right) {
+			d = right[i]
+		}
+		body[i] = fit(l, lw) + reset + styleFaint.Render("│") + fit(d, m.w-lw-1) + reset
+	}
+	return m.frame("", body, -1, listKeys)
+}
+
+// listLines lays out the list w cells wide: its lines, the row key on
+// each (for the mouse) and the selected line. With inline set, a
+// selected thread's details show under its row.
+func (m *dash) listLines(w int, inline bool) (lines, keys []string, sel int) {
+	sel = -1
+	add := func(l, key string) {
+		lines = append(lines, l)
+		keys = append(keys, key)
+	}
 	for _, r := range m.rows {
 		switch {
 		case r.head == "NEEDS YOU":
-			lines = append(lines, m.ruleIn(countLabel(r.head, r.count), styleWarn.Bold(true)))
+			add(m.ruleIn(countLabel(r.head, r.count), styleWarn.Bold(true), w), "")
 		case r.head != "":
-			lines = append(lines, m.rule(countLabel(r.head, r.count)))
+			add(m.ruleIn(countLabel(r.head, r.count), styleTitle, w), "")
 		case r.key != "" && r.key == m.sel:
 			sel = len(lines)
-			lines = append(lines, m.line(r, true))
-			if r.thread != nil && strings.HasPrefix(r.key, "th:") {
-				for _, l := range threadDetail(r.thread) {
-					lines = append(lines, fit(l, m.w)+reset)
+			add(styleSel.Render(fit(r.text(w), w)), r.key)
+			if inline && r.thread != nil && strings.HasPrefix(r.key, "th:") {
+				for _, l := range threadDetail(r.thread, "        ") {
+					add(fit(l, w)+reset, r.key)
 				}
 			}
 		default:
-			lines = append(lines, m.line(r, false))
+			add(r.styled(w), r.key)
 		}
 	}
-	return m.frame("", lines, sel, listKeys)
+	return lines, keys, sel
+}
+
+// footRows is the footer's height: a rule, the keys, the message.
+const footRows = 3
+
+// bodyRows is the room between the header and the footer.
+func (m *dash) bodyRows() int { return max(m.h-1-footRows, 1) }
+
+// scrollTop is the first of n lines to show in room rows so that line
+// sel shows.
+func scrollTop(sel, room, n int) int {
+	top := 0
+	if sel >= room {
+		top = sel - room + 1
+	}
+	if top > 0 && top+room > n {
+		top = max(n-room, 0)
+	}
+	return top
 }
 
 // frame draws the header, the body scrolled so line sel shows, and the
@@ -428,14 +530,8 @@ func (m *dash) frame(title string, body []string, sel int, keys string) string {
 	}
 	foot = append(foot, fit(msg, m.w)+reset)
 
-	room := max(m.h-1-len(foot), 1)
-	top := 0
-	if sel >= room {
-		top = sel - room + 1
-	}
-	if top > 0 && top+room > len(body) {
-		top = max(len(body)-room, 0)
-	}
+	room := m.bodyRows()
+	top := scrollTop(sel, room, len(body))
 	end := min(top+room, len(body))
 	out := []string{head}
 	out = append(out, body[top:end]...)
