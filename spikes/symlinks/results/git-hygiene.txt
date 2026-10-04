@@ -1,34 +1,34 @@
 ## exclude file used by the linked worktree
-git-dir=/Users/clifford/.termalator-spike/repos/demo/.git/worktrees/demo-t1
-common-dir=/Users/clifford/.termalator-spike/repos/demo/.git
+git-dir=/Users/username/.termalator-spike/repos/demo/.git/worktrees/demo-t1
+common-dir=/Users/username/.termalator-spike/repos/demo/.git
 
-$ git -C /Users/clifford/.termalator-spike/worktrees/demo-t1 rev-parse --git-path info/exclude
-/Users/clifford/.termalator-spike/repos/demo/.git/info/exclude
+$ git -C /Users/username/.termalator-spike/worktrees/demo-t1 rev-parse --git-path info/exclude
+/Users/username/.termalator-spike/repos/demo/.git/info/exclude
 (exit 0)
 
-$ git -C /Users/clifford/.termalator-spike/worktrees/demo-t1 status --short --ignored
+$ git -C /Users/username/.termalator-spike/worktrees/demo-t1 status --short --ignored
 !! .termalator/
 (exit 0)
 
-$ git -C /Users/clifford/.termalator-spike/worktrees/demo-t1 add -A
+$ git -C /Users/username/.termalator-spike/worktrees/demo-t1 add -A
 (exit 0)
 
-$ git -C /Users/clifford/.termalator-spike/worktrees/demo-t1 status --short
+$ git -C /Users/username/.termalator-spike/worktrees/demo-t1 status --short
 (exit 0)
 
-$ git -C /Users/clifford/.termalator-spike/worktrees/demo-t1 check-ignore -v .termalator/project/CONTEXT.md .termalator/out/REPORT.md
+$ git -C /Users/username/.termalator-spike/worktrees/demo-t1 check-ignore -v .termalator/project/CONTEXT.md .termalator/out/REPORT.md
 fatal: pathspec '.termalator/project/CONTEXT.md' is beyond a symbolic link
 (exit 128)
 
 ## without the exclude: what would git record?
 
-$ git -C /Users/clifford/.termalator-spike/worktrees/demo-t1 status --short --untracked-files=all
+$ git -C /Users/username/.termalator-spike/worktrees/demo-t1 status --short --untracked-files=all
 ?? .termalator/brief.md
 ?? .termalator/out/REPORT.md
 ?? .termalator/project
 (exit 0)
 
-$ git -C /Users/clifford/.termalator-spike/worktrees/demo-t1 add -A --dry-run
+$ git -C /Users/username/.termalator-spike/worktrees/demo-t1 add -A --dry-run
 add '.termalator/brief.md'
 add '.termalator/out/REPORT.md'
 add '.termalator/project'
@@ -36,18 +36,18 @@ add '.termalator/project'
 
 ## git clean
 
-$ git -C /Users/clifford/.termalator-spike/worktrees/demo-t1 clean -fd --dry-run
+$ git -C /Users/username/.termalator-spike/worktrees/demo-t1 clean -fd --dry-run
 (exit 0)
 
-$ git -C /Users/clifford/.termalator-spike/worktrees/demo-t1 clean -fdx --dry-run
+$ git -C /Users/username/.termalator-spike/worktrees/demo-t1 clean -fdx --dry-run
 Would remove .termalator/
 (exit 0)
 
 ## git worktree remove (no --force)
 
-$ git -C /Users/clifford/.termalator-spike/repos/demo worktree remove /Users/clifford/.termalator-spike/worktrees/demo-t1
+$ git -C /Users/username/.termalator-spike/repos/demo worktree remove /Users/username/.termalator-spike/worktrees/demo-t1
 (exit 0)
 worktree exists after remove: no
-project link: /Users/clifford/.termalator-spike/worktrees/demo-t1/.termalator/out
-project link readable: cat: /Users/clifford/.termalator-spike/projects/demo/threads/t1/out/REPORT.md: No such file or directory
+project link: /Users/username/.termalator-spike/worktrees/demo-t1/.termalator/out
+project link readable: cat: /Users/username/.termalator-spike/projects/demo/threads/t1/out/REPORT.md: No such file or directory
 shared context intact: SECRET-CONTEXT-TOKEN: banana-42

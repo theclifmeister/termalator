@@ -16,7 +16,7 @@ data-loss problems (see [Recommended layout](#recommended-layout)).
 
 | | |
 |---|---|
-| Claude Code | 2.1.289 (`/Users/clifford/.local/bin/claude`), model `haiku` for probes |
+| Claude Code | 2.1.289 (`/Users/username/.local/bin/claude`), model `haiku` for probes |
 | OS | macOS 27.0.1 (26A434), arm64 |
 | git | 2.54.0 (Apple Git-157) |
 | Codex CLI | 0.160.0 installed, **not tested** (docs/help only) |
