@@ -58,4 +58,4 @@ spikes/              throwaway experiments, each with its own go.mod and FINDING
 
 ## Licence
 
-Not chosen yet.
+[MIT](LICENSE) © 2026 Clifmeister.
