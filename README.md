@@ -45,6 +45,8 @@ bin/tm server status | stop
 
 `make run RUN_ARGS=top` also starts a session running `top`. Attaching never resizes the session; resizing the window you attached from does. Ctrl+B then `%` or `"` splits the window and starts a shell beside or below (Ctrl+B then an arrow moves between panes, Ctrl+arrows resize, `z` zooms, `x` closes a pane and leaves its session running). Shift+PgUp/PgDn scroll back through a shell's output; full-screen programs get the mouse wheel. The prefix key can be changed in `~/.termalator/config.toml` (`[keys]` `prefix = "ctrl+a"`); do that when you run `tm` inside tmux, which takes Ctrl+B itself. Ctrl+B twice sends Ctrl+B to the program (Claude Code uses it to background a running task). The projects sidebar is resizable: drag its border, or `{` `}` (Ctrl+B then `{` `}` in a session); `b` makes it a slim strip. When the dashboard has 120 columns or more beside the sidebar the dashboard shows the selected row's details beside the list (`<` `>` resize it, `|` hides it, `,` shows the settings). The server keeps its state in `~/.termalator`; set `TERMALATOR_HOME` to use somewhere else.
 
+To pick up a coordinator from the Claude desktop or mobile app (Claude Code's Remote Control), set `coordinator_remote_control = true` under `[projects.<slug>]` in `~/.termalator/config.toml`: the coordinator then starts with remote control, listed under the project's slug. Ctrl+B then `r` on the coordinator's pane, or `tm project remote on|off <slug>`, turns it on or off in the running session, and the conversation continues; that lasts until the coordinator is started anew. The sidebar shows `⌁` after the project and the status bar says `remote control on` while it is.
+
 ## Try projects and tasks
 
 ```sh
