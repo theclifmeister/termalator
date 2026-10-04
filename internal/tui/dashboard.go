@@ -34,7 +34,8 @@ type DashState struct {
 	Current  string
 	Message  string
 	// Then is a key to run once the first poll is in: the key typed
-	// after the prefix in a session (p, ], [, i, t, , or ?).
+	// after the prefix in a session (p, ], [, i, t, , or ?), or ThenOpen
+	// and a project clicked in the session's sidebar.
 	Then string
 }
 
@@ -82,7 +83,8 @@ func Dashboard(opts DashOptions) (DashResult, error) {
 type dash struct {
 	src  Source
 	cwd  string
-	w, h int
+	w, h int // the dashboard's own area: the window less the sidebar
+	winW int // the window's width
 
 	data    Data
 	loaded  bool
@@ -97,6 +99,7 @@ type dash struct {
 	layout   Layout
 	uiFile   string
 	dragging bool // the mouse is moving the divider
+	sideDrag bool // the mouse is moving the sidebar's border
 
 	prefix   string // the prefix key, as tea names it
 	prefixed bool   // the prefix was typed: the next key is a command
@@ -113,11 +116,23 @@ func newDash(o DashOptions) *dash {
 	if w <= 0 || h <= 0 {
 		w, h = 80, 24
 	}
-	return &dash{src: o.Source, cwd: o.Cwd, w: w, h: h,
+	m := &dash{src: o.Source, cwd: o.Cwd, h: h,
 		sel: o.State.Selected, current: o.State.Current, msg: o.State.Message,
 		layout: LoadLayout(o.UIFile), uiFile: o.UIFile,
 		prefix: cmp.Or(o.Prefix, DefaultPrefixKey), then: o.State.Then}
+	m.setWidth(w)
+	return m
 }
+
+// setWidth takes the window's width; the dashboard gets what the sidebar
+// leaves.
+func (m *dash) setWidth(w int) {
+	m.winW = w
+	m.w = max(w-m.sideW(), 1)
+}
+
+// sideW is the sidebar's width in this window.
+func (m *dash) sideW() int { return m.layout.Sidebar.cols(m.winW) }
 
 type dataMsg Data
 type tickMsg struct{}
@@ -155,7 +170,8 @@ func (m *dash) Init() tea.Cmd { return m.load() }
 func (m *dash) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.w, m.h = msg.Width, msg.Height
+		m.h = msg.Height
+		m.setWidth(msg.Width)
 		return m, nil
 	case dataMsg:
 		return m, m.setData(Data(msg))
@@ -208,18 +224,28 @@ func (m *dash) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			sv.load(m)
 		}
 	case tea.MouseClickMsg:
-		m.click(msg.Mouse())
+		if mo := msg.Mouse(); mo.X < m.sideW() {
+			return m, m.sideClick(mo)
+		}
+		mo := msg.Mouse()
+		mo.X -= m.sideW()
+		m.click(mo)
 	case tea.MouseMotionMsg:
-		if m.dragging {
-			m.layout.Split = clampSplit(float64(msg.Mouse().X) / float64(max(m.w, 1)))
+		x := msg.Mouse().X
+		switch {
+		case m.sideDrag:
+			m.layout.Sidebar = m.layout.Sidebar.dragTo(x, m.winW)
+			m.setWidth(m.winW)
+		case m.dragging:
+			m.layout.Split = clampSplit(float64(x-m.sideW()) / float64(max(m.w, 1)))
 		}
 	case tea.MouseReleaseMsg:
-		if m.dragging {
-			m.dragging = false
+		if m.dragging || m.sideDrag {
+			m.dragging, m.sideDrag = false, false
 			m.saveLayout()
 		}
 	case tea.MouseWheelMsg:
-		if m.top() == nil {
+		if m.top() == nil && msg.Mouse().X >= m.sideW() {
 			switch msg.Mouse().Button {
 			case tea.MouseWheelUp:
 				m.move(-1)
@@ -230,6 +256,32 @@ func (m *dash) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	return m, nil
 }
+
+// sideClick handles a click on the sidebar: its border starts a drag, a
+// project opens its coordinator, from under any popup.
+func (m *dash) sideClick(mo tea.Mouse) tea.Cmd {
+	if mo.Button != tea.MouseLeft {
+		return nil
+	}
+	slug, border := sideHit(m.sideItems(), m.sideCurrent(), m.sideW(), m.h, mo.X, mo.Y)
+	switch {
+	case border:
+		m.sideDrag = true
+	case slug != "" && !m.busy:
+		m.stack = nil
+		return m.openProject(slug)
+	}
+	return nil
+}
+
+// sideItems are the sidebar's projects, from the last poll.
+func (m *dash) sideItems() []sideItem {
+	return sideItems(sideProjectsOf(m.data.Projects), m.data.Sessions)
+}
+
+// sideCurrent is the project the sidebar highlights: the one last
+// attached to, else the selected row's.
+func (m *dash) sideCurrent() string { return cmp.Or(m.current, m.projectHere()) }
 
 // click selects the row under the mouse, or starts dragging the divider.
 func (m *dash) click(mo tea.Mouse) {
@@ -277,9 +329,13 @@ func (m *dash) setData(d Data) tea.Cmd {
 		cmds = append(cmds, tea.Raw("\a"))
 	}
 	if first && m.then != "" {
-		// The key typed after the prefix in a session, now that the
-		// projects it may need are known.
-		cmds = append(cmds, m.listKey(m.then))
+		// The key typed after the prefix in a session, or a project
+		// clicked in its sidebar, now that the projects are known.
+		if slug, ok := strings.CutPrefix(m.then, ThenOpen); ok {
+			cmds = append(cmds, m.openProject(slug))
+		} else {
+			cmds = append(cmds, m.listKey(m.then))
+		}
 		m.then = ""
 	}
 	if len(cmds) == 1 {
@@ -424,11 +480,24 @@ func (m *dash) View() tea.View {
 	return v
 }
 
+// render draws the sidebar and, beside it, the list or the topmost popup.
 func (m *dash) render() string {
+	var s string
 	if o := m.top(); o != nil {
-		return o.render(m)
+		s = o.render(m)
+	} else {
+		s = m.renderList()
 	}
-	return m.renderList()
+	lines := strings.Split(s, "\n")
+	side := sidebarLines(m.sideItems(), m.sideCurrent(), m.sideW(), m.h)
+	for i := range side {
+		var l string
+		if i < len(lines) {
+			l = lines[i]
+		}
+		side[i] += fit(l, m.w) + reset
+	}
+	return strings.Join(side, "\n")
 }
 
 func (m *dash) renderList() string { return m.frame("", m.listBody(), -1, m.footKeys()) }

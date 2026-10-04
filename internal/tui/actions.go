@@ -87,6 +87,10 @@ func init() {
 			run: func(m *dash, key string) tea.Cmd { return m.cycleProject(key == "]") }},
 		{keys: []string{"<", ">"}, label: "< >", help: "narrow / widen the list beside the details panel (or drag the divider)",
 			run: (*dash).resize},
+		{keys: []string{"{", "}"}, label: "{ }", help: "narrow / widen the projects sidebar (or drag its border); a click on a project opens its coordinator",
+			run: (*dash).sideKey},
+		{keys: []string{"b"}, label: "b", help: "the sidebar as a slim strip (glyphs and short names), and back",
+			run: (*dash).sideKey},
 		{keys: []string{"|"}, label: "|", help: "show or hide the details panel (windows 120 columns or wider)",
 			run: func(m *dash, _ string) tea.Cmd {
 				l := m.layout
@@ -240,5 +244,16 @@ func (m *dash) resize(key string) tea.Cmd {
 		l.Split += splitStep
 	}
 	m.setLayout(l)
+	return nil
+}
+
+func (m *dash) sideKey(key string) tea.Cmd {
+	l := m.layout
+	var msg string
+	l.Sidebar, msg = l.Sidebar.sideKey(key, m.winW)
+	m.setLayout(l)
+	if msg != "" {
+		m.msg = msg
+	}
 	return nil
 }

@@ -130,7 +130,8 @@ func TestWatchOnlyPane(t *testing.T) {
 	}
 	defer c.enc.Close()
 	told := make(chan proto.SessionInfo, 1)
-	c.prefix, c.statusBar, c.cols = chord{'\\'}, true, 160
+	c.prefix, c.statusBar = chord{'\\'}, true
+	c.setWindow(160, 40)
 	c.takeover = func(s proto.SessionInfo) error { told <- s; return nil }
 	// No connection: a key sent to the program would panic.
 	p := &pane{watch: true, info: proto.SessionInfo{ID: "s-2", Role: proto.RoleThread, Project: "demo", Thread: "t-0001"}}

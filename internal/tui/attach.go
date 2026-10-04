@@ -73,6 +73,19 @@ type Options struct {
 	// Takeover tells a thread's coordinator that the user took over the
 	// thread's pane; nil tells no one.
 	Takeover func(s proto.SessionInfo) error
+	// Sidebar shows the projects sidebar left of the panes (docs/SPEC.md
+	// §4); nil shows none (tm attach). It needs StatusBar.
+	Sidebar *SidebarOptions
+}
+
+// SidebarOptions configure the attach view's projects sidebar.
+type SidebarOptions struct {
+	// UIFile is ui.json, where its width is kept; empty keeps it in
+	// memory only.
+	UIFile string
+	// Current is the project the dashboard was on, highlighted while the
+	// focused pane belongs to none.
+	Current string
 }
 
 // Result says how an attach ended.
@@ -114,8 +127,12 @@ func Attach(opts Options) (res Result, err error) {
 	}
 	defer c.close()
 	c.prefix, c.statusBar, c.dashboard, c.takeover = prefix, opts.StatusBar, opts.StatusBar, opts.Takeover
+	if so := opts.Sidebar; so != nil && opts.StatusBar {
+		c.side = &sidebar{layout: LoadLayout(so.UIFile).Sidebar, uiFile: so.UIFile, current: so.Current,
+			items: sideItems(loadSideProjects(), nil)}
+	}
 	c.setWindow(cols, rows)
-	p, err := c.open(opts.Session, cols, c.paneRows)
+	p, err := c.open(opts.Session, c.paneCols, c.paneRows)
 	if err != nil {
 		return res, err
 	}
@@ -211,9 +228,12 @@ type client struct {
 	takeover    func(proto.SessionInfo) error
 
 	statusBar   bool
-	dashboard   bool // there is a dashboard to go back to
-	cols, rows  int  // the window
-	paneRows    int  // the rows above the status bar
+	dashboard   bool     // there is a dashboard to go back to
+	side        *sidebar // the projects sidebar, nil for none
+	sideW       int      // its width in this window, 0 without one
+	cols, rows  int      // the window
+	paneCols    int      // the columns right of the sidebar
+	paneRows    int      // the rows above the status bar
 	statusText  string
 	statusDrawn string
 	lastCursor  string
@@ -251,6 +271,11 @@ func (c *client) setWindow(cols, rows int) {
 	if c.statusBar {
 		c.paneRows = max(rows-1, 1)
 	}
+	c.sideW = 0
+	if c.side != nil {
+		c.sideW = c.side.layout.cols(cols)
+	}
+	c.paneCols = max(cols-c.sideW, 1)
 }
 
 // open attaches to session id as a new pane of cols×rows, its snapshot
@@ -481,14 +506,15 @@ type resize struct {
 // sessions to resize, when send is set. The caller sends them once c.mu
 // is released (sendSizes). c.mu held.
 func (c *client) relayout(send bool) []resize {
-	area := rect{0, 0, c.cols, c.paneRows}
+	area := rect{c.sideW, 0, c.paneCols, c.paneRows}
 	vis := c.visible()
 	if c.zoomed {
 		c.focus.rect, c.dividers = area, nil
 	} else {
 		c.dividers = c.root.layout(area, nil)
 	}
-	c.single = len(vis) == 1
+	// One pane draws alone, unless it shares the window with the sidebar.
+	c.single = len(vis) == 1 && c.side == nil
 	var out []resize
 	for _, p := range vis {
 		if c.single {
@@ -694,6 +720,7 @@ type prefixDo struct {
 // (ctrl+arrows), zoom (z), close (x) and switch layout (space).
 var paneCommands = map[string]bool{
 	"%": true, `"`: true, "o": true, "z": true, "x": true, "space": true,
+	"{": true, "}": true, "b": true, // the sidebar
 	"left": true, "right": true, "up": true, "down": true,
 	"ctrl+left": true, "ctrl+right": true, "ctrl+up": true, "ctrl+down": true,
 }
@@ -768,6 +795,9 @@ func (c *client) paneCommand(cmd string) {
 		return
 	case "x":
 		c.closePane()
+		return
+	case "{", "}", "b":
+		c.sideKey(cmd)
 		return
 	}
 	if !c.lock() {
@@ -988,7 +1018,7 @@ func (c *client) status() {
 		return
 	}
 	if p := c.confirm; p != nil {
-		line := "\x1b[7m" + fit(" take over "+paneName(p.info)+" and type into it? Its coordinator is told. y yes · any other key no", c.cols) + "\x1b[27m"
+		line := "\x1b[7m" + fit(" take over "+paneName(p.info)+" and type into it? Its coordinator is told. y yes · any other key no", c.paneCols) + "\x1b[27m"
 		if c.single {
 			c.focus.r.SetStatus(line)
 		}
@@ -1016,7 +1046,7 @@ func (c *client) status() {
 	if c.flash != "" {
 		where = strings.TrimPrefix(where+" · "+c.flash, " · ")
 	}
-	line := statusLine(c.focus.info, c.prefix, c.pending, c.cols, where)
+	line := statusLine(c.focus.info, c.prefix, c.pending, c.paneCols, where)
 	if c.single {
 		c.focus.r.SetStatus(line)
 	}
@@ -1074,6 +1104,10 @@ func (c *client) input(k uv.Key) {
 func (c *client) mouse(ev uv.Event) {
 	m, ok := toMouse(ev)
 	if !ok || !c.lock() {
+		return
+	}
+	if c.side != nil && (m.X < c.sideW || c.side.drag) {
+		c.sideMouse(m)
 		return
 	}
 	var p *pane
@@ -1138,6 +1172,11 @@ func (c *client) outerModes() []byte {
 	m := c.focus.mirror.Modes()
 	want := map[int]bool{1000: m.NormalMouse, 1002: m.ButtonMouse, 1003: m.AnyMouse, 1004: m.Focus,
 		1006: m.MouseTracking()} // always SGR coordinates from the outer terminal
+	if c.side != nil {
+		// The sidebar takes clicks and drags whatever the program wants;
+		// selecting text in a pane then needs Shift.
+		want[1000], want[1002], want[1006] = true, true, true
+	}
 	var b []byte
 	for _, n := range []int{1000, 1002, 1003, 1004, 1006} {
 		if c.outer[n] == want[n] {
@@ -1225,6 +1264,12 @@ func (c *client) frameSplit(vis []*pane) ([]byte, error) {
 		}
 		b = c.appendDividers(b)
 		c.statusDrawn, c.full, wrote = "", false, true
+		if c.side != nil {
+			c.side.drawn = nil
+		}
+	}
+	if c.side != nil {
+		b, wrote = c.appendSidebar(b, wrote)
 	}
 	for _, p := range vis {
 		part, err := p.r.Frame(p.mirror, p.held)
@@ -1236,7 +1281,7 @@ func (c *client) frameSplit(vis []*pane) ([]byte, error) {
 		}
 	}
 	if c.statusBar && c.statusText != c.statusDrawn {
-		b = append(b, fmt.Sprintf("\x1b[%d;1H\x1b[0m\x1b[2K", c.rows)...)
+		b = append(b, fmt.Sprintf("\x1b[%d;%dH\x1b[0m", c.rows, c.sideW+1)...)
 		b = append(b, c.statusText...)
 		b = append(b, "\x1b[0m"...)
 		c.statusDrawn, wrote = c.statusText, true
@@ -1323,7 +1368,14 @@ func (c *client) pollState(ctx context.Context) {
 			ring = !first && res.Alerts > alerts
 			alerts, first = res.Alerts, false
 		}
+		var projects []sideProject
+		if c.side != nil {
+			projects = loadSideProjects()
+		}
 		if c.lock() {
+			if c.side != nil {
+				c.side.items = sideItems(projects, res.Sessions)
+			}
 			for _, p := range c.root.leaves(nil) {
 				for _, s := range res.Sessions {
 					if s.ID == p.info.ID {

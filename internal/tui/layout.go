@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 )
 
-// The dashboard's layout: whether the details panel shows beside the
-// list, and how wide the list is. It is the user's view preference, so it
+// The layout: whether the dashboard's details panel shows beside the
+// list, how wide the list is, and the projects sidebar (sidebar.go). It is the user's view preference, so it
 // lives in ui.json next to config.toml, never in config.toml, which tm
 // doesn't write (docs/SPEC.md §5.1, §11.2).
 
@@ -20,6 +20,9 @@ type Layout struct {
 	// Split is the list's share of the window's width, between minSplit
 	// and maxSplit.
 	Split float64 `json:"split"`
+	// Sidebar is the projects sidebar's width, on the dashboard and while
+	// attached alike.
+	Sidebar SidebarLayout `json:"sidebar"`
 }
 
 const (
@@ -31,7 +34,7 @@ const (
 )
 
 // DefaultLayout is the layout without a ui.json.
-var DefaultLayout = Layout{Details: true, Split: defaultSplit}
+var DefaultLayout = Layout{Details: true, Split: defaultSplit, Sidebar: SidebarLayout{Width: sideDefault}}
 
 // LoadLayout reads path; a missing or unreadable file gives the default.
 func LoadLayout(path string) Layout {
@@ -44,6 +47,7 @@ func LoadLayout(path string) Layout {
 		return DefaultLayout
 	}
 	l.Split = clampSplit(l.Split)
+	l.Sidebar = l.Sidebar.clamp()
 	return l
 }
 
@@ -79,7 +83,7 @@ func clampSplit(f float64) float64 {
 // split says whether the dashboard shows the details panel, and the
 // list's width when it does.
 func (m *dash) split() (bool, int) {
-	if !m.layout.Details || m.w < splitMin {
+	if !m.layout.Details || m.winW < splitMin {
 		return false, m.w
 	}
 	return true, int(float64(m.w)*m.layout.Split + 0.5)
@@ -88,8 +92,13 @@ func (m *dash) split() (bool, int) {
 // setLayout changes the layout and saves it.
 func (m *dash) setLayout(l Layout) {
 	l.Split = clampSplit(l.Split)
+	l.Sidebar = l.Sidebar.clamp()
 	if l != m.layout {
+		side := l.Sidebar != m.layout.Sidebar
 		m.layout = l
+		if side {
+			m.setWidth(m.winW)
+		}
 		m.saveLayout()
 	}
 }
@@ -103,4 +112,12 @@ func (m *dash) saveLayout() {
 	if err := SaveLayout(m.uiFile, m.layout); err != nil {
 		m.fail(err)
 	}
+}
+
+// SaveSidebar writes the sidebar's layout to path and keeps the rest of
+// the file: the attach client changes only the sidebar.
+func SaveSidebar(path string, s SidebarLayout) error {
+	l := LoadLayout(path)
+	l.Sidebar = s.clamp()
+	return SaveLayout(path, l)
 }

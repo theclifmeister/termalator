@@ -61,8 +61,18 @@ func testData() Data {
 	}
 }
 
-// screen is the dashboard as text, without its colours.
-func screen(m *dash) string { return ansi.Strip(m.render()) }
+// screen is the dashboard as text, without its colours or the sidebar.
+func screen(m *dash) string {
+	lines := strings.Split(whole(m), "\n")
+	for i, l := range lines {
+		r := []rune(l)
+		lines[i] = string(r[min(m.sideW(), len(r)):])
+	}
+	return strings.Join(lines, "\n")
+}
+
+// whole is the whole window as text: the sidebar and the dashboard.
+func whole(m *dash) string { return ansi.Strip(m.render()) }
 
 func press(m *dash, keys ...string) tea.Cmd {
 	var cmd tea.Cmd
@@ -95,7 +105,7 @@ func run(m *dash, cmd tea.Cmd) {
 
 func TestDashboardRows(t *testing.T) {
 	src := &fakeSource{data: testData()}
-	m := newDash(DashOptions{Source: src, Width: 120, Height: 30})
+	m := newDash(DashOptions{Source: src, Width: 120 + sideDefault, Height: 30})
 	m.layout.Details = false // one column: the rows at full width
 	m.setData(src.data)
 	out := screen(m)
@@ -364,15 +374,16 @@ func TestDashboardSplit(t *testing.T) {
 	press(m, "|")
 
 	// A click selects the row under it; dragging the divider resizes.
-	m.Update(tea.MouseClickMsg{X: 3, Y: 3, Button: tea.MouseLeft}) // NEEDS YOU's second row
+	sw := m.sideW()
+	m.Update(tea.MouseClickMsg{X: sw + 3, Y: 3, Button: tea.MouseLeft}) // NEEDS YOU's second row
 	if m.sel != "n:s-4" {
 		t.Fatalf("click selected %q", m.sel)
 	}
 	_, lw := m.split()
-	m.Update(tea.MouseClickMsg{X: lw, Y: 5, Button: tea.MouseLeft})
-	m.Update(tea.MouseMotionMsg{X: 70, Y: 5, Button: tea.MouseLeft})
-	m.Update(tea.MouseReleaseMsg{X: 70, Y: 5, Button: tea.MouseLeft})
-	if _, lw := m.split(); lw != 70 || LoadLayout(ui).Split != 0.5 {
+	m.Update(tea.MouseClickMsg{X: sw + lw, Y: 5, Button: tea.MouseLeft})
+	m.Update(tea.MouseMotionMsg{X: sw + 58, Y: 5, Button: tea.MouseLeft})
+	m.Update(tea.MouseReleaseMsg{X: sw + 58, Y: 5, Button: tea.MouseLeft})
+	if _, lw := m.split(); lw != 58 || LoadLayout(ui).Split != 0.5 {
 		t.Fatalf("drag: list %d wide, ui.json %+v", lw, LoadLayout(ui))
 	}
 
