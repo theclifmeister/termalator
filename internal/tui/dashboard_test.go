@@ -521,3 +521,26 @@ func TestDashboardPopups(t *testing.T) {
 		}
 	}
 }
+
+// TestPromptWraps: a long prompt text wraps in the popup instead of
+// losing its start.
+func TestPromptWraps(t *testing.T) {
+	long := "/var/folders/0g/abcdefghijklmnopqrstuvwxyz/T/TestSmokeMakeRun3197026846/003/work"
+	lines := wrapInput("claude session in directory: ", long+"█", 40)
+	got := ansi.Strip(strings.Join(lines, ""))
+	if got != "claude session in directory: "+long+"█" || len(lines) != 3 {
+		t.Fatalf("wrapped %q", lines)
+	}
+	for _, l := range lines {
+		if w := ansi.StringWidth(l); w > 40 {
+			t.Fatalf("line %d cells wide: %q", w, l)
+		}
+	}
+	src := &fakeSource{data: testData()}
+	m := newDash(DashOptions{Source: src, AgentName: "claude", Cwd: long, Width: 100, Height: 30})
+	m.setData(src.data)
+	press(m, "c")
+	if out := screen(m); !strings.Contains(out, "claude session in directory: /var/folders") {
+		t.Fatalf("prompt:\n%s", out)
+	}
+}

@@ -127,14 +127,30 @@ func (in *inputView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 }
 
 func (in *inputView) render(m *dash) string {
-	// The end of a long text stays in view.
-	text := in.text + "█"
-	w := max(m.inner(76)-len([]rune(in.label)), 4)
-	if r := []rune(text); len(r) > w {
-		text = "…" + string(r[len(r)-w+1:])
+	// A long text wraps onto more lines, so all of it shows.
+	return m.popup(box{body: wrapInput(in.label, in.text+"█", m.inner(promptWidth)), sel: -1,
+		keys: "enter ok · ctrl+u clear · esc cancel", width: promptWidth})
+}
+
+// promptWidth is the prompt popup's width when the window has room.
+const promptWidth = 96
+
+// wrapInput lays out a prompt's label and text in lines of w cells,
+// breaking anywhere (a path has no spaces to break at); the label is in
+// the accent colour.
+func wrapInput(label, text string, w int) []string {
+	r := []rune(label + text)
+	var lines []string
+	for len(r) > 0 {
+		n := min(len(r), max(w, 1))
+		lines = append(lines, string(r[:n]))
+		r = r[n:]
 	}
-	return m.popup(box{body: []string{styleAccent.Render(in.label) + text}, sel: -1,
-		keys: "enter ok · ctrl+u clear · esc cancel", width: 76})
+	if l := len([]rune(label)); l <= len([]rune(lines[0])) {
+		first := []rune(lines[0])
+		lines[0] = styleAccent.Render(label) + string(first[l:])
+	}
+	return lines
 }
 
 // boardView is a project's task board: its live tasks in board order
