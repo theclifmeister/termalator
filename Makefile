@@ -30,7 +30,8 @@ GHOSTTY_OUT := $(BUILD)/ghostty-$(shell echo $(GHOSTTY_REV) | cut -c1-12)-$(GHOS
 STAMP       := $(GHOSTTY_OUT)/.built
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-LDFLAGS := -X github.com/theclifmeister/termalator/internal/version.Version=$(VERSION)
+LDFLAGS := -X github.com/theclifmeister/termalator/internal/version.Version=$(VERSION) \
+           -X github.com/theclifmeister/termalator/internal/version.LibGhostty=$(shell echo $(GHOSTTY_REV) | cut -c1-12)
 
 export PKG_CONFIG_PATH := $(GHOSTTY_OUT)/share/pkgconfig$(if $(PKG_CONFIG_PATH),:$(PKG_CONFIG_PATH))
 export CGO_ENABLED := 1

@@ -13,7 +13,7 @@ import (
 
 func main() {
 	if len(os.Args) > 1 && (os.Args[1] == "version" || os.Args[1] == "--version") {
-		fmt.Println("tm", version.Version)
+		fmt.Println("tm", version.Version, "build", version.BuildID())
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "selftest" {
