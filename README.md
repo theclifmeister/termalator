@@ -43,7 +43,7 @@ bin/tm session stop s-1
 bin/tm server status | stop
 ```
 
-`make run RUN_ARGS=top` also starts a session running `top`. Attaching never resizes the session; resizing the window you attached from does. Shift+PgUp/PgDn scroll back through a shell's output; full-screen programs get the mouse wheel. The prefix key can be changed in `~/.termalator/config.toml` (`[keys]` `prefix = "ctrl+b"`); Ctrl+\ twice sends Ctrl+\ to the program. In a window 120 columns or wider the dashboard shows the selected row's details beside the list (`<` `>` resize it, `|` hides it, `,` shows the settings). The server keeps its state in `~/.termalator`; set `TERMALATOR_HOME` to use somewhere else.
+`make run RUN_ARGS=top` also starts a session running `top`. Attaching never resizes the session; resizing the window you attached from does. Ctrl+\ then `%` or `"` splits the window and starts a shell beside or below (Ctrl+\ then an arrow moves between panes, Ctrl+arrows resize, `z` zooms, `x` closes a pane and leaves its session running). Shift+PgUp/PgDn scroll back through a shell's output; full-screen programs get the mouse wheel. The prefix key can be changed in `~/.termalator/config.toml` (`[keys]` `prefix = "ctrl+b"`); Ctrl+\ twice sends Ctrl+\ to the program. In a window 120 columns or wider the dashboard shows the selected row's details beside the list (`<` `>` resize it, `|` hides it, `,` shows the settings). The server keeps its state in `~/.termalator`; set `TERMALATOR_HOME` to use somewhere else.
 
 ## Try projects and tasks
 

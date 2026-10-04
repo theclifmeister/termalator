@@ -194,7 +194,8 @@ After the hello the client sends `{"attach":{"session":"s-…","cols":C,"rows":R
 - **Back-pressure.** The PTY reader never blocks on a client. Each client has a byte-bounded queue of 4 MB, with adjacent `OUTPUT` frames merged. Past the limit the backlog is dropped and replaced by a fresh `SNAPSHOT` (resync). macOS PTYs deliver about 68-byte reads, so the server coalesces reads, reading until `EAGAIN` or for a few hundred µs, and avoids allocating per chunk.
 - **Sizing: no resize on attach.**
   - A pane keeps its size when a client attaches. A client whose window is a different size renders the pane cropped or padded. When the window has fewer rows than the pane, the client shows the rows around the cursor.
-  - The PTY is resized (`TIOCSWINSZ` + `SIGWINCH`) only when the user really resizes the window of the client they are typing in (`SET_SIZE`).
+  - The PTY is resized (`TIOCSWINSZ` + `SIGWINCH`) only when the user really resizes the window of the client they are typing in, or changes its split panes (split, close, zoom, resize a divider, switch layout; §4): then every pane whose rectangle changed is resized to it (`SET_SIZE`).
+  - Split panes: each pane is its own attach connection with its own mirror and renderer. A pane's renderer draws into its rectangle of the shared window and erases only up to its edge (`ECH`, never `EL` or `ED`); the client draws the dividers and the status bar and wraps the whole frame in one mode 2026 update, ending with the focused pane's cursor. With one pane the renderer has the window to itself, as before.
   - Reason: in its inline mode, Claude duplicates rows in the scrollback on every resize. Its full-screen mode, the default since 2.1.x, doesn't, but needless resizes still cause full repaints.
 - **Rendering.**
   - The client draws dirty rows from its mirror (cell renderer, not Bubble Tea `View()` strings), capped at 120 Hz and wrapped in mode 2026.
@@ -321,13 +322,20 @@ The processes die with the server, because the PTY master closes and the childre
   |---|---|
   | `d` | back to the dashboard; the session keeps running |
   | `p`, `]`, `[`, `i`, `t`, `,`, `?` | back to the dashboard, which runs that key: the switcher, next / previous project, inbox, tasks, settings, help |
+  | `%` / `"` | split the focused pane: a new shell in its directory beside it / below it |
+  | arrows, `o` | focus the pane in that direction / the next pane |
+  | Ctrl+arrows | move the nearest divider that way (2 columns or 1 row); for half a second more Ctrl+arrows need no prefix |
+  | `z` | zoom the focused pane to the whole window, and back |
+  | `x` | close the focused pane; its session keeps running (the last pane detaches) |
+  | Space | switch between all panes side by side and all stacked |
   | the prefix | send the prefix itself to the program |
   | anything else | cancel |
 
-  Only `d` and the prefix work in `tm attach` and `tm project open`, which have no dashboard to go back to. On the dashboard the prefix then a key is that key, so the same keys do the same things in both places.
+  Only `d`, the pane commands and the prefix work in `tm attach` and `tm project open`, which have no dashboard to go back to.
+- **Split panes.** A split attaches the new shell as another pane of the same window; the panes share it with one-cell dividers, those around the focused pane in the accent colour, and the status bar names the focused pane's session with `pane 2/3`. Keys, paste and the cursor go to the focused pane; a click focuses the pane under it (when the outer terminal reports the mouse, i.e. while the focused program tracks it). When a pane's session exits, the pane closes and the status bar says why; when the last one does, the attach ends as before. Detaching (`d`) detaches every pane. Splits last as long as the attach: back on the dashboard, `enter` attaches one session. On the dashboard the prefix then a key is that key, so the same keys do the same things in both places.
 - **Project switching.** While attached, the prefix then `p` opens the project switcher, and the prefix then `]` or `[` jumps to the next or previous project's coordinator. These run on the dashboard, so they are the dashboard's own keys and no key is taken from the pane but the prefix. "Next" is relative to the project last attached to; the status bar always names the current project.
 - **Projects.** A project row with no running coordinator says so; `enter` on it starts the coordinator (as `tm project open` does) and attaches. A done confirmation the coordinator raised (§6.4) is a NEEDS YOU row on which `d` completes it.
-- **Rendering.** The dashboard uses Bubble Tea v2 and Lip Gloss v2. The attached pane bypasses Bubble Tea: a cell renderer draws dirty rows from the mirror (§3.3).
+- **Rendering.** The dashboard uses Bubble Tea v2 and Lip Gloss v2. The attached panes bypass Bubble Tea: a cell renderer per pane draws dirty rows from its mirror (§3.3).
 - **Notifications.** When a session becomes `blocked`, or a thread reports, every client (dashboard or attached) rings the bell on its terminal, and the server sends an OS notification (`osascript` on macOS, `notify-send` on Linux, both optional). The client re-emits a pane's OSC 9/777 notifications and OSC 52 clipboard writes to the outer terminal while attached. OSC 52 reads are denied.
 
 ---

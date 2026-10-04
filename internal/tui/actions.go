@@ -174,6 +174,8 @@ func helpLines(agentName, prefix string) []string {
 		fmt.Sprintf("%-9s %s", "d", "back to this dashboard (the session keeps running)"),
 		fmt.Sprintf("%-9s %s", "p ] [", "back here and switch project"),
 		fmt.Sprintf("%-9s %s", "i t , ?", "back here with the inbox, tasks, settings or help open"),
+		fmt.Sprintf("%-9s %s", `% "`, "split the window: a new shell beside / below"),
+		fmt.Sprintf("%-9s %s", "arrows o", "focus another pane;  ctrl+arrows resize, z zooms, x closes, space switches the layout"),
 		fmt.Sprintf("%-9s %s", prefix, "send "+prefix+" itself to the program"),
 		styleFaint.Render("Here, the prefix then a key is that key. The prefix is [keys] prefix in config.toml."),
 	)
