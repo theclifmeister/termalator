@@ -22,9 +22,18 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - uses: mlugg/setup-zig@v2
+      # No setup-zig: `make` fetches the pinned Zig into .build/ (sha256-
+      # checked) unless a Zig 0.16 is already on PATH. Cached on its own,
+      # keyed on the Zig pin in the Makefile.
+      - name: Zig pin
+        id: zig
+        run: echo "key=$(grep -E '^ZIG_(VERSION|SHA256_)' Makefile | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Zig
+        uses: actions/cache@v6
         with:
-          version: 0.16.0
+          path: .build/zig-*
+          key: zig-${{ runner.os }}-${{ runner.arch }}-${{ steps.zig.outputs.key }}
 
       - name: pkg-config
         run: command -v pkg-config || brew install pkgconf
@@ -35,6 +44,11 @@ jobs:
         with:
           path: .build/ghostty-*
           key: ghostty-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Makefile') }}
+
+      - name: toolchain
+        run: |
+          make toolchain
+          echo "zig on PATH: $(command -v zig || echo none)"
 
       - name: gofmt
         run: test -z "$(gofmt -l . | tee /dev/stderr)"
