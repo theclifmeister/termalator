@@ -112,7 +112,7 @@ The dependency rule: `server`, `session`, `ticker`, `tui`, `project`, `thread` a
 
 - **Run directory.** Every socket and lock lives in one short, per-user run directory, never under a project path. Project paths can be long, and macOS limits a socket path to 104 bytes (`internal/server/paths.go`).
   - The run directory is `$XDG_RUNTIME_DIR/termalator` on Linux when that is set, and `~/.termalator/run` otherwise.
-  - If `<run dir>/tm.sock` would be over 100 bytes, the run directory falls back to `/tmp/termalator-<uid>`.
+  - If `<run dir>/tm.sock` would be over 100 bytes, the run directory falls back to `/tmp/termalator-<uid>-<hash>`, where `<hash>` is 8 hex digits of the SHA-256 of `TERMALATOR_HOME` (cleaned, with the symlinks in its existing part resolved). Every home keeps its own server even with the fallback; the default `~/.termalator` is unaffected unless its own path is that long.
   - `$TERMALATOR_SOCKET` overrides the socket path, and an override over 100 bytes is refused, not truncated.
   - `TERMALATOR_HOME` (default `~/.termalator`) moves everything else, which is how tests run isolated servers. A custom `TERMALATOR_HOME` ignores `$XDG_RUNTIME_DIR`, so a test server never shares a run directory with the user's.
   - `server.lock` and `server.pid` sit next to the socket, in the run directory. A `$TERMALATOR_SOCKET` override therefore isolates the lock too (`server.ResolvePaths`).

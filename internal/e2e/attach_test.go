@@ -4,7 +4,9 @@ package e2e
 // TestSmoke* run on every PR; the rest nightly.
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -278,4 +280,94 @@ func TestRunScript(t *testing.T) {
 	if list := env.Sessions(); len(list) != 1 {
 		t.Fatalf("sessions after detach: %+v", list)
 	}
+}
+
+// TestRunScriptLoginShellQueries guards the `make run` path that once left
+// a user with a blank pane (t-0011, cause not found): a server of another
+// build is stopped first, then scripts/run.sh starts a server and an
+// interactive login shell at the window's size and attaches right away,
+// as `make run` does. The shell's prompt queries the terminal before
+// every prompt (termquery, like starship), and the pane goes through
+// detach/reattach cycles. The server's screen must keep showing output,
+// every query must be answered, and every mirror must equal the server.
+func TestRunScriptLoginShellQueries(t *testing.T) {
+	env := New(t)
+	root, err := moduleRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An interactive bash login shell (zsh is not on every CI runner)
+	// whose prompt runs termquery first.
+	home := ""
+	for _, kv := range env.Vars {
+		if v, ok := strings.CutPrefix(kv, "HOME="); ok {
+			home = v
+		}
+	}
+	profile := "PS1='prompt$ '\nPROMPT_COMMAND=termquery\n"
+	if err := os.WriteFile(filepath.Join(home, ".bash_profile"), []byte(profile), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Without macOS bash's deprecation banner, the first thing on screen
+	// is the prompt, which run.sh waits for before it types: keys typed
+	// while termquery holds the terminal are swallowed, as with starship.
+	env.Vars = append(env.Vars, "SHELL=/bin/bash", "BASH_SILENCE_DEPRECATION_WARNING=1")
+
+	// A server of another build, with a session, stopped by this tm.
+	b, err := os.ReadFile(env.Bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := filepath.Join(t.TempDir(), "tm-other")
+	if err := os.WriteFile(other, append(b, "other build"...), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(other, "session", "start", "--cwd", "/", "--", "/bin/sh")
+	cmd.Env = env.Vars
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("session on the other build: %v\n%s", err, out)
+	}
+	env.MustCLI("server", "stop")
+
+	// make run, in a window the size of the user's.
+	w := env.WindowCmd(76, 53, filepath.Join(root, "scripts", "run.sh"))
+	w.WaitFor("hello from termalator session s-", wait)
+	if !Poll(wait, func() bool { return w.Modes().AltScreen }) {
+		t.Fatal("run.sh did not attach")
+	}
+	list := env.Sessions()
+	if len(list) != 1 {
+		t.Fatalf("sessions: %+v", list)
+	}
+	s := &Session{ID: list[0].ID, PID: list[0].PID}
+	env.track(s.PID, "session "+s.ID)
+	assertPaneSize(t, env, s, 76, 53)
+	// mirrored: w runs tm attach itself (not run.sh), so it can be asked
+	// for a digest check.
+	check := func(w *Window, marker string, mirrored bool) {
+		t.Helper()
+		w.Type("echo " + marker + "-$((6*7))\r")
+		w.WaitFor(marker+"-42", wait)
+		scr := env.WaitFor(s, marker+"-42", wait)
+		if strings.Contains(scr, "q-timeout") || !strings.Contains(scr, "q-ok") {
+			t.Fatalf("the prompt's terminal queries went unanswered:\n%s", scr)
+		}
+		if mirrored {
+			env.AssertMirrorsServer(w)
+		}
+	}
+	check(w, "first", false)
+
+	for i := range 4 {
+		w.Key(CtrlBackslash)
+		w.WaitFor("[detached from "+s.ID+"]", wait)
+		w.WaitExit(wait)
+		env.AssertAlive(s)
+		w = env.Window(76, 53, "attach", s.ID)
+		w.WaitFor("prompt$", wait)
+		check(w, fmt.Sprintf("cycle%d", i), true)
+	}
+	w.Key(CtrlBackslash)
+	w.WaitExit(wait)
+	env.AssertAlive(s)
 }
