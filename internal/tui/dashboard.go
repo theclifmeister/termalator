@@ -107,10 +107,10 @@ type dash struct {
 	// expanded are the projects the sidebar's tree shows open besides
 	// the current one: the view's.
 	expanded []string
-	msg     string
-	errMsg  string    // msg when it reports a failure, drawn as one
-	busy    bool      // an action is running
-	stack   []overlay // views open on top of the list, topmost last
+	msg      string
+	errMsg   string    // msg when it reports a failure, drawn as one
+	busy     bool      // an action is running
+	stack    []overlay // views open on top of the list, topmost last
 
 	layout   Layout
 	uiFile   string
