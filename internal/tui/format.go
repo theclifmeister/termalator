@@ -26,16 +26,25 @@ func stateWord(s proto.SessionInfo) string {
 
 // progress is the derived percent, done/total and the current todo
 // (docs/SPEC.md §7.3): "40% 2/5 ▸ Write SPEC §8", or the block reason.
-func progress(s proto.SessionInfo) string {
+// For a thread's session, st is its STATUS.md, which the dashboard shows
+// too; without it, the session's own todos count.
+func progress(s proto.SessionInfo, st *thread.Status) string {
 	var parts []string
 	if s.State == "blocked" && s.Reason != "" {
 		parts = append(parts, s.Reason)
 	}
-	if s.TodosTotal > 0 {
-		parts = append(parts, fmt.Sprintf("%d%% %d/%d", s.TodosDone*100/s.TodosTotal, s.TodosDone, s.TodosTotal))
-	}
-	if s.Current != "" {
-		parts = append(parts, "▸ "+oneLine(s.Current))
+	switch {
+	case st != nil:
+		if p := threadProgress(st); p != "" {
+			parts = append(parts, p)
+		}
+	default:
+		if p := sessionProgress(s).String(); p != "" {
+			parts = append(parts, p)
+		}
+		if s.Current != "" {
+			parts = append(parts, "▸ "+oneLine(s.Current))
+		}
 	}
 	if s.Queued > 0 {
 		parts = append(parts, fmt.Sprintf("%d queued", s.Queued))
@@ -101,7 +110,7 @@ func fit(s string, w int) string {
 // or "" with one) and "prefix+d dashboard", in reverse video. After the
 // prefix it lists the commands instead. Hints never show the prefix's
 // key, which is configurable: only the help and the settings do.
-func statusLine(s proto.SessionInfo, pending bool, cols int, where string) string {
+func statusLine(s proto.SessionInfo, ts *thread.Status, pending bool, cols int, where string) string {
 	parts := []string{" " + s.ID}
 	if s.Project != "" {
 		parts = append(parts, s.Project+" "+sessionName(s))
@@ -109,7 +118,7 @@ func statusLine(s proto.SessionInfo, pending bool, cols int, where string) strin
 		parts = append(parts, sessionName(s))
 	}
 	st := stateWord(s)
-	if p := progress(s); p != "" {
+	if p := progress(s, ts); p != "" {
 		st += " " + p
 	}
 	parts = append(parts, st)
@@ -132,6 +141,11 @@ func statusLine(s proto.SessionInfo, pending bool, cols int, where string) strin
 	return "\x1b[7m" + fit(left, w) + " " + right + "\x1b[27m"
 }
 
+// sessionProgress is a session's progress from its own todos.
+func sessionProgress(s proto.SessionInfo) thread.Progress {
+	return thread.SessionProgress(s.TodosDone, s.TodosTotal)
+}
+
 // threadProgress is a thread's line from STATUS.md (docs/SPEC.md §7.3):
 // "60% 3/5 ▸ current", the self-reported activity only without steps or
 // todos.
@@ -140,11 +154,8 @@ func threadProgress(st *thread.Status) string {
 		return ""
 	}
 	var parts []string
-	if st.PercentSource != "" {
-		parts = append(parts, fmt.Sprintf("%d%%", st.Percent))
-	}
-	if n := st.StepsTotal + st.TodosTotal; n > 0 {
-		parts = append(parts, fmt.Sprintf("%d/%d", st.StepsDone+st.TodosDone, n))
+	if p := st.Progress().String(); p != "" {
+		parts = append(parts, p)
 	}
 	switch {
 	case st.Current != "":

@@ -10,6 +10,7 @@ import (
 
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/tasks"
+	"github.com/theclifmeister/termalator/internal/thread"
 )
 
 // The details panel: everything about the selected row, beside the list
@@ -80,7 +81,8 @@ func (d *panel) wrap(text string) {
 }
 
 // progressLine is "▰▰▰▱▱ 60% 3/5".
-func progressLine(pct, done, total int) string {
+func progressLine(pr thread.Progress) string {
+	pct, done, total := pr.Percent, pr.Done, pr.Total
 	if pct < 0 {
 		return ""
 	}
@@ -106,8 +108,7 @@ func (m *dash) threadPanel(d *panel, r row) {
 	d.field("task", t.Task)
 	d.field("session", t.Session)
 	if st := t.Status; st != nil {
-		d.field("progress", progressLine(map[bool]int{true: st.Percent, false: -1}[st.PercentSource != ""],
-			st.StepsDone+st.TodosDone, st.StepsTotal+st.TodosTotal))
+		d.field("progress", progressLine(st.Progress()))
 		if st.Current != "" {
 			d.field("now", "▸ "+oneLine(st.Current))
 		} else if st.Activity != "" {
@@ -147,7 +148,7 @@ func taskPanel(d *panel, t *tasks.Task) {
 	d.title(t.Ref()+" "+t.Title, string(t.Status))
 	d.field("thread", t.Thread)
 	if len(t.Steps) > 0 {
-		d.field("steps", progressLine(pctOf(t.StepsDone(), len(t.Steps)), t.StepsDone(), len(t.Steps)))
+		d.field("steps", progressLine(thread.Progress{Percent: pctOf(t.StepsDone(), len(t.Steps)), Done: t.StepsDone(), Total: len(t.Steps)}))
 	}
 	if notes := strings.TrimSpace(t.Notes); notes != "" {
 		d.gap()
@@ -181,7 +182,7 @@ func (m *dash) projectPanel(d *panel, r row) {
 	d.field("project", p.Slug)
 	if s, ok := m.session(r.session); ok && r.session != "" {
 		d.field("session", s.ID)
-		d.field("progress", progressLine(sessionPct(s), s.TodosDone, s.TodosTotal))
+		d.field("progress", progressLine(sessionProgress(s)))
 		if s.Current != "" {
 			d.field("now", "▸ "+oneLine(s.Current))
 		}
@@ -211,7 +212,7 @@ func sessionPanel(d *panel, s proto.SessionInfo) {
 	d.field("project", s.Project)
 	d.field("role", string(s.Role))
 	d.field("agent", s.Agent)
-	d.field("progress", progressLine(sessionPct(s), s.TodosDone, s.TodosTotal))
+	d.field("progress", progressLine(sessionProgress(s)))
 	if s.Current != "" {
 		d.field("now", "▸ "+oneLine(s.Current))
 	}

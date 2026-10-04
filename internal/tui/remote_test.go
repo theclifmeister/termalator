@@ -11,11 +11,11 @@ import (
 
 func TestRemoteMarkers(t *testing.T) {
 	coord := proto.SessionInfo{ID: "s-1", Role: proto.RoleCoordinator, Project: "demo", State: "idle", RemoteControl: true}
-	if line := statusLine(coord, false, 120, ""); !strings.Contains(line, "remote control on") {
+	if line := statusLine(coord, nil, false, 120, ""); !strings.Contains(line, "remote control on") {
 		t.Fatalf("status bar without the marker: %q", line)
 	}
 	coord.RemoteControl = false
-	if line := statusLine(coord, false, 120, ""); strings.Contains(line, "remote") {
+	if line := statusLine(coord, nil, false, 120, ""); strings.Contains(line, "remote") {
 		t.Fatalf("status bar with a marker while off: %q", line)
 	}
 

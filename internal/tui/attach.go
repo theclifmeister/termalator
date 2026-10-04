@@ -19,8 +19,10 @@ import (
 	"golang.org/x/term"
 
 	"github.com/theclifmeister/termalator/internal/emu"
+	"github.com/theclifmeister/termalator/internal/project"
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/server"
+	"github.com/theclifmeister/termalator/internal/thread"
 	"github.com/theclifmeister/termalator/internal/view"
 )
 
@@ -210,8 +212,9 @@ type pane struct {
 	scrolled bool // the local viewport is scrolled back
 	watch    bool // a thread's pane, not taken over: no input reaches it
 	info     proto.SessionInfo
-	rect     view.Rect // where it is in this window; empty when cropped away
-	gone     bool      // closed or ended: its goroutines stop
+	status   *thread.Status // a thread's STATUS.md, for the status bar
+	rect     view.Rect      // where it is in this window; empty when cropped away
+	gone     bool           // closed or ended: its goroutines stop
 	// restarting: the server relaunches its session under the same id
 	// (proto.ClosedRestarting); a failing write isn't a lost server then.
 	restarting bool
@@ -323,7 +326,8 @@ func (c *client) open(id string) (*pane, error) {
 		conn.Close()
 		return nil, err
 	}
-	p := &pane{conn: conn, r: r, info: *info, watch: info.Role == proto.RoleThread}
+	p := &pane{conn: conn, r: r, info: *info, watch: info.Role == proto.RoleThread,
+		status: threadStatuses([]proto.SessionInfo{*info})[info.ID]}
 	// The stream starts with the pane's snapshot.
 	typ, payload, err := conn.ReadFrame()
 	if err == nil && typ != proto.FrameSnapshot {
@@ -1209,7 +1213,7 @@ func (c *client) status() {
 	if c.flash != "" {
 		where = strings.TrimPrefix(where+" · "+c.flash, " · ")
 	}
-	line := statusLine(c.focus.info, c.pending, c.paneCols, where)
+	line := statusLine(c.focus.info, c.focus.status, c.pending, c.paneCols, where)
 	if c.single {
 		c.focus.r.SetStatus(line)
 	}
@@ -1549,6 +1553,24 @@ func errString(err error) string {
 	return err.Error()
 }
 
+// threadStatuses reads the STATUS.md of every thread session, by
+// session id, so the status bar shows the progress the dashboard shows
+// (docs/SPEC.md §7.3).
+func threadStatuses(sessions []proto.SessionInfo) map[string]*thread.Status {
+	out := map[string]*thread.Status{}
+	for _, s := range sessions {
+		if s.Role != proto.RoleThread || s.Project == "" || s.Thread == "" {
+			continue
+		}
+		if p, err := project.Open(s.Project); err == nil {
+			if st, err := thread.ReadStatus(p, s.Thread); err == nil {
+				out[s.ID] = st
+			}
+		}
+	}
+	return out
+}
+
 // statePoll is how often the status bar asks the server for state.
 const statePoll = 500 * time.Millisecond
 
@@ -1587,6 +1609,7 @@ func (c *client) pollState(ctx context.Context) {
 		if c.side != nil {
 			projects = loadSideProjects()
 		}
+		statuses := threadStatuses(res.Sessions)
 		if c.lock() {
 			if c.side != nil {
 				c.side.items = sideItems(projects, res.Sessions)
@@ -1594,7 +1617,7 @@ func (c *client) pollState(ctx context.Context) {
 			for _, p := range c.panes {
 				for _, s := range res.Sessions {
 					if s.ID == p.info.ID {
-						p.info = s
+						p.info, p.status = s, statuses[s.ID]
 					}
 				}
 			}
