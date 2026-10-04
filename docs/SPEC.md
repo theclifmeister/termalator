@@ -114,7 +114,8 @@ The dependency rule: `server`, `session`, `ticker`, `tui`, `project`, `thread` a
   - The run directory is `$XDG_RUNTIME_DIR/termalator` on Linux when that is set, and `~/.termalator/run` otherwise.
   - If `<run dir>/tm.sock` would be over 100 bytes, the run directory falls back to `/tmp/termalator-<uid>`.
   - `$TERMALATOR_SOCKET` overrides the socket path, and an override over 100 bytes is refused, not truncated.
-  - `TERMALATOR_HOME` (default `~/.termalator`) moves everything else, which is how tests run isolated servers.
+  - `TERMALATOR_HOME` (default `~/.termalator`) moves everything else, which is how tests run isolated servers. A custom `TERMALATOR_HOME` ignores `$XDG_RUNTIME_DIR`, so a test server never shares a run directory with the user's.
+  - `server.lock` and `server.pid` sit next to the socket, in the run directory. A `$TERMALATOR_SOCKET` override therefore isolates the lock too (`server.ResolvePaths`).
 - **Permissions.**
   - The run directory is `0700` and owned by the user; the server refuses to use it otherwise.
   - The socket file is `0600`.
@@ -168,7 +169,7 @@ The server MAY serve file-only operations such as `task.*` itself, so that all w
 - every client gets its own scrollback and viewport for free;
 - late joiners and lagging clients just get a fresh snapshot.
 
-After the hello the client sends `{"attach":{"session":"s-…","cols":C,"rows":R}}`. The connection then switches to binary frames: `type u8 | length u32 BE | payload`, at most 64 MB each (`proto.WriteFrame`/`ReadFrame`).
+After the hello the client sends `{"attach":{"session":"s-…","cols":C,"rows":R}}`, and the server answers with one line, `{"attached":{…session info…}}` or `{"error":{"code","message"}}`. On success the connection then switches to binary frames: `type u8 | length u32 BE | payload`, at most 64 MB each (`proto.WriteFrame`/`ReadFrame`).
 
 | Direction | Frame | Meaning |
 |---|---|---|
@@ -932,7 +933,7 @@ These commands are used by the human, the coordinator and threads alike. Exit co
 | `tm report [--file F] [--attach F]… \| --show` | threads | hand in the report (stdin or file), §7.2 |
 | `tm done ["summary"]` | threads | §7.3 |
 | `tm inbox list \| done <id>…` | coordinator | §7.5 |
-| `tm session list \| start [--agent A] [--cwd D] \| read <id> \| prompt <id> "…" \| stop <id>` | human | sessions outside projects (shells, or an agent such as Claude) |
+| `tm session list \| start [--agent A] [--cwd D] [-- CMD…] \| read <id> [--scrollback] \| keys <id> [--enter] "…" \| prompt <id> "…" \| stop <id>` | human | sessions outside projects (shells, or an agent such as Claude); `keys` types raw text |
 | `tm agent list \| check <file> \| reload \| explain <session>` | human | §8 |
 | `tm hook --agent <name>` | harness hooks | §8.2 |
 | `tm doctor [--fix]` | human | toolchain, server, sockets, manifests, hooks, leftovers |
@@ -987,7 +988,8 @@ Never automated, in any mode: merging PRs, force-pushes, deleting branches with 
 ## 12. Toolchain and build
 
 - **Go:** 1.26 or later. `go.mod` says `go 1.26.0`, the floor set by go.mitchellh.com/libghostty.
-- **Zig 0.16 or later**, to build libghostty-vt (Ghostty's `build.zig.zon` declares 0.16.0 as its minimum).
+- **Zig 0.16**, to build libghostty-vt (Ghostty's `build.zig.zon` declares 0.16.0 as its minimum).
+  - `make` uses a `zig` 0.16.x from `PATH`, or else downloads the pinned Zig 0.16.0 into `.build/` and checks its sha256 (macOS and Linux, arm64 and x86_64). `ZIG=…` overrides both. Other Zig versions are skipped, because Zig's build API changes between minor releases. The prerequisites are therefore Go, pkg-config, git, curl and a C toolchain.
   - The Zig build **fetches packages over the network** (aro, uucode, highway, simdutf and others) into `~/.cache/zig`, about 110 MB. CI caches it.
 - **pkg-config** is a hard dependency: the bindings link with `#cgo pkg-config: --static libghostty-vt-static`.
 - **git.**
@@ -1270,21 +1272,22 @@ func TestDetachReattach(t *testing.T) {
 }
 ```
 
-What the harness provides:
+What the harness provides (M1 built `Env`, `Window` without `Key`/`Paste`/`Wheel`, golden screens, the orphan check, artifacts and the printer app; M2 adds the input helpers and `AssertMirrorsServer`):
+- **Running it.** Scenarios skip unless `E2E=1`, which `make e2e` and `make e2e-smoke` set, so `go test ./...` stays fast. The smoke set is every scenario named `TestSmoke*`. For it the harness builds `tm` with `-race` (`E2E_RACE=1`).
 - **`Env`**:
   - builds `tm` once per test run;
   - an isolated `TERMALATOR_HOME` and `HOME` (so the fake agent's `~/.claude/` is private);
   - a short run dir for the socket;
-  - `Start`, `CLI` (runs `tm …` and returns stdout, stderr and the exit code);
+  - `Start(app, args…)` (`"shell"`, a deterministic app by name, or any command), `CLI` (runs `tm …` and returns stdout, stderr and the exit code), `Screen`, `WaitFor`, `Keys`, `AssertAlive`;
   - `KillServer`, `RestartServer`;
   - cleanup that **fails the test if any process outlives it**, so orphaned agents can't go unnoticed.
-- **`Window`**: a PTY running `tm` or `tm attach`, whose output feeds a libghostty terminal (the "outer screen"). It offers:
+- **`Window`**: a PTY running `tm` or `tm attach` (`env.Window`), or a shell the test types `"$TM" …` into (`env.Shell`), whose output feeds a libghostty terminal (the "outer screen"). It offers:
   - `Type`, `Key` (libghostty's key encoder, honouring the kitty flags the client pushed), `Paste`, `Wheel`, `Resize`;
   - `CloseWindow` (close the PTY master), `KillClient` (`SIGKILL`);
   - `WaitFor`, `Quiet`, `Screen`.
-- **Golden screens.** `testdata/golden/*.txt` holds the plain text of the viewport, plus an optional attribute layer. `go test ./internal/e2e -update` rewrites them. Volatile parts (times, ids, durations) are masked by named regexes.
+- **Golden screens.** `testdata/golden/*.txt` holds the plain text of the viewport, plus an optional attribute layer (later). `make e2e E2E_FLAGS=-update` rewrites them. Volatile parts (session ids, pids, durations) are masked by named regexes (`e2e.Mask`, `e2e.DefaultMasks`) and read `<name>` in the file.
 - **Consistency checks.** `AssertMirrorsServer` asks for an in-stream `DIGEST` and compares client and server emulator state: modes, both screens, scrollback.
-- **Artifacts on failure:** every window's last screen, the server log, and `tm agent explain` for each session, saved under the test's output dir and uploaded by CI.
+- **Artifacts on failure:** every window's last screen and raw bytes, the server log and `sessions.json` (from M3: `tm agent explain` for each session), saved under `$E2E_ARTIFACTS/<test>` and uploaded by CI.
 - **Deterministic apps.** Scenarios use small purpose-built TUIs under `internal/e2e/apps/`: a stream printer, a full-screen mouse app, an inline redraw app. Real programs such as `vim` and `htop` vary between machines.
 
 ### 16.3 The scripted fake agent

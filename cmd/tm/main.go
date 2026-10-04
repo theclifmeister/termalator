@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/theclifmeister/termalator/internal/cli"
 	"github.com/theclifmeister/termalator/internal/emu"
 	"github.com/theclifmeister/termalator/internal/version"
 )
@@ -24,8 +25,16 @@ func main() {
 		fmt.Println("libghostty-vt: ok")
 		return
 	}
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "server":
+			os.Exit(cli.Server(cli.StdEnv(), os.Args[2:]))
+		case "session":
+			os.Exit(cli.Session(cli.StdEnv(), os.Args[2:]))
+		}
+	}
 	fmt.Fprintln(os.Stderr, "tm: not implemented yet; see docs/SPEC.md")
-	fmt.Fprintln(os.Stderr, "usage: tm version | tm selftest")
+	fmt.Fprintln(os.Stderr, "usage: tm version | selftest | server … | session …")
 	os.Exit(2)
 }
 

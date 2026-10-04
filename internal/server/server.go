@@ -1,0 +1,648 @@
+package server
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log"
+	"net"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"sync"
+	"time"
+
+	"github.com/theclifmeister/termalator/internal/proto"
+	"github.com/theclifmeister/termalator/internal/session"
+	"github.com/theclifmeister/termalator/internal/version"
+)
+
+// StopGrace is how long sessions get between SIGHUP and SIGKILL.
+const StopGrace = 5 * time.Second
+
+// handshakeTimeout bounds how long a new connection may take to say hello.
+const handshakeTimeout = 5 * time.Second
+
+// AlreadyRunningError is returned by Run when another server holds the lock.
+type AlreadyRunningError struct{ PID int }
+
+func (e *AlreadyRunningError) Error() string {
+	if e.PID > 0 {
+		return fmt.Sprintf("already running (pid %d)", e.PID)
+	}
+	return "already running"
+}
+
+// Options configure a server.
+type Options struct {
+	Paths Paths
+	Log   *log.Logger
+	// Bin is the absolute path of tm, exported to sessions as TERMALATOR_BIN.
+	Bin string
+	// Env is the base environment for sessions; nil means os.Environ().
+	Env []string
+}
+
+// Server owns every session and the control socket.
+type Server struct {
+	opts    Options
+	log     *log.Logger
+	build   string
+	started time.Time
+	stopReq chan struct{}
+	stopOne sync.Once
+
+	mu       sync.Mutex
+	sessions map[string]*session.Session
+	records  map[string]SessionRecord
+	nextID   int
+	stopping bool
+	prevShut string
+	lost     []string
+	conns    map[net.Conn]struct{}
+}
+
+// Run runs a server until ctx is cancelled or a client calls server.stop.
+// It returns *AlreadyRunningError if another server is running.
+func Run(ctx context.Context, opts Options) error {
+	p := opts.Paths
+	logger := opts.Log
+	if logger == nil {
+		logger = log.New(os.Stderr, "", log.LstdFlags)
+	}
+	for _, d := range []string{p.Home, filepath.Dir(p.Log), filepath.Dir(p.Sessions)} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			return err
+		}
+	}
+	// The run dir holds the socket, the lock and the pid file. Bind before
+	// anything else can start: a server that cannot listen must not own
+	// processes nobody can reach.
+	if err := ensurePrivateDir(p.RunDir); err != nil {
+		return err
+	}
+	lock, err := tryLock(p.Lock)
+	if errors.Is(err, ErrLocked) {
+		return &AlreadyRunningError{PID: readPID(p.PID)}
+	}
+	if err != nil {
+		return err
+	}
+	defer lock.unlock()
+
+	// We hold the lock, so any socket file left here is stale.
+	os.Remove(p.Socket)
+	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: p.Socket, Net: "unix"})
+	if err != nil {
+		return fmt.Errorf("listen %s: %w", p.Socket, err)
+	}
+	ln.SetUnlinkOnClose(false)
+	if err := os.Chmod(p.Socket, 0o600); err != nil {
+		ln.Close()
+		return err
+	}
+	if err := os.WriteFile(p.PID, []byte(strconv.Itoa(os.Getpid())+"\n"), 0o600); err != nil {
+		ln.Close()
+		return err
+	}
+
+	s := &Server{
+		opts:     opts,
+		log:      logger,
+		build:    version.BuildID(),
+		started:  time.Now(),
+		stopReq:  make(chan struct{}),
+		sessions: map[string]*session.Session{},
+		records:  map[string]SessionRecord{},
+		nextID:   1,
+		conns:    map[net.Conn]struct{}{},
+	}
+	s.loadPrevious()
+	if err := s.saveLocked(""); err != nil {
+		logger.Printf("sessions.json: %v", err)
+	}
+	logger.Printf("server pid %d %s protocol %d listening on %s", os.Getpid(), s.build, proto.Protocol, p.Socket)
+
+	acceptDone := make(chan struct{})
+	go func() {
+		defer close(acceptDone)
+		for {
+			c, err := ln.AcceptUnix()
+			if err != nil {
+				return
+			}
+			go s.handle(c)
+		}
+	}()
+
+	select {
+	case <-ctx.Done():
+		logger.Printf("stopping: %v", context.Cause(ctx))
+	case <-s.stopReq:
+		logger.Printf("stopping: requested by a client")
+	}
+	ln.Close()
+	<-acceptDone
+	s.shutdown()
+	os.Remove(p.Socket)
+	os.Remove(p.PID)
+	logger.Printf("server stopped")
+	return nil
+}
+
+// loadPrevious reads the last server's sessions.json: was its shutdown
+// clean, and which of its sessions are gone. Shell sessions are never
+// restored; agent resume arrives with the agent layer (M3).
+func (s *Server) loadPrevious() {
+	prev, err := loadState(s.opts.Paths.Sessions)
+	if err != nil {
+		s.log.Printf("sessions.json unreadable, starting fresh: %v", err)
+		return
+	}
+	if prev == nil {
+		return
+	}
+	if prev.NextID > s.nextID {
+		s.nextID = prev.NextID
+	}
+	if prev.Shutdown == "clean" {
+		s.prevShut = "clean"
+	} else {
+		s.prevShut = "crash"
+		s.log.Printf("previous server (pid %d) did not shut down cleanly", prev.ServerPID)
+	}
+	for _, r := range prev.Sessions {
+		s.lost = append(s.lost, r.ID)
+	}
+	if len(s.lost) > 0 {
+		s.log.Printf("sessions of the previous server not restored: %v", s.lost)
+	}
+}
+
+// saveLocked rewrites sessions.json; s.mu held (or no concurrency yet).
+func (s *Server) saveLocked(shutdown string) error {
+	st := &State{
+		Version:   stateVersion,
+		ServerPID: os.Getpid(),
+		Started:   s.started,
+		Shutdown:  shutdown,
+		NextID:    s.nextID,
+	}
+	for _, r := range s.records {
+		if shutdown == "clean" {
+			r.CleanExit = true
+		}
+		st.Sessions = append(st.Sessions, r)
+	}
+	sort.Slice(st.Sessions, func(i, j int) bool { return st.Sessions[i].Created.Before(st.Sessions[j].Created) })
+	return saveState(s.opts.Paths.Sessions, st)
+}
+
+func (s *Server) requestStop() { s.stopOne.Do(func() { close(s.stopReq) }) }
+
+// shutdown stops every session (SIGHUP, then SIGKILL after StopGrace),
+// records them for resume and marks the shutdown clean.
+func (s *Server) shutdown() {
+	s.mu.Lock()
+	s.stopping = true
+	sessions := make([]*session.Session, 0, len(s.sessions))
+	for _, sess := range s.sessions {
+		sessions = append(sessions, sess)
+	}
+	for c := range s.conns {
+		c.Close()
+	}
+	s.mu.Unlock()
+
+	var wg sync.WaitGroup
+	for _, sess := range sessions {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sess.Stop(StopGrace)
+		}()
+	}
+	wg.Wait()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.saveLocked("clean"); err != nil {
+		s.log.Printf("sessions.json: %v", err)
+	}
+}
+
+// handle runs one connection: peer check, handshake, then control or
+// attach.
+func (s *Server) handle(c *net.UnixConn) {
+	defer c.Close()
+	uid, pid, err := peerCred(c)
+	if err != nil {
+		s.log.Printf("peer credentials: %v", err)
+		return
+	}
+	if uid != os.Getuid() {
+		s.log.Printf("rejected connection from uid %d (pid %d)", uid, pid)
+		return
+	}
+	s.mu.Lock()
+	if s.stopping {
+		s.mu.Unlock()
+		return
+	}
+	s.conns[c] = struct{}{}
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		delete(s.conns, c)
+		s.mu.Unlock()
+	}()
+
+	br := bufio.NewReader(c)
+	c.SetReadDeadline(time.Now().Add(handshakeTimeout))
+	var hello proto.Hello
+	if err := readJSONLine(br, &hello); err != nil {
+		return
+	}
+	c.SetReadDeadline(time.Time{})
+	reply := s.hello()
+	if err := writeJSONLine(c, reply); err != nil {
+		return
+	}
+	// Both sides check; the client says what went wrong, the server just
+	// refuses to go on (docs/SPEC.md §3.3).
+	if err := proto.Check(hello, reply); err != nil {
+		s.log.Printf("refused %s connection from pid %d: %v", hello.Kind, pid, err)
+		return
+	}
+	switch hello.Kind {
+	case proto.KindControl, proto.KindHook:
+		s.serveControl(c, br, pid)
+	case proto.KindAttach:
+		s.serveAttach(c, br)
+	default:
+		s.log.Printf("refused connection of unknown kind %q from pid %d", hello.Kind, pid)
+	}
+}
+
+// hello is the server's side of the handshake.
+func (s *Server) hello() proto.Hello {
+	return proto.Hello{
+		Protocol: proto.Protocol,
+		Version:  version.Version,
+		Build:    s.build,
+		Bin:      s.opts.Bin,
+		PID:      os.Getpid(),
+	}
+}
+
+func (s *Server) serveControl(c net.Conn, br *bufio.Reader, peerPID int) {
+	for {
+		var req proto.Request
+		if err := readJSONLine(br, &req); err != nil {
+			return
+		}
+		result, perr := s.dispatch(req)
+		resp := proto.Response{ID: req.ID, Error: perr}
+		if perr == nil {
+			b, err := json.Marshal(result)
+			if err != nil {
+				resp.Error = proto.Errorf(proto.ErrInternal, "%v", err)
+			} else {
+				resp.Result = b
+			}
+		}
+		if err := writeJSONLine(c, resp); err != nil {
+			return
+		}
+		if req.Method == proto.MethodServerStop && perr == nil {
+			s.log.Printf("server.stop from pid %d", peerPID)
+			s.requestStop()
+		}
+	}
+}
+
+func (s *Server) dispatch(req proto.Request) (any, *proto.Error) {
+	switch req.Method {
+	case proto.MethodPing:
+		return map[string]bool{"pong": true}, nil
+	case proto.MethodServerStatus:
+		return s.status(), nil
+	case proto.MethodServerStop:
+		var p proto.ServerStopParams
+		if err := decodeParams(req.Params, &p); err != nil {
+			return nil, err
+		}
+		return s.stop(p)
+	case proto.MethodSessionList:
+		return s.list(), nil
+	case proto.MethodSessionStart:
+		var p proto.SessionStartParams
+		if err := decodeParams(req.Params, &p); err != nil {
+			return nil, err
+		}
+		return s.startSession(p)
+	case proto.MethodSessionStop:
+		var p proto.SessionIDParams
+		if err := decodeParams(req.Params, &p); err != nil {
+			return nil, err
+		}
+		return s.stopSession(p.ID)
+	case proto.MethodSessionRead:
+		var p proto.SessionReadParams
+		if err := decodeParams(req.Params, &p); err != nil {
+			return nil, err
+		}
+		sess, perr := s.session(p.ID)
+		if perr != nil {
+			return nil, perr
+		}
+		r, err := sess.Read(p.Scrollback)
+		if err != nil {
+			return nil, sessionError(p.ID, err)
+		}
+		return r, nil
+	case proto.MethodSessionKeys:
+		var p proto.SessionKeysParams
+		if err := decodeParams(req.Params, &p); err != nil {
+			return nil, err
+		}
+		sess, perr := s.session(p.ID)
+		if perr != nil {
+			return nil, perr
+		}
+		if err := sess.Input([]byte(p.Data)); err != nil {
+			return nil, sessionError(p.ID, err)
+		}
+		return struct{}{}, nil
+	}
+	return nil, proto.Errorf(proto.ErrUnknownMethod, "unknown method %q", req.Method)
+}
+
+func (s *Server) status() proto.ServerStatus {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return proto.ServerStatus{
+		PID:              os.Getpid(),
+		Version:          version.Version,
+		Build:            s.build,
+		Protocol:         proto.Protocol,
+		Started:          s.started,
+		Sessions:         len(s.sessions),
+		Socket:           s.opts.Paths.Socket,
+		Home:             s.opts.Paths.Home,
+		PreviousShutdown: s.prevShut,
+		Lost:             s.lost,
+	}
+}
+
+func (s *Server) stop(p proto.ServerStopParams) (any, *proto.Error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	agents := 0
+	for _, sess := range s.sessions {
+		if sess.Config().Role != proto.RoleShell {
+			agents++
+		}
+	}
+	if agents > 0 && !p.Yes {
+		return nil, proto.Errorf(proto.ErrRefused, "%d agent session(s) running; pass --yes to stop them", agents)
+	}
+	return map[string]int{"sessions": len(s.sessions)}, nil
+}
+
+func (s *Server) list() proto.SessionListResult {
+	s.mu.Lock()
+	sessions := make([]*session.Session, 0, len(s.sessions))
+	for _, sess := range s.sessions {
+		sessions = append(sessions, sess)
+	}
+	s.mu.Unlock()
+	res := proto.SessionListResult{Sessions: []proto.SessionInfo{}}
+	for _, sess := range sessions {
+		res.Sessions = append(res.Sessions, sess.Info())
+	}
+	sort.Slice(res.Sessions, func(i, j int) bool { return res.Sessions[i].Created.Before(res.Sessions[j].Created) })
+	return res
+}
+
+func (s *Server) session(id string) (*session.Session, *proto.Error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess, ok := s.sessions[id]
+	if !ok {
+		return nil, proto.Errorf(proto.ErrUnknownSession, "no session %q", id)
+	}
+	return sess, nil
+}
+
+func sessionError(id string, err error) *proto.Error {
+	if errors.Is(err, session.ErrExited) {
+		return proto.Errorf(proto.ErrUnknownSession, "session %q has exited", id)
+	}
+	return proto.Errorf(proto.ErrInternal, "%v", err)
+}
+
+func (s *Server) startSession(p proto.SessionStartParams) (any, *proto.Error) {
+	argv := p.Argv
+	if len(argv) == 0 {
+		sh := os.Getenv("SHELL")
+		if sh == "" {
+			sh = "/bin/sh"
+		}
+		argv = []string{sh, "-l"}
+	}
+	cwd := p.Cwd
+	if cwd == "" {
+		cwd, _ = os.UserHomeDir()
+	}
+	if !filepath.IsAbs(cwd) {
+		return nil, proto.Errorf(proto.ErrBadParams, "cwd must be absolute: %q", cwd)
+	}
+	if fi, err := os.Stat(cwd); err != nil || !fi.IsDir() {
+		return nil, proto.Errorf(proto.ErrBadParams, "cwd is not a directory: %s", cwd)
+	}
+	cols, rows := p.Cols, p.Rows
+	if cols == 0 || rows == 0 {
+		cols, rows = 80, 24
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stopping {
+		return nil, proto.Errorf(proto.ErrRefused, "server is stopping")
+	}
+	id := fmt.Sprintf("s-%d", s.nextID)
+	s.nextID++
+	base := s.opts.Env
+	if base == nil {
+		base = os.Environ()
+	}
+	env := sessionEnv(base, map[string]string{
+		"TERM":                 "xterm-256color",
+		"COLORTERM":            "truecolor",
+		"TERM_PROGRAM":         "termalator",
+		"TERM_PROGRAM_VERSION": version.Version,
+		"TERMALATOR":           "1",
+		"TERMALATOR_SESSION":   id,
+		"TERMALATOR_SOCKET":    s.opts.Paths.Socket,
+		"TERMALATOR_HOME":      s.opts.Paths.Home,
+		"TERMALATOR_BIN":       s.opts.Bin,
+	})
+	created := time.Now()
+	sess, err := session.Start(session.Config{
+		ID: id, Role: proto.RoleShell, Argv: argv, Cwd: cwd, Env: env,
+		Cols: cols, Rows: rows, Created: created,
+		Xtversion: "termalator " + version.Version,
+		Logf:      s.log.Printf,
+		OnExit:    s.sessionExited,
+	})
+	if err != nil {
+		return nil, proto.Errorf(proto.ErrRefused, "%v", err)
+	}
+	s.sessions[id] = sess
+	s.records[id] = SessionRecord{ID: id, Role: proto.RoleShell, Argv: argv, Cwd: cwd, Created: created}
+	if err := s.saveLocked(""); err != nil {
+		s.log.Printf("sessions.json: %v", err)
+	}
+	s.log.Printf("session %s: started pid %d %q in %s", id, sess.PID(), argv, cwd)
+	return proto.SessionStartResult{Session: sess.Info()}, nil
+}
+
+func (s *Server) sessionExited(sess *session.Session) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.sessions, sess.ID())
+	if s.stopping {
+		return // keep the record: shutdown writes it for resume
+	}
+	delete(s.records, sess.ID())
+	if err := s.saveLocked(""); err != nil {
+		s.log.Printf("sessions.json: %v", err)
+	}
+}
+
+func (s *Server) stopSession(id string) (any, *proto.Error) {
+	sess, perr := s.session(id)
+	if perr != nil {
+		return nil, perr
+	}
+	sess.Stop(StopGrace)
+	return map[string]string{"status": sess.ExitStatus()}, nil
+}
+
+// serveAttach streams one session to a client: the snapshot, then output
+// and resizes in order, while it reads the client's input and requests.
+// The client leaving (DETACH, EOF, a dead socket) changes nothing else.
+func (s *Server) serveAttach(c net.Conn, br *bufio.Reader) {
+	c.SetReadDeadline(time.Now().Add(handshakeTimeout))
+	var req proto.AttachRequest
+	if err := readJSONLine(br, &req); err != nil {
+		return
+	}
+	c.SetReadDeadline(time.Time{})
+	sess, perr := s.session(req.Attach.Session)
+	if perr != nil {
+		writeJSONLine(c, proto.AttachReply{Error: perr})
+		return
+	}
+	sub, err := sess.Attach()
+	if err != nil {
+		writeJSONLine(c, proto.AttachReply{Error: sessionError(req.Attach.Session, err)})
+		return
+	}
+	info := sess.Info()
+	if err := writeJSONLine(c, proto.AttachReply{Attached: &info}); err != nil {
+		sub.Detach()
+		return
+	}
+	s.log.Printf("session %s: client attached", sess.ID())
+
+	writerDone := make(chan struct{})
+	go func() {
+		defer close(writerDone)
+		defer c.Close()
+		for {
+			b, ok := sub.Next()
+			if !ok {
+				return
+			}
+			if _, err := c.Write(b); err != nil {
+				return
+			}
+		}
+	}()
+
+	reason := "eof"
+	var buf []byte
+loop:
+	for {
+		typ, payload, err := proto.ReadFrame(br, buf)
+		if err != nil {
+			break
+		}
+		buf = payload
+		switch typ {
+		case proto.FrameInput:
+			sess.Input(payload)
+		case proto.FrameSetSize:
+			cols, rows, err := proto.ParseSize(payload)
+			if err == nil {
+				err = sess.Resize(cols, rows)
+			}
+			if err != nil {
+				s.log.Printf("session %s: resize: %v", sess.ID(), err)
+			}
+		case proto.FrameDigestReq:
+			sess.RequestDigest(sub)
+		case proto.FrameDetach:
+			reason = "detach"
+			break loop
+		}
+	}
+	sub.Detach()
+	<-writerDone
+	s.log.Printf("session %s: client left (%s, %d resyncs)", sess.ID(), reason, sub.Resyncs())
+}
+
+func decodeParams(raw json.RawMessage, v any) *proto.Error {
+	if len(raw) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(raw, v); err != nil {
+		return proto.Errorf(proto.ErrBadParams, "%v", err)
+	}
+	return nil
+}
+
+// maxLine bounds one NDJSON line.
+const maxLine = 16 << 20
+
+func readJSONLine(br *bufio.Reader, v any) error {
+	var line []byte
+	for {
+		chunk, isPrefix, err := br.ReadLine()
+		if err != nil {
+			return err
+		}
+		line = append(line, chunk...)
+		if len(line) > maxLine {
+			return fmt.Errorf("line too long")
+		}
+		if !isPrefix {
+			break
+		}
+	}
+	return json.Unmarshal(line, v)
+}
+
+func writeJSONLine(w net.Conn, v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(append(b, '\n'))
+	return err
+}
