@@ -41,6 +41,9 @@ type paneInfo struct {
 	// follows is false for an agent whose manifest says screen.resize =
 	// "explicit": typing doesn't resize it.
 	follows bool
+	// sized is set once a console has sized the session; until then the
+	// first view showing it gives it its rectangle (fill).
+	sized bool
 }
 
 type views struct {
@@ -225,6 +228,7 @@ func (vs *views) subscribe(p proto.ViewSubscribeParams) (*member, string, view.V
 	if p.Session != "" {
 		lv.v.Attach(p.Session, "")
 	}
+	vs.fill(lv)
 	vs.changedLocked(lv)
 	vs.logf("view %s: client %s joined at %d×%d", name, m.id, cols, rows)
 	return m, name, lv.v.Clone(), nil
@@ -284,6 +288,7 @@ func (vs *views) sessionGone(id string) {
 	defer vs.mu.Unlock()
 	for _, lv := range vs.byName {
 		if lv.v.Remove(id) {
+			vs.fill(lv)
 			vs.changedLocked(lv)
 		}
 	}
@@ -306,6 +311,27 @@ func (vs *views) resize(lv *liveView, typed string, claim bool) {
 			continue
 		}
 		if claim && (!info.follows || info.role == proto.RoleThread && id != typed) {
+			continue
+		}
+		vs.host.resizePane(id, uint16(r.W), uint16(r.H))
+	}
+}
+
+// fill gives the sessions lv shows that no console has sized yet their
+// rectangles at its size: a new pane fills the console that shows it
+// first. Panes already sized, and agents whose manifest says
+// screen.resize = "explicit", are left alone: showing a pane never
+// resizes it after that (docs/SPEC.md §3.3). vs.mu held.
+func (vs *views) fill(lv *liveView) {
+	v := &lv.v
+	if v.Mode != view.ModeLayout || v.Cols == 0 || v.Rows == 0 {
+		return
+	}
+	g := v.Lay(int(v.Cols), int(v.Rows))
+	for _, id := range v.Visible() {
+		r, ok := g.Panes[id]
+		info, alive := vs.host.pane(id)
+		if !ok || !alive || info.sized || !info.follows || r.W < 1 || r.H < 1 {
 			continue
 		}
 		vs.host.resizePane(id, uint16(r.W), uint16(r.H))
@@ -445,6 +471,7 @@ func (vs *views) do(method string, p proto.ViewParams) (view.View, *proto.Error)
 	if resize {
 		vs.resize(lv, typed, claim)
 	}
+	vs.fill(lv)
 	if !view.Equal(before, *v) {
 		vs.changedLocked(lv)
 	}
@@ -459,7 +486,7 @@ func (s *Server) pane(id string) (paneInfo, bool) {
 		return paneInfo{}, false
 	}
 	cfg := sess.Config()
-	return paneInfo{cwd: cfg.Cwd, role: cfg.Role, follows: agent.FollowsTyping(sess.Agent())}, true
+	return paneInfo{cwd: cfg.Cwd, role: cfg.Role, follows: agent.FollowsTyping(sess.Agent()), sized: sess.Sized()}, true
 }
 
 func (s *Server) resizePane(id string, cols, rows uint16) {

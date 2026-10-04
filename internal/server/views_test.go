@@ -43,6 +43,9 @@ func (h *fakeHost) resizePane(id string, cols, rows uint16) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.sizes[id] = [2]uint16{cols, rows}
+	p := h.panes[id]
+	p.sized = true // as Session.RequestResize does
+	h.panes[id] = p
 	h.resizes = append(h.resizes, fmt.Sprintf("%s %d×%d", id, cols, rows))
 }
 
@@ -111,7 +114,8 @@ func TestViewsSharedMain(t *testing.T) {
 		t.Fatalf("the first to join sizes the view: %+v", v)
 	}
 
-	// A attaches: both see it; attaching never resizes.
+	// A attaches: both see it. s-1 was never sized, so it fills the
+	// view (less the sidebar and the status bar).
 	v = mustDo(t, vs, proto.MethodViewAttach, proto.ViewParams{Client: a.id, Session: "s-1", Project: "p"})
 	if v.Mode != view.ModeLayout || v.Focus != "s-1" || v.Current != "p" {
 		t.Fatalf("attach: %+v", v)
@@ -119,8 +123,8 @@ func TestViewsSharedMain(t *testing.T) {
 	if !woken(a) || !woken(b) {
 		t.Fatal("not broadcast")
 	}
-	if r := h.takeResizes(); len(r) != 0 {
-		t.Fatalf("attaching resized: %v", r)
+	if r := h.takeResizes(); !slices.Equal(r, []string{"s-1 96×39"}) {
+		t.Fatalf("the first showing resized %v", r)
 	}
 
 	// B types: B is the latest, the pane takes B's size (less the
@@ -174,7 +178,8 @@ func TestViewsSharedMain(t *testing.T) {
 
 func TestViewsClaimSkipsWatchOnlyAndExplicit(t *testing.T) {
 	h := newFakeHost("co", "th", "inl")
-	h.panes["th"] = paneInfo{cwd: "/", role: proto.RoleThread, follows: true}
+	h.panes["co"] = paneInfo{cwd: "/", role: proto.RoleCoordinator, follows: true, sized: true}
+	h.panes["th"] = paneInfo{cwd: "/", role: proto.RoleThread, follows: true, sized: true}
 	h.panes["inl"] = paneInfo{cwd: "/", role: proto.RoleShell, follows: false}
 	vs := newViews(h, "", nil)
 	a, _ := join(t, vs, proto.ViewSubscribeParams{View: "x", Cols: 120, Rows: 40})
@@ -201,6 +206,44 @@ func TestViewsClaimSkipsWatchOnlyAndExplicit(t *testing.T) {
 	mustDo(t, vs, proto.MethodViewEven, proto.ViewParams{Client: a.id})
 	if r := h.takeResizes(); len(r) != 3 {
 		t.Fatalf("even resized %v", r)
+	}
+}
+
+// TestViewsFirstShowFills: a pane no console has sized yet takes its
+// rectangle in the first view that shows it, watch-only threads too;
+// after that, showing it in another view or console never resizes it,
+// and agents that resize only explicitly are never filled.
+func TestViewsFirstShowFills(t *testing.T) {
+	h := newFakeHost("co", "th", "inl")
+	h.panes["th"] = paneInfo{cwd: "/", role: proto.RoleThread, follows: true}
+	h.panes["inl"] = paneInfo{cwd: "/", role: proto.RoleShell, follows: false}
+	vs := newViews(h, "", nil)
+	a, _ := join(t, vs, proto.ViewSubscribeParams{Cols: 120, Rows: 40, Sidebar: &view.Sidebar{Width: 20}})
+	mustDo(t, vs, proto.MethodViewAttach, proto.ViewParams{Client: a.id, Session: "co"})
+	if r := h.takeResizes(); !slices.Equal(r, []string{"co 100×39"}) {
+		t.Fatalf("the coordinator's first showing resized %v", r)
+	}
+	// The watch-only thread fills too, the first time it shows.
+	mustDo(t, vs, proto.MethodViewAttach, proto.ViewParams{Client: a.id, Session: "th"})
+	if r := h.takeResizes(); !slices.Equal(r, []string{"th 100×39"}) {
+		t.Fatalf("the thread's first showing resized %v", r)
+	}
+	// Showing it again, from another console of its own size, doesn't.
+	b, _ := join(t, vs, proto.ViewSubscribeParams{Own: true, Session: "th", Cols: 80, Rows: 24})
+	mustDo(t, vs, proto.MethodViewAttach, proto.ViewParams{Client: b.id, Session: "co"})
+	mustDo(t, vs, proto.MethodViewAttach, proto.ViewParams{Client: a.id, Session: "co"})
+	if r := h.takeResizes(); len(r) != 0 {
+		t.Fatalf("showing sized panes resized %v", r)
+	}
+	// An agent that resizes only explicitly is never filled.
+	mustDo(t, vs, proto.MethodViewAttach, proto.ViewParams{Client: a.id, Session: "inl"})
+	if r := h.takeResizes(); len(r) != 0 {
+		t.Fatalf("an explicit agent was filled: %v", r)
+	}
+	// After that, typing claims as before: B types into the coordinator.
+	mustDo(t, vs, proto.MethodViewInput, proto.ViewParams{Client: b.id, Session: "co"})
+	if r := h.takeResizes(); !slices.Equal(r, []string{"co 73×23"}) {
+		t.Fatalf("B's claim resized %v", r)
 	}
 }
 
@@ -264,6 +307,7 @@ func TestViewsTree(t *testing.T) {
 	b, _ := join(t, vs, proto.ViewSubscribeParams{Cols: 120, Rows: 30})
 	mustDo(t, vs, proto.MethodViewAttach, proto.ViewParams{Client: a.id, Session: "s-1", Project: "p"})
 	woken(b)
+	h.takeResizes() // s-1 fills the view: it was never sized
 	v := mustDo(t, vs, proto.MethodViewProject, proto.ViewParams{Client: a.id, Project: "q"})
 	if v.Mode != view.ModeDashboard || v.Current != "q" || v.Selected != "p:q" || !woken(b) || len(h.takeResizes()) != 0 {
 		t.Fatalf("project: %+v", v)

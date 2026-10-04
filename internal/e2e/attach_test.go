@@ -45,7 +45,9 @@ func TestSmokeAttachDetachReattach(t *testing.T) {
 	// second window attaches, even under the race detector.
 	s := env.Start("printer", "-lines", "3000", "-delay", "2ms")
 
-	w1 := env.Attach(120, 40, s.ID)
+	// A window of the pane's size and the sidebar's slim strip: the
+	// first to show the pane, which then fills it without a resize.
+	w1 := env.Attach(80+uint16(SideCols(87)), 24, s.ID)
 	w1.WaitFor("line ", wait)
 	env.AssertMirrorsServer(w1) // mid-stream
 	w1.Detach()
@@ -65,7 +67,7 @@ func TestSmokeAttachDetachReattach(t *testing.T) {
 	env.AssertMirrorsServer(w2)
 	w2.WaitFor("ready", 3*wait)
 	env.AssertMirrorsServer(w2)
-	// Attaching never resizes the pane (docs/SPEC.md §3.3).
+	// Attaching a pane a console sized never resizes it (docs/SPEC.md §3.3).
 	assertPaneSize(t, env, s, 80, 24)
 	if strings.Contains(env.Screen(s), "resized") {
 		t.Fatalf("the program saw a resize:\n%s", env.Screen(s))
@@ -189,7 +191,8 @@ func TestAttachResize(t *testing.T) {
 	env.WaitFor(s, "ready", wait)
 	w := env.Attach(100, 30, s.ID)
 	w.WaitFor("ready", wait)
-	assertPaneSize(t, env, s, 80, 24)
+	// The first window to show the pane fills it.
+	waitPaneSize(t, env, s, 76, 30)
 	w.Resize(90, 20) // less the sidebar's 24 columns
 	env.WaitFor(s, "resized to 66x20", wait)
 	w.WaitFor("resized to 66x20", wait)
@@ -198,17 +201,20 @@ func TestAttachResize(t *testing.T) {
 }
 
 // TestSmokeAttachLatestTypistResizes: two windows of different sizes on
-// one pane. Watching resizes nothing; typing in a window gives the pane
-// that window's size, and typing in the other takes it back.
+// one pane. The first to show it fills it; watching from the other
+// resizes nothing; typing in a window gives the pane that window's size,
+// and typing in the other takes it back.
 func TestSmokeAttachLatestTypistResizes(t *testing.T) {
 	env := New(t)
 	s := env.Start("printer", "-lines", "5")
 	env.WaitFor(s, "ready", wait)
 	w1 := env.Attach(100, 30, s.ID)
-	w2 := env.Attach(90, 20, s.ID)
 	w1.WaitFor("ready", wait)
+	waitPaneSize(t, env, s, 76, 30)
+	w2 := env.Attach(90, 20, s.ID)
 	w2.WaitFor("ready", wait)
-	assertPaneSize(t, env, s, 80, 24)
+	time.Sleep(time.Second) // longer than the server's resize quiet time
+	assertPaneSize(t, env, s, 76, 30)
 
 	// Each window's panes are the window less the sidebar.
 	w2.Type("a")
@@ -336,7 +342,7 @@ func TestAttachLocalScrollback(t *testing.T) {
 	env := New(t)
 	s := env.Start("printer", "-lines", "60")
 	env.WaitFor(s, "ready", wait)
-	w := env.Attach(80, 24, s.ID)
+	w := env.Attach(80+uint16(SideCols(87)), 24, s.ID) // the pane's size: no resize
 	w.WaitFor("ready", wait)
 	w.Key(ShiftPageUp) // half a page
 	w.WaitUntil("the view scrolled back", wait, func(string) bool {
