@@ -38,11 +38,14 @@ type SessionRecord struct {
 	// Prompted is set once the agent has worked on a prompt. Claude saves
 	// a conversation only then, so an unprompted session is relaunched
 	// fresh instead of resumed.
-	Prompted bool      `json:"prompted,omitempty"`
-	Cols     uint16    `json:"cols,omitempty"`
-	Rows     uint16    `json:"rows,omitempty"`
-	Yolo     bool      `json:"yolo,omitempty"`
-	Created  time.Time `json:"created"`
+	Prompted bool   `json:"prompted,omitempty"`
+	Cols     uint16 `json:"cols,omitempty"`
+	Rows     uint16 `json:"rows,omitempty"`
+	Yolo     bool   `json:"yolo,omitempty"`
+	// RemoteControl: the agent runs with remote control on, so a resume
+	// keeps it on.
+	RemoteControl bool      `json:"remote_control,omitempty"`
+	Created       time.Time `json:"created"`
 	// CleanExit is true when the session was stopped by a clean server
 	// stop rather than lost in a crash.
 	CleanExit bool `json:"clean_exit"`

@@ -70,6 +70,10 @@ type Server struct {
 	mu       sync.Mutex
 	sessions map[string]*session.Session
 	records  map[string]SessionRecord
+	// relaunch marks sessions stopped to be resumed at once under the
+	// same id (a remote control change), instead of ending, with the
+	// remote control state they get.
+	relaunch map[string]bool
 	blocked  map[string]bool // sessions whose agent is blocked, for alerts
 	nextID   int
 	stopping bool
@@ -148,6 +152,7 @@ func Run(ctx context.Context, opts Options) error {
 		stopReq:  make(chan struct{}),
 		sessions: map[string]*session.Session{},
 		records:  map[string]SessionRecord{},
+		relaunch: map[string]bool{},
 		blocked:  map[string]bool{},
 		nextID:   1,
 		conns:    map[net.Conn]struct{}{},
@@ -479,6 +484,12 @@ func (s *Server) dispatch(req proto.Request, peerPID int) (any, *proto.Error) {
 			return nil, err
 		}
 		return s.hookEvent(p), nil
+	case proto.MethodSessionRemote:
+		var p proto.SessionRemoteParams
+		if err := decodeParams(req.Params, &p); err != nil {
+			return nil, err
+		}
+		return s.remote(p)
 	case proto.MethodAgentList:
 		return s.agentList(), nil
 	case proto.MethodAgentReload:
@@ -616,7 +627,16 @@ func (s *Server) startSession(p proto.SessionStartParams) (any, *proto.Error) {
 		Created: created, Cols: cols, Rows: rows}
 	if p.Agent != "" {
 		rec.Agent, rec.AgentSessionID, rec.Brief, rec.Model, rec.Yolo = p.Agent, newUUID(), p.Brief, p.Model, p.Yolo
-		rec.Kickoff = p.Kickoff
+		rec.Kickoff, rec.RemoteControl = p.Kickoff, p.RemoteControl
+		if p.RemoteControl && role != proto.RoleCoordinator {
+			return nil, proto.Errorf(proto.ErrRefused, "remote control is for coordinators; threads are reached through theirs")
+		}
+		if p.RemoteControl && agent.RemoteControlOf(s.agentOr(p.Agent)) == nil {
+			// The project's setting asks for it, but this agent has
+			// none: start without it rather than not at all.
+			s.log.Printf("agent %s has no remote control; starting %s without it", p.Agent, id)
+			rec.RemoteControl = false
+		}
 		l := agentLaunch{rec: rec, kick: p.Kickoff, cols: cols, rows: rows}
 		if p.ResumeSID != "" {
 			l.rec.AgentSessionID, l.rec.Prompted, l.resume, l.kick = p.ResumeSID, true, true, ""
@@ -662,12 +682,12 @@ func (s *Server) startSession(p proto.SessionStartParams) (any, *proto.Error) {
 
 func (s *Server) sessionExited(sess *session.Session) {
 	s.mu.Lock()
-	stopping := s.stopping
+	// The views keep the panes of a stopping server, and of a session
+	// relaunched under its id: they come back with it.
+	gone := !s.stopping
 	defer func() {
 		s.mu.Unlock()
-		// The views keep the panes of a stopping server: they come back
-		// with the resumed sessions.
-		if !stopping {
+		if gone {
 			s.views.sessionGone(sess.ID())
 		}
 	}()
@@ -678,6 +698,11 @@ func (s *Server) sessionExited(sess *session.Session) {
 	}
 	if s.stopping {
 		return // keep the record: shutdown writes it for resume
+	}
+	if on, ok := s.relaunch[sess.ID()]; ok {
+		delete(s.relaunch, sess.ID())
+		gone = !s.relaunchLocked(sess, on)
+		return
 	}
 	os.RemoveAll(s.runtimeDir(sess.ID()))
 	delete(s.records, sess.ID())

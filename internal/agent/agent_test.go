@@ -316,6 +316,23 @@ func TestStatusFile(t *testing.T) {
 		t.Fatalf("reading = %+v", r)
 	}
 
+	// Remote Control: bridgeSessionId is null while off (as observed on
+	// 2.1.289), a session id while on.
+	if !ManifestOf(claude(t)).ObservesRemote() {
+		t.Fatal("claude's status file should say whether remote control is on")
+	}
+	rc := RemoteControlOf(claude(t)).StatusField
+	for body, on := range map[string]bool{
+		`{"status":"idle","version":"2.1.289","bridgeSessionId":null}`:         false,
+		`{"status":"idle","version":"2.1.289"}`:                                false,
+		`{"status":"idle","version":"2.1.289","bridgeSessionId":"session_01"}`: true,
+	} {
+		r, err := f.Read([]byte(body), src)
+		if err != nil || (r.Fields[rc] != "") != on {
+			t.Fatalf("%s: fields %v, %v; want remote control %v", body, r.Fields, err, on)
+		}
+	}
+
 	_, err = f.Read([]byte(`{"status":"idle","version":"3.0.0"}`), src)
 	if !errors.Is(err, ErrUntestedVersion) {
 		t.Fatalf("an untested version must be refused, got %v", err)
@@ -494,5 +511,76 @@ func TestTodoSnapshotHeal(t *testing.T) {
 	want := []Todo{{ID: "1", Text: "a", ActiveText: "Doing a", Status: TodoCompleted}, {ID: "3", Text: "c", Status: TodoPending}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Heal = %+v", got)
+	}
+}
+
+func TestManifestRemoteControl(t *testing.T) {
+	const base = "manifest_version = 1\nname = \"a\"\n[launch]\ncommand = \"a\"\nkickoff_args = [\"--\", \"{{.Kickoff}}\"]\n"
+	for _, c := range []struct {
+		rc        string
+		supported bool
+		ok        bool
+	}{
+		{"", false, true},
+		{"[remote_control]\nargs = [\"--rc\", \"{{.RemoteName}}\"]\n", true, true},
+		{"[remote_control]\nargs = [\"--rc\"]\nenable = \"/rc {{.RemoteName}}\"\ndisable = \"/rc off\"\n", true, true},
+		{"[remote_control]\nenable = \"/rc\"\n", false, false},
+		{"[remote_control]\nargs = [\"--rc\"]\nname = \"x\"\n", false, false},
+		{"[remote_control]\nargs = [\"--rc\"]\ndisable = \"/rc\"\ndisable_dialog = { contains = \"Disconnect\", keys = \"\\r\", done = \"Disconnected\" }\n", true, true},
+		{"[remote_control]\nargs = [\"--rc\"]\ndisable_dialog = { contains = \"Disconnect\", keys = \"\\r\", done = \"x\" }\n", false, false},
+		{"[remote_control]\nargs = [\"--rc\"]\ndisable = \"/rc\"\ndisable_dialog = { contains = \"Disconnect\" }\n", false, false},
+		{"[remote_control]\nargs = [\"--rc\"]\nstatus_field = \"rc\"\n", true, true}, // no status file: unobserved
+	} {
+		m, err := ParseManifest([]byte(base + c.rc))
+		if (err == nil) != c.ok {
+			t.Errorf("%q: err = %v, want ok %v", c.rc, err, c.ok)
+			continue
+		}
+		if err == nil && (RemoteControlOf(FromManifest(m)) != nil) != c.supported {
+			t.Errorf("%q: supported = %v", c.rc, !c.supported)
+		}
+	}
+
+	m, err := ParseManifest([]byte(base))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := FromManifest(m).Launch(LaunchSpec{RemoteControl: true}); err == nil || !strings.Contains(err.Error(), "no remote control") {
+		t.Fatalf("remote control on an agent without it: err = %v", err)
+	}
+}
+
+func TestClaudeRemoteControl(t *testing.T) {
+	a := claude(t)
+	spec := threadSpec()
+	spec.Role, spec.RemoteControl, spec.RemoteName = RoleCoordinator, true, "demo"
+	l, err := a.Launch(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The flag takes an optional value, so the name follows it and the
+	// kickoff still comes last, after "--".
+	n := len(l.Argv)
+	if got := l.Argv[n-4:]; !reflect.DeepEqual(got, []string{"--remote-control", "demo", "--", "Run tm skill thread."}) {
+		t.Fatalf("argv tail = %q", got)
+	}
+	spec.Resume = true
+	if l, err = a.Launch(spec); err != nil || !contains(l.Argv, "--remote-control") || !contains(l.Argv, "--resume") {
+		t.Fatalf("resumed with remote control: %q %v", l.Argv, err)
+	}
+	rc := RemoteControlOf(a)
+	if rc == nil {
+		t.Fatal("claude has remote control")
+	}
+	if s, err := rc.Text(true, spec); err != nil || s != "/remote-control demo" {
+		t.Fatalf("enable text = %q %v", s, err)
+	}
+	// Off is the same command, which opens a menu: a resumed
+	// conversation would reconnect, so a restart can't turn it off.
+	if s, err := rc.Text(false, spec); err != nil || s != "/remote-control" {
+		t.Fatalf("disable text = %q %v", s, err)
+	}
+	if d := rc.DisableDialog; d == nil || d.Keys != "\x1b[A\x1b[A\r" || d.Contains == "" || d.Done == "" {
+		t.Fatalf("disable dialog = %+v", d)
 	}
 }

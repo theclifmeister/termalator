@@ -430,6 +430,8 @@ func (sv *settingsView) load(m *dash) {
 		add("auto_resolve", fmt.Sprint(s.AutoResolve), def(s.AutoResolve == d.AutoResolve))
 		add("pr_followup", fmt.Sprint(s.PRFollowup), def(s.PRFollowup == d.PRFollowup))
 		l = append(l, "")
+		l = append(l, remoteRow(s.CoordinatorRemoteControl, m.data.Sessions, sv.slug)...)
+		l = append(l, "")
 	}
 
 	l = append(l, styleHead.Render("layout")+styleFaint.Render("  ui.json, changed with < > | and the mouse"))

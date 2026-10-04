@@ -118,6 +118,9 @@ type AgentState struct {
 	AgentSID string
 	Todos    []agent.Todo
 	Queued   int // prompts waiting for the paste injector
+	// RemoteControl is the observed remote control state, when the
+	// manifest names a status_field and the status file was read.
+	RemoteControl, RemoteKnown bool
 }
 
 // AgentState returns the agent's merged state; ok is false for a session
@@ -129,10 +132,15 @@ func (s *Session) AgentState() (st AgentState, ok bool) {
 	}
 	rt.mu.Lock()
 	queued := len(rt.prompts)
+	var remote, known bool
+	if m := agent.ManifestOf(rt.a); m != nil && m.ObservesRemote() && rt.fields != nil {
+		remote, known = rt.fields[m.RemoteControl.StatusField] != "", true
+	}
 	rt.mu.Unlock()
 	return AgentState{
 		Agent: rt.a.Name(), Observed: rt.observed, Merged: rt.tr.State(),
 		AgentSID: rt.tr.AgentSID(), Todos: rt.tr.Todos(), Queued: queued,
+		RemoteControl: remote, RemoteKnown: known,
 	}, true
 }
 
