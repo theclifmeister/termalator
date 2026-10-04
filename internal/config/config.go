@@ -1,0 +1,112 @@
+// Package config reads ~/.termalator/config.toml, the human's settings
+// (docs/SPEC.md §5.1, §11.2). This package covers the per-project safety
+// settings under [projects.<slug>]; other sections (keys, default agent)
+// belong to the packages that use them and are ignored here.
+//
+// tm never writes this file: changing safety settings is a human action,
+// done by editing it. It lives outside every project folder, so a
+// coordinator editing PROJECT.md can't touch it.
+package config
+
+import (
+	"errors"
+	"fmt"
+	"io/fs"
+	"path/filepath"
+
+	"github.com/BurntSushi/toml"
+	"github.com/theclifmeister/termalator/internal/home"
+)
+
+// Values of start_threads.
+const (
+	StartPropose = "propose" // threads start only after the human's go-ahead
+	StartAuto    = "auto"
+)
+
+// Safety is one project's resolved safety settings.
+type Safety struct {
+	StartThreads        string `json:"start_threads"`
+	Yolo                bool   `json:"yolo"`
+	CoordinatorApproves bool   `json:"coordinator_approves"`
+}
+
+// Defaults are the settings of a project that config.toml doesn't name.
+var Defaults = Safety{StartThreads: StartPropose, Yolo: false, CoordinatorApproves: true}
+
+type rawSafety struct {
+	StartThreads        *string `toml:"start_threads"`
+	Yolo                *bool   `toml:"yolo"`
+	CoordinatorApproves *bool   `toml:"coordinator_approves"`
+}
+
+// Config is the parsed file.
+type Config struct {
+	Path     string
+	projects map[string]rawSafety
+}
+
+// Path returns <home>/config.toml.
+func Path() (string, error) {
+	d, err := home.Dir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(d, "config.toml"), nil
+}
+
+// Load reads config.toml. A missing file gives the defaults. Unknown keys
+// inside a [projects.<slug>] table are errors, so a typo can't silently
+// leave a safety setting at its default.
+func Load() (*Config, error) {
+	path, err := Path()
+	if err != nil {
+		return nil, err
+	}
+	var raw struct {
+		Projects map[string]rawSafety `toml:"projects"`
+	}
+	md, err := toml.DecodeFile(path, &raw)
+	if errors.Is(err, fs.ErrNotExist) {
+		return &Config{Path: path}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	for _, k := range md.Undecoded() {
+		if len(k) >= 3 && k[0] == "projects" {
+			return nil, fmt.Errorf("%s: unknown setting %s", path, k.String())
+		}
+	}
+	c := &Config{Path: path, projects: raw.Projects}
+	for slug := range raw.Projects {
+		if _, err := c.Safety(slug); err != nil {
+			return nil, err
+		}
+	}
+	return c, nil
+}
+
+// Safety returns a project's settings, defaults filled in.
+func (c *Config) Safety(slug string) (Safety, error) {
+	s := Defaults
+	r, ok := c.projects[slug]
+	if !ok {
+		return s, nil
+	}
+	if r.StartThreads != nil {
+		switch *r.StartThreads {
+		case StartPropose, StartAuto:
+			s.StartThreads = *r.StartThreads
+		default:
+			return s, fmt.Errorf("%s: projects.%s.start_threads must be %q or %q, not %q", c.Path, slug, StartPropose, StartAuto, *r.StartThreads)
+		}
+	}
+	if r.Yolo != nil {
+		s.Yolo = *r.Yolo
+	}
+	if r.CoordinatorApproves != nil {
+		s.CoordinatorApproves = *r.CoordinatorApproves
+	}
+	return s, nil
+}
