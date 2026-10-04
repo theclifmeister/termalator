@@ -85,7 +85,7 @@ type dash struct {
 	sel     string // key of the selected row
 	current string // project last attached to
 	msg     string
-	errMsg  string // msg when it reports a failure, drawn as one
+	errMsg  string    // msg when it reports a failure, drawn as one
 	busy    bool      // an action is running
 	stack   []overlay // views open on top of the list, topmost last
 
