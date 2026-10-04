@@ -42,7 +42,7 @@ func (h tickerHost) Prompt(id, text string) error {
 	return nil
 }
 
-func (h tickerHost) Notify(msg string) { h.s.alert(msg) }
+func (h tickerHost) Alert(msg string) { h.s.alert(msg) }
 
 func (h tickerHost) Resolve(slug, id string) (string, error) {
 	if h.s.opts.RunCLI == nil {
@@ -105,9 +105,9 @@ func (s *Server) kick() {
 	}
 }
 
-// alert sends an OS notification and bumps the alert count, on which
-// every client rings its bell (docs/SPEC.md §4).
+// alert logs msg and bumps the alert count, on which every client rings
+// its bell (docs/SPEC.md §4).
 func (s *Server) alert(msg string) {
 	s.alerts.Add(1)
-	go notify(s.log, msg)
+	s.log.Printf("alert: %s", msg)
 }

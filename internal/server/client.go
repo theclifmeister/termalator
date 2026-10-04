@@ -13,6 +13,7 @@ import (
 
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/version"
+	"github.com/theclifmeister/termalator/internal/view"
 )
 
 // Client timings (docs/SPEC.md §3.1, §3.2).
@@ -294,3 +295,42 @@ func WaitExited(pid int, timeout time.Duration) bool {
 	}
 	return true
 }
+
+// ViewStream is a view subscription (docs/SPEC.md §3.3, Views): the
+// view's versions as the server sends them. Closing it leaves the view.
+type ViewStream struct {
+	c *Client
+	// Client is this console's id in the view, for the view.* calls.
+	Client string
+}
+
+// SubscribeView joins a view and returns the stream and the view as it
+// was on joining.
+func SubscribeView(p Paths, params proto.ViewSubscribeParams) (*ViewStream, view.View, error) {
+	c, err := Dial(p, proto.KindControl)
+	if err != nil {
+		return nil, view.View{}, err
+	}
+	var res proto.ViewSubscribeResult
+	if err := c.Call(proto.MethodViewSubscribe, params, &res); err != nil {
+		c.Close()
+		return nil, view.View{}, err
+	}
+	return &ViewStream{c: c, Client: res.Client}, res.View, nil
+}
+
+// Next blocks until the view's next version.
+func (s *ViewStream) Next() (view.View, error) {
+	var ev proto.ViewEvent
+	for {
+		if err := readJSONLine(s.c.br, &ev); err != nil {
+			return view.View{}, err
+		}
+		if ev.Event == proto.EventViewChanged {
+			return ev.View, nil
+		}
+	}
+}
+
+// Close leaves the view.
+func (s *ViewStream) Close() error { return s.c.Close() }

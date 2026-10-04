@@ -53,8 +53,8 @@ type Host interface {
 	Sessions() []proto.SessionInfo
 	// Prompt sends text to a session through its agent's injector.
 	Prompt(session, text string) error
-	// Notify raises an OS notification and rings every client's bell.
-	Notify(msg string)
+	// Alert rings every client's bell; msg goes to the server log.
+	Alert(msg string)
 	// Resolve runs `tm thread resolve` for the ticker and returns its
 	// output.
 	Resolve(slug, threadID string) (string, error)
@@ -367,9 +367,9 @@ func (t *Ticker) sweepThreads(p *project.Project, sessions []proto.SessionInfo, 
 		}
 		m.Agent, m.Reason = cur, reason
 
-		// A new report: notify (the item is tm report's).
+		// A new report: alert (the item is tm report's).
 		if r.Reports > m.Reports {
-			t.o.Host.Notify(fmt.Sprintf("%s %s handed in report %d", p.Slug, r.ID, r.Reports))
+			t.o.Host.Alert(fmt.Sprintf("%s %s handed in report %d", p.Slug, r.ID, r.Reports))
 		}
 		m.Reports = r.Reports
 

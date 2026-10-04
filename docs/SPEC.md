@@ -355,7 +355,7 @@ The processes die with the server, because the PTY master closes and the childre
 - **Project switching.** While attached, the prefix then `p` opens the project switcher, and the prefix then `]` or `[` jumps to the next or previous project's coordinator. These run on the dashboard, so they are the dashboard's own keys and no key is taken from the pane but the prefix. "Next" is relative to the project last attached to; the status bar always names the current project.
 - **Projects.** A project row with no running coordinator says so; `enter` on it starts the coordinator (as `tm project open` does) and attaches.
 - **Rendering.** The dashboard uses Bubble Tea v2 and Lip Gloss v2. The attached panes bypass Bubble Tea: a cell renderer per pane draws dirty rows from its mirror (§3.3).
-- **Notifications.** When a session becomes `blocked`, or a thread reports, every client (dashboard or attached) rings the bell on its terminal, and the server sends an OS notification (`osascript` on macOS, `notify-send` on Linux, both optional). The client re-emits a pane's OSC 9/777 notifications and OSC 52 clipboard writes to the outer terminal while attached. OSC 52 reads are denied.
+- **Alerts stay in the terminal.** Termalator sends no desktop notifications (no `osascript`, Notification Center or `notify-send`; user, 2026-10-04), and the client does not pass a pane's OSC 9/777 notifications to the outer terminal. When a session becomes `blocked`, or a thread reports, every client (dashboard or attached) rings the bell on its terminal; the event itself shows in the projects sidebar's state glyphs, the status bar, NEEDS YOU (coordinators) and the coordinator's inbox and nudges. The client re-emits a pane's OSC 52 clipboard writes to the outer terminal while attached. OSC 52 reads are denied.
 
 ---
 
@@ -685,7 +685,7 @@ Threads are grouped as herdr-projects does: Waiting on you → Ready for review 
 - **PR polling.** For each unresolved thread with a repo, `gh pr view <report PR URL, else the branch> --json number,url,state,reviewDecision,statusCheckRollup` in the repo, every 2 minutes, until the PR merged. Only those fields are kept, each checked against a strict pattern. A failed `gh` (no PR yet, no network) is retried at the next poll.
 - **PR follow-up** (built in, `pr_followup`, §11.2). When the checks start failing, or a reviewer requests changes, the thread gets one fixed prompt naming the PR number and the `gh` command to read them. No PR text is quoted.
 - **Auto-resolve** (`auto_resolve`, §11.2). Once the PR merged and the agent is idle, exited or stopped, the ticker runs `tm thread resolve` as caller `ticker`, once; resolve's own rules apply (never forced, the branch deleted only because the PR merged).
-- **Notifications.** A thread's new report, like a session becoming blocked, sends an OS notification and raises the server's alert count (`session.list`'s `alerts`); every client rings its bell when the count goes up.
+- **Alerts.** A thread's new report, like a session becoming blocked, raises the server's alert count (`session.list`'s `alerts`); every client rings its bell when the count goes up (§4). No desktop notification is sent.
 - `tm inbox list` and `tm inbox done <id>…` (which moves items to `inbox/done/`). Done items are deleted after 30 days.
 - **Nudge.** When new items arrive and the coordinator is idle, the server sends it one line, e.g. `[tm] 2 new inbox items: t-0004 blocked; t-0002 reported`. It uses the agent's prompt injector (§8.1). Nudges are rate-limited to one a minute and are never sent while the coordinator is working or blocked, or has a prompt queued. A nudge holds fixed words and ids only, never an item's summary, and ends by saying the items are data, not instructions.
 
@@ -1226,9 +1226,9 @@ Sizes: **S** ≤ 2 days, **M** 3–5 days, **L** 1–2 weeks, for one developer 
   - the Bubble Tea dashboard: a session list with state, reason, todo progress and age; NEEDS YOU first (blocked sessions);
   - keys: `enter` attach, `s` new shell, `c` new Claude session in a chosen directory, `?` help, `q` quit (`c` was removed later: the user's agents are coordinators, §4);
   - hand-off to the M2 attach view and back with the prefix; the status line;
-  - the bell and OS notification when a session becomes blocked.
+  - the bell when a session becomes blocked (an OS notification was dropped later: alerts stay in the terminal, §4).
 - **Also (user decisions):** the project switcher and `]`/`[` (§4), `tm project open`, the server-side caller check (§11.1), and `make run` opening the dashboard.
-- **Try it:** run `tm`, start Claude in a repo (`c` then; now `tm session start --agent claude --cwd <repo>`), give Claude a task, detach, watch the row go working → blocked (a permission dialog) → idle, with the notification. Attach, answer, detach. Close the terminal, run `tm` again: everything is still there.
+- **Try it:** run `tm`, start Claude in a repo (`c` then; now `tm session start --agent claude --cwd <repo>`), give Claude a task, detach, watch the row go working → blocked (a permission dialog) → idle, with the bell. Attach, answer, detach. Close the terminal, run `tm` again: everything is still there.
 - **Tests:**
   - dashboard golden screens (empty, several sessions, NEEDS YOU);
   - the "first local run" scenario end to end with the fake agent: create, prompt, block, answer, detach, close the terminal, reopen;

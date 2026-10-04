@@ -309,6 +309,16 @@ func (s *Session) RequestResize(cols, rows uint16) error {
 	}
 	s.rmu.Lock()
 	defer s.rmu.Unlock()
+	if s.resizeTimer == nil {
+		// Nothing waits: asking for the size it has is no resize, and
+		// mustn't start a quiet time (views ask on every claim).
+		s.mu.Lock()
+		same := cols == s.cols && rows == s.rows
+		s.mu.Unlock()
+		if same {
+			return nil
+		}
+	}
 	if wait := time.Until(s.resizedAt.Add(ResizeQuiet)); wait > 0 {
 		s.want = [2]uint16{cols, rows}
 		if s.resizeTimer == nil {

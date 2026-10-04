@@ -169,7 +169,7 @@ func TestSmokeServerCommands(t *testing.T) {
 		t.Fatalf("second run: %+v", r)
 	}
 	out := env.MustCLI("server", "status")
-	for _, want := range []string{"pid       " + strconv.Itoa(spid), "protocol  1", "sessions  0"} {
+	for _, want := range []string{"pid       " + strconv.Itoa(spid), "protocol  " + strconv.Itoa(proto.Protocol), "sessions  0"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("status lacks %q:\n%s", want, out)
 		}
