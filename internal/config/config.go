@@ -25,14 +25,34 @@ const (
 	StartAuto    = "auto"
 )
 
+// Values of auto_close: when the ticker closes (resolves) a finished
+// thread (§9).
+const (
+	CloseOff    = "off"
+	CloseMerged = "merged" // once its PR merged
+	CloseDays   = "days"   // auto_close_days after it finished
+)
+
+// Limits of the number settings.
+const (
+	MaxParallelThreads = 99
+	MaxAutoCloseDays   = 365
+)
+
 // Safety is one project's resolved safety settings.
 type Safety struct {
 	StartThreads        string `json:"start_threads"`
 	Yolo                bool   `json:"yolo"`
 	CoordinatorApproves bool   `json:"coordinator_approves"`
-	// AutoResolve lets the ticker resolve a thread once its PR merged and
-	// its agent is idle (§9), under resolve's usual rules (never forced).
-	AutoResolve bool `json:"auto_resolve"`
+	// ParallelThreads is the most threads that may work at once: tm
+	// thread start refuses beyond it without --over-cap (§9).
+	ParallelThreads int `json:"parallel_threads"`
+	// AutoClose is when the ticker resolves a finished thread whose agent
+	// rests (§9): CloseOff, CloseMerged, or CloseDays after
+	// AutoCloseDays. Resolve's usual rules hold (never forced), and a
+	// thread with uncommitted or unpushed work is never closed.
+	AutoClose     string `json:"auto_close"`
+	AutoCloseDays int    `json:"auto_close_days"`
 	// PRFollowup prompts a thread when its PR's checks fail or a reviewer
 	// asks for changes (§7.5).
 	PRFollowup bool `json:"pr_followup"`
@@ -44,15 +64,21 @@ type Safety struct {
 }
 
 // Defaults are the settings of a project that config.toml doesn't name.
-var Defaults = Safety{StartThreads: StartPropose, Yolo: false, CoordinatorApproves: true, AutoResolve: true, PRFollowup: true}
+var Defaults = Safety{StartThreads: StartPropose, Yolo: false, CoordinatorApproves: true,
+	ParallelThreads: 10, AutoClose: CloseMerged, AutoCloseDays: 7, PRFollowup: true}
 
 type rawSafety struct {
 	StartThreads        *string `toml:"start_threads"`
 	Yolo                *bool   `toml:"yolo"`
 	CoordinatorApproves *bool   `toml:"coordinator_approves"`
-	AutoResolve         *bool   `toml:"auto_resolve"`
-	PRFollowup          *bool   `toml:"pr_followup"`
-	CoordinatorRC       *bool   `toml:"coordinator_remote_control"`
+	ParallelThreads     *int    `toml:"parallel_threads"`
+	AutoClose           *string `toml:"auto_close"`
+	AutoCloseDays       *int    `toml:"auto_close_days"`
+	// AutoResolve is auto_close's older form: true is "merged", false
+	// "off"; auto_close wins when both are set.
+	AutoResolve   *bool `toml:"auto_resolve"`
+	PRFollowup    *bool `toml:"pr_followup"`
+	CoordinatorRC *bool `toml:"coordinator_remote_control"`
 }
 
 // Config is the parsed file.
@@ -125,8 +151,28 @@ func (c *Config) Safety(slug string) (Safety, error) {
 	if r.CoordinatorApproves != nil {
 		s.CoordinatorApproves = *r.CoordinatorApproves
 	}
-	if r.AutoResolve != nil {
-		s.AutoResolve = *r.AutoResolve
+	if r.ParallelThreads != nil {
+		if n := *r.ParallelThreads; n < 1 || n > MaxParallelThreads {
+			return s, fmt.Errorf("%s: projects.%s.parallel_threads must be 1 to %d, not %d", c.Path, slug, MaxParallelThreads, n)
+		}
+		s.ParallelThreads = *r.ParallelThreads
+	}
+	if r.AutoResolve != nil && !*r.AutoResolve {
+		s.AutoClose = CloseOff
+	}
+	if r.AutoClose != nil {
+		switch *r.AutoClose {
+		case CloseOff, CloseMerged, CloseDays:
+			s.AutoClose = *r.AutoClose
+		default:
+			return s, fmt.Errorf("%s: projects.%s.auto_close must be %q, %q or %q, not %q", c.Path, slug, CloseOff, CloseMerged, CloseDays, *r.AutoClose)
+		}
+	}
+	if r.AutoCloseDays != nil {
+		if n := *r.AutoCloseDays; n < 1 || n > MaxAutoCloseDays {
+			return s, fmt.Errorf("%s: projects.%s.auto_close_days must be 1 to %d, not %d", c.Path, slug, MaxAutoCloseDays, n)
+		}
+		s.AutoCloseDays = *r.AutoCloseDays
 	}
 	if r.PRFollowup != nil {
 		s.PRFollowup = *r.PRFollowup

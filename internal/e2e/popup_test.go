@@ -78,8 +78,25 @@ func TestSmokeProjectPopup(t *testing.T) {
 	if out := env.MustCLI("context", "--project", slug); !strings.Contains(out, "start_threads=auto") {
 		t.Fatalf("context after the toggle:\n%s", out)
 	}
+	// Parallel threads: - takes it to 9, with the working count beside
+	// it. Auto-close: enter goes to days after it finishes, + adds one.
+	for range 3 {
+		w.Key(keyDown)
+	}
+	w.Type("-")
+	w.WaitUntil("parallel threads 9", wait, func(sc string) bool {
+		return regexp.MustCompile(`Parallel threads\s+9 · 0 working now`).MatchString(sc)
+	})
+	w.Key(keyDown)
+	w.Key(Enter)
+	w.WaitFor("7 days after it finishes", wait)
+	w.Type("+")
+	w.WaitFor("8 days after it finishes", wait)
+	if out := env.MustCLI("context", "--project", slug); !strings.Contains(out, "parallel_threads=9 · auto_close=8 days after done or merged") {
+		t.Fatalf("context after the numbers:\n%s", out)
+	}
 	// Remote control, the last row: on, and saved.
-	for range 5 {
+	for range 2 {
 		w.Key(keyDown)
 	}
 	w.Key(Enter)
@@ -87,7 +104,8 @@ func TestSmokeProjectPopup(t *testing.T) {
 		return regexp.MustCompile(`Remote control\s+on`).MatchString(sc)
 	})
 	data, err := os.ReadFile(filepath.Join(env.Home, "config.toml"))
-	if err != nil || !strings.Contains(string(data), "coordinator_remote_control = true") || !strings.Contains(string(data), `start_threads = "auto"`) {
+	if err != nil || !strings.Contains(string(data), "coordinator_remote_control = true") || !strings.Contains(string(data), `start_threads = "auto"`) ||
+		!strings.Contains(string(data), "parallel_threads = 9\nauto_close = \"days\"\nauto_close_days = 8\n") {
 		t.Fatalf("settings file (%v):\n%s", err, data)
 	}
 	screens = append(screens, w.Screen())

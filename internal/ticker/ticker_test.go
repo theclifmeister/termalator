@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/theclifmeister/termalator/internal/config"
 	"github.com/theclifmeister/termalator/internal/project"
 	"github.com/theclifmeister/termalator/internal/proto"
 	"github.com/theclifmeister/termalator/internal/thread"
@@ -57,6 +58,8 @@ type rig struct {
 	now  time.Time
 	gh   []string // answers, in turn; "" is an error (no PR)
 	ghN  int
+	// unsaved is what closing the thread would lose.
+	unsaved string
 }
 
 // newRig makes a project "demo" with one thread t-0001 running in
@@ -80,7 +83,8 @@ func newRig(t *testing.T) *rig {
 		{ID: "s-2", Role: proto.RoleThread, Project: "demo", Thread: "t-0001", State: "working"},
 	}}
 	r.tk = New(Options{Host: r.host, Log: log.New(io.Discard, "", 0), State: filepath.Join(home, "state", "ticker.json"),
-		Now: func() time.Time { return r.now },
+		Now:     func() time.Time { return r.now },
+		Unsaved: func(*thread.Record, string) (string, error) { return r.unsaved, nil },
 		GH: func(dir string, args ...string) ([]byte, error) {
 			if r.ghN >= len(r.gh) || r.gh[r.ghN] == "" {
 				r.ghN++
@@ -314,6 +318,109 @@ func TestAutoResolveOff(t *testing.T) {
 	sort.Strings(k)
 	if strings.Join(k, ",") != "pr-checks-failed,pr-merged,pr-opened" {
 		t.Fatalf("kinds %v", k)
+	}
+}
+
+// TestCloseDue is auto-close's decision (§9).
+func TestCloseDue(t *testing.T) {
+	t0 := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+	day := 24 * time.Hour
+	merged := PR{State: "MERGED", MergedAt: t0}
+	open := PR{State: "OPEN"}
+	done := &thread.Record{Done: true, DoneAt: t0, LastPrompt: t0.Add(-time.Hour)}
+	reprompted := &thread.Record{Done: true, DoneAt: t0, LastPrompt: t0.Add(time.Hour)}
+	busy := &thread.Record{LastPrompt: t0}
+	mode := func(m string) config.Safety {
+		s := config.Defaults
+		s.AutoClose, s.AutoCloseDays = m, 3
+		return s
+	}
+	for _, c := range []struct {
+		name  string
+		s     config.Safety
+		r     *thread.Record
+		pr    PR
+		agent string
+		at    time.Duration
+		want  bool
+	}{
+		{"merged, idle", mode(config.CloseMerged), busy, merged, "idle", 0, true},
+		{"merged, exited", mode(config.CloseMerged), busy, merged, "exited", 0, true},
+		{"merged, working", mode(config.CloseMerged), busy, merged, "working", 0, false},
+		{"merged, blocked", mode(config.CloseMerged), busy, merged, "blocked", day, false},
+		{"merged mode, done but PR open", mode(config.CloseMerged), done, open, "idle", 30 * day, false},
+		{"off", mode(config.CloseOff), done, merged, "idle", 30 * day, false},
+		{"days: done, too soon", mode(config.CloseDays), done, open, "idle", 3*day - time.Second, false},
+		{"days: done, due", mode(config.CloseDays), done, open, "idle", 3 * day, true},
+		{"days: done, due but working", mode(config.CloseDays), done, open, "working", 4 * day, false},
+		{"days: merged, due", mode(config.CloseDays), busy, merged, "stopped", 3 * day, true},
+		{"days: merged, too soon", mode(config.CloseDays), busy, merged, "idle", day, false},
+		{"days: prompted after done", mode(config.CloseDays), reprompted, open, "idle", 30 * day, false},
+		{"days: nothing finished", mode(config.CloseDays), busy, open, "idle", 30 * day, false},
+	} {
+		if got := closeDue(c.s, c.r, c.pr, c.agent, t0.Add(c.at), day); got != c.want {
+			t.Errorf("%s: %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// TestAutoCloseDays: a done thread closes N days after tm done.
+func TestAutoCloseDays(t *testing.T) {
+	r := newRig(t)
+	cfg := filepath.Join(os.Getenv("TERMALATOR_HOME"), "config.toml")
+	os.WriteFile(cfg, []byte("[projects.demo]\nauto_close = \"days\"\nauto_close_days = 3\n"), 0o600)
+	if _, err := thread.Update(r.p, "t-0001", func(x *thread.Record) error {
+		x.LastPrompt, x.Done, x.DoneAt = r.now.Add(-time.Hour), true, r.now
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	r.host.set("s-2", "idle", "")
+	r.sweep(0)
+	r.sweep(2 * 24 * time.Hour)
+	if len(r.host.resolved) != 0 {
+		t.Fatalf("closed after 2 days: %v", r.host.resolved)
+	}
+	r.sweep(24 * time.Hour)
+	if strings.Join(r.host.resolved, ",") != "demo/t-0001" {
+		t.Fatalf("resolved %v", r.host.resolved)
+	}
+}
+
+// TestAutoCloseKeepsUnsavedWork: a merged thread with unsaved work stays
+// open with one item, and closes once the work is saved.
+func TestAutoCloseKeepsUnsavedWork(t *testing.T) {
+	r := newRig(t)
+	r.unsaved = "uncommitted changes"
+	r.gh = []string{prMerged}
+	r.host.set("s-2", "idle", "")
+	r.sweep(0)
+	r.sweep(time.Minute)
+	if len(r.host.resolved) != 0 {
+		t.Fatalf("closed with unsaved work: %v", r.host.resolved)
+	}
+	var held []project.Item
+	for _, it := range r.items() {
+		if it.Kind == KindCloseHeld {
+			held = append(held, it)
+		}
+	}
+	if len(held) != 1 || !strings.Contains(held[0].Summary, "t-0001 finished but was not auto-closed: uncommitted changes") {
+		t.Fatalf("items %+v", r.items())
+	}
+	r.unsaved = "2 unpushed commits"
+	r.sweep(time.Minute)
+	if n := strings.Count(r.kinds(), KindCloseHeld); n != 2 {
+		t.Fatalf("%d held items after a new reason", n)
+	}
+	r.sweep(time.Minute)
+	if n := strings.Count(r.kinds(), KindCloseHeld); n != 2 {
+		t.Fatalf("%d held items for the same reason", n)
+	}
+	r.unsaved = ""
+	r.sweep(time.Minute)
+	if strings.Join(r.host.resolved, ",") != "demo/t-0001" {
+		t.Fatalf("resolved %v", r.host.resolved)
 	}
 }
 

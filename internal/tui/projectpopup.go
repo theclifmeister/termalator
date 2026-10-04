@@ -210,7 +210,7 @@ func (pv *projectView) box(m *dash) box {
 		body, sel = pv.taskLines(w)
 	case tabSettings:
 		body, sel = pv.settings.lines(m, w)
-		keys = "enter change · ↑ ↓ move · " + keys
+		keys = "enter change · + - number · ↑ ↓ move · " + keys
 	case tabKeys:
 		// The same list as the help, scrolled the same way.
 		body = keyLines(w)

@@ -25,7 +25,7 @@ import (
 
 const threadUsage = `usage: tm thread <command> [--project <slug>] [--json]
 
-  start [--task T12] [--agent A] [--repo PATH] [--base B] [--approved-by-user] "title"
+  start [--task T12] [--agent A] [--repo PATH] [--base B] [--approved-by-user] [--over-cap] "title"
   list
   show <id>
   read <id> [--lines N]          the thread's screen as text
@@ -105,7 +105,7 @@ func runThread(e *Env, args []string) error {
 	switch sub {
 	case "start":
 		o := startOpts{task: f.String("task"), agent: f.String("agent"), repo: f.String("repo"),
-			base: f.String("base"), approved: f.Bool("approved-by-user")}
+			base: f.String("base"), approved: f.Bool("approved-by-user"), overCap: f.Bool("over-cap")}
 		run = func(p *project.Project, pos []string) error {
 			if len(pos) > 1 {
 				return usagef("usage: tm thread start [--task T12] [flags] \"title\" (quote the title)")
@@ -208,7 +208,7 @@ func runThread(e *Env, args []string) error {
 type startOpts struct {
 	title                   string
 	task, agent, repo, base *string
-	approved                *bool
+	approved, overCap       *bool
 }
 
 func (e *Env) threadStart(p *project.Project, o startOpts, asJSON bool) error {
@@ -223,8 +223,13 @@ func (e *Env) threadStart(p *project.Project, o startOpts, asJSON bool) error {
 	if err != nil {
 		return err
 	}
-	if safety.StartThreads == config.StartPropose && e.Caller.IsAgent() && !*o.approved {
+	if safety.StartThreads == config.StartPropose && e.Caller.IsAgent() && !*o.approved && !*o.overCap {
 		return &tasks.Error{Code: "needs-approval", Msg: "start_threads = propose: propose the thread to the user, and once they agree start it with --approved-by-user"}
+	}
+	if !*o.overCap {
+		if err := e.underCap(p, safety.ParallelThreads); err != nil {
+			return err
+		}
 	}
 	var task *tasks.Task
 	if *o.task != "" {
@@ -322,7 +327,10 @@ func (e *Env) threadStart(p *project.Project, o startOpts, asJSON bool) error {
 		return fail(err)
 	}
 	detail := strings.TrimSpace(r.Task + " " + r.Title)
-	if *o.approved {
+	switch {
+	case *o.overCap:
+		detail += " (over the parallel threads cap, approved by the user)"
+	case *o.approved:
 		detail += " (approved by the user)"
 	}
 	if err := p.Journal(e.Caller, "thread.start", r.ID, detail); err != nil {
@@ -340,6 +348,23 @@ func (e *Env) threadStart(p *project.Project, o startOpts, asJSON bool) error {
 		fmt.Fprintf(e.Stdout, " on %s from %s", r.Branch, r.Base)
 	}
 	fmt.Fprintf(e.Stdout, " (session %s)\n", info.ID)
+	return nil
+}
+
+// underCap refuses a new thread while capN or more of the project's
+// threads work (thread.IsWorking; docs/SPEC.md §9).
+func (e *Env) underCap(p *project.Project, capN int) error {
+	recs, err := thread.List(p)
+	if err != nil {
+		return err
+	}
+	var res proto.SessionListResult
+	if err := e.call(proto.MethodSessionList, nil, &res); err != nil {
+		return nil // no server: starting fails on its own
+	}
+	if n := thread.Working(recs, res.Sessions); n >= capN {
+		return &tasks.Error{Code: "over-cap", Msg: fmt.Sprintf("%d of %d parallel threads are working: propose the thread to the user instead and start it once one finishes; only if the user says to start it anyway, add --over-cap", n, capN)}
+	}
 	return nil
 }
 

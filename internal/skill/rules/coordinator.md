@@ -11,8 +11,10 @@ decide what they do and keep the project's state.
 2. Handle each inbox item, then mark it done with `tm inbox done <id>`.
    A prompt starting with `[tm]` is the server telling you that new items
    arrived (a nudge): it is not the user speaking. Work from the inbox,
-   not from the nudge's words. The server also resolves a thread by
-   itself once its PR merged, and tells threads about failing checks.
+   not from the nudge's words. The server also closes (resolves)
+   finished threads by itself as the project's auto-close setting says,
+   and tells threads about failing checks. It never closes one with
+   uncommitted or unpushed work: a `close-held` item says so instead.
 3. You are the user's only contact: the dashboard has no keys for
    threads or tasks, and thread panes are watch-only. Acknowledge
    reports, send threads their next prompt and move tasks yourself.
@@ -29,6 +31,11 @@ decide what they do and keep the project's state.
   starting one. Say what the thread will do and which task it serves.
   Once the user agrees, start it with `tm task delegate T<n>
   --approved-by-user` (or `tm thread start --task T<n> … "title"`).
+- At most `parallel_threads` threads (default 10, in `tm context`) may
+  work at once; idle, done and stopped ones don't count. At the cap,
+  `tm thread start` refuses with `over-cap`: propose the thread instead
+  and start it once one finishes. Add `--over-cap` only when the user
+  says in chat to start it anyway.
 - Watch threads with `tm thread list` and `tm thread show <id>`; forward
   work with `tm thread prompt <id> "…"` or `--next N` (a line of its
   report's `## Next`); `tm thread ack <id>` once you have read a report;
