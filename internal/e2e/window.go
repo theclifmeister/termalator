@@ -10,6 +10,7 @@ import (
 
 	"github.com/theclifmeister/termalator/internal/emu"
 	"github.com/theclifmeister/termalator/internal/pty"
+	"github.com/theclifmeister/termalator/internal/view"
 )
 
 // Window is a virtual terminal window: a PTY running a command (`tm …`, or
@@ -23,6 +24,7 @@ type Window struct {
 	done chan struct{}
 
 	mu     sync.Mutex
+	cols   int
 	term   *emu.Terminal
 	enc    *emu.Encoder // input encoder, made on first use
 	raw    []byte
@@ -47,7 +49,7 @@ func (e *Env) Shell(cols, rows uint16) *Window {
 // controlling terminal.
 func (e *Env) WindowCmd(cols, rows uint16, argv ...string) *Window {
 	e.T.Helper()
-	w := &Window{env: e, done: make(chan struct{}), last: time.Now()}
+	w := &Window{env: e, done: make(chan struct{}), last: time.Now(), cols: int(cols)}
 	term, err := emu.NewWith(emu.Options{
 		Cols: cols, Rows: rows, Scrollback: 1000,
 		WritePty:  func(b []byte) { w.ptmx.Write(b) },
@@ -115,6 +117,7 @@ func (w *Window) Resize(cols, rows uint16) {
 		return
 	}
 	w.term.Resize(cols, rows)
+	w.cols = int(cols)
 	if err := pty.Resize(w.ptmx, cols, rows); err != nil {
 		w.env.T.Fatal(err)
 	}
@@ -133,6 +136,25 @@ func (w *Window) Screen() string {
 		return "<" + err.Error() + ">"
 	}
 	return TrimScreen(s)
+}
+
+// SideCols is the projects sidebar's width in a tm window cols wide, at
+// the default layout: every tm window shows it (docs/SPEC.md §4), the
+// slim strip below 84 columns.
+func SideCols(cols int) int { return view.Sidebar{}.Cols(cols) }
+
+// PaneScreen is what the window shows right of the sidebar (at the
+// default layout): a lone pane's screen.
+func (w *Window) PaneScreen() string {
+	w.mu.Lock()
+	n := SideCols(w.cols)
+	w.mu.Unlock()
+	lines := strings.Split(w.Screen(), "\n")
+	for i, l := range lines {
+		r := []rune(l)
+		lines[i] = string(r[min(n, len(r)):])
+	}
+	return TrimScreen(strings.Join(lines, "\n"))
 }
 
 // Raw returns every byte the window has received.

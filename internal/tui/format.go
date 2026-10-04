@@ -24,6 +24,13 @@ func stateWord(s proto.SessionInfo) string {
 	return "running"
 }
 
+// progressOnly is progress without the block's reason, which rows show
+// on their own.
+func progressOnly(s proto.SessionInfo) string {
+	s.Reason = ""
+	return progress(s)
+}
+
 // progress is the derived percent, done/total and the current todo
 // (docs/SPEC.md §7.3): "40% 2/5 ▸ Write SPEC §8", or the block reason.
 func progress(s proto.SessionInfo) string {

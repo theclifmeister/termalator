@@ -254,6 +254,42 @@ func TestViewsLayoutActions(t *testing.T) {
 	}
 }
 
+// TestViewsTree: view.project shows a project's dashboard, on every
+// console of the view, leaving the layout; view.expand opens and closes
+// projects in the tree; an own view keeps its tree to itself.
+func TestViewsTree(t *testing.T) {
+	h := newFakeHost("s-1")
+	vs := newViews(h, "", nil)
+	a, _ := join(t, vs, proto.ViewSubscribeParams{Cols: 120, Rows: 30})
+	b, _ := join(t, vs, proto.ViewSubscribeParams{Cols: 120, Rows: 30})
+	mustDo(t, vs, proto.MethodViewAttach, proto.ViewParams{Client: a.id, Session: "s-1", Project: "p"})
+	woken(b)
+	v := mustDo(t, vs, proto.MethodViewProject, proto.ViewParams{Client: a.id, Project: "q"})
+	if v.Mode != view.ModeDashboard || v.Current != "q" || v.Selected != "p:q" || !woken(b) || len(h.takeResizes()) != 0 {
+		t.Fatalf("project: %+v", v)
+	}
+	v = mustDo(t, vs, proto.MethodViewExpand, proto.ViewParams{Client: b.id, Project: "p", Expand: true})
+	if !slices.Equal(v.Expanded, []string{"p"}) || !woken(a) {
+		t.Fatalf("expand: %+v", v)
+	}
+	if v = mustDo(t, vs, proto.MethodViewExpand, proto.ViewParams{Client: a.id, Project: "p"}); len(v.Expanded) != 0 {
+		t.Fatalf("collapse: %+v", v)
+	}
+	for _, m := range []string{proto.MethodViewProject, proto.MethodViewExpand} {
+		if _, err := vs.do(m, proto.ViewParams{Client: a.id}); err == nil {
+			t.Fatalf("%s without a project", m)
+		}
+	}
+	own, name := join(t, vs, proto.ViewSubscribeParams{Own: true, Cols: 120, Rows: 30})
+	mustDo(t, vs, proto.MethodViewExpand, proto.ViewParams{Client: own.id, Project: "z", Expand: true})
+	if v, _ := vs.get(view.Main); len(v.Expanded) != 0 {
+		t.Fatalf("main took an own view's tree: %+v", v)
+	}
+	if v, _ := vs.get(name); !slices.Equal(v.Expanded, []string{"z"}) {
+		t.Fatalf("own view's tree: %+v", v)
+	}
+}
+
 func TestViewsOwn(t *testing.T) {
 	h := newFakeHost("s-1", "s-2")
 	vs := newViews(h, "", nil)

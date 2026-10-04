@@ -1,14 +1,14 @@
  PROJECTS 1            │ termalator                                                                            ● server ok · 1 session
-▸· demo              1 │ PROJECTS 1 ──────────────────────────────────────────────────────────────────────────────────────────────────
-                       │  demo         coordinator                    —           enter starts the coordinator  1 inbox
-                       │                 t-0001 Fix the login           ○ idle      ▰▰▰▱▱  T1  50% 1/2 ▸ Fix  <duration>  PR #7
+▾· demo              1 │ demo ────────────────────────────────────────────────────────────────────────────────────────────────────────
+  · coordinator        │  coordinator                              —          enter starts the coordinator  1 inbox
+  ○ t-0001 Fix the… 50%│  t-0001 Fix the login                     ○ idle     ▰▰▰▱▱  T1  50% 1/2 ▸ Fix  <duration>  PR #7
                        │        T1 steps:
                        │          ✓ 1 Reproduce
                        │          ○ 2 Fix
                        │        report 1 (acked) next:
                        │          1 Merge the PR
                        │          2 Remove the worktree
-                       │    tasks: 0 needs you · 1 in motion · 0 on deck
+                       │  tasks: 0 needs you · 1 in motion · 0 on deck
                        │ SE╭─ demo inbox ─────────────────────────────────────────────────────────────────────────────────────────╮───
                        │  n│ report           <duration>     t-0001 handed in report 1 (T1)                                               │
                        │   │                                                                                                      │

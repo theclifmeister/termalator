@@ -87,7 +87,7 @@ func init() {
 			run: func(m *dash, key string) tea.Cmd { return m.cycleProject(key == "]") }},
 		{keys: []string{"<", ">"}, label: "< >", help: "narrow / widen the list beside the details panel (or drag the divider)",
 			run: (*dash).resize},
-		{keys: []string{"{", "}"}, label: "{ }", help: "narrow / widen the projects sidebar (or drag its border); a click on a project opens its coordinator",
+		{keys: []string{"{", "}"}, label: "{ }", help: "narrow / widen the projects sidebar (or drag its border)",
 			run: (*dash).sideKey},
 		{keys: []string{"b"}, label: "b", help: "the sidebar as a slim strip (glyphs and short names), and back",
 			run: (*dash).sideKey},
@@ -145,10 +145,12 @@ func helpLines() []string {
 		}
 	}
 	return append(out,
+		fmt.Sprintf("%-9s %s", "click", "in the sidebar: ▸ ▾ open or close a project; a project shows its dashboard, its coordinator"),
+		fmt.Sprintf("%-9s %s", "", "attaches, a thread watches it; the same from a session, tm attach and tm project open"),
 		"",
 		styleHead.Render("In a session")+" (prefix+<key> is the prefix, then the key):",
 		fmt.Sprintf("%-16s %s", "prefix+d", "back to this dashboard, on every console of the view (the session keeps running)"),
-		fmt.Sprintf("%-16s %s", "prefix+p ] [", "back here and switch project; a click on the sidebar does too"),
+		fmt.Sprintf("%-16s %s", "prefix+p ] [", "back here and switch project"),
 		fmt.Sprintf("%-16s %s", "prefix+i t , ?", "back here with the inbox, tasks, settings or help open"),
 		fmt.Sprintf("%-16s %s", `prefix+% "`, "split the window: a new shell beside / below"),
 		fmt.Sprintf("%-16s %s", "prefix+arrows o", "focus another pane;  ctrl+arrows resize, z zooms, x closes, space switches the layout"),
@@ -158,7 +160,7 @@ func helpLines() []string {
 		"",
 		styleFaint.Render("Every tm shows the same view: what one does, the others show, sized by the one typed in. tm --own keeps to itself."),
 		styleFaint.Render("You talk to coordinators; they run the threads, their reports and the tasks (tm thread, tm task)."),
-		styleFaint.Render("Here, prefix+<key> is that key. The prefix is [keys] prefix in config.toml; inside tmux, pick another."),
+		styleFaint.Render("Here, prefix+<key> is that key. The prefix is in the settings (,); inside tmux, pick another."),
 	)
 }
 

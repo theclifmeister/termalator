@@ -343,6 +343,16 @@ func (vs *views) do(method string, p proto.ViewParams) (view.View, *proto.Error)
 		v.Attach(p.Session, p.Project)
 	case proto.MethodViewDashboard:
 		v.Dashboard()
+	case proto.MethodViewProject:
+		if p.Project == "" {
+			return before, proto.Errorf(proto.ErrBadParams, "no project")
+		}
+		v.ShowProject(p.Project)
+	case proto.MethodViewExpand:
+		if p.Project == "" {
+			return before, proto.Errorf(proto.ErrBadParams, "no project")
+		}
+		v.Expand(p.Project, p.Expand)
 	case proto.MethodViewSelect:
 		v.Selected = p.Key
 	case proto.MethodViewSplit:

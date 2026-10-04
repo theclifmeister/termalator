@@ -19,13 +19,16 @@ import (
 // an item with columns.
 type row struct {
 	key  string // selection identity, stable across refreshes
-	head string // a section header: NEEDS YOU, PROJECTS, SESSIONS
+	head string // a section header: NEEDS YOU, the project, SESSIONS
 	note string // an unselectable line: task counts, "no projects; …"
 
-	// An item's columns: its marker (" ! ", " ? ", indent), who (project
-	// slug or session id), what (coordinator, thread, task, command), its
-	// state and the rest of the line.
-	mark, who, what, state, rest string
+	// An item's columns: its marker (" ! ", indent), who (project slug or
+	// session id; rows of the project's own section have none), what
+	// (coordinator, thread, command), its state word and the rest of the
+	// line. lead starts the rest in a colour of its own: a block's
+	// reason, or a new report.
+	mark, who, what, state, lead, rest string
+	leadBad                            bool // lead is a block's reason, else a note in the warning colour
 	// pct is the progress bar's percent, -1 for none.
 	pct int
 	// count is a section header's number of items.
@@ -38,16 +41,49 @@ type row struct {
 
 func (r row) selectable() bool { return r.key != "" }
 
+// widths are an item's column widths in a list w cells wide: who (0 for
+// none), what and the state. what takes a share of the room, so wide
+// lists show whole titles and the rest keeps room for progress.
+func (r row) widths(w int) (who, what, state int) {
+	state = colState
+	if r.who != "" {
+		who = colWho
+	}
+	room := w - len([]rune(r.mark)) - state - 1
+	if who > 0 {
+		room -= who + 1
+	}
+	return who, min(max(room*9/20, colWhatMin), colWhatMax), state
+}
+
 // text is the row laid out in columns for w cells, unstyled.
 func (r row) text(w int) string {
 	if r.note != "" {
 		return r.note
 	}
-	rest := r.rest
-	if r.hasBar(w) {
-		rest = joinSp(bar(r.pct), rest)
+	return r.line(w, r.hasBar(w), func(_ int, s string) string { return s })
+}
+
+// line lays the row out for w cells; paint styles each column (0 mark, 1
+// who, 2 what, 3 state, 4 lead, 5 bar, 6 rest).
+func (r row) line(w int, withBar bool, paint func(col int, s string) string) string {
+	who, what, state := r.widths(w)
+	out := paint(0, r.mark)
+	if who > 0 {
+		out += paint(1, fit(r.who, who)) + " "
 	}
-	return cols(r.mark, r.who, r.what, stateText(r.state), rest)
+	out += paint(2, fit(r.what, what)) + " " + paint(3, fit(stateText(r.state), state)) + " "
+	var rest []string
+	if r.lead != "" {
+		rest = append(rest, paint(4, r.lead))
+	}
+	if withBar {
+		rest = append(rest, paint(5, bar(r.pct)))
+	}
+	if r.rest != "" {
+		rest = append(rest, paint(6, r.rest))
+	}
+	return out + strings.Join(rest, "  ")
 }
 
 // hasBar says whether the row draws its progress bar: only when it has
@@ -56,8 +92,7 @@ func (r row) hasBar(w int) bool {
 	if r.pct < 0 {
 		return false
 	}
-	plain := cols(r.mark, r.who, r.what, stateText(r.state), joinSp(bar(r.pct), r.rest))
-	return ansi.StringWidth(plain) <= w
+	return ansi.StringWidth(r.line(w, true, func(_ int, s string) string { return s })) <= w
 }
 
 // styled is text in the theme's colours, w cells wide.
@@ -65,18 +100,28 @@ func (r row) styled(w int) string {
 	if r.note != "" {
 		return styleFaint.Render(fit(r.note, w))
 	}
-	who := fit(r.who, colWho)
-	if strings.HasPrefix(r.key, "p:") {
-		who = styleHead.Render(who)
-	}
 	_, st := stateLook(r.state)
-	rest := r.rest
-	if r.hasBar(w) {
-		n := strings.Count(bar(r.pct), "▰")
-		rest = joinSp(styleGood.Render(strings.Repeat("▰", n))+styleFaint.Render(strings.Repeat("▱", 5-n)), rest)
-	}
-	line := markStyle(r.mark).Render(r.mark) + who + " " + fit(r.what, colWhat) + " " +
-		st.Render(fit(stateText(r.state), colState)) + " " + rest
+	line := r.line(w, r.hasBar(w), func(col int, s string) string {
+		switch col {
+		case 0:
+			return markStyle(r.mark).Render(s)
+		case 1:
+			if strings.HasPrefix(r.key, "p:") {
+				return styleHead.Render(s)
+			}
+		case 3:
+			return st.Render(s)
+		case 4:
+			if r.leadBad {
+				return styleBad.Render(s)
+			}
+			return styleWarn.Render(s)
+		case 5:
+			n := strings.Count(s, "▰")
+			return styleGood.Render(strings.Repeat("▰", n)) + styleFaint.Render(strings.Repeat("▱", 5-n))
+		}
+		return s
+	})
 	return fit(line, w) + reset
 }
 
@@ -84,31 +129,66 @@ func (r row) styled(w int) string {
 const reset = "\x1b[m"
 
 const (
-	colWho   = 12 // project slug, or session id
-	colWhat  = 30 // coordinator, thread, task, command
-	colState = 11 // a glyph, a space and the word
+	colWho     = 12 // project slug, or session id
+	colWhatMin = 20 // coordinator, thread, command: at least,
+	colWhatMax = 40 // and at most
+	colState   = 10 // a glyph, a space and the word
 )
-
-func cols(prefix, who, what, state, rest string) string {
-	return prefix + fit(who, colWho) + " " + fit(what, colWhat) + " " + fit(state, colState) + " " + rest
-}
 
 // Row markers.
 const (
 	markBlocked = " ! "
 	markTop     = "  "
-	markNested  = "    "
 )
 
-// buildRows lays out NEEDS YOU, PROJECTS and SESSIONS. NEEDS YOU holds
-// only what waits on the user: blocked coordinators, and blocked sessions
-// of the user's own outside the projects. Everything about threads goes
-// to their coordinator, the user's single point of contact (§4).
-func buildRows(d Data) []row {
+// threadState is a thread's state as rows and the sidebar show it: its
+// live session's (with the block's reason), done once it called tm done
+// and isn't working or blocked, else its record's. session is its live
+// session, "" without one.
+func threadState(t *ThreadRow, byID map[string]proto.SessionInfo) (state, reason, session string) {
+	state = t.State
+	if s, ok := byID[t.Session]; ok && t.Session != "" {
+		session, state = s.ID, stateWord(s)
+		if s.State == "blocked" {
+			reason = s.Reason
+		}
+	}
+	if (t.Done || t.Status != nil && t.Status.Done) && state != "blocked" && state != "working" {
+		state = "done"
+	}
+	return state, reason, session
+}
+
+// listProject is the project the dashboard lists: current when it is
+// one, else the first.
+func listProject(d Data, current string) string {
+	for _, p := range d.Projects {
+		if p.Slug == current {
+			return current
+		}
+	}
+	if len(d.Projects) > 0 {
+		return d.Projects[0].Slug
+	}
+	return ""
+}
+
+// buildRows lays out NEEDS YOU, the project's own section and SESSIONS.
+// The sidebar's tree lists every project; the list shows one, project
+// (listProject): its coordinator, threads, sessions and task counts.
+// NEEDS YOU, across projects, holds only what waits on the user: blocked
+// coordinators, and blocked sessions of the user's own outside the
+// projects. Everything about threads goes to their coordinator, the
+// user's single point of contact (§4).
+func buildRows(d Data, project string) []row {
 	var needs, projs, other []row
 	bySlug := map[string]bool{}
 	for _, p := range d.Projects {
 		bySlug[p.Slug] = true
+	}
+	byID := map[string]proto.SessionInfo{}
+	for _, s := range d.Sessions {
+		byID[s.ID] = s
 	}
 	now := time.Now()
 	for _, s := range d.Sessions {
@@ -118,19 +198,26 @@ func buildRows(d Data) []row {
 				who = s.ID
 			}
 			needs = append(needs, row{key: "n:" + s.ID, session: s.ID, project: s.Project,
-				mark: markBlocked, who: who, what: sessionName(s), state: "blocked", rest: progress(s), pct: -1})
+				mark: markBlocked, who: who, what: sessionName(s), state: "blocked", lead: oneLine(s.Reason), leadBad: true,
+				rest: progressOnly(s), pct: -1})
 		}
 	}
+	var head string
 	for _, p := range d.Projects {
+		if p.Slug != project {
+			continue
+		}
+		head = p.Slug
+		if p.Name != "" && !strings.EqualFold(p.Name, p.Slug) {
+			head = p.Slug + " · " + oneLine(p.Name)
+		}
 		var coord *proto.SessionInfo
 		var members []proto.SessionInfo
-		byID := map[string]proto.SessionInfo{}
 		threadOf := map[string]bool{}
 		for _, t := range p.Threads {
 			threadOf[t.ID] = true
 		}
 		for i, s := range d.Sessions {
-			byID[s.ID] = s
 			if s.Project != p.Slug {
 				continue
 			}
@@ -143,19 +230,20 @@ func buildRows(d Data) []row {
 			}
 			members = append(members, s)
 		}
-		state, rest := "—", "enter starts the coordinator"
+		r := row{key: "p:" + p.Slug, project: p.Slug, mark: markTop, what: "coordinator", state: "—",
+			rest: "enter starts the coordinator", pct: -1}
 		if coord != nil {
-			state, rest = stateWord(*coord), progress(*coord)
+			r.session, r.pct, r.state = coord.ID, sessionPct(*coord), stateWord(*coord)
+			if coord.State == "blocked" {
+				r.lead, r.leadBad = oneLine(coord.Reason), true
+			}
+			r.rest = progressOnly(*coord)
 		}
 		if p.Err != "" {
-			rest = "error: " + oneLine(p.Err)
+			r.rest = "error: " + oneLine(p.Err)
 		}
 		if p.Unread > 0 {
-			rest = strings.TrimSpace(rest + fmt.Sprintf("  %d inbox", p.Unread))
-		}
-		r := row{key: "p:" + p.Slug, project: p.Slug, mark: markTop, who: p.Slug, what: "coordinator", state: state, rest: rest, pct: -1}
-		if coord != nil {
-			r.session, r.pct = coord.ID, sessionPct(*coord)
+			r.rest = joinSp(r.rest, fmt.Sprintf("%d inbox", p.Unread))
 		}
 		projs = append(projs, r)
 		threads := append([]ThreadRow(nil), p.Threads...)
@@ -164,18 +252,18 @@ func buildRows(d Data) []row {
 		})
 		for i := range threads {
 			t := &threads[i]
-			tr := row{key: "th:" + p.Slug + ":" + t.ID, project: p.Slug, thread: t, mark: markNested, pct: -1}
+			tr := row{key: "th:" + p.Slug + ":" + t.ID, project: p.Slug, thread: t, mark: markTop, pct: -1}
 			if t.Status != nil && t.Status.PercentSource != "" {
 				tr.pct = t.Status.Percent
 			}
-			state := t.State
-			if s, ok := byID[t.Session]; ok && t.Session != "" {
-				tr.session, state = s.ID, stateWord(s)
-				if s.State == "blocked" && s.Reason != "" {
-					state += " " + s.Reason
-				}
+			var reason string
+			tr.state, reason, tr.session = threadState(t, byID)
+			switch {
+			case reason != "":
+				tr.lead, tr.leadBad = oneLine(reason), true
+			case t.ReportState() == "new":
+				tr.lead = "report new"
 			}
-			what := t.ID + " " + oneLine(t.Title)
 			rest := threadProgress(t.Status)
 			if t.Task != "" {
 				rest = joinSp(t.Task, rest)
@@ -183,25 +271,23 @@ func buildRows(d Data) []row {
 			if t.Status != nil && !t.Status.Updated.IsZero() {
 				rest = joinSp(rest, age(now.Sub(t.Status.Updated)))
 			}
-			switch {
-			case t.ReportState() == "new" && t.Done:
-				rest = joinSp(rest, "ready for review")
-			case t.ReportState() == "new":
-				rest = joinSp(rest, "report waiting")
-			}
 			if t.Report != nil && t.Report.PR != "" {
 				rest = joinSp(rest, "PR "+prRef(t.Report.PR))
 			}
-			tr.what, tr.state, tr.rest = what, state, rest
+			tr.what, tr.rest = t.ID+" "+oneLine(t.Title), rest
 			projs = append(projs, tr)
 		}
 		sort.SliceStable(members, func(i, j int) bool { return members[i].Thread < members[j].Thread })
 		for _, s := range members {
-			projs = append(projs, row{key: "s:" + s.ID, session: s.ID, project: p.Slug,
-				mark: markNested, who: s.ID, what: sessionName(s), state: stateWord(s), rest: joinSp(progress(s), age(now.Sub(s.Created))), pct: sessionPct(s)})
+			sr := row{key: "s:" + s.ID, session: s.ID, project: p.Slug, mark: markTop, what: s.ID + " " + sessionName(s),
+				state: stateWord(s), rest: joinSp(progressOnly(s), age(now.Sub(s.Created))), pct: sessionPct(s)}
+			if s.State == "blocked" {
+				sr.lead, sr.leadBad = oneLine(s.Reason), true
+			}
+			projs = append(projs, sr)
 		}
 		c := p.Counts
-		projs = append(projs, row{note: fmt.Sprintf("    tasks: %d needs you · %d in motion · %d on deck", c["needs_you"], c["in_motion"], c["on_deck"])})
+		projs = append(projs, row{note: fmt.Sprintf("  tasks: %d needs you · %d in motion · %d on deck", c["needs_you"], c["in_motion"], c["on_deck"])})
 	}
 	home, _ := os.UserHomeDir()
 	for _, s := range d.Sessions {
@@ -212,8 +298,12 @@ func buildRows(d Data) []row {
 		if home != "" && strings.HasPrefix(where, home) {
 			where = "~" + where[len(home):]
 		}
-		other = append(other, row{key: "s:" + s.ID, session: s.ID,
-			mark: markTop, who: s.ID, what: sessionName(s), state: stateWord(s), rest: joinSp(progress(s), age(now.Sub(s.Created)), where), pct: sessionPct(s)})
+		sr := row{key: "s:" + s.ID, session: s.ID,
+			mark: markTop, who: s.ID, what: sessionName(s), state: stateWord(s), rest: joinSp(progressOnly(s), age(now.Sub(s.Created)), where), pct: sessionPct(s)}
+		if s.State == "blocked" {
+			sr.lead, sr.leadBad = oneLine(s.Reason), true
+		}
+		other = append(other, sr)
 	}
 
 	var rows []row
@@ -221,11 +311,12 @@ func buildRows(d Data) []row {
 		rows = append(rows, row{head: "NEEDS YOU", count: len(needs)})
 		rows = append(rows, needs...)
 	}
-	rows = append(rows, row{head: "PROJECTS", count: len(d.Projects)})
-	if len(projs) == 0 {
-		projs = []row{{note: "  no projects; n creates one"}}
+	if head != "" {
+		rows = append(rows, row{head: head})
+		rows = append(rows, projs...)
+	} else {
+		rows = append(rows, row{note: "  no projects; n creates one"})
 	}
-	rows = append(rows, projs...)
 	rows = append(rows, row{head: "SESSIONS", count: len(other)})
 	if len(other) == 0 {
 		other = []row{{note: "  no sessions; s starts a shell"}}

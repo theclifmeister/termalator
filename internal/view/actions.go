@@ -31,6 +31,32 @@ func (v *View) Dashboard() bool {
 	return true
 }
 
+// ShowProject shows project's dashboard: the dashboard, with project
+// current and its coordinator's row selected.
+func (v *View) ShowProject(project string) bool {
+	if project == "" {
+		return v.Dashboard()
+	}
+	old := v.Clone()
+	v.Mode, v.Current, v.Selected = ModeDashboard, project, "p:"+project
+	return !Equal(old, *v)
+}
+
+// Expand opens (open) or closes project in the sidebar's tree. The
+// current project stays open whatever its entry says.
+func (v *View) Expand(project string, open bool) bool {
+	if project == "" || slices.Contains(v.Expanded, project) == open {
+		return false
+	}
+	if open {
+		v.Expanded = append(v.Expanded, project)
+		slices.Sort(v.Expanded)
+	} else {
+		v.Expanded = slices.DeleteFunc(v.Expanded, func(p string) bool { return p == project })
+	}
+	return true
+}
+
 // Split splits the pane of session at (the focused one when at isn't in
 // the layout) in two: at first, add beside it (side) or below it. add
 // gets the focus.

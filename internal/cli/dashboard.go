@@ -21,7 +21,22 @@ const defaultAgent = "claude"
 // the server-owned view (docs/SPEC.md §3.3, §4), view main unless own.
 // It shows the view's screen, the dashboard or the attached layout, and
 // follows it when this console or another changes it.
-func (e *Env) dashboardCmd(own bool) int {
+func (e *Env) dashboardCmd(own bool) int { return e.fullConsole(own, nil, defaultAgent) }
+
+// uiFile is ui.json, the console's layout (docs/SPEC.md §5.1); "" when
+// there is no home.
+func uiFile() string {
+	if d, err := home.Dir(); err == nil {
+		return filepath.Join(d, "ui.json")
+	}
+	return ""
+}
+
+// fullConsole runs a full console: the dashboard and the attached
+// layout of view main (own: a view of its own). goTo, from a sidebar
+// click in tm attach or tm project open, is opened first: that bare view
+// hands its console over to this one (docs/SPEC.md §3.3).
+func (e *Env) fullConsole(own bool, goTo *tui.Target, agentName string) int {
 	if !isTTY(os.Stdin) || !isTTY(os.Stdout) {
 		fmt.Fprintln(e.Stderr, "tm: the dashboard needs a terminal; see tm session list")
 		return ExitUsage
@@ -42,10 +57,7 @@ func (e *Env) dashboardCmd(own bool) int {
 	}
 	src := &tui.ServerSource{Paths: p, Agent: defaultAgent, Caller: who}
 	defer src.Close()
-	var uiFile string // ui.json: the dashboard's layout (docs/SPEC.md §5.1)
-	if d, err := home.Dir(); err == nil {
-		uiFile = filepath.Join(d, "ui.json")
-	}
+	uiFile := uiFile()
 	cols, rows, ok := termSize()
 	if !ok {
 		cols, rows = 80, 24
@@ -61,10 +73,15 @@ func (e *Env) dashboardCmd(own bool) int {
 		args = []string{"--own"}
 	}
 	var st tui.DashState
+	if goTo != nil {
+		if err := tui.OpenTarget(p, vc, agentName, *goTo); err != nil {
+			st.Message = err.Error()
+		}
+	}
 	attach := vc.View().Mode == view.ModeLayout
 	for {
 		if attach {
-			ares, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile}, args)
+			ares, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Agent: agentName}, args)
 			if code != ExitOK {
 				return code
 			}
@@ -88,7 +105,8 @@ func (e *Env) dashboardCmd(own bool) int {
 
 // openCmd is `tm project open <slug>`: start or attach the project's
 // coordinator, in a bare view of this console's own. Without a terminal
-// it prints the session id.
+// it prints the session id. A click on the sidebar hands the console
+// over to a full one of view main.
 func (e *Env) openCmd(slug, agentName string) error {
 	if _, err := project.Open(slug); err != nil {
 		return err
@@ -101,7 +119,10 @@ func (e *Env) openCmd(slug, agentName string) error {
 	if !ok {
 		cols, rows = 80, 25
 	}
-	id, err := tui.OpenCoordinator(c.Call, slug, agentName, int(cols), int(max(rows, 2)-1))
+	// The pane gets the window less the sidebar and the status bar.
+	uiFile := uiFile()
+	side := tui.LoadLayout(uiFile).Sidebar
+	id, err := tui.OpenCoordinator(c.Call, slug, agentName, max(int(cols)-side.Cols(int(cols)), 1), int(max(rows, 2)-1))
 	c.Close()
 	if err != nil {
 		return err
@@ -110,14 +131,18 @@ func (e *Env) openCmd(slug, agentName string) error {
 		fmt.Fprintln(e.Stdout, id)
 		return nil
 	}
-	vc, err := tui.JoinView(p, proto.ViewSubscribeParams{Own: true, Bare: true, StatusBar: true, Session: id, Cols: cols, Rows: rows})
+	vc, err := tui.JoinView(p, proto.ViewSubscribeParams{Own: true, Bare: true, StatusBar: true, Session: id,
+		Cols: cols, Rows: rows, Sidebar: &side})
 	if err != nil {
 		return err
 	}
-	defer vc.Close()
-	res, code := e.attach(p, vc, nil, []string{"project", "open", slug, "--agent", agentName})
+	res, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Agent: agentName}, []string{"project", "open", slug, "--agent", agentName})
+	vc.Close()
 	if code != ExitOK {
 		return &exitError{code}
+	}
+	if res.GoTo != nil {
+		return codeErr(e.fullConsole(false, res.GoTo, agentName))
 	}
 	fmt.Fprintf(e.Stdout, "[%s: %s]\n", id, res.Reason)
 	return nil

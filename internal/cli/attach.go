@@ -20,7 +20,8 @@ import (
 const attachUsage = `usage: tm attach [SESSION]   (the newest session when none is named; the prefix, Ctrl+B, then d detaches)
 
 tm attach shows one session in a window of this terminal's own, which
-other consoles don't follow; tm (the dashboard) joins the shared view.`
+other consoles don't follow; tm (the dashboard) joins the shared view.
+A click on the projects sidebar switches to that shared view.`
 
 // reexecEnv marks a tm that was re-executed as the server's binary, so a
 // build mismatch that survives the re-exec fails instead of looping.
@@ -81,14 +82,22 @@ func attachCmd(e *Env, args []string) int {
 	if !ok {
 		cols, rows = 80, 24
 	}
-	vc, err := tui.JoinView(p, proto.ViewSubscribeParams{Own: true, Bare: true, StatusBar: thread, Session: id, Cols: cols, Rows: rows})
+	uiFile := uiFile()
+	side := tui.LoadLayout(uiFile).Sidebar
+	vc, err := tui.JoinView(p, proto.ViewSubscribeParams{Own: true, Bare: true, StatusBar: thread, Session: id,
+		Cols: cols, Rows: rows, Sidebar: &side})
 	if err != nil {
 		return e.srvFail("attach", err)
 	}
-	defer vc.Close()
-	res, code := e.attach(p, vc, nil, []string{"attach", id})
+	res, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Agent: defaultAgent}, []string{"attach", id})
+	vc.Close()
 	if code != ExitOK {
 		return code
+	}
+	if res.GoTo != nil {
+		// A click on the sidebar: this console becomes a full one of view
+		// main, which opens what was clicked (docs/SPEC.md §3.3).
+		return e.fullConsole(false, res.GoTo, defaultAgent)
 	}
 	if res.Detached {
 		fmt.Fprintf(e.Stdout, "[%s from %s]\n", res.Reason, id)

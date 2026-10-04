@@ -27,7 +27,7 @@ type Layout struct {
 
 const (
 	splitMin     = 120  // a narrower dashboard (less the sidebar) shows details under the row
-	defaultSplit = 0.6  // the list's share
+	defaultSplit = 0.65 // the list's share
 	minSplit     = 0.3  // of the width, either way
 	maxSplit     = 0.8  //
 	splitStep    = 0.05 // < and > move the divider this much
