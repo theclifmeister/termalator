@@ -44,8 +44,11 @@ type SessionRecord struct {
 	Yolo     bool   `json:"yolo,omitempty"`
 	// RemoteControl: the agent runs with remote control on, so a resume
 	// keeps it on.
-	RemoteControl bool      `json:"remote_control,omitempty"`
-	Created       time.Time `json:"created"`
+	RemoteControl bool `json:"remote_control,omitempty"`
+	// RemoteHeld: the user turned remote control off (session.remote);
+	// it holds across resumes until the coordinator is started anew.
+	RemoteHeld bool      `json:"remote_held,omitempty"`
+	Created    time.Time `json:"created"`
 	// CleanExit is true when the session was stopped by a clean server
 	// stop rather than lost in a crash.
 	CleanExit bool `json:"clean_exit"`

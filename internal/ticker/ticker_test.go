@@ -26,6 +26,7 @@ type fakeHost struct {
 	alerts   []string
 	resolved []string
 	resolve  func(slug, id string) error
+	remote   []string // "<session> on|off"
 }
 
 func (h *fakeHost) Sessions() []proto.SessionInfo {
@@ -42,6 +43,11 @@ func (h *fakeHost) Resolve(slug, id string) (string, error) {
 		return "", h.resolve(slug, id)
 	}
 	return "", nil
+}
+
+func (h *fakeHost) Remote(id string, on bool) (proto.SessionRemoteResult, error) {
+	h.remote = append(h.remote, id+" "+map[bool]string{true: "on", false: "off"}[on])
+	return proto.SessionRemoteResult{RemoteControl: on, How: proto.RemotePrompted}, nil
 }
 
 func (h *fakeHost) set(id, state, reason string) {
