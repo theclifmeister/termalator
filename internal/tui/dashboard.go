@@ -40,6 +40,9 @@ type DashState struct {
 	// Then is a key to run once the first poll is in: the key typed
 	// after the prefix in a session (p, ] or [).
 	Then string
+	// SideFocus starts the dashboard with the keyboard in the sidebar,
+	// where the session left it.
+	SideFocus bool
 }
 
 // DashOptions configure Dashboard.
@@ -97,6 +100,9 @@ type DashResult struct {
 	// (Over), for the session's status bar: a key that couldn't open its
 	// popup says why there.
 	Message string
+	// SideFocus: the sidebar has the keyboard, and keeps it in the
+	// session attached (a click on a sidebar row attached it, say).
+	SideFocus bool
 }
 
 // Dashboard runs the dashboard until the user quits or picks a session.
@@ -128,6 +134,7 @@ func Dashboard(opts DashOptions) (DashResult, error) {
 	}
 	d := final.(*dash)
 	d.result.State = DashState{Selected: d.sel, Current: d.current}
+	d.result.SideFocus = d.result.Attach != "" && d.focus == focusSide
 	return d.result, nil
 }
 
@@ -211,6 +218,9 @@ func newDash(o DashOptions) *dash {
 		prefix: cmp.Or(o.Prefix, DefaultPrefixKey), then: o.State.Then, done: make(chan struct{}), over: o.Over}
 	if o.Over != nil {
 		m.then = o.Over.Key
+	}
+	if o.State.SideFocus {
+		m.focus = focusSide
 	}
 	if vc := o.View; vc != nil {
 		v := vc.View()
@@ -529,7 +539,8 @@ func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // sideClick handles a click on the sidebar, from under any popup: its
-// border starts a drag, a project row shows
+// border starts a drag; a click on a row gives the sidebar the keyboard,
+// and a project row shows
 // its dashboard, the coordinator row opens the coordinator, a thread row
 // attaches its session.
 func (m *dash) sideClick(mo tea.Mouse) tea.Cmd {
@@ -538,6 +549,13 @@ func (m *dash) sideClick(mo tea.Mouse) tea.Cmd {
 	}
 	r, ok, border := sideHitAt(m.tree(), m.sideW(), m.h, mo.X, mo.Y)
 	t, can, why := r.target()
+	var cmd tea.Cmd
+	if ok && !border {
+		// A click on a row gives the sidebar the keyboard, its cursor on
+		// the row; it keeps it in the session the row attaches.
+		m.focus, m.sideSel = focusSide, r.key()
+		cmd = m.sendSideSel()
+	}
 	switch {
 	case border:
 		m.sideDrag = true
@@ -545,9 +563,9 @@ func (m *dash) sideClick(mo tea.Mouse) tea.Cmd {
 	case !can:
 		m.msg = why
 	default:
-		return m.openTarget(t)
+		return tea.Batch(cmd, m.openTarget(t))
 	}
-	return nil
+	return cmd
 }
 
 // openTarget opens a sidebar row's target, closing any popup: a thread's
@@ -650,6 +668,11 @@ func (m *dash) sideKeyboard(key string) (tea.Cmd, bool) {
 		cmds = append(cmds, m.sendSideSel())
 	}
 	if t := st.target; t != nil {
+		if t.Session != "" || t.Coordinator {
+			// enter, unlike a click, gives the session it attaches the
+			// keyboard, as in a session.
+			m.focus = focusList
+		}
 		cmds = append(cmds, m.openTarget(*t))
 	}
 	return tea.Batch(cmds...), true
