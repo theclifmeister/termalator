@@ -21,9 +21,9 @@ func TestSmokeViewsShared(t *testing.T) {
 	env.Trust(alphaDir, betaDir)
 
 	w1 := env.Window(120, 30)
-	w1.WaitFor("▸· beta", wait)
+	w1.WaitFor(" ■ "+beta, wait)
 	w2 := env.Window(100, 26)
-	w2.WaitFor("▸· beta", wait)
+	w2.WaitFor(" ■ "+beta, wait)
 
 	// w1 opens alpha's coordinator: both consoles show it.
 	clickCoordinator(t, w1, alpha)
@@ -105,7 +105,7 @@ func TestSmokeViewSurvivesRestart(t *testing.T) {
 	env.Trust(alphaDir)
 
 	w := env.Window(120, 30)
-	w.WaitFor("▾· alpha", wait)
+	w.WaitFor(" ■ "+alpha, wait)
 	clickCoordinator(t, w, alpha)
 	w.WaitUntil("attached to alpha", agentWait, func(sc string) bool { return lastLine(sc, alpha+" coordinator") })
 	a := coordinatorOf(t, env, alpha)
@@ -152,7 +152,7 @@ func TestSmokeFirstViewFills(t *testing.T) {
 	// The first console to show the coordinator gives it its rectangle:
 	// the window less the sidebar and the status bar.
 	w1 := env.Window(136, 40)
-	w1.WaitFor("▾○ alpha", wait)
+	w1.WaitFor(" ■ "+alpha, wait)
 	clickCoordinator(t, w1, alpha)
 	w1.WaitUntil("attached to alpha", agentWait, func(sc string) bool { return lastLine(sc, alpha+" coordinator") })
 	waitPaneSize(t, env, co, 112, 38)

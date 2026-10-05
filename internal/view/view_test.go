@@ -53,10 +53,10 @@ func TestLay(t *testing.T) {
 	}
 }
 
-// TestTree: the sidebar's tree state. The current project is always
-// expanded, others open and close; showing a project's dashboard makes it
-// current with its coordinator's row selected; the highlight follows
-// the screen and the focus.
+// TestTree: the sidebar's tree state. Showing a project's dashboard makes
+// it current with its coordinator's row selected; the highlight follows
+// the screen and the focus. Every project is always expanded, so the
+// view keeps no expanded projects: views saved with them load.
 func TestTree(t *testing.T) {
 	v := &View{Name: Main}
 	v.Normalize()
@@ -66,44 +66,23 @@ func TestTree(t *testing.T) {
 	if p, s := v.Here(); p != "b" || s != "" {
 		t.Fatalf("here on the dashboard: %q %q", p, s)
 	}
-	if !v.IsExpanded("b") || v.IsExpanded("a") {
-		t.Fatal("only the current project is expanded")
-	}
-	if !v.Expand("c", true) || !v.Expand("a", true) || v.Expand("a", true) {
-		t.Fatal("expand")
-	}
-	if strings.Join(v.Expanded, ",") != "a,c" || !v.IsExpanded("a") {
-		t.Fatalf("expanded %v", v.Expanded)
-	}
-	if !v.Expand("a", false) || v.Expand("a", false) || v.IsExpanded("a") {
-		t.Fatal("collapse")
-	}
-	// Collapsing the current project keeps it open.
-	v.Expand("b", true)
-	v.Expand("b", false)
-	if !v.IsExpanded("b") {
-		t.Fatal("the current project closed")
-	}
 	v.Attach("s-1", "a")
 	if p, s := v.Here(); p != "a" || s != "s-1" {
 		t.Fatalf("here attached: %q %q", p, s)
 	}
-	// The tree state survives the wire, and a clone owns its list.
-	c := v.Clone()
-	c.Expanded[0] = "z"
-	if v.Expanded[0] != "c" {
-		t.Fatal("a clone shares Expanded")
-	}
+	// The tree state survives the wire.
 	b, _ := json.Marshal(v)
 	var back View
 	if err := json.Unmarshal(b, &back); err != nil || !Equal(*v, back) {
 		t.Fatalf("round trip: %s", b)
 	}
-	// Normalize sorts and dedupes.
-	v.Expanded = []string{"q", "c", "q"}
-	v.Normalize()
-	if strings.Join(v.Expanded, ",") != "c,q" {
-		t.Fatalf("normalized %v", v.Expanded)
+	// A view saved by protocol 6 and before, with expanded projects.
+	old := View{}
+	if err := json.Unmarshal([]byte(`{"name":"main","mode":"dashboard","current":"a","expanded":["b","c"]}`), &old); err != nil || old.Current != "a" {
+		t.Fatalf("old view: %v %+v", err, old)
+	}
+	if b, _ := json.Marshal(old); strings.Contains(string(b), "expanded") {
+		t.Fatalf("old view kept its expanded projects: %s", b)
 	}
 }
 

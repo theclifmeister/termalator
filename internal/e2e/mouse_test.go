@@ -117,7 +117,7 @@ func TestSmokeMousePopupsAndTakeOver(t *testing.T) {
 	env, projDir, _ := threadEnv(t)
 	startThread(t, env, projDir)
 	w := env.Window(120, 30)
-	w.WaitFor("▾· demo", wait)
+	w.WaitFor(" ■ demo", wait)
 
 	w.RightClick(4, sideRow(t, w.Screen(), "demo"))
 	w.WaitFor("show its dashboard", wait)

@@ -12,10 +12,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// TestDashboardSidebar: the project tree. Every project with its
-// coordinator's glyph, a hint for a blocked or waiting thread and its
-// open threads; the current one expanded with its coordinator and
-// threads. ▸ ▾ open and close projects, a project row shows its
+// TestDashboardSidebar: the project tree. Every project, always
+// expanded, with its open threads and a hint for a blocked or waiting
+// thread; under it, on tree connectors, its coordinator and threads with
+// their progress and state glyphs in columns. A project row shows its
 // dashboard, the coordinator row opens the coordinator, a thread row
 // watches it; the border drags and is saved, and a narrow window gets
 // the slim strip.
@@ -25,12 +25,13 @@ func TestDashboardSidebar(t *testing.T) {
 	m := newDash(DashOptions{Source: src, Width: 120, Height: 30, UIFile: ui, State: DashState{Current: "beta"}})
 	m.setData(src.data)
 	want := []string{
-		" PROJECTS 2            │ tm dashboard",
-		"▸▲ alpha             0 │",
-		"▾· beta            ◆ 2 │", // t-0005 waits on a question
-		"  · coordinator        │",
-		"  ● Write docs      60%│",
-		"  · Old work           │",
+		" PROJECTS             2│ tm dashboard",
+		" ■ alpha            0  │",
+		" └─ coordinator       ▲│",
+		" ■ beta             2 ◆│", // t-0005 waits on a question
+		" ├─ coordinator       ·│",
+		" ├─ Write docs    60% ●│",
+		" └─ Old work          ·│",
 	}
 	lines := strings.Split(whole(m), "\n")
 	for i, w := range want {
@@ -45,32 +46,21 @@ func TestDashboardSidebar(t *testing.T) {
 		t.Fatalf("the dashboard is %d wide", m.w)
 	}
 
-	// ▸ opens alpha, ▾ closes it again; the current project stays open.
-	m.Update(tea.MouseClickMsg{X: 0, Y: 1, Button: tea.MouseLeft})
-	if l := strings.Split(whole(m), "\n")[2]; !strings.HasPrefix(l, "  ▲ coordinator") {
-		t.Fatalf("alpha didn't open:\n%s", whole(m))
-	}
-	m.Update(tea.MouseClickMsg{X: 0, Y: 1, Button: tea.MouseLeft})
-	m.Update(tea.MouseClickMsg{X: 1, Y: 2, Button: tea.MouseLeft})
-	if len(m.expanded) != 0 || !strings.Contains(m.msg, "stays open") || !strings.HasPrefix(strings.Split(whole(m), "\n")[3], "  · coordinator") {
-		t.Fatalf("expanded %v, msg %q:\n%s", m.expanded, m.msg, whole(m))
-	}
-
 	// A thread row watches its session, even from under a popup; one
 	// without a session says why.
 	press(m, "?")
-	run(m, m.sideClick(tea.Mouse{X: 5, Y: 4, Button: tea.MouseLeft}))
+	run(m, m.sideClick(tea.Mouse{X: 5, Y: 5, Button: tea.MouseLeft}))
 	if m.top() != nil || m.result.Attach != "s-5" {
 		t.Fatalf("thread click: attach %q", m.result.Attach)
 	}
 	m.result = DashResult{}
-	m.Update(tea.MouseClickMsg{X: 5, Y: 5, Button: tea.MouseLeft})
+	m.Update(tea.MouseClickMsg{X: 5, Y: 6, Button: tea.MouseLeft})
 	if m.result.Attach != "" || !strings.Contains(m.msg, "t-0006 has no running session") {
 		t.Fatalf("thread without a session: attach %q msg %q", m.result.Attach, m.msg)
 	}
 
-	// A project row shows its dashboard: alpha becomes current, listed and
-	// expanded, nothing is attached.
+	// A project row shows its dashboard: alpha becomes current and
+	// listed, nothing is attached.
 	m.Update(tea.MouseClickMsg{X: 5, Y: 1, Button: tea.MouseLeft})
 	if m.current != "alpha" || m.sel != "p:alpha" || len(src.opened) != 0 || m.result.Attach != "" ||
 		!strings.Contains(screen(m), " alpha ─") {
@@ -118,8 +108,7 @@ func TestDashboardSidebar(t *testing.T) {
 func TestTreeHere(t *testing.T) {
 	d := testData()
 	for focus, want := range map[string]string{"s-5": "t-0005", "s-1": "coordinator", "s-3": "beta"} {
-		rows := buildTree(d.Projects, d.Sessions, treeIn{current: "beta", focus: focus,
-			expanded: func(slug string) bool { return slug == "alpha" }})
+		rows := buildTree(d.Projects, d.Sessions, treeIn{current: "beta", focus: focus})
 		h := hereRow(rows)
 		got := map[int]string{treeProject: h.slug, treeCoordinator: "coordinator", treeThread: h.thread}[h.kind]
 		if got != want {
@@ -152,17 +141,17 @@ func TestTreeThreadRows(t *testing.T) {
 		if w := ansi.StringWidth(l); w != 23 {
 			t.Errorf("row %q is %d cells", l, w)
 		}
-		// The title column is the same on every row: 4 cells in, 14 wide,
-		// then the percent's 5.
-		if title := []rune(l)[4:18]; strings.TrimSpace(string(title)) == "" {
+		// The title column is the same on every row: 4 cells in, 12 wide,
+		// then the percent's 5 and the state glyph.
+		if title := []rune(l)[4:16]; strings.TrimSpace(string(title)) == "" {
 			t.Errorf("row %q: no title", l)
 		}
 	}
 }
 
 // TestDashboardSidebarKeys: tab gives the sidebar the keyboard; ↑ ↓ move
-// its cursor, → ← open and close projects (← on a row under a project
-// goes up to it), enter does what a click does and esc goes back to the
+// its cursor, → goes into a project and ← on a row under a project up
+// to it, enter does what a click does and esc goes back to the
 // list. Keys that aren't the sidebar's still run the list's actions.
 func TestDashboardSidebarKeys(t *testing.T) {
 	src := &fakeSource{data: testData()}
@@ -185,30 +174,18 @@ func TestDashboardSidebarKeys(t *testing.T) {
 		t.Fatalf("tab: focus %d cursor %q:\n%s", m.focus, cursor(), whole(m))
 	}
 	steps := []struct{ key, cursor string }{
-		{"up", "p:alpha"}, {"up", "p:alpha"}, {"right", "p:alpha"}, {"right", "c:alpha"},
-		{"left", "p:alpha"}, {"left", "p:alpha"}, {"j", "p:beta"}, {"down", "c:beta"}, {"down", "t:beta/t-0005"},
+		{"up", "c:alpha"}, {"up", "p:alpha"}, {"up", "p:alpha"}, {"right", "c:alpha"}, {"right", "c:alpha"},
+		{"left", "p:alpha"}, {"left", "p:alpha"}, {"j", "c:alpha"}, {"down", "p:beta"}, {"down", "c:beta"}, {"down", "t:beta/t-0005"},
 	}
 	for i, s := range steps {
 		keyPress(m, s.key)
 		if got := cursor(); got != s.cursor {
 			t.Fatalf("step %d (%s): cursor %q, want %q", i, s.key, got, s.cursor)
 		}
-		if i == 2 && !slices.Contains(m.expanded, "alpha") {
-			t.Fatalf("→ didn't open alpha: %v", m.expanded)
-		}
-		if i == 5 && len(m.expanded) != 0 {
-			t.Fatalf("← didn't close alpha: %v", m.expanded)
-		}
 	}
 	// The cursor's row is highlighted, not the one you are on.
-	if l := strings.Split(whole(m), "\n")[4]; !strings.Contains(l, "Write docs") {
-		t.Fatalf("row 4 %q", l)
-	}
-	// The current project stays open.
-	keyPress(m, "left")
-	keyPress(m, "left")
-	if !strings.Contains(m.msg, "stays open") {
-		t.Fatalf("← on the current project: %q", m.msg)
+	if l := strings.Split(whole(m), "\n")[5]; !strings.Contains(l, "Write docs") {
+		t.Fatalf("row 5 %q", l)
 	}
 	// Not a sidebar key: the list's ? opens the help.
 	keyPress(m, "?")
@@ -220,8 +197,6 @@ func TestDashboardSidebarKeys(t *testing.T) {
 		t.Fatal("esc closing the help left the sidebar")
 	}
 	// enter on a thread watches it.
-	keyPress(m, "down")
-	keyPress(m, "down")
 	run(m, keyPress(m, "enter"))
 	if m.result.Attach != "s-5" {
 		t.Fatalf("enter on t-0005: attach %q", m.result.Attach)
@@ -269,12 +244,12 @@ func TestDashboardFocusCycle(t *testing.T) {
 }
 
 // TestEverySidebarClickHasKey: the reverse of TestEveryKeyHasMousePath
-// for the sidebar. Each click on it (▸ ▾, every kind of row) has a key
+// for the sidebar. Each click on it (every kind of row) has a key
 // path doing the same, and every item of a sidebar row's menu names one.
 func TestEverySidebarClickHasKey(t *testing.T) {
 	type outcome struct {
 		current, sel, attach, msg string
-		opened, expanded          []string
+		opened                    []string
 	}
 	fresh := func() (*dash, *fakeSource) {
 		src := &fakeSource{data: testData()}
@@ -283,15 +258,11 @@ func TestEverySidebarClickHasKey(t *testing.T) {
 		return m, src
 	}
 	of := func(m *dash, src *fakeSource) outcome {
-		return outcome{m.current, m.sel, m.result.Attach, m.msg, slices.Clone(src.opened), slices.Clone(m.expanded)}
+		return outcome{m.current, m.sel, m.result.Attach, m.msg, slices.Clone(src.opened)}
 	}
 	rows := (func() []treeRow { m, _ := fresh(); return m.tree() })()
 	for i, r := range rows {
-		clicks := map[string]int{"row": 5}
-		if r.kind == treeProject {
-			clicks["toggle"] = 0
-		}
-		for what, x := range clicks {
+		for what, x := range map[string]int{"row": 5, "first column": 0} {
 			m, src := fresh()
 			run(m, m.sideClick(tea.Mouse{X: x, Y: i + 1, Button: tea.MouseLeft}))
 			byMouse := of(m, src)
@@ -300,9 +271,6 @@ func TestEverySidebarClickHasKey(t *testing.T) {
 			keyPress(k, "tab")
 			k.sideSel = r.key()
 			key := "enter"
-			if what == "toggle" {
-				key = map[bool]string{true: "left", false: "right"}[r.open]
-			}
 			run(k, keyPress(k, key))
 			byKey := of(k, ksrc)
 			byKey.sel, byMouse.sel = "", "" // the cursor isn't the list's selection
@@ -314,12 +282,10 @@ func TestEverySidebarClickHasKey(t *testing.T) {
 	// Every sidebar menu item has a key path.
 	keyPaths := map[string]string{
 		"show its dashboard": "enter on the project", "open its coordinator": "enter on its coordinator",
-		"open in the tree": "→", "close in the tree": "←",
 		"project popup": "enter, then a", "tasks": "enter, then t", "inbox": "enter, then i",
 		"open the coordinator": "enter", "watch": "enter", "take over…": "enter, then prefix+u",
 	}
 	m, _ := fresh()
-	m.expand("alpha", true)
 	for i := range m.tree() {
 		m.stack = nil
 		m.sideMenu(tea.Mouse{X: 5, Y: i + 1, Button: tea.MouseRight})

@@ -417,7 +417,7 @@ func (m *dash) takeOver(session, project string) tea.Cmd {
 
 // sideMenu opens the menu of the sidebar row under a right-click.
 func (m *dash) sideMenu(mo tea.Mouse) tea.Cmd {
-	r, ok, _, _ := sideHitAt(m.tree(), m.sideW(), m.h, mo.X, mo.Y)
+	r, ok, _ := sideHitAt(m.tree(), m.sideW(), m.h, mo.X, mo.Y)
 	if !ok {
 		return nil
 	}
@@ -440,11 +440,6 @@ func (m *dash) sideMenu(mo tea.Mouse) tea.Cmd {
 		items = append(items,
 			menuItem{label: "show its dashboard", run: func(m *dash) tea.Cmd { return m.showProject(r.slug) }},
 			menuItem{label: "open its coordinator", run: func(m *dash) tea.Cmd { return m.openProject(r.slug) }})
-		if !r.current && r.open {
-			items = append(items, menuItem{label: "close in the tree", run: func(m *dash) tea.Cmd { return m.expand(r.slug, false) }})
-		} else if !r.current {
-			items = append(items, menuItem{label: "open in the tree", run: func(m *dash) tea.Cmd { return m.expand(r.slug, true) }})
-		}
 		items = append(items, show("project popup", "a"), show("tasks", "t"), show("inbox", "i"))
 	case treeCoordinator:
 		title += " coordinator"

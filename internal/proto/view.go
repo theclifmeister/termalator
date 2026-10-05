@@ -20,9 +20,6 @@ const (
 	// MethodViewProject shows Project's dashboard: the dashboard, with
 	// Project current (a click on its row in the sidebar's tree).
 	MethodViewProject = "view.project"
-	// MethodViewExpand opens (Expand) or closes Project in the sidebar's
-	// tree.
-	MethodViewExpand = "view.expand"
 	// MethodViewSelect selects a dashboard row (Key).
 	MethodViewSelect = "view.select"
 	// MethodViewSideSel moves the sidebar's keyboard row to Key.
@@ -86,5 +83,4 @@ type ViewParams struct {
 	Cols    uint16        `json:"cols,omitempty"`
 	Rows    uint16        `json:"rows,omitempty"`
 	Resize  bool          `json:"resize,omitempty"`
-	Expand  bool          `json:"expand,omitempty"`
 }

@@ -51,7 +51,7 @@ var mouseKeys = []keyHelp{
 	{"right-click", "a row of the list or the sidebar: a menu of its actions (open, watch, take over, its popup, …); in a session, the status bar or a pane that doesn't take the mouse: the session's menu"},
 	{menuButton + " menu", "every action, first in the footer; in a session, every prefix command, on the status bar"},
 	{"status bar", menuButton + " menu, prefix+d dashboard, prefix+u takes over, y yes"},
-	{"sidebar", "▸ ▾ open or close a project; a project shows its dashboard, its coordinator attaches, a thread watches it"},
+	{"sidebar", "a project shows its dashboard, its coordinator attaches, a thread watches it"},
 	{"wheel", "moves through a list; scrolls the details panel and long popups"},
 	{"drag", "the divider beside the details panel, the sidebar's border"},
 	{"shift+drag", "select text, as usual; a pane whose program takes the mouse (Claude Code does) gets its clicks"},

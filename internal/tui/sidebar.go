@@ -26,14 +26,14 @@ import (
 // screen, the dashboard and the attach view alike, holding the project
 // tree. Each project row has its coordinator's state glyph, a hint when
 // one of its threads is blocked or waiting, and its count of open
-// threads; an expanded project lists its coordinator and open threads
-// under it, with their state glyphs and progress. The current project is
-// always expanded, others open and close with ▸ ▾, and the row you are on
-// is highlighted. A click on a project shows its dashboard, on the
+// threads. Every project is always expanded: its coordinator and open
+// threads hang under it on tree connectors (├─ └─), with their state
+// glyphs and progress in columns of their own. The current project is in
+// the accent colour, and the row you are on is highlighted. A click on a project shows its dashboard, on the
 // coordinator attaches to it, on a thread watches it. Its border column
 // can be dragged, and { } b change it from the keys.
 //
-// Its state (width, slim strip, expanded projects) is part of the
+// Its state (width, slim strip, keyboard row) is part of the
 // server-owned view; the rest here only draws and hit-tests.
 
 // SidebarLayout is the sidebar's layout: part of the server-owned view
@@ -65,8 +65,8 @@ type treeRow struct {
 	// thread's state word; "" when no coordinator runs.
 	state   string
 	pct     int  // a thread's percent, -1 for none
-	open    bool // a project: expanded
-	current bool // a project: the current one, always expanded
+	last    bool // a coordinator or thread: the last row under its project
+	current bool // a project: the current one
 	hint    bool // a project: one of its threads is blocked or waiting
 	remote  bool // a project or coordinator row: its coordinator's remote control is on
 	threads int  // a project: its open threads
@@ -133,18 +133,15 @@ func markCursor(all []treeRow, w int, sel string) {
 	}
 }
 
-// treeIn is where a tree is drawn from: which project is current, which
-// session has the focus ("" on the dashboard) and which projects are
-// expanded besides the current one.
+// treeIn is where a tree is drawn from: which project is current and
+// which session has the focus ("" on the dashboard).
 type treeIn struct {
-	current  string
-	focus    string
-	expanded func(slug string) bool
+	current string
+	focus   string
 }
 
-// buildTree lays out the tree: every project, and under each expanded
-// one its coordinator and open threads (ordered as the dashboard orders
-// them). The row of the focused session is the one you are on, else the
+// buildTree lays out the tree: every project, and under each its
+// coordinator and open threads (ordered as the dashboard orders them). The row of the focused session is the one you are on, else the
 // current project's.
 func buildTree(ps []ProjectData, sessions []proto.SessionInfo, in treeIn) []treeRow {
 	byID := map[string]proto.SessionInfo{}
@@ -154,7 +151,6 @@ func buildTree(ps []ProjectData, sessions []proto.SessionInfo, in treeIn) []tree
 	var out []treeRow
 	for _, p := range ps {
 		pr := treeRow{kind: treeProject, slug: p.Slug, pct: -1, threads: len(p.Threads), current: p.Slug == in.current}
-		pr.open = pr.current || in.expanded != nil && in.expanded(p.Slug)
 		for _, s := range sessions {
 			if s.Role == proto.RoleCoordinator && s.Project == p.Slug {
 				pr.session, pr.state, pr.remote = s.ID, stateWord(s), s.RemoteControl
@@ -174,11 +170,11 @@ func buildTree(ps []ProjectData, sessions []proto.SessionInfo, in treeIn) []tree
 			pr.hint = pr.hint || tr.state == "blocked" || t.Status != nil && t.Status.NeedsYou != ""
 			kids = append(kids, tr)
 		}
+		coord := treeRow{kind: treeCoordinator, slug: p.Slug, session: pr.session, state: pr.state, remote: pr.remote, pct: -1}
+		kids = append([]treeRow{coord}, kids...)
+		kids[len(kids)-1].last = true
 		out = append(out, pr)
-		if pr.open {
-			out = append(out, treeRow{kind: treeCoordinator, slug: p.Slug, session: pr.session, state: pr.state, remote: pr.remote, pct: -1})
-			out = append(out, kids...)
-		}
+		out = append(out, kids...)
 	}
 	here := -1
 	for i, r := range out {
@@ -233,9 +229,10 @@ func sideTop(rows []treeRow, h int) int {
 }
 
 // sidebarLines draws the sidebar w columns wide (its border included) and
-// h rows tall. While it has the keyboard focus (a row is the cursor) its
-// border is in the accent colour and the cursor's row is highlighted
-// instead of the one you are on.
+// h rows tall: a header with the count of projects, then the tree. While
+// it has the keyboard focus (a row is the cursor) its border is in the
+// accent colour and the cursor's row is highlighted instead of the one
+// you are on.
 func sidebarLines(all []treeRow, w, h int) []string {
 	cw := max(w-1, 0) // less the border
 	slim := w <= sideSlim
@@ -246,16 +243,13 @@ func sidebarLines(all []treeRow, w, h int) []string {
 		border = styleAccent.Render("│")
 	}
 	out := make([]string, 0, h)
-	head, n := " PROJECTS", 0
-	if slim {
-		head = " PRJ"
-	}
+	n := 0
 	for _, r := range all {
 		if r.kind == treeProject {
 			n++
 		}
 	}
-	out = append(out, styleTitle.Render(fit(countLabel(head, n), cw))+reset+border)
+	out = append(out, sideHead(n, cw, slim)+reset+border)
 	if n == 0 {
 		note := " no projects"
 		if slim {
@@ -275,28 +269,57 @@ func sidebarLines(all []treeRow, w, h int) []string {
 	return out[:h]
 }
 
+// sideHead is the sidebar's header, cw cells wide: " PROJECTS", its
+// count of projects in the state column on the right; " PRJ 3" in the
+// slim strip.
+func sideHead(n, cw int, slim bool) string {
+	if slim {
+		return styleTitle.Render(fit(countLabel(" PRJ", n), cw))
+	}
+	count := ""
+	if n > 0 {
+		count = fmt.Sprint(n)
+	}
+	gap := cw - ansi.StringWidth(" PROJECTS") - len(count)
+	if gap < 1 {
+		return styleTitle.Render(fit(countLabel(" PROJECTS", n), cw))
+	}
+	return styleTitle.Render(" PROJECTS") + strings.Repeat(" ", gap) + styleFaint.Render(count)
+}
+
 // coordLook is a coordinator's glyph and style: "·" when none runs.
 func coordLook(state string) (string, lipgloss.Style) {
 	if state == "" {
-		return "·", styleFaint
+		return ic().none, styleFaint
 	}
 	return stateLook(state)
 }
 
-// treeLine is one tree row cw cells wide. Full width:
+// treeLine is one tree row cw cells wide, in this console's icon set
+// (icons.go). Full width, in the unicode set:
 //
-//	"▾● termilator   ◆ 2 "   a project: open or closed, its coordinator's
-//	                         glyph, the hint, its open threads
-//	"  ○ coordinator"        its coordinator
-//	"  ● Bootstrap re…  40%" a thread's title, with its progress
+//	" ■ termilator      2 ◆"  a project: its name, its open threads, the
+//	                          hint that one of them is blocked or waiting
+//	" ├─ coordinator      ○"  its coordinator
+//	" ├─ Bootstrap…   40% ●"  a thread's title, its progress, its state
+//	" └─ Sidebar tree     ▲"  the last row under the project
 //
-// The slim strip shows projects alone, "▸●term", the current one marked.
+// The nerd set opens the current project's folder and marks the
+// coordinator and threads with an icon of their own after the connector.
+// The counts and percents share one column, the state glyphs the last
+// one, so they line up down the tree; a long name or title is cut with
+// "…". Project rows are bold, the current one in the accent colour; the
+// connectors are faint.
+//
+// The slim strip shows projects alone, "▸●term", the current one marked
+// and its coordinator's glyph (or the hint) after it.
 // A coordinator with remote control on gets "⌁" after the project's name,
 // in either width, and after "coordinator".
 // The row you are on is in reverse video (and, in the slim strip, marked),
 // so colour is never the only signal. While the sidebar has the keyboard
 // focus, the keyboard's row is instead, in the accent colour.
 func treeLine(r treeRow, cw int, slim, focused bool) string {
+	i := ic()
 	sel := styleSel.Bold(true)
 	if focused {
 		r.here = r.cursor
@@ -304,16 +327,16 @@ func treeLine(r treeRow, cw int, slim, focused bool) string {
 	}
 	rc := ""
 	if r.remote {
-		rc = remoteMark
+		rc = i.remote
 	}
 	if slim {
 		mark := " "
 		if r.current {
-			mark = "▸"
+			mark = i.current
 		}
 		g, st := coordLook(r.state)
 		if r.hint && r.state != "blocked" {
-			g, st = "◆", styleWarn
+			g, st = i.hint, styleWarn
 		}
 		name := []rune(r.slug)
 		name = name[:min(len(name), max(cw-2-len([]rune(rc)), 0))]
@@ -322,49 +345,67 @@ func treeLine(r treeRow, cw int, slim, focused bool) string {
 		}
 		return fit(mark+st.Render(g)+string(name)+rc, cw)
 	}
+	// The right-hand columns: a count or percent, then a glyph.
+	right := func(num string, g string, st lipgloss.Style, hl bool) string {
+		if hl {
+			return num + " " + g
+		}
+		return styleFaint.Render(num) + " " + st.Render(g)
+	}
+	const rw = pctCol + 2
 	switch r.kind {
 	case treeProject:
-		toggle := "▸"
-		if r.open {
-			toggle = "▾"
-		}
-		g, st := coordLook(r.state)
-		hint := " "
+		count := fmt.Sprintf("%*d", pctCol, r.threads)
+		hint, hst := " ", stylePlain
 		if r.hint {
-			hint = "◆"
+			hint, hst = i.hint, styleWarn
 		}
-		count := fmt.Sprintf(" %d ", r.threads)
-		nw := max(cw-3-1-len(count), 1)
-		name := fit(r.slug, nw)
-		if rc != "" {
-			name = fit(ansi.Truncate(r.slug, max(nw-1, 0), "…")+rc, nw)
-		}
-		if r.here {
-			return sel.Render(fit(toggle+g+" "+name+hint+count, cw))
-		}
-		cnt := styleFaint.Render(count)
-		if r.threads > 0 {
-			cnt = count
-		}
-		nm := name
+		folder := i.folder
 		if r.current {
-			nm = styleHead.Render(name)
+			folder = i.folderOpen
 		}
-		return fit(styleFaint.Render(toggle)+st.Render(g)+" "+nm+styleWarn.Render(hint)+cnt, cw)
-	case treeCoordinator:
-		g, st := coordLook(r.state)
+		nw := max(cw-3-rw, 1)
+		name := fit(ansi.Truncate(r.slug, max(nw-ansi.StringWidth(rc), 0), "…")+rc, nw)
 		if r.here {
-			return sel.Render(fit("  "+g+" coordinator"+rc, cw))
+			return " " + sel.Render(fit(folder+" "+name+right(count, hint, hst, true), cw-1))
 		}
-		label := "coordinator"
+		look, mark := styleHead, styleFaint.Render(folder)
+		if r.current {
+			look, mark = styleTitle, styleAccent.Render(folder)
+		}
+		cnt := right(count, hint, hst, false) // no threads: faint
+		if r.threads > 0 {
+			cnt = count + " " + hst.Render(hint)
+		}
+		return fit(" "+mark+" "+look.Render(name)+cnt, cw)
+	}
+	conn, node := i.mid, i.thread
+	if r.last {
+		conn = i.end
+	}
+	if r.kind == treeCoordinator {
+		node = i.coord
+	}
+	lead := " " + styleFaint.Render(conn) + " "
+	if node != "" {
+		lead = " " + styleFaint.Render(conn+node) + " "
+	}
+	ld := ansi.StringWidth(lead)
+	lw := max(cw-ld-rw, 1)
+	if r.kind == treeCoordinator {
+		g, st := coordLook(r.state)
+		label := fit("coordinator"+rc, lw+pctCol)
+		if r.here {
+			return lead + sel.Render(fit(label+" "+g, cw-ld))
+		}
 		if r.state == "" {
 			label = styleFaint.Render(label)
 		}
-		return fit("  "+st.Render(g)+" "+label+rc, cw)
+		return fit(lead+label+" "+st.Render(g), cw)
 	}
 	g, st := stateLook(r.state)
 	if g == "" {
-		g = "·"
+		g, st = i.none, styleFaint
 	}
 	// The percent has a column of its own, the same width on every row,
 	// so titles are cut at the same place; the title gets the room (the
@@ -373,27 +414,25 @@ func treeLine(r treeRow, cw int, slim, focused bool) string {
 	if r.pct >= 0 {
 		pct = fmt.Sprintf("%*d%%", pctCol-1, r.pct)
 	}
-	label := clipWord(cmp.Or(r.title, r.thread), max(cw-4-pctCol, 1))
+	label := clipWord(cmp.Or(r.title, r.thread), lw)
 	if r.here {
-		return sel.Render(fit("  "+g+" "+label+pct, cw))
+		return lead + sel.Render(fit(label+right(pct, g, st, true), cw-ld))
 	}
-	return fit("  "+st.Render(g)+" "+label+styleFaint.Render(pct), cw)
+	return fit(lead+label+right(pct, g, st, false), cw)
 }
 
 // sideHitAt is what column x, row y of a sidebar w×h holds: the border,
-// or a tree row; toggle is set on a project's ▸ ▾ (its first two
-// columns).
-func sideHitAt(all []treeRow, w, h, x, y int) (r treeRow, ok, toggle, border bool) {
+// or a tree row.
+func sideHitAt(all []treeRow, w, h, x, y int) (r treeRow, ok, border bool) {
 	if x == w-1 {
-		return r, false, false, true
+		return r, false, true
 	}
 	rows := shownRows(all, w)
 	i := sideTop(rows, h) + y - 1
 	if y < 1 || x < 0 || x >= w-1 || i >= len(rows) {
-		return r, false, false, false
+		return r, false, false
 	}
-	r = rows[i]
-	return r, true, r.kind == treeProject && w > sideSlim && x < 2, false
+	return rows[i], true, false
 }
 
 // Target is where a click on the sidebar goes: a project's dashboard, its
@@ -504,7 +543,7 @@ func (c *client) sideTree() []treeRow {
 	if c.focus != nil {
 		focus = c.focus.info.ID
 	}
-	rows := buildTree(c.side.projects, c.side.sessions, treeIn{current: c.sideCurrent(), focus: focus, expanded: c.v.IsExpanded})
+	rows := buildTree(c.side.projects, c.side.sessions, treeIn{current: c.sideCurrent(), focus: focus})
 	if c.sideFocus {
 		markCursor(rows, c.sideW, c.v.SideSel)
 	}
@@ -540,8 +579,7 @@ func (c *client) sideFocusOn(on bool) {
 }
 
 // sideKeyboard runs a key while the sidebar has the keyboard: a sidebar
-// key (sideActions) moves its cursor, opens or closes a project or opens
-// the row; tab, like esc, gives the keyboard back to the pane; any other
+// key (sideActions) moves its cursor or opens the row; tab, like esc, gives the keyboard back to the pane; any other
 // key is dropped, so nothing reaches the pane. c.mu held; released here.
 func (c *client) sideKeyboard(k uv.Key) {
 	name := keyName(k)
@@ -572,9 +610,6 @@ func (c *client) sideKeyboard(k uv.Key) {
 	c.poke()
 	if st.sel != "" {
 		c.act(proto.MethodViewSideSel, proto.ViewParams{Key: st.sel})
-	}
-	if st.project != "" {
-		c.act(proto.MethodViewExpand, proto.ViewParams{Project: st.project, Expand: st.open})
 	}
 	if st.target != nil && !st.here {
 		c.sideGo(*st.target)
@@ -649,8 +684,7 @@ func (c *client) sideKey(key string) {
 }
 
 // sideMouse handles the mouse over the sidebar, or dragging its border:
-// a click on ▸ ▾ opens or closes a project, on a row goes where it points
-// (sideGo). c.mu held; released here.
+// a click on a row goes where it points (sideGo). c.mu held; released here.
 func (c *client) sideMouse(m emu.Mouse) {
 	sd := c.side
 	switch {
@@ -673,20 +707,12 @@ func (c *client) sideMouse(m emu.Mouse) {
 		c.mu.Unlock()
 		return
 	}
-	r, ok, toggle, border := sideHitAt(c.sideTree(), c.sideW, c.rows, m.X, m.Y)
+	r, ok, border := sideHitAt(c.sideTree(), c.sideW, c.rows, m.X, m.Y)
 	t, can, why := r.target()
 	switch {
 	case border:
 		sd.drag = true
 	case !ok:
-	case toggle && r.current:
-		c.flash = r.slug + " is the current project: it stays open"
-		c.status()
-	case toggle:
-		c.mu.Unlock()
-		c.act(proto.MethodViewExpand, proto.ViewParams{Project: r.slug, Expand: !r.open})
-		c.poke()
-		return
 	case !can:
 		c.flash = why
 		c.status()
@@ -740,8 +766,8 @@ func (c *client) sideGo(t Target) {
 const (
 	sideUp = iota
 	sideDown
-	sideOpen  // expand a project; on an open one, down to its first row
-	sideClose // collapse a project; elsewhere, up to its project
+	sideIn    // on a project, down to its first row
+	sideOut   // on a row under a project, up to it
 	sideEnter // what a click does
 	sideBack  // the focus goes back to the list or the pane
 )
@@ -757,8 +783,8 @@ type sideAction struct {
 var sideActions = []sideAction{
 	{[]string{"up", "k"}, sideUp, "↑ ↓ k j", "move through the tree"},
 	{[]string{"down", "j"}, sideDown, "", ""},
-	{[]string{"right", "l"}, sideOpen, "→ ←", "open / close a project, as ▸ ▾ do; ← on a row under a project goes up to it"},
-	{[]string{"left", "h"}, sideClose, "", ""},
+	{[]string{"right", "l"}, sideIn, "→ ←", "→ on a project goes down into it, ← on a row under a project up to it"},
+	{[]string{"left", "h"}, sideOut, "", ""},
 	{[]string{"enter"}, sideEnter, "enter", "what a click does: a project shows its dashboard, its coordinator attaches, a thread watches it"},
 	{[]string{"esc"}, sideBack, "esc", "back to the list (in a session: to the pane)"},
 }
@@ -774,15 +800,13 @@ func sideOp(key string) (op int, ok bool) {
 }
 
 // sideStep is what a sidebar key does to the tree: move the cursor to
-// sel, open or close project, go to a row's target, or say msg.
+// sel, go to a row's target, or say msg.
 type sideStep struct {
-	sel     string
-	project string
-	open    bool // with project: open it, else close it
-	target  *Target
-	here    bool // target is the row you are on
-	msg     string
-	back    bool
+	sel    string
+	target *Target
+	here   bool // target is the row you are on
+	msg    string
+	back   bool
 }
 
 // sideKeyStep decides what sidebar key op does with the cursor at sel in
@@ -808,26 +832,15 @@ func sideKeyStep(all []treeRow, w int, sel string, op int) sideStep {
 		return moveTo(i - 1)
 	case sideDown:
 		return moveTo(i + 1)
-	case sideOpen:
-		switch {
-		case r.kind != treeProject:
-		case !r.open:
-			return sideStep{project: r.slug, open: true, sel: r.key()}
-		case w > sideSlim:
+	case sideIn:
+		if r.kind == treeProject && w > sideSlim {
 			return moveTo(i + 1)
 		}
-	case sideClose:
-		switch {
-		case r.kind != treeProject:
-			for j := i - 1; j >= 0; j-- {
-				if rows[j].kind == treeProject {
-					return moveTo(j)
-				}
+	case sideOut:
+		for j := i - 1; j >= 0 && r.kind != treeProject; j-- {
+			if rows[j].kind == treeProject {
+				return moveTo(j)
 			}
-		case r.current:
-			return sideStep{msg: r.slug + " is the current project: it stays open"}
-		case r.open:
-			return sideStep{project: r.slug, open: false, sel: r.key()}
 		}
 	case sideEnter:
 		t, can, why := r.target()
@@ -840,7 +853,7 @@ func sideKeyStep(all []treeRow, w int, sel string, op int) sideStep {
 }
 
 // sideHint is the hint while the sidebar has the keyboard focus.
-const sideHint = "sidebar: ↑ ↓ move · → ← open/close · enter open · esc back"
+const sideHint = "sidebar: ↑ ↓ move · → ← in/out · enter open · esc back"
 
 // pctCol is the width of a thread row's percent column: " 100%".
 const pctCol = 5

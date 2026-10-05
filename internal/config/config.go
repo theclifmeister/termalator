@@ -1,7 +1,8 @@
 // Package config reads and writes ~/.termilator/config.toml, the human's
 // settings (docs/SPEC.md §5.1, §11.2): the per-project safety settings
 // under [projects.<slug>] and the default agent; the prefix key ([keys])
-// belongs to the TUI, which reads it itself.
+// and the icon set ([ui] icons) belong to the TUI, which reads them
+// itself.
 //
 // Changing safety settings is a human action: tm writes this file only
 // from the TUI's settings popups, on the human's keypress (write.go). It

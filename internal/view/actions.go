@@ -1,7 +1,5 @@
 package view
 
-import "slices"
-
 // The actions: what clients ask the server to do to a view (the view.*
 // control methods, docs/SPEC.md §3.3). Each changes v in place and says
 // whether anything changed; the server bumps Seq and broadcasts.
@@ -35,21 +33,6 @@ func (v *View) ShowProject(project string) bool {
 	old := v.Clone()
 	v.Mode, v.Current, v.Selected = ModeDashboard, project, "p:"+project
 	return !Equal(old, *v)
-}
-
-// Expand opens (open) or closes project in the sidebar's tree. The
-// current project stays open whatever its entry says.
-func (v *View) Expand(project string, open bool) bool {
-	if project == "" || slices.Contains(v.Expanded, project) == open {
-		return false
-	}
-	if open {
-		v.Expanded = append(v.Expanded, project)
-		slices.Sort(v.Expanded)
-	} else {
-		v.Expanded = slices.DeleteFunc(v.Expanded, func(p string) bool { return p == project })
-	}
-	return true
 }
 
 // Remove forgets session id, which ended: a view showing it goes back to
