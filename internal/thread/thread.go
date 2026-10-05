@@ -31,10 +31,13 @@ const (
 // Record is threads/<id>/thread.toml (docs/SPEC.md §5.1). Only tm writes
 // it, always under its lock.
 type Record struct {
-	ID       string `toml:"id" json:"id"`
-	Title    string `toml:"title" json:"title"`
-	Task     string `toml:"task,omitempty" json:"task,omitempty"` // "T12"
-	Agent    string `toml:"agent" json:"agent"`
+	ID    string `toml:"id" json:"id"`
+	Title string `toml:"title" json:"title"`
+	Task  string `toml:"task,omitempty" json:"task,omitempty"` // "T12"
+	Agent string `toml:"agent" json:"agent"`
+	// Model is the model the thread's agent runs (tm thread start
+	// --model, one of the manifest's [[models]]); "" for its default.
+	Model    string `toml:"model,omitempty" json:"model,omitempty"`
 	Repo     string `toml:"repo,omitempty" json:"repo,omitempty"`
 	Base     string `toml:"base,omitempty" json:"base,omitempty"`
 	Branch   string `toml:"branch,omitempty" json:"branch,omitempty"`

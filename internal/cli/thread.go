@@ -15,8 +15,10 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/theclifmeister/termilator/internal/agent"
 	"github.com/theclifmeister/termilator/internal/caller"
 	"github.com/theclifmeister/termilator/internal/config"
+	"github.com/theclifmeister/termilator/internal/home"
 	"github.com/theclifmeister/termilator/internal/project"
 	"github.com/theclifmeister/termilator/internal/proto"
 	"github.com/theclifmeister/termilator/internal/server"
@@ -28,7 +30,7 @@ import (
 
 const threadUsage = `usage: tm thread <command> [--project <slug>] [--json]
 
-  start [--task T12] [--agent A] [--repo PATH] [--base B] [--approved-by-user] [--over-cap] "title"
+  start [--task T12] [--agent A] [--model M] [--repo PATH] [--base B] [--approved-by-user] [--over-cap] "title"
   list
   show <id>
   read <id> [--lines N]          the thread's screen as text
@@ -107,7 +109,7 @@ func runThread(e *Env, args []string) error {
 	}
 	switch sub {
 	case "start":
-		o := startOpts{task: f.String("task"), agent: f.String("agent"), repo: f.String("repo"),
+		o := startOpts{task: f.String("task"), agent: f.String("agent"), model: f.String("model"), repo: f.String("repo"),
 			base: f.String("base"), approved: f.Bool("approved-by-user"), overCap: f.Bool("over-cap")}
 		run = func(p *project.Project, pos []string) error {
 			if len(pos) > 1 {
@@ -209,13 +211,21 @@ func runThread(e *Env, args []string) error {
 }
 
 type startOpts struct {
-	title                   string
-	task, agent, repo, base *string
-	approved, overCap       *bool
+	title              string
+	task, agent, model *string
+	repo, base         *string
+	approved, overCap  *bool
 }
 
 func (e *Env) threadStart(p *project.Project, o startOpts, asJSON bool) error {
 	if err := e.coordinatorOnly(p, "starting threads"); err != nil {
+		return err
+	}
+	agentName := *o.agent
+	if agentName == "" {
+		agentName = "claude"
+	}
+	if err := checkModel(agentName, *o.model); err != nil {
 		return err
 	}
 	cfg, err := config.Load()
@@ -262,10 +272,6 @@ func (e *Env) threadStart(p *project.Project, o startOpts, asJSON bool) error {
 	if o.title == "" {
 		return usagef("a thread needs a title, or --task T12")
 	}
-	agentName := *o.agent
-	if agentName == "" {
-		agentName = "claude"
-	}
 	repo := *o.repo
 	if repo != "" {
 		repo = e.abs(repo)
@@ -279,7 +285,7 @@ func (e *Env) threadStart(p *project.Project, o startOpts, asJSON bool) error {
 		return usagef("--base needs a repo")
 	}
 	now := time.Now().UTC()
-	rec := thread.Record{Title: o.title, Agent: agentName, Repo: repo, State: thread.Running, Created: now, LastPrompt: now}
+	rec := thread.Record{Title: o.title, Agent: agentName, Model: *o.model, Repo: repo, State: thread.Running, Created: now, LastPrompt: now}
 	if task != nil {
 		rec.Task = task.Ref()
 	}
@@ -333,6 +339,9 @@ func (e *Env) threadStart(p *project.Project, o startOpts, asJSON bool) error {
 		return fail(err)
 	}
 	detail := strings.TrimSpace(r.Task + " " + r.Title)
+	if r.Model != "" {
+		detail += " (model " + r.Model + ")"
+	}
 	switch {
 	case *o.overCap:
 		detail += " (over the parallel threads cap, approved by the user)"
@@ -347,14 +356,49 @@ func (e *Env) threadStart(p *project.Project, o startOpts, asJSON bool) error {
 		return fail(err)
 	}
 	if asJSON {
-		return e.printJSON(map[string]any{"id": r.ID, "worktree": r.Worktree, "branch": r.Branch, "base": r.Base, "session": info.ID, "task": r.Task})
+		return e.printJSON(map[string]any{"id": r.ID, "worktree": r.Worktree, "branch": r.Branch, "base": r.Base, "session": info.ID, "task": r.Task, "model": r.Model})
 	}
 	fmt.Fprintf(e.Stdout, "started %s in %s", r.ID, r.Worktree)
 	if r.Branch != "" {
 		fmt.Fprintf(e.Stdout, " on %s from %s", r.Branch, r.Base)
 	}
+	if r.Model != "" {
+		fmt.Fprintf(e.Stdout, " with %s", r.Model)
+	}
 	fmt.Fprintf(e.Stdout, " (session %s)\n", info.ID)
 	return nil
+}
+
+// checkModel refuses a model the agent's manifest doesn't list in its
+// [[models]] (docs/SPEC.md §8.2); "" is the agent's default.
+func checkModel(agentName, model string) error {
+	if model == "" {
+		return nil
+	}
+	dir, err := home.AgentsDir()
+	if err != nil {
+		return err
+	}
+	reg, err := agent.Load(dir) // a broken user manifest is skipped
+	if reg == nil {
+		return err
+	}
+	a, ok := reg.Get(agentName)
+	if !ok {
+		return &tasks.Error{Code: "unknown-agent", Msg: fmt.Sprintf("no agent %q (tm agent list)", agentName)}
+	}
+	models := agent.ModelsOf(a)
+	if len(models) == 0 {
+		return &tasks.Error{Code: "unknown-model", Msg: fmt.Sprintf("agent %s lists no models; start the thread without --model", agentName)}
+	}
+	var names []string
+	for _, m := range models {
+		if m.Name == model {
+			return nil
+		}
+		names = append(names, m.Name)
+	}
+	return &tasks.Error{Code: "unknown-model", Msg: fmt.Sprintf("%q isn't one of %s's models: %s (tm context says when each fits)", model, agentName, strings.Join(names, ", "))}
 }
 
 // pausedErr refuses to start or restart a thread of a paused project
@@ -398,7 +442,7 @@ func (e *Env) launchThread(p *project.Project, r *thread.Record, brief, resume s
 	params := proto.SessionStartParams{
 		Agent: r.Agent, Cwd: r.Worktree, Cols: 120, Rows: 40,
 		Role: proto.RoleThread, Project: p.Slug, Thread: r.ID,
-		Brief: brief, Kickoff: thread.Kickoff(brief), Yolo: safety.Yolo, ResumeSID: resume,
+		Brief: brief, Kickoff: thread.Kickoff(brief), Yolo: safety.Yolo, Model: r.Model, ResumeSID: resume,
 	}
 	var res proto.SessionStartResult
 	if err := e.call(proto.MethodSessionStart, params, &res); err != nil {
@@ -487,6 +531,9 @@ func (row threadRow) Line() string {
 	if row.Reason != "" {
 		b.WriteString("/" + row.Reason)
 	}
+	if row.Model != "" {
+		b.WriteString("  model: " + row.Model)
+	}
 	if st.PercentSource != "" {
 		fmt.Fprintf(&b, "  %d%% %s", st.Percent, st.PercentSource)
 	}
@@ -562,7 +609,7 @@ func (e *Env) threadShow(p *project.Project, id string, asJSON bool) error {
 	w := tabwriter.NewWriter(e.Stdout, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(w, row.Line())
 	for _, kv := range [][2]string{{"worktree", r.Worktree}, {"branch", r.Branch}, {"base", r.Base}, {"repo", r.Repo},
-		{"agent", r.Agent}, {"session", r.Session}, {"state", r.State}, {"folder", thread.Dir(p, id)}} {
+		{"agent", r.Agent}, {"model", r.Model}, {"session", r.Session}, {"state", r.State}, {"folder", thread.Dir(p, id)}} {
 		if kv[1] != "" {
 			fmt.Fprintf(w, "  %s:\t%s\n", kv[0], kv[1])
 		}

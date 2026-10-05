@@ -44,3 +44,6 @@ func sub(name string) (string, error) {
 
 // TrashDir is <home>/.trash, where tm project delete moves a project.
 func TrashDir() (string, error) { return sub(".trash") }
+
+// AgentsDir is <home>/agents, the user's agent manifests.
+func AgentsDir() (string, error) { return sub("agents") }

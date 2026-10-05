@@ -24,7 +24,7 @@ func sampleInfo(now time.Time) *infoData {
 	return &infoData{
 		slug:    "demo",
 		session: proto.SessionInfo{ID: "s-4", Role: proto.RoleThread, Project: "demo", Thread: "t-0002", State: "working"},
-		rec: &thread.Record{ID: "t-0002", Title: "Info panel", Task: "T26", Branch: "tm/demo/t-0002-info",
+		rec: &thread.Record{ID: "t-0002", Title: "Info panel", Task: "T26", Model: "sonnet", Branch: "tm/demo/t-0002-info",
 			Worktree: "/tmp/wt/t-0002", ReportAt: now.Add(-5 * time.Minute)},
 		status: &thread.Status{Percent: 40, StepsDone: 2, StepsTotal: 5, Current: "Write the tests",
 			NeedsYou: "Which key toggles it?", Updated: now.Add(-2 * time.Minute)},
@@ -57,7 +57,7 @@ func TestInfoLines(t *testing.T) {
 	for _, want := range []string{
 		"T26 Info panel on thread panes", "started", "steps", "2/4",
 		ic().todoDone + " Layout", ic().todoNow + " Toggle", ic().todoOpen + " Clicks",
-		"thread    t-0002", "working", "now       ▸ Write the tests", "needs you Which key toggles it?",
+		"thread    t-0002", "working", "model     sonnet", "now       ▸ Write the tests", "needs you Which key toggles it?",
 		"PR        #70 open, checks pending,\n           behind main",
 		"Last report · 5m ago", "Layout done.", "Tests next.", "Next", "• Merge PR #70", "• Release it",
 		"branch    tm/demo/t-0002-info", "worktree  /tmp/wt/t-0002", "active    2m ago",

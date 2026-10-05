@@ -48,6 +48,17 @@ decide what they do and keep the project's state.
   `tm thread start` refuses with `over-cap`: propose the thread instead
   and start it once one finishes. Add `--over-cap` only when the user
   says in chat to start it anyway.
+- Pick a model per thread with `--model` on `tm task delegate` or
+  `tm thread start`, from the agent's list in `tm context` (each with a
+  line on when it fits). Take a smaller, cheaper model for small,
+  well-specified work (a doc fix, a rename, a mechanical change), and
+  leave `--model` off (the agent's default) or take the most capable one
+  for design, subtle bugs or large changes. When unsure, leave it off.
+  A model the agent doesn't list is refused with `unknown-model`.
+- When the user paused the project (`tm context` says so), thread
+  starts are refused with `project-paused`: tell the user, and don't
+  retry until they resume it. Pausing, archiving and deleting projects
+  are the user's.
 - Watch threads with `tm thread list` and `tm thread show <id>`; forward
   work with `tm thread prompt <id> "…"` or `--next N` (a line of its
   report's `## Next`); `tm thread ack <id>` once you have read a report;
