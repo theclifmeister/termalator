@@ -10,19 +10,19 @@
                        │
                        │
                        │
-                       │  ╭─ demo · prefix = ctrl+b ────────────────────────────────────────────────────────────── × ╮
-                       │  │  1 Overview   2 Inbox   3 Tasks   4 Settings   5 Keys                                    │
-                       │  │                                                                                          │
-                       │  │ IN MOTION                                                                                │
-                       │  │ T1    Write the README  started · 1/2                                                    │
-                       │  │       ✓ Draft                                                                            │
-                       │  │       ○ Review                                                                           │
-                       │  │                                                                                          │
-                       │  │ ON DECK                                                                                  │
-                       │  │ T2    Ship it  open                                                                      │
-                       │  │                                                                                          │
-                       │  │ done: 0 · read-only: the coordinator changes tasks                                       │
-                       │  ╰──────────────────────────────────────────────────────────────────────────────────────────╯
+                       │ ╭─ demo · prefix = ctrl+b ──────────────────────────────────────────────────────────────── × ╮
+                       │ │  1 Overview   2 Inbox   3 Tasks   4 Settings   5 Keys                                      │
+                       │ │                                                                                            │
+                       │ │ IN MOTION                                                                                  │
+                       │ │ T1    Write the README  started · 1/2                                                      │
+                       │ │       ✓ Draft                                                                              │
+                       │ │       ○ Review                                                                             │
+                       │ │                                                                                            │
+                       │ │ ON DECK                                                                                    │
+                       │ │ T2    Ship it  open                                                                        │
+                       │ │                                                                                            │
+                       │ │ done: 0 · read-only: the coordinator changes tasks                                         │
+                       │ ╰────────────────────────────────────────────────────────────────────────────────────────────╯
                        │
                        │
                        │

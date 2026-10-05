@@ -20,6 +20,9 @@ import (
 // Main is the view every console joins unless it asks for its own.
 const Main = "main"
 
+// MaxKey bounds a row key (Selected, SideSel) a client sends.
+const MaxKey = 512
+
 // MaxExpanded bounds the projects a view keeps expanded.
 const MaxExpanded = 256
 
@@ -62,6 +65,10 @@ type View struct {
 	// the current one, sorted. The tree's highlighted row follows from
 	// the view too (Here).
 	Expanded []string `json:"expanded,omitempty"`
+	// SideSel is the tree row the keyboard is on in the sidebar (its key:
+	// "p:<project>", "c:<project>" or "t:<project>/<thread>"); a key no
+	// longer in the tree, or "", means the row you are on (Here).
+	SideSel string `json:"side_sel,omitempty"`
 
 	// Latest is the client whose window sizes the layout: the one that
 	// last typed, resized its window or changed the layout. Cols and Rows

@@ -381,6 +381,11 @@ func (vs *views) do(method string, p proto.ViewParams) (view.View, *proto.Error)
 		v.Expand(p.Project, p.Expand)
 	case proto.MethodViewSelect:
 		v.Selected = p.Key
+	case proto.MethodViewSideSel:
+		if len(p.Key) > view.MaxKey {
+			return before, proto.Errorf(proto.ErrBadParams, "key too long")
+		}
+		v.SideSel = p.Key
 	case proto.MethodViewSplit:
 		if v.Mode != view.ModeLayout || v.Root == nil {
 			return before, proto.Errorf(proto.ErrRefused, "nothing to split")

@@ -241,7 +241,7 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 		t.Fatalf("a thread's report is in NEEDS YOU:\n%s", w.Screen())
 	}
 	w.Type("j")
-	w.WaitFor("report 1 (new) next:", wait)
+	w.WaitFor("report new · for the coordinator", wait)
 	w.Golden("dashboard-thread.txt", dashMasks...)
 
 	// 140 columns wide: the details beside the list instead of under it.
@@ -262,7 +262,7 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	}
 	w.Key(keyEsc)
 	env.MustCLI("thread", "ack", "t-0001", "--project", "demo")
-	w.WaitFor("report 1 (acked) next:", wait)
+	w.WaitFor("report read", wait)
 	w.Type("i")
 	w.WaitFor("demo inbox", wait)
 	w.WaitFor("t-0001 handed in report 1", wait)

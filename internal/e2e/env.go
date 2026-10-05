@@ -163,6 +163,9 @@ func New(t testing.TB) *Env {
 		"TERMALATOR_ATTACH_LOG="+e.AttachLog,
 		// No release checks against GitHub (tm doctor, tm update).
 		"TERMALATOR_UPDATE_URL=off",
+		// The server stops itself once this test process is gone, even
+		// when a timeout or ^C skips the cleanup (docs/OPERATIONS.md).
+		"TERMALATOR_TEST_OWNER="+strconv.Itoa(os.Getpid()),
 	)
 	t.Cleanup(func() {
 		e.cleanup()
@@ -379,6 +382,11 @@ func (e *Env) cleanup() {
 		if bytes.Contains(w.Raw(), []byte("WARNING: DATA RACE")) {
 			t.Errorf("window %d: tm reported a data race:\n%s", i+1, w.Raw())
 		}
+	}
+	// Every server a test started must be stopped here: track it, so the
+	// orphan check below kills it if stopping fails.
+	if pid := e.ServerPID(); Alive(pid) {
+		e.track(pid, "tm server")
 	}
 	if Alive(e.ServerPID()) {
 		// Collect the session processes before stopping, so the check

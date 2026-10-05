@@ -281,14 +281,17 @@ type client struct {
 	lastClick  click
 	statusHits []hint
 
-	bare        bool     // the view has no dashboard: detaching leaves
-	statusBar   bool     // the view's chrome has the status bar
-	dashboard   bool     // there is a dashboard to go back to
-	side        *sidebar // the projects sidebar, nil for none
-	sideW       int      // its width, 0 without one
-	cols, rows  int      // the window
-	paneCols    int      // the columns right of the sidebar
-	paneRows    int      // the rows above the status bar
+	bare      bool     // the view has no dashboard: detaching leaves
+	statusBar bool     // the view's chrome has the status bar
+	dashboard bool     // there is a dashboard to go back to
+	side      *sidebar // the projects sidebar, nil for none
+	sideW     int      // its width, 0 without one
+	// sideFocus: the sidebar has this console's keyboard (prefix+tab);
+	// the panes get no keys, paste or prefix meanwhile.
+	sideFocus   bool
+	cols, rows  int // the window
+	paneCols    int // the columns right of the sidebar
+	paneRows    int // the rows above the status bar
 	statusText  string
 	statusDrawn string
 	lastCursor  string
@@ -962,7 +965,7 @@ func (c *client) handle(ev uv.Event) {
 			return
 		}
 		p := c.focus
-		if p == nil || p.watch {
+		if p == nil || p.watch || c.sideFocus {
 			c.mu.Unlock()
 			return
 		}
@@ -1010,6 +1013,10 @@ func (c *client) key(k uv.Key) {
 		return
 	}
 	pending := c.pending
+	if c.sideFocus && !pending && !c.prefix.match(k) {
+		c.sideKeyboard(k)
+		return
+	}
 	do := prefixStep(c.prefix, pending, time.Now().Before(c.repeatUntil), k, c.dashboard)
 	c.pending = do.arm
 	redraw := pending || do.arm || c.flash != ""
@@ -1022,7 +1029,9 @@ func (c *client) key(k uv.Key) {
 		c.poke()
 	}
 	if do.input {
-		c.input(k)
+		if !c.sideFocus { // the sidebar has the keyboard: nothing leaks
+			c.input(k)
+		}
 		return
 	}
 	c.run(do)
@@ -1061,7 +1070,7 @@ type prefixDo struct {
 // (ctrl+arrows), zoom (z), close (x) and switch layout (space).
 var paneCommands = map[string]bool{
 	"%": true, `"`: true, "o": true, "z": true, "x": true, "space": true,
-	"{": true, "}": true, "b": true, // the sidebar
+	"{": true, "}": true, "b": true, "tab": true, // the sidebar
 	"left": true, "right": true, "up": true, "down": true,
 	"ctrl+left": true, "ctrl+right": true, "ctrl+up": true, "ctrl+down": true,
 }
@@ -1166,6 +1175,8 @@ func (c *client) paneCommand(cmd string) {
 		}
 	case "{", "}", "b":
 		c.sideKey(cmd)
+	case "tab":
+		c.sideFocusOn(true)
 	case "left", "right", "up", "down":
 		d := directions[cmd]
 		c.act(proto.MethodViewFocus, proto.ViewParams{DX: d[0], DY: d[1]})
@@ -1272,6 +1283,8 @@ func (c *client) status() {
 	}
 	where := ""
 	switch {
+	case c.sideFocus:
+		where = sideHint
 	case c.focus.watch:
 		where = "watch-only, " + takeOverHint
 	case c.focus.info.Role == proto.RoleThread:
@@ -1408,6 +1421,12 @@ func (c *client) mouse(ev uv.Event) {
 		return
 	}
 	_, click := ev.(uv.MouseClickEvent)
+	if click && c.sideFocus {
+		// A click on a pane takes the keyboard back from the sidebar.
+		c.sideFocus = false
+		c.status()
+		c.poke()
+	}
 	refocus := click && p != c.focus
 	if refocus {
 		c.focus = p // at once here; the view follows

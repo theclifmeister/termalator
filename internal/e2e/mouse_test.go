@@ -25,7 +25,7 @@ func TestSmokeMouseDashboard(t *testing.T) {
 
 	w.ClickText("? help", 28)
 	w.WaitFor("keys · prefix =", wait)
-	w.WaitFor("With the mouse", wait)
+	w.WaitFor("On the dashboard", wait)
 	// The wheel scrolls the help.
 	top := w.Screen()
 	w.Wheel(false, 80, 10)
@@ -170,7 +170,7 @@ func TestSmokeMousePopupsAndTakeOver(t *testing.T) {
 	before := strings.Split(w.Screen(), "\n")[y]
 	w.ClickText("Coordinator approves", 1)
 	w.WaitUntil("the setting changed", wait, func(sc string) bool { return strings.Split(sc, "\n")[y] != before })
-	w.Click(25, 10) // left of the popup
+	w.Click(40, 1) // above the popup, which takes the dashboard's width
 	w.WaitUntil("the popup closed", wait, func(sc string) bool { return !strings.Contains(sc, "1 Overview") })
 
 	x, y := w.TextAt("t-0001 Small fix", 1)

@@ -98,6 +98,11 @@ type Server struct {
 
 	// views are what consoles show (views.go).
 	views *views
+
+	// protocol is the protocol the hello claims, and deaf hangs up on
+	// every hello: test hooks (testhooks.go).
+	protocol int
+	deaf     bool
 }
 
 // Run runs a server until ctx is cancelled or a client calls server.stop.
@@ -166,7 +171,16 @@ func Run(ctx context.Context, opts Options) error {
 		conns:    map[net.Conn]struct{}{},
 
 		prevProject: map[string]string{},
+		protocol:    proto.Protocol,
 	}
+	if n, deaf := testHello(); n > 0 || deaf {
+		s.deaf = deaf
+		if n > 0 {
+			s.protocol = n
+		}
+		logger.Printf("test hook %s: protocol %d, deaf %v", testHelloEnv, s.protocol, s.deaf)
+	}
+	s.watchOwner()
 	s.views = newViews(s, filepath.Join(filepath.Dir(p.Sessions), "views.json"), logger.Printf)
 	s.loadAgents()
 	toResume, lost := s.loadPrevious()
@@ -343,6 +357,9 @@ func (s *Server) handle(c *net.UnixConn) {
 		return
 	}
 	c.SetReadDeadline(time.Time{})
+	if s.deaf {
+		return
+	}
 	reply := s.hello()
 	if err := writeJSONLine(c, reply); err != nil {
 		return
@@ -366,7 +383,7 @@ func (s *Server) handle(c *net.UnixConn) {
 // hello is the server's side of the handshake.
 func (s *Server) hello() proto.Hello {
 	return proto.Hello{
-		Protocol: proto.Protocol,
+		Protocol: s.protocol,
 		Version:  version.Version,
 		Build:    s.build,
 		Bin:      s.opts.Bin,

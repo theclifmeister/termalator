@@ -56,8 +56,18 @@ func startServer(t *testing.T, p Paths) *running {
 	}()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		if c, err := Dial(p, proto.KindControl); err == nil {
+		c, err := Dial(p, proto.KindControl)
+		if err == nil {
 			c.Close()
+			break
+		}
+		// A test hook may make the server refuse this hello, or every one.
+		var mm *proto.MismatchError
+		if errors.As(err, &mm) {
+			break
+		}
+		if raw, err := net.Dial("unix", p.Socket); err == nil && os.Getenv(testHelloEnv) == "deaf" {
+			raw.Close()
 			break
 		}
 		select {

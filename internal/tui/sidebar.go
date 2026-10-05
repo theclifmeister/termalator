@@ -4,11 +4,14 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/theclifmeister/termalator/internal/config"
 	"github.com/theclifmeister/termalator/internal/emu"
@@ -68,6 +71,66 @@ type treeRow struct {
 	remote  bool // a project or coordinator row: its coordinator's remote control is on
 	threads int  // a project: its open threads
 	here    bool // the row you are on
+	// cursor is the keyboard's row, set while the sidebar has this
+	// console's keyboard focus (markCursor).
+	cursor bool
+}
+
+// key names r as View.SideSel does: "p:<project>", "c:<project>" or
+// "t:<project>/<thread>".
+func (r treeRow) key() string {
+	switch r.kind {
+	case treeCoordinator:
+		return "c:" + r.slug
+	case treeThread:
+		return "t:" + r.slug + "/" + r.thread
+	}
+	return "p:" + r.slug
+}
+
+// sideCursor is the index in rows of the keyboard's row: the row sel
+// names, else the row you are on, else the first; -1 without rows.
+func sideCursor(rows []treeRow, sel string) int {
+	here := -1
+	for i, r := range rows {
+		if sel != "" && r.key() == sel {
+			return i
+		}
+		if r.here && here < 0 {
+			here = i
+		}
+	}
+	if here < 0 && len(rows) > 0 {
+		here = 0
+	}
+	return here
+}
+
+// hereKey is the key of the row you are on, "" for none.
+func hereKey(rows []treeRow) string {
+	for _, r := range rows {
+		if r.here {
+			return r.key()
+		}
+	}
+	return ""
+}
+
+// markCursor marks the keyboard's row among the rows a sidebar w columns
+// wide shows: the sidebar has the keyboard focus.
+func markCursor(all []treeRow, w int, sel string) {
+	rows := shownRows(all, w)
+	i := sideCursor(rows, sel)
+	if i < 0 {
+		return
+	}
+	key := rows[i].key()
+	for j := range all {
+		if all[j].key() == key {
+			all[j].cursor = true
+			return
+		}
+	}
 }
 
 // treeIn is where a tree is drawn from: which project is current, which
@@ -154,10 +217,14 @@ func shownRows(rows []treeRow, w int) []treeRow {
 }
 
 // sideTop is the first row shown in h rows (one is the header), so that
-// the row you are on shows.
+// the keyboard's row, else the row you are on, shows.
 func sideTop(rows []treeRow, h int) int {
 	cur := -1
 	for i, r := range rows {
+		if r.cursor {
+			cur = i
+			break
+		}
 		if r.here {
 			cur = i
 		}
@@ -166,12 +233,18 @@ func sideTop(rows []treeRow, h int) int {
 }
 
 // sidebarLines draws the sidebar w columns wide (its border included) and
-// h rows tall.
+// h rows tall. While it has the keyboard focus (a row is the cursor) its
+// border is in the accent colour and the cursor's row is highlighted
+// instead of the one you are on.
 func sidebarLines(all []treeRow, w, h int) []string {
 	cw := max(w-1, 0) // less the border
 	slim := w <= sideSlim
 	rows := shownRows(all, w)
+	focused := slices.ContainsFunc(all, func(r treeRow) bool { return r.cursor })
 	border := styleFaint.Render("│")
+	if focused {
+		border = styleAccent.Render("│")
+	}
 	out := make([]string, 0, h)
 	head, n := " PROJECTS", 0
 	if slim {
@@ -194,7 +267,7 @@ func sidebarLines(all []treeRow, w, h int) []string {
 		if len(out) >= h {
 			break
 		}
-		out = append(out, treeLine(r, cw, slim)+reset+border)
+		out = append(out, treeLine(r, cw, slim, focused)+reset+border)
 	}
 	for len(out) < h {
 		out = append(out, strings.Repeat(" ", cw)+border)
@@ -221,9 +294,14 @@ func coordLook(state string) (string, lipgloss.Style) {
 // A coordinator with remote control on gets "⌁" after the project's name,
 // in either width, and after "coordinator".
 // The row you are on is in reverse video (and, in the slim strip, marked),
-// so colour is never the only signal.
-func treeLine(r treeRow, cw int, slim bool) string {
+// so colour is never the only signal. While the sidebar has the keyboard
+// focus, the keyboard's row is instead, in the accent colour.
+func treeLine(r treeRow, cw int, slim, focused bool) string {
 	sel := styleSel.Bold(true)
+	if focused {
+		r.here = r.cursor
+		sel = sel.Foreground(lipgloss.Cyan)
+	}
 	rc := ""
 	if r.remote {
 		rc = remoteMark
@@ -426,7 +504,82 @@ func (c *client) sideTree() []treeRow {
 	if c.focus != nil {
 		focus = c.focus.info.ID
 	}
-	return buildTree(c.side.projects, c.side.sessions, treeIn{current: c.sideCurrent(), focus: focus, expanded: c.v.IsExpanded})
+	rows := buildTree(c.side.projects, c.side.sessions, treeIn{current: c.sideCurrent(), focus: focus, expanded: c.v.IsExpanded})
+	if c.sideFocus {
+		markCursor(rows, c.sideW, c.v.SideSel)
+	}
+	return rows
+}
+
+// sideFocusOn gives the sidebar this console's keyboard (prefix+tab), or
+// gives it back to the focused pane.
+func (c *client) sideFocusOn(on bool) {
+	if !c.lock() {
+		return
+	}
+	here := ""
+	switch {
+	case on && (c.side == nil || c.sideW == 0):
+		c.flash = "no sidebar here"
+	case on && c.sideFocus:
+		c.sideFocus = false
+	case on:
+		// The keyboard's row starts on the row you are on.
+		c.sideFocus = true
+		here = hereKey(c.sideTree())
+		c.v.SideSel = here
+	default:
+		c.sideFocus = false
+	}
+	c.status()
+	c.mu.Unlock()
+	c.poke()
+	if here != "" && c.vc != nil {
+		c.act(proto.MethodViewSideSel, proto.ViewParams{Key: here})
+	}
+}
+
+// sideKeyboard runs a key while the sidebar has the keyboard: a sidebar
+// key (sideActions) moves its cursor, opens or closes a project or opens
+// the row; tab, like esc, gives the keyboard back to the pane; any other
+// key is dropped, so nothing reaches the pane. c.mu held; released here.
+func (c *client) sideKeyboard(k uv.Key) {
+	name := keyName(k)
+	op, ok := sideOp(name)
+	if name == "tab" {
+		op, ok = sideBack, true
+	}
+	if !ok || c.side == nil {
+		c.flash = ""
+		c.status()
+		c.mu.Unlock()
+		c.poke()
+		return
+	}
+	st := sideKeyStep(c.sideTree(), c.sideW, c.v.SideSel, op)
+	c.flash = st.msg
+	if st.back || st.target != nil && !st.here {
+		c.sideFocus = false
+	}
+	if st.target != nil && st.here {
+		c.flash = "you are on it"
+	}
+	if st.sel != "" {
+		c.v.SideSel = st.sel // at once here; the view follows
+	}
+	c.status()
+	c.mu.Unlock()
+	c.poke()
+	if st.sel != "" {
+		c.act(proto.MethodViewSideSel, proto.ViewParams{Key: st.sel})
+	}
+	if st.project != "" {
+		c.act(proto.MethodViewExpand, proto.ViewParams{Project: st.project, Expand: st.open})
+	}
+	if st.target != nil && !st.here {
+		c.sideGo(*st.target)
+	}
+	c.poke()
 }
 
 // appendSidebar draws the sidebar's changed lines. c.mu held.
@@ -577,6 +730,117 @@ func (c *client) sideGo(t Target) {
 		c.apply(c.vc.View())
 	}()
 }
+
+// The sidebar's keyboard (docs/SPEC.md §4): tab on the dashboard, or
+// prefix+tab in a session, gives it the focus; these keys then move its
+// cursor (the view's SideSel) and open what it is on. One table drives
+// the keys and the help.
+
+// Sidebar key operations.
+const (
+	sideUp = iota
+	sideDown
+	sideOpen  // expand a project; on an open one, down to its first row
+	sideClose // collapse a project; elsewhere, up to its project
+	sideEnter // what a click does
+	sideBack  // the focus goes back to the list or the pane
+)
+
+// sideAction is a sidebar key: its keys, what it does, its help line and
+// the mouse's way to the same thing (TestEverySidebarClickHasKey).
+type sideAction struct {
+	keys        []string
+	op          int
+	label, help string
+}
+
+var sideActions = []sideAction{
+	{[]string{"up", "k"}, sideUp, "↑ ↓ k j", "move through the tree"},
+	{[]string{"down", "j"}, sideDown, "", ""},
+	{[]string{"right", "l"}, sideOpen, "→ ←", "open / close a project, as ▸ ▾ do; ← on a row under a project goes up to it"},
+	{[]string{"left", "h"}, sideClose, "", ""},
+	{[]string{"enter"}, sideEnter, "enter", "what a click does: a project shows its dashboard, its coordinator attaches, a thread watches it"},
+	{[]string{"esc"}, sideBack, "esc", "back to the list (in a session: to the pane)"},
+}
+
+// sideOp is the sidebar operation of key; ok is false for none.
+func sideOp(key string) (op int, ok bool) {
+	for _, a := range sideActions {
+		if slices.Contains(a.keys, key) {
+			return a.op, true
+		}
+	}
+	return 0, false
+}
+
+// sideStep is what a sidebar key does to the tree: move the cursor to
+// sel, open or close project, go to a row's target, or say msg.
+type sideStep struct {
+	sel     string
+	project string
+	open    bool // with project: open it, else close it
+	target  *Target
+	here    bool // target is the row you are on
+	msg     string
+	back    bool
+}
+
+// sideKeyStep decides what sidebar key op does with the cursor at sel in
+// the tree all, drawn w columns wide.
+func sideKeyStep(all []treeRow, w int, sel string, op int) sideStep {
+	if op == sideBack {
+		return sideStep{back: true}
+	}
+	rows := shownRows(all, w)
+	i := sideCursor(rows, sel)
+	if i < 0 {
+		return sideStep{msg: "no projects"}
+	}
+	r := rows[i]
+	moveTo := func(j int) sideStep {
+		if j < 0 || j >= len(rows) || j == i {
+			return sideStep{}
+		}
+		return sideStep{sel: rows[j].key()}
+	}
+	switch op {
+	case sideUp:
+		return moveTo(i - 1)
+	case sideDown:
+		return moveTo(i + 1)
+	case sideOpen:
+		switch {
+		case r.kind != treeProject:
+		case !r.open:
+			return sideStep{project: r.slug, open: true, sel: r.key()}
+		case w > sideSlim:
+			return moveTo(i + 1)
+		}
+	case sideClose:
+		switch {
+		case r.kind != treeProject:
+			for j := i - 1; j >= 0; j-- {
+				if rows[j].kind == treeProject {
+					return moveTo(j)
+				}
+			}
+		case r.current:
+			return sideStep{msg: r.slug + " is the current project: it stays open"}
+		case r.open:
+			return sideStep{project: r.slug, open: false, sel: r.key()}
+		}
+	case sideEnter:
+		t, can, why := r.target()
+		if !can {
+			return sideStep{msg: why}
+		}
+		return sideStep{target: &t, here: r.here && r.kind != treeProject}
+	}
+	return sideStep{}
+}
+
+// sideHint is the hint while the sidebar has the keyboard focus.
+const sideHint = "sidebar: ↑ ↓ move · → ← open/close · enter open · esc back"
 
 // pctCol is the width of a thread row's percent column: " 100%".
 const pctCol = 5

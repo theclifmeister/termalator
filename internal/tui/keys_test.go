@@ -225,3 +225,56 @@ func TestOuterModes(t *testing.T) {
 		}
 	}
 }
+
+// TestSidebarFocusNoLeak: prefix+tab gives the sidebar the keyboard;
+// keys, paste and the prefix twice then never reach the pane (it has no
+// connection: anything sent would panic), and esc or prefix+tab give
+// the keyboard back.
+func TestSidebarFocusNoLeak(t *testing.T) {
+	c, err := newClient(server.Paths{}, log.New(io.Discard, "", 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.enc.Close()
+	c.prefix, c.statusBar = chord{'\\'}, true
+	c.setWindow(160, 40)
+	p := &pane{info: proto.SessionInfo{ID: "s-1", Role: proto.RoleCoordinator, Project: "demo"}}
+	c.v = view.View{Mode: view.ModeLayout, Root: &view.Node{Session: "s-1"}, Focus: "s-1"}
+	c.panes["s-1"], c.focus = p, p
+	c.side, c.sideW = &sidebar{}, sideDefault
+	pk := uv.Key{Code: '\\', Mod: uv.ModCtrl}
+	tab := uv.Key{Code: uv.KeyTab}
+
+	c.key(pk)
+	c.key(tab)
+	if !c.sideFocus || !strings.Contains(c.statusText, "sidebar: ↑ ↓ move") {
+		t.Fatalf("prefix+tab: focus %v status %q", c.sideFocus, c.statusText)
+	}
+	for _, k := range []uv.Key{{Code: 'x', Text: "x"}, {Code: uv.KeyF5}, {Code: 'c', Mod: uv.ModCtrl}} {
+		c.key(k)
+	}
+	c.handle(uv.PasteEvent{Content: "hello"})
+	c.key(pk)
+	c.key(pk) // the prefix twice: still not to the pane
+	if !c.sideFocus {
+		t.Fatal("lost the focus")
+	}
+	c.key(uv.Key{Code: uv.KeyEscape})
+	if c.sideFocus || strings.Contains(c.statusText, "sidebar:") {
+		t.Fatalf("esc: focus %v status %q", c.sideFocus, c.statusText)
+	}
+	c.key(pk)
+	c.key(tab)
+	c.key(pk)
+	c.key(tab)
+	if c.sideFocus {
+		t.Fatal("prefix+tab didn't give the keyboard back")
+	}
+	// No sidebar: prefix+tab says so.
+	c.side, c.sideW = nil, 0
+	c.key(pk)
+	c.key(tab)
+	if c.sideFocus || !strings.Contains(c.statusText, "no sidebar") {
+		t.Fatalf("no sidebar: focus %v status %q", c.sideFocus, c.statusText)
+	}
+}
