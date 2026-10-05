@@ -38,8 +38,9 @@ func sampleInfo(now time.Time) *infoData {
 
 // TestInfoLines: the panel shows the task and its steps (the one under
 // way marked), the thread's state and what it waits on, the PR in the
-// ticker's words with behind main, the last report's first lines and its
-// Next, and where it works; a click on the task or the PR opens it.
+// ticker's words with behind main, the last report's first lines (never
+// its Next, which is the coordinator's), and where it works; a click on
+// the task or the PR opens it.
 func TestInfoLines(t *testing.T) {
 	now := time.Now()
 	lines, hits := infoLines(sampleInfo(now), 40, now)
@@ -59,11 +60,16 @@ func TestInfoLines(t *testing.T) {
 		ic().todoDone + " Layout", ic().todoNow + " Toggle", ic().todoOpen + " Clicks",
 		"thread    t-0002", "working", "now       ▸ Write the tests", "needs you Which key toggles it?",
 		"PR        #70 open, checks pending,\n           behind main",
-		"Last report · 5m ago", "Layout done.", "Tests next.", "Next", "• Merge PR #70", "• Release it",
+		"Last report · 5m ago", "Layout done.", "Tests next.",
 		"branch    tm/demo/t-0002-info", "worktree  /tmp/wt/t-0002", "active    2m ago",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("no %q in\n%s", want, text)
+		}
+	}
+	for _, next := range []string{"Merge PR #70", "Release it"} {
+		if strings.Contains(text, next) {
+			t.Errorf("the report's Next line %q shows:\n%s", next, text)
 		}
 	}
 	if strings.Contains(text, "More.") {
