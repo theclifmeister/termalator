@@ -291,10 +291,10 @@ func (c *client) sideItems(r treeRow, t Target) []aitem {
 		if !c.dashboard {
 			return
 		}
-		add("project popup", "prefix+a", func() { c.detachTo(r.slug, "a") })
+		add("project popup", "prefix+a", func() { c.popupOver(r.slug, "a") })
 		if r.kind == treeProject {
-			add("tasks", "prefix+t", func() { c.detachTo(r.slug, "t") })
-			add("inbox", "prefix+i", func() { c.detachTo(r.slug, "i") })
+			add("tasks", "prefix+t", func() { c.popupOver(r.slug, "t") })
+			add("inbox", "prefix+i", func() { c.popupOver(r.slug, "i") })
 		}
 	}
 	switch r.kind {

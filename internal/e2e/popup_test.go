@@ -138,20 +138,37 @@ func TestSmokeProjectPopup(t *testing.T) {
 	screens = append(screens, w.Screen())
 	w.Key(keyEsc)
 
-	// prefix+a in a session: back to the dashboard with the popup open,
-	// on this console only.
+	// prefix+a in a session: the popup opens over the session, on this
+	// console only; the other stays on the session, and esc goes back to
+	// it.
 	w2 := env.Window(cols, 40)
 	w2.WaitFor("SESSIONS", wait)
 	w.Type("s")
 	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, "prefix+d dashboard") })
+	w2.WaitUntil("w2 attached", wait, func(sc string) bool { return lastLine(sc, "prefix+d dashboard") })
 	w.Prefix("a")
 	w.WaitFor("1 Overview", wait)
-	w2.WaitFor("SESSIONS", wait)
+	if sc := w.Screen(); strings.Contains(sc, "SESSIONS") || !strings.Contains(sc, "tm s-") {
+		t.Fatalf("the popup isn't over the session:\n%s", sc)
+	}
 	w2.Quiet(300 * time.Millisecond)
-	if strings.Contains(w2.Screen(), "1 Overview") {
-		t.Fatalf("the popup opened on the other console too:\n%s", w2.Screen())
+	if sc := w2.Screen(); strings.Contains(sc, "1 Overview") || !lastLine(sc, "prefix+d dashboard") {
+		t.Fatalf("the other console left the session:\n%s", sc)
 	}
 	screens = append(screens, w.Screen())
+	w.Key(keyEsc)
+	w.WaitUntil("back on the session", wait, func(sc string) bool {
+		return lastLine(sc, "prefix+d dashboard") && !strings.Contains(sc, "1 Overview")
+	})
+	// prefix+? the same; prefix+d from the popup goes to the dashboard.
+	w.Prefix("?")
+	w.WaitFor("any other key returns", wait)
+	w.Prefix("d")
+	w.WaitFor("SESSIONS", wait)
+	w2.WaitFor("SESSIONS", wait)
+	if strings.Contains(w.Screen(), "any other key returns") {
+		t.Fatalf("prefix d left the help open:\n%s", w.Screen())
+	}
 	for _, sc := range screens {
 		low := strings.ToLower(sc)
 		for _, bad := range []string{"config", "toml", "coordinator_remote_control", "start_threads"} {
@@ -160,7 +177,6 @@ func TestSmokeProjectPopup(t *testing.T) {
 			}
 		}
 	}
-	w.Key(keyEsc)
 	w.Type("q")
 	w.WaitExit(wait)
 	w2.Type("q")

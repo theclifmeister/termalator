@@ -531,6 +531,50 @@ func TestDashboardPrefix(t *testing.T) {
 	}
 }
 
+// TestDashboardOver: a popup over a session (prefix then a key in it)
+// opens about the session's project, draws over its screen under a
+// header naming it, and esc ends the dashboard to attach again; prefix d
+// there turns it into the dashboard.
+func TestDashboardOver(t *testing.T) {
+	src := &fakeSource{data: testData()}
+	scr := []string{"first row", "the session's second row", "its third row"}
+	m := newDash(DashOptions{Source: src, Width: 100, Height: 30, State: DashState{Current: "beta"},
+		Over: &Over{Key: "i", Project: "alpha", Session: "s-5", Title: "s-5 · beta t-0005", Screen: scr}})
+	m.setData(src.data)
+	if in, ok := m.top().(*inboxView); !ok || in.slug != "alpha" {
+		t.Fatalf("over: overlay %T %+v", m.top(), m.top())
+	}
+	out := screen(m)
+	for _, want := range []string{"tm s-5 · beta t-0005", "the session's second row", "alpha inbox"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("over lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "NEEDS YOU") || strings.Contains(out, "first row") {
+		t.Errorf("over shows the list, or the row under the header:\n%s", out)
+	}
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if m.result.Attach != "s-5" {
+		t.Fatalf("esc over a session: result %+v", m.result)
+	}
+
+	// prefix d: the dashboard, with the popup closed.
+	m = newDash(DashOptions{Source: src, Width: 100, Height: 30,
+		Over: &Over{Key: "?", Session: "s-5", Screen: scr}})
+	m.setData(src.data)
+	if _, ok := m.top().(*helpView); !ok {
+		t.Fatalf("over ?: overlay %T", m.top())
+	}
+	m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
+	m.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
+	if m.over != nil || m.top() != nil || m.result.Attach != "" {
+		t.Fatalf("prefix d over a session: over %v top %T result %+v", m.over, m.top(), m.result)
+	}
+	if !strings.Contains(screen(m), "NEEDS YOU") {
+		t.Fatalf("prefix d didn't show the dashboard:\n%s", screen(m))
+	}
+}
+
 // TestDashboardFooter: the footer lists the ≡ menu, then the keys that
 // apply to the selected row.
 func TestDashboardFooter(t *testing.T) {

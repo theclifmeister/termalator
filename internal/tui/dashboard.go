@@ -38,7 +38,7 @@ type DashState struct {
 	Current  string
 	Message  string
 	// Then is a key to run once the first poll is in: the key typed
-	// after the prefix in a session (p, ], [, i, t, , or ?).
+	// after the prefix in a session (p, ] or [).
 	Then string
 }
 
@@ -63,6 +63,24 @@ type DashOptions struct {
 	// the view's, and the dashboard ends when the view shows sessions,
 	// from this console or another. Nil keeps them here (tests).
 	View *ViewConn
+	// Over runs the dashboard as a popup over a session instead: see
+	// Over.
+	Over *Over
+}
+
+// Over is a popup opened over a session (docs/SPEC.md §4): prefix then
+// a, i, t, , or ? in a session. The dashboard runs its key and draws the
+// popup over the session's screen, dimmed, rather than over the list;
+// the view stays as it is. When the popup closes the dashboard ends with
+// Attach set, and the caller attaches again. Should the view go back to
+// its dashboard meanwhile (another console, prefix then d), it carries on
+// as the dashboard.
+type Over struct {
+	Key     string   // the dashboard key that opens the popup
+	Project string   // the project it is about: the session's, or a sidebar row's
+	Session string   // the session it is drawn over
+	Title   string   // how the header names the session
+	Screen  []string // the session's area as shown, plain, a line per row
 }
 
 // DashResult says why the dashboard ended: Attach names a session to
@@ -152,6 +170,11 @@ type dash struct {
 	sized      bool // the first window size came
 	done       chan struct{}
 
+	// over: a popup over a session (Over), nil for the dashboard.
+	// leaving: a popup action asked the view to show a session.
+	over    *Over
+	leaving bool
+
 	result DashResult
 }
 
@@ -163,7 +186,10 @@ func newDash(o DashOptions) *dash {
 	m := &dash{src: o.Source, cwd: o.Cwd, h: h,
 		sel: o.State.Selected, current: o.State.Current, msg: o.State.Message,
 		layout: LoadLayout(o.UIFile), uiFile: o.UIFile,
-		prefix: cmp.Or(o.Prefix, DefaultPrefixKey), then: o.State.Then, done: make(chan struct{})}
+		prefix: cmp.Or(o.Prefix, DefaultPrefixKey), then: o.State.Then, done: make(chan struct{}), over: o.Over}
+	if o.Over != nil {
+		m.then = o.Over.Key
+	}
 	if vc := o.View; vc != nil {
 		v := vc.View()
 		m.view, m.viewSeq = vc, v.Seq
@@ -265,7 +291,16 @@ func (m *dash) call(method string, p proto.ViewParams) tea.Cmd {
 // shows sessions now, from here or another console, the dashboard ends.
 func (m *dash) fromView() tea.Cmd {
 	v := m.view.View()
-	if v.Mode == view.ModeLayout && v.Focus != "" && v.Seq != m.viewSeq {
+	if m.over != nil {
+		switch {
+		case v.Mode != view.ModeLayout:
+			// Back to its dashboard, from another console: carry on as it.
+			m.over = nil
+		case v.Focus != "" && v.Focus != m.over.Session:
+			m.result.Attach = v.Focus
+			return tea.Quit
+		}
+	} else if v.Mode == view.ModeLayout && v.Focus != "" && v.Seq != m.viewSeq {
 		m.result.Attach = cmp.Or(v.Focus, "view")
 		return tea.Quit
 	}
@@ -290,6 +325,11 @@ func (m *dash) fromView() tea.Cmd {
 // it: the selection and the sidebar.
 func (m *dash) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	_, cmd := m.update(msg)
+	if m.overDone() {
+		// The popup over the session closed: back to the session.
+		m.result.Attach = cmp.Or(m.over.Session, "view")
+		return m, tea.Quit
+	}
 	if m.view == nil {
 		return m, cmd
 	}
@@ -353,6 +393,12 @@ func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case actionMsg:
 		m.busy = false
+		if m.leaving && msg.err == nil && msg.attach == "" {
+			// Over a session, the view shows what the popup opened.
+			m.result.Attach = "view"
+			return m, tea.Quit
+		}
+		m.leaving = false
 		if msg.err != nil {
 			m.fail(msg.err)
 			return m, m.load()
@@ -371,7 +417,7 @@ func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// when that version comes.
 				id, project := msg.attach, msg.current
 				vc := m.view
-				m.busy = true
+				m.busy, m.leaving = true, m.over != nil
 				return m, func() tea.Msg {
 					_, err := vc.Do(proto.MethodViewAttach, proto.ViewParams{Session: id, Project: project})
 					return actionMsg{err: err}
@@ -610,6 +656,11 @@ func (m *dash) key(k tea.KeyPressMsg) tea.Cmd {
 	}
 	if m.prefixed {
 		m.prefixed = false
+		if k.String() == "d" && m.over != nil {
+			// Over a session, as in it: the view's dashboard.
+			m.over, m.stack = nil, nil
+			return m.call(proto.MethodViewDashboard, proto.ViewParams{})
+		}
 		if k.String() == "d" || k.String() == m.prefix || k.String() == "esc" {
 			return nil
 		}
@@ -681,8 +732,12 @@ func (m *dash) openProject(slug string) tea.Cmd {
 	})
 }
 
-// projectHere is the project of the selected row, else the listed one.
+// projectHere is the project of the selected row, else the listed one;
+// over a session, the popup's.
 func (m *dash) projectHere() string {
+	if m.over != nil && m.over.Project != "" {
+		return m.over.Project
+	}
 	if r, ok := m.selected(); ok && r.project != "" {
 		return r.project
 	}
@@ -761,7 +816,33 @@ func (m *dash) render() string {
 	return strings.Join(side, "\n")
 }
 
-func (m *dash) renderList() string { return m.frame("", m.listBody(), -1, m.footKeys()) }
+func (m *dash) renderList() string {
+	if m.over != nil {
+		return m.frame("", m.base(), -1, "")
+	}
+	return m.frame("", m.listBody(), -1, m.footKeys())
+}
+
+// overDone says the popup over a session closed: its key ran and no
+// overlay is left.
+func (m *dash) overDone() bool {
+	return m.over != nil && m.loaded && m.then == "" && m.top() == nil && !m.busy
+}
+
+// base is what a popup draws over: the list, or the session's screen
+// under the header.
+func (m *dash) base() []string {
+	if m.over == nil {
+		return m.listBody()
+	}
+	body := make([]string, m.bodyRows())
+	for i := range body {
+		if i+1 < len(m.over.Screen) {
+			body[i] = m.over.Screen[i+1]
+		}
+	}
+	return body
+}
 
 // listBody is the list (and the details panel beside it) as the body's
 // rows, scrolled so the selected row shows.
@@ -875,6 +956,9 @@ func (m *dash) frame(title string, body []string, sel int, keys string) string {
 	// The app, not a project: the project's own section is headed by its
 	// slug, which may well be "termilator".
 	left := styleTitle.Render(" tm") + styleFaint.Render(" dashboard")
+	if m.over != nil {
+		left = styleTitle.Render(" tm") + styleFaint.Render(" "+oneLine(m.over.Title))
+	}
 	if title != "" {
 		left += styleFaint.Render(" · ") + styleHead.Render(title)
 	}
