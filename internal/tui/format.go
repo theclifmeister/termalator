@@ -114,8 +114,8 @@ func fit(s string, w int) string {
 }
 
 // statusLine is the attach status bar (docs/SPEC.md §4): session,
-// project, state, progress, a note on the pane (where: "watch-only, …",
-// "taken over", a flash) and "prefix+d dashboard", in reverse video. After the
+// project, state, progress, a note on the pane (where: the sidebar's keys,
+// a flash) and "prefix+d dashboard", in reverse video. After the
 // prefix it lists the commands instead. Hints never show the prefix's
 // key, which is configurable: only the help and the settings do.
 func statusLine(s proto.SessionInfo, ts *thread.Status, pending bool, cols int, where string) string {
@@ -127,8 +127,7 @@ func statusLine(s proto.SessionInfo, ts *thread.Status, pending bool, cols int, 
 const pendingHead = " prefix ▸ "
 
 // statusBar is statusLine with its buttons, by column: after the prefix
-// each command; else "prefix+u takes over", the ≡ menu and "prefix+d
-// dashboard".
+// each command; else the ≡ menu and "prefix+d dashboard".
 func statusBar(s proto.SessionInfo, ts *thread.Status, pending bool, cols int, where string) (string, []hint) {
 	parts := []string{" " + s.ID}
 	if s.Project != "" {
@@ -149,7 +148,7 @@ func statusBar(s proto.SessionInfo, ts *thread.Status, pending bool, cols int, w
 	}
 	left := strings.Join(parts, " · ")
 	if pending {
-		left = pendingHead + `d dashboard · a project · p ] [ projects · i t , ? · { } b sidebar · tab sidebar keys · u take over · r remote control`
+		left = pendingHead + `d dashboard · a project · p ] [ projects · i t , ? · { } b sidebar · tab sidebar keys · r remote control`
 	}
 	right, rh := statusRight(pending)
 	w := cols - ansi.StringWidth(right) - 1
@@ -159,9 +158,6 @@ func statusBar(s proto.SessionInfo, ts *thread.Status, pending bool, cols int, w
 	var hs []hint
 	if pending {
 		hs = hints(strings.TrimPrefix(left, pendingHead), ansi.StringWidth(pendingHead))
-	} else if i := strings.Index(left, takeOverHint); i >= 0 {
-		x := ansi.StringWidth(left[:i])
-		hs = append(hs, hint{x, x + ansi.StringWidth(takeOverHint), "u"})
 	}
 	// Only what shows: the left part is cut at w.
 	hs = slices.DeleteFunc(hs, func(h hint) bool { return h.x1 > w-1 })
@@ -170,9 +166,6 @@ func statusBar(s proto.SessionInfo, ts *thread.Status, pending bool, cols int, w
 	}
 	return "\x1b[7m" + fit(left, w) + " " + right + "\x1b[27m", hs
 }
-
-// takeOverHint is the status bar's note on a watch-only pane, a button.
-const takeOverHint = "prefix+u takes over"
 
 // statusRight is the status bar's right end and its buttons: the ≡ menu
 // and "prefix+d dashboard", or after the prefix "prefix again sends it".

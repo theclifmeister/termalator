@@ -245,14 +245,14 @@ func TestDashboardKeys(t *testing.T) {
 		t.Fatalf("started %v opened %v", src.started, src.opened)
 	}
 
-	// enter on a thread watches its session. (Attaching alpha's
+	// enter on a thread attaches its session. (Attaching alpha's
 	// coordinator made alpha current: back to beta.)
 	m.current = "beta"
 	m.rebuild()
 	m.sel = "th:beta:t-0005"
 	run(m, press(m, "enter"))
 	if m.result.Attach != "s-5" {
-		t.Fatalf("watch %q", m.result.Attach)
+		t.Fatalf("attach %q", m.result.Attach)
 	}
 
 	// s starts a shell where the dashboard was started.
@@ -425,7 +425,7 @@ func TestDashboardSplit(t *testing.T) {
 	out := screen(m)
 	for _, want := range []string{"│ t-0005 Write docs", "● working", "task      T4", "progress  ▰▰▰▱▱ 60% 3/5",
 		"PR        https://github.com/o/r/pull/7", "report    1, new · for the coordinator", "✓ Outline",
-		"enter watches it; the coordinator acts on it"} {
+		"enter attaches it; the coordinator acts on it"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("details lack %q:\n%s", want, out)
 		}
@@ -539,7 +539,7 @@ func TestDashboardFooter(t *testing.T) {
 	m.setData(src.data)
 	for sel, want := range map[string]string{
 		"n:s-1":          "≡ menu · enter attach · a project · t tasks · i inbox · p projects · , settings · ? help · q quit",
-		"th:beta:t-0005": "≡ menu · enter watch · a project · t tasks · i inbox · p projects",
+		"th:beta:t-0005": "≡ menu · enter attach · a project · t tasks · i inbox · p projects",
 		"th:beta:t-0006": "≡ menu · a project · t tasks · i inbox · p projects",
 		"p:beta":         "≡ menu · enter open · a project · t tasks",
 	} {

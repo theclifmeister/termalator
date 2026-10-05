@@ -19,7 +19,7 @@ import (
 // thread; under it, on tree connectors, its coordinator and threads with
 // their progress and state glyphs in columns. A project row shows its
 // dashboard, the coordinator row opens the coordinator, a thread row
-// watches it; the border drags and is saved, and a narrow window gets
+// attaches it; the border drags and is saved, and a narrow window gets
 // the slim strip.
 func TestDashboardSidebar(t *testing.T) {
 	src := &fakeSource{data: testData()}
@@ -48,7 +48,7 @@ func TestDashboardSidebar(t *testing.T) {
 		t.Fatalf("the dashboard is %d wide", m.w)
 	}
 
-	// A thread row watches its session, even from under a popup; one
+	// A thread row attaches its session, even from under a popup; one
 	// without a session says why.
 	press(m, "?")
 	run(m, m.sideClick(tea.Mouse{X: 5, Y: 5, Button: tea.MouseLeft}))
@@ -235,7 +235,7 @@ func TestDashboardSidebarKeys(t *testing.T) {
 	if m.focus != focusSide {
 		t.Fatal("esc closing the help left the sidebar")
 	}
-	// enter on a thread watches it.
+	// enter on a thread attaches it.
 	run(m, keyPress(m, "enter"))
 	if m.result.Attach != "s-5" {
 		t.Fatalf("enter on t-0005: attach %q", m.result.Attach)
@@ -322,7 +322,7 @@ func TestEverySidebarClickHasKey(t *testing.T) {
 	keyPaths := map[string]string{
 		"show its dashboard": "enter on the project", "open its coordinator": "enter on its coordinator",
 		"project popup": "enter, then a", "tasks": "enter, then t", "inbox": "enter, then i",
-		"open the coordinator": "enter", "watch": "enter", "take over…": "enter, then prefix+u",
+		"open the coordinator": "enter", "attach": "enter",
 	}
 	m, _ := fresh()
 	for i := range m.tree() {

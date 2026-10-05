@@ -15,7 +15,7 @@ import (
 // The mouse in a session (docs/SPEC.md §4). Inside a pane the program
 // gets the mouse whenever it tracks it (Claude Code does); everything
 // else is tm's: the sidebar, the status bar's buttons (the ≡ menu,
-// prefix+d dashboard, prefix+u takes over, a question's y yes) and a pane
+// prefix+d dashboard, a question's y yes) and a pane
 // whose program doesn't take the mouse, where a right-click opens the
 // menu. The ≡ menu has every prefix command
 // (sessionMenu), so none lacks a mouse path; a right-click on a sidebar
@@ -38,7 +38,6 @@ var sessionMenu = []struct{ label, key string }{
 	{"wider sidebar", "}"},
 	{"slim sidebar on / off", "b"},
 	{"keyboard to the sidebar", "tab"},
-	{"take over…", "u"},
 	{"remote control on / off…", "r"},
 	{"send the prefix key", "prefix"},
 }
@@ -236,7 +235,7 @@ func (c *client) menuMouse(m emu.Mouse) {
 
 // sessionItems are the ≡ menu's items for the focused pane: the prefix
 // commands, less those that don't apply (the dashboard's in a bare view,
-// taking over a pane that takes keys, remote control off a coordinator).
+// remote control off a coordinator).
 // c.mu held.
 func (c *client) sessionItems() []aitem {
 	var out []aitem
@@ -244,8 +243,6 @@ func (c *client) sessionItems() []aitem {
 		key, label := e.key, e.label
 		switch {
 		case prefixCommands[key] && !c.dashboard:
-			continue
-		case key == "u" && (c.focus == nil || !c.focus.watch):
 			continue
 		case key == "r" && (c.focus == nil || c.focus.info.Role != proto.RoleCoordinator):
 			continue
@@ -259,8 +256,7 @@ func (c *client) sessionItems() []aitem {
 
 // sideMenu opens the menu of the sidebar row at (m.X, m.Y): show the
 // project's dashboard, open its coordinator,
-// its popup, tasks and inbox; watch a thread or take it over
-// (asking first). c.mu held; released here.
+// its popup, tasks and inbox; attach a thread. c.mu held; released here.
 func (c *client) sideMenu(m emu.Mouse) {
 	r, ok, _ := sideHitAt(c.sideTree(), c.sideW, c.rows, m.X, m.Y)
 	t, can, why := r.target()
@@ -310,37 +306,22 @@ func (c *client) sideItems(r treeRow, t Target) []aitem {
 		add("open the coordinator", "", func() { c.sideGo(t) })
 		popups()
 	default:
-		add("watch", "", func() { c.watch(t, false) })
-		if !c.bare {
-			add("take over…", "prefix+u", func() { c.watch(t, true) })
-		}
+		add("attach", "", func() { c.attachThread(t) })
 	}
 	return out
 }
 
-// watch shows a thread's session in the view. ask then asks whether to take
-// it over, as prefix+u does.
-func (c *client) watch(t Target, ask bool) {
+// attachThread shows a thread's session in the view.
+func (c *client) attachThread(t Target) {
 	if !c.lock() {
 		return
 	}
-	p := c.panes[t.Session]
-	if p == nil {
-		if ask {
-			c.askFor = t.Session // asked once its pane shows
-		}
+	if c.panes[t.Session] == nil {
 		c.mu.Unlock()
 		c.sideGo(t)
 		return
 	}
-	switch {
-	case ask && p.watch:
-		c.confirm = p
-	case ask:
-		c.flash = "this pane takes your keys already"
-	default:
-		c.flash = "you are on it"
-	}
+	c.flash = "you are on it"
 	c.status()
 	c.mu.Unlock()
 	c.poke()

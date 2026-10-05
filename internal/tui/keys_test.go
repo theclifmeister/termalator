@@ -105,7 +105,7 @@ func TestPrefixStep(t *testing.T) {
 		{"prefix z cancels", true, key("z"), true, prefixDo{}},
 		{"prefix → cancels", true, uv.Key{Code: uv.KeyRight}, false, prefixDo{}},
 		{"ctrl+→ is typed", false, uv.Key{Code: uv.KeyRight, Mod: uv.ModCtrl}, false, prefixDo{input: true}},
-		{"prefix u takes over", true, key("u"), false, prefixDo{takeover: true}},
+		{"prefix u cancels", true, key("u"), false, prefixDo{}},
 		{"prefix r toggles remote control", true, key("r"), false, prefixDo{remote: true}},
 		{"u alone is typed", false, key("u"), true, prefixDo{input: true}},
 	}
@@ -139,48 +139,30 @@ func TestToKey(t *testing.T) {
 	}
 }
 
-// TestWatchOnlyPane: a thread's pane takes no keys and says so; prefix u
-// asks, and only y takes it over and tells the coordinator.
-func TestWatchOnlyPane(t *testing.T) {
+// TestThreadPaneTakeover: a thread's pane is like any other, with no
+// note in the status bar; the first input into it tells its coordinator,
+// once for the attach, and a coordinator's pane tells no one.
+func TestThreadPaneTakeover(t *testing.T) {
 	c, err := newClient(server.Paths{}, log.New(io.Discard, "", 0))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer c.enc.Close()
-	told := make(chan proto.SessionInfo, 1)
-	c.prefix, c.statusBar = chord{'\\'}, true
+	told := make(chan proto.SessionInfo, 4)
+	c.prefix, c.statusBar, c.told = chord{'\\'}, true, map[string]bool{}
 	c.setWindow(160, 40)
 	c.takeover = func(s proto.SessionInfo) error { told <- s; return nil }
-	// No connection: a key sent to the program would panic.
-	p := &pane{watch: true, info: proto.SessionInfo{ID: "s-2", Role: proto.RoleThread, Project: "demo", Thread: "t-0001"}}
+	p := &pane{info: proto.SessionInfo{ID: "s-2", Role: proto.RoleThread, Project: "demo", Thread: "t-0001"}}
+	co := &pane{info: proto.SessionInfo{ID: "s-1", Role: proto.RoleCoordinator, Project: "demo"}}
 	c.v = view.View{Mode: view.ModeLayout, Focus: "s-2"}
-	c.panes["s-2"], c.focus = p, p
+	c.panes["s-2"], c.panes["s-1"], c.focus = p, co, p
 	c.status()
-	if !strings.Contains(c.statusText, `watch-only, prefix+u takes over`) {
+	if strings.Contains(c.statusText, "watch-only") || strings.Contains(c.statusText, "take") {
 		t.Fatalf("status %q", c.statusText)
 	}
-	pk := uv.Key{Code: '\\', Mod: uv.ModCtrl}
-	u := uv.Key{Code: 'u', Text: "u"}
-	c.key(uv.Key{Code: 'x', Text: "x"})
-	c.handle(uv.PasteEvent{Content: "hello"})
-
-	// Anything but y keeps watching.
-	c.key(pk)
-	c.key(u)
-	if c.confirm != p || !strings.Contains(c.statusText, "take over t-0001 and type into it?") {
-		t.Fatalf("no question: %q", c.statusText)
-	}
-	c.key(uv.Key{Code: 'n', Text: "n"})
-	if !p.watch || c.confirm != nil || !strings.Contains(c.statusText, "still watching") {
-		t.Fatalf("n took over: %q", c.statusText)
-	}
-
-	c.key(pk)
-	c.key(u)
-	c.key(uv.Key{Code: 'y', Text: "y"})
-	if p.watch || !strings.Contains(c.statusText, "taken over") {
-		t.Fatalf("y: watch %v status %q", p.watch, c.statusText)
-	}
+	c.typed(p)
+	c.typed(p)
+	c.typed(co)
 	select {
 	case s := <-told:
 		if s.Thread != "t-0001" {
@@ -188,6 +170,11 @@ func TestWatchOnlyPane(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the coordinator wasn't told")
+	}
+	select {
+	case s := <-told:
+		t.Fatalf("told again, about %+v", s)
+	case <-time.After(100 * time.Millisecond):
 	}
 }
 

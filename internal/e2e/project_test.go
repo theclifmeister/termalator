@@ -91,7 +91,7 @@ func TestSmokeProjectOpenAndSwitch(t *testing.T) {
 // TestSmokeSidebar: the project tree in the sidebar (docs/SPEC.md §4)
 // on every screen, shared by the consoles of view main. Every project is
 // always expanded, its rows on tree connectors; a project row shows its dashboard, a
-// coordinator row attaches the coordinator, a thread row watches the
+// coordinator row attaches the coordinator, a thread row attaches the
 // thread, from the dashboard and from a session; the sidebar stays left
 // of the pane; prefix } widens it and a drag on its border moves
 // it, both resizing the panes and kept in ui.json; a narrow window gets
@@ -138,14 +138,14 @@ func TestSmokeSidebar(t *testing.T) {
 		}
 	}
 
-	// From the session: demo's thread's row watches the thread, still in
+	// From the session: demo's thread's row attaches the thread, still in
 	// the attach view.
 	w.WaitUntil("demo's thread", wait, func(sc string) bool { return treeRow(sc, demo, "t-0001 ") >= 0 && lastLine(sc, beta+" coordinator") })
 	w.Click(5, treeRow(w.Screen(), demo, "t-0001 "))
 	for _, x := range both {
-		x.WaitUntil("watching t-0001", wait, func(sc string) bool { return lastLine(sc, "watch-only") })
+		x.WaitUntil("on t-0001", wait, func(sc string) bool { return lastLine(sc, demo+" t-0001") })
 	}
-	// No console sized the thread yet: the first to watch it fills it.
+	// No console sized the thread yet: the first to show it fills it.
 	waitPaneSize(t, env, th, 96, 28)
 	// beta's row, from the pane, shows beta's dashboard on both consoles;
 	// its coordinator's row attaches the coordinator again.
@@ -182,11 +182,11 @@ func TestSmokeSidebar(t *testing.T) {
 		x.WaitFor("SESSIONS", wait)
 	}
 
-	// tm attach on the thread: watch-only, with the sidebar. A click on
+	// tm attach on the thread, with the status bar and the sidebar. A click on
 	// demo's coordinator hands the console over to view main, which
 	// starts and shows the coordinator, on every console of the view.
 	w3 := env.Attach(120, 30, th.ID)
-	w3.WaitUntil("tm attach watching", wait, func(sc string) bool { return lastLine(sc, "watch-only") })
+	w3.WaitUntil("tm attach on t-0001", wait, func(sc string) bool { return lastLine(sc, demo+" t-0001") })
 	w3.WaitUntil("the sidebar", wait, func(sc string) bool { return treeRow(sc, demo, "coordinator") >= 0 })
 	w3.Click(4, treeRow(w3.Screen(), demo, "coordinator"))
 	for _, x := range []*Window{w3, w, w2} {
