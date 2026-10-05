@@ -130,7 +130,7 @@ func TestSmokeCoordinatorRemoteControl(t *testing.T) {
 	remoteIs(t, env, coord, false, info.PID)
 	w.Detach()
 	w.WaitFor("SESSIONS", wait)
-	w.Type("q")
+	w.Quit()
 	w.WaitExit(wait)
 
 	// tm attach on the coordinator has the status bar too: its state
@@ -204,6 +204,6 @@ func TestSmokeRemoteControlRestart(t *testing.T) {
 	env.WaitFake("prompt", agentWait, func(r FakeRecord) bool { return r.Str("text") == "hello" })
 	w.Detach()
 	w.WaitFor("SESSIONS", wait)
-	w.Type("q")
+	w.Quit()
 	w.WaitExit(wait)
 }

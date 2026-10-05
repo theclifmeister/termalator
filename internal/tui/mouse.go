@@ -97,6 +97,9 @@ func hintKey(k string) string {
 	case "↑", "↓":
 		return ""
 	}
+	if rest, ok := strings.CutPrefix(k, "prefix+"); ok && utf8.RuneCountInString(rest) == 1 {
+		return k
+	}
 	if utf8.RuneCountInString(k) == 1 {
 		return k
 	}
@@ -234,9 +237,19 @@ func (m *dash) hintClick(x int) tea.Cmd {
 	case menuButton:
 		m.openMenu("", m.dashItems(), x, m.bodyRows())
 	default:
-		return m.key(keyMsg(key))
+		return m.pressKey(key)
 	}
 	return nil
+}
+
+// pressKey presses the key name stands for; prefix+<key> is the prefix,
+// then that key.
+func (m *dash) pressKey(name string) tea.Cmd {
+	if rest, ok := strings.CutPrefix(name, "prefix+"); ok {
+		m.prefixed = true
+		return m.key(keyMsg(rest))
+	}
+	return m.key(keyMsg(name))
 }
 
 // popupClick handles a button pressed on body cell (x, y) while o is the
@@ -355,7 +368,7 @@ type menuItem struct {
 
 // pressItem is an item that presses key.
 func pressItem(label, key string) menuItem {
-	return menuItem{label: label, key: key, run: func(m *dash) tea.Cmd { return m.key(keyMsg(key)) }}
+	return menuItem{label: label, key: key, run: func(m *dash) tea.Cmd { return m.pressKey(key) }}
 }
 
 // dashItems are the ≡ menu's items: every action of the keys table that

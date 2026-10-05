@@ -265,6 +265,6 @@ func TestRealFirstLocalRun(t *testing.T) {
 	env.AssertAlive(s)
 	w2 := env.Window(120, 40)
 	w2.WaitFor(s.ID, wait)
-	w2.Type("q")
+	w2.Quit()
 	w2.WaitExit(wait)
 }

@@ -171,6 +171,7 @@ type dash struct {
 
 	prefix   string // the prefix key, as tea names it
 	prefixed bool   // the prefix was typed: the next key is a command
+	quitting bool   // prefix+q: this console quits, popup or not
 	then     string // a key to run after the first poll
 
 	alerts uint64
@@ -391,6 +392,10 @@ func (m *dash) fromView() tea.Cmd {
 // it: the selection and the sidebar.
 func (m *dash) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	_, cmd := m.update(msg)
+	if m.quitting {
+		m.result.Attach = ""
+		return m, tea.Quit
+	}
 	if m.overDone() {
 		// The popup over the session closed: back to the session, with
 		// what the footer said.
@@ -713,7 +718,8 @@ func (m *dash) paneSize() (int, int) { return m.w, max(m.h-2, 1) }
 
 // key sends a key to the topmost overlay, else to the list's actions.
 // The prefix works here as in a session, so the same keys do the same
-// things: prefix then a key is that key, and prefix d is a no-op.
+// things: prefix then a key is that key, prefix q quits from anywhere
+// and prefix d is a no-op.
 func (m *dash) key(k tea.KeyPressMsg) tea.Cmd {
 	if k.String() == "ctrl+c" {
 		return tea.Quit
@@ -725,6 +731,10 @@ func (m *dash) key(k tea.KeyPressMsg) tea.Cmd {
 	}
 	if m.prefixed {
 		m.prefixed = false
+		if k.String() == "q" {
+			m.quitting = true
+			return tea.Quit
+		}
 		if k.String() == "d" && m.over != nil {
 			// Over a session, as in it: the view's dashboard.
 			m.dropOver()
@@ -1036,7 +1046,7 @@ func (m *dash) frame(title string, body []string, sel int, keys string) string {
 	foot := []string{m.rule("")}
 	switch {
 	case m.prefixed:
-		keys = "prefix ▸ any dashboard key · d or esc cancels"
+		keys = "prefix ▸ any dashboard key · q quit · d or esc cancels"
 	case m.focus == focusSide && m.top() == nil:
 		keys = sideHint + " · tab next"
 	case m.area() == focusDetails && m.top() == nil:

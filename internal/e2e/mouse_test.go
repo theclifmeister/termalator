@@ -102,7 +102,7 @@ func TestSmokeMouseStatusBar(t *testing.T) {
 
 	w.ClickText("prefix+d dashboard", 29)
 	w.WaitFor("SESSIONS 1", wait)
-	w.Type("q")
+	w.Quit()
 	w.WaitExit(wait)
 }
 
@@ -158,6 +158,6 @@ func TestSmokeMousePopupsAndAttach(t *testing.T) {
 
 	w.ClickText("prefix+d dashboard", 29)
 	w.WaitFor("SESSIONS", wait)
-	w.Type("q")
+	w.Quit()
 	w.WaitExit(wait)
 }

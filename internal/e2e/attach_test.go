@@ -349,7 +349,7 @@ func TestRunScript(t *testing.T) {
 	w.WaitFor("hello-42", wait)
 	w.Detach()
 	w.WaitFor("SESSIONS", wait)
-	w.Type("q")
+	w.Quit()
 	w.WaitFor("keep running in the background server", wait)
 	w.WaitExit(wait)
 	if list := env.Sessions(); len(list) != 1 {
@@ -438,7 +438,7 @@ func TestRunScriptLoginShellQueries(t *testing.T) {
 	check(w, "first", false)
 	w.Detach()
 	w.WaitFor("SESSIONS", wait)
-	w.Type("q")
+	w.Quit()
 	w.WaitExit(wait)
 
 	for i := range 4 {
@@ -519,6 +519,6 @@ func TestSmokeAttachPane(t *testing.T) {
 
 	w.Detach()
 	w.WaitFor("SESSIONS 1", wait)
-	w.Type("q")
+	w.Quit()
 	w.WaitExit(wait)
 }

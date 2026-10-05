@@ -30,6 +30,9 @@ func (w *Window) Prefix(key string) {
 // Detach is prefix d: back to the dashboard, or out of tm attach.
 func (w *Window) Detach() { w.Prefix("d") }
 
+// Quit is prefix q: this console quits, from anywhere.
+func (w *Window) Quit() { w.Prefix("q") }
+
 // Attach opens a window of cols×rows running `tm attach id` (the newest
 // session when id is empty).
 func (e *Env) Attach(cols, rows uint16, id string) *Window {

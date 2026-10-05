@@ -114,8 +114,8 @@ func init() {
 			run: func(m *dash, _ string) tea.Cmd { return m.load() }},
 		{keys: []string{"?"}, label: "?", help: "help", menu: []string{"help: keys and mouse"},
 			foot: always("help"), run: func(m *dash, _ string) tea.Cmd { m.push(&helpView{}); return nil }},
-		{keys: []string{"q"}, label: "q", help: "quit (the server keeps running)", menu: []string{"quit"},
-			foot: always("quit"), run: func(*dash, string) tea.Cmd { return tea.Quit }},
+		{keys: []string{"prefix+q"}, label: "prefix+q", help: "quit this console, from anywhere (the server, the sessions and other consoles keep running)", menu: []string{"quit"},
+			foot: always("quit"), run: func(m *dash, _ string) tea.Cmd { m.quitting = true; return tea.Quit }},
 	}
 }
 
