@@ -17,18 +17,16 @@ import (
 
 // fakeHost is a viewHost with sessions in memory.
 type fakeHost struct {
-	mu       sync.Mutex
-	panes    map[string]paneInfo
-	sizes    map[string][2]uint16
-	resizes  []string // "id cols×rows", in order
-	started  int
-	startErr error
+	mu      sync.Mutex
+	panes   map[string]paneInfo
+	sizes   map[string][2]uint16
+	resizes []string // "id cols×rows", in order
 }
 
 func newFakeHost(ids ...string) *fakeHost {
 	h := &fakeHost{panes: map[string]paneInfo{}, sizes: map[string][2]uint16{}}
 	for _, id := range ids {
-		h.panes[id] = paneInfo{cwd: "/", role: proto.RoleShell, follows: true}
+		h.panes[id] = paneInfo{role: proto.RoleShell, follows: true}
 	}
 	return h
 }
@@ -48,19 +46,6 @@ func (h *fakeHost) resizePane(id string, cols, rows uint16) {
 	p.sized = true // as Session.RequestResize does
 	h.panes[id] = p
 	h.resizes = append(h.resizes, fmt.Sprintf("%s %d×%d", id, cols, rows))
-}
-
-func (h *fakeHost) startShell(cwd string, cols, rows uint16) (string, error) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if h.startErr != nil {
-		return "", h.startErr
-	}
-	h.started++
-	id := fmt.Sprintf("n-%d", h.started)
-	h.panes[id] = paneInfo{cwd: cwd, role: proto.RoleShell, follows: true}
-	h.sizes[id] = [2]uint16{cols, rows}
-	return id, nil
 }
 
 // takeResizes returns the resizes since the last call.
@@ -124,7 +109,7 @@ func TestViewsSharedMain(t *testing.T) {
 	if !woken(a) || !woken(b) {
 		t.Fatal("not broadcast")
 	}
-	if r := h.takeResizes(); !slices.Equal(r, []string{"s-1 96×39"}) {
+	if r := h.takeResizes(); !slices.Equal(r, []string{"s-1 96×38"}) {
 		t.Fatalf("the first showing resized %v", r)
 	}
 
@@ -134,7 +119,7 @@ func TestViewsSharedMain(t *testing.T) {
 	if v.Latest != b.id || v.Cols != 100 || v.Rows != 32 {
 		t.Fatalf("after B typed: %+v", v)
 	}
-	if r := h.takeResizes(); !slices.Equal(r, []string{"s-1 76×31"}) {
+	if r := h.takeResizes(); !slices.Equal(r, []string{"s-1 76×30"}) {
 		t.Fatalf("resizes %v", r)
 	}
 	// Typing again changes nothing: no new version.
@@ -153,7 +138,7 @@ func TestViewsSharedMain(t *testing.T) {
 
 	// A window resize from A always resizes, and makes A the latest.
 	v = mustDo(t, vs, proto.MethodViewSize, proto.ViewParams{Client: a.id, Cols: 130, Rows: 40, Resize: true})
-	if v.Latest != a.id || v.Cols != 130 || !slices.Equal(h.takeResizes(), []string{"s-1 106×39"}) {
+	if v.Latest != a.id || v.Cols != 130 || !slices.Equal(h.takeResizes(), []string{"s-1 106×38"}) {
 		t.Fatalf("after A resized: %+v", v)
 	}
 	// A size report without a resize (joining) only records it.
@@ -172,41 +157,42 @@ func TestViewsSharedMain(t *testing.T) {
 	if _, ok := vs.get(view.Main); !ok {
 		t.Fatal("main went with its clients")
 	}
-	if _, err := vs.do(proto.MethodViewZoom, proto.ViewParams{Client: a.id}); err == nil {
+	if _, err := vs.do(proto.MethodViewDashboard, proto.ViewParams{Client: a.id}); err == nil {
 		t.Fatal("a client that left can still act")
 	}
 }
 
 func TestViewsClaimSkipsWatchOnlyAndExplicit(t *testing.T) {
 	h := newFakeHost("co", "th", "inl")
-	h.panes["co"] = paneInfo{cwd: "/", role: proto.RoleCoordinator, follows: true, sized: true}
-	h.panes["th"] = paneInfo{cwd: "/", role: proto.RoleThread, follows: true, sized: true}
-	h.panes["inl"] = paneInfo{cwd: "/", role: proto.RoleShell, follows: false}
+	h.panes["co"] = paneInfo{role: proto.RoleCoordinator, follows: true, sized: true}
+	h.panes["th"] = paneInfo{role: proto.RoleThread, follows: true, sized: true}
+	h.panes["inl"] = paneInfo{role: proto.RoleShell, follows: false}
 	vs := newViews(h, "", nil)
 	a, _ := join(t, vs, proto.ViewSubscribeParams{View: "x", Cols: 120, Rows: 40})
 	b, _ := join(t, vs, proto.ViewSubscribeParams{View: "x", Cols: 100, Rows: 30})
 	mustDo(t, vs, proto.MethodViewAttach, proto.ViewParams{Client: a.id, Session: "co"})
-	vs.mu.Lock()
-	lv := vs.byName["x"]
-	lv.v.Split("co", "th", true)
-	lv.v.Split("th", "inl", false)
-	vs.mu.Unlock()
 
-	// B types into the coordinator: only it is resized; the thread is
-	// watch-only and the inline agent doesn't follow typing.
+	// B types into the coordinator: it is resized.
 	mustDo(t, vs, proto.MethodViewInput, proto.ViewParams{Client: b.id, Session: "co"})
 	if r := h.takeResizes(); len(r) != 1 || r[0][:3] != "co " {
 		t.Fatalf("claim resized %v", r)
 	}
 	// Typing into the thread (taken over) resizes it too.
+	mustDo(t, vs, proto.MethodViewAttach, proto.ViewParams{Client: a.id, Session: "th"})
 	mustDo(t, vs, proto.MethodViewInput, proto.ViewParams{Client: b.id, Session: "th"})
-	if r := h.takeResizes(); len(r) != 2 {
+	if r := h.takeResizes(); len(r) != 1 || r[0][:3] != "th " {
 		t.Fatalf("claim from the thread resized %v", r)
 	}
-	// A layout change resizes every visible pane, whatever it is.
-	mustDo(t, vs, proto.MethodViewEven, proto.ViewParams{Client: a.id})
-	if r := h.takeResizes(); len(r) != 3 {
-		t.Fatalf("even resized %v", r)
+	// The inline agent doesn't follow typing.
+	mustDo(t, vs, proto.MethodViewAttach, proto.ViewParams{Client: a.id, Session: "inl"})
+	mustDo(t, vs, proto.MethodViewInput, proto.ViewParams{Client: a.id, Session: "inl"})
+	if r := h.takeResizes(); len(r) != 0 {
+		t.Fatalf("claim from the inline agent resized %v", r)
+	}
+	// A layout change (the sidebar) resizes the pane, whatever it is.
+	mustDo(t, vs, proto.MethodViewSidebar, proto.ViewParams{Client: a.id, Sidebar: &view.Sidebar{Slim: true}})
+	if r := h.takeResizes(); len(r) != 1 || r[0][:4] != "inl " {
+		t.Fatalf("the sidebar resized %v", r)
 	}
 }
 
@@ -216,17 +202,17 @@ func TestViewsClaimSkipsWatchOnlyAndExplicit(t *testing.T) {
 // and agents that resize only explicitly are never filled.
 func TestViewsFirstShowFills(t *testing.T) {
 	h := newFakeHost("co", "th", "inl")
-	h.panes["th"] = paneInfo{cwd: "/", role: proto.RoleThread, follows: true}
-	h.panes["inl"] = paneInfo{cwd: "/", role: proto.RoleShell, follows: false}
+	h.panes["th"] = paneInfo{role: proto.RoleThread, follows: true}
+	h.panes["inl"] = paneInfo{role: proto.RoleShell, follows: false}
 	vs := newViews(h, "", nil)
 	a, _ := join(t, vs, proto.ViewSubscribeParams{Cols: 120, Rows: 40, Sidebar: &view.Sidebar{Width: 20}})
 	mustDo(t, vs, proto.MethodViewAttach, proto.ViewParams{Client: a.id, Session: "co"})
-	if r := h.takeResizes(); !slices.Equal(r, []string{"co 100×39"}) {
+	if r := h.takeResizes(); !slices.Equal(r, []string{"co 100×38"}) {
 		t.Fatalf("the coordinator's first showing resized %v", r)
 	}
 	// The watch-only thread fills too, the first time it shows.
 	mustDo(t, vs, proto.MethodViewAttach, proto.ViewParams{Client: a.id, Session: "th"})
-	if r := h.takeResizes(); !slices.Equal(r, []string{"th 100×39"}) {
+	if r := h.takeResizes(); !slices.Equal(r, []string{"th 100×38"}) {
 		t.Fatalf("the thread's first showing resized %v", r)
 	}
 	// Showing it again, from another console of its own size, doesn't.
@@ -243,7 +229,7 @@ func TestViewsFirstShowFills(t *testing.T) {
 	}
 	// After that, typing claims as before: B types into the coordinator.
 	mustDo(t, vs, proto.MethodViewInput, proto.ViewParams{Client: b.id, Session: "co"})
-	if r := h.takeResizes(); !slices.Equal(r, []string{"co 73×23"}) {
+	if r := h.takeResizes(); !slices.Equal(r, []string{"co 73×22"}) {
 		t.Fatalf("B's claim resized %v", r)
 	}
 }
@@ -256,35 +242,14 @@ func TestViewsLayoutActions(t *testing.T) {
 	if v.Sidebar.Width != 20 {
 		t.Fatalf("the new view's sidebar: %+v", v.Sidebar)
 	}
-	// A split starts the shell at its pane's size and focuses it.
-	v = mustDo(t, vs, proto.MethodViewSplit, proto.ViewParams{Client: a.id, Side: true})
-	if v.Focus != "n-1" || len(v.Root.Leaves()) != 2 {
-		t.Fatalf("split: %+v", v)
-	}
-	g := v.Lay(120, 30)
-	if r := g.Panes["n-1"]; h.sizes["n-1"] != [2]uint16{uint16(r.W), uint16(r.H)} {
-		t.Fatalf("the new shell is %v, its pane %+v", h.sizes["n-1"], r)
-	}
-	if r := g.Panes["s-1"]; h.sizes["s-1"] != [2]uint16{uint16(r.W), uint16(r.H)} {
-		t.Fatalf("the split pane is %v, its rect %+v", h.sizes["s-1"], r)
-	}
-	v = mustDo(t, vs, proto.MethodViewFocus, proto.ViewParams{Client: a.id, DX: -1})
-	if v.Focus != "s-1" {
-		t.Fatalf("focus left: %s", v.Focus)
-	}
-	v = mustDo(t, vs, proto.MethodViewZoom, proto.ViewParams{Client: a.id})
-	if !v.Zoom || h.sizes["s-1"] != [2]uint16{100, 29} {
-		t.Fatalf("zoom: %+v %v", v, h.sizes["s-1"])
-	}
 	v = mustDo(t, vs, proto.MethodViewSidebar, proto.ViewParams{Client: a.id, Sidebar: &view.Sidebar{Slim: true}})
-	if !v.Sidebar.Slim || h.sizes["s-1"] != [2]uint16{120 - view.SideSlim, 29} {
+	if !v.Sidebar.Slim || h.sizes["s-1"] != [2]uint16{120 - view.SideSlim, 28} {
 		t.Fatalf("sidebar: %+v %v", v.Sidebar, h.sizes["s-1"])
 	}
-	// Closing the last pane goes back to the dashboard.
-	mustDo(t, vs, proto.MethodViewClose, proto.ViewParams{Client: a.id})
-	v = mustDo(t, vs, proto.MethodViewClose, proto.ViewParams{Client: a.id})
-	if v.Mode != view.ModeDashboard || v.Root != nil {
-		t.Fatalf("closed both: %+v", v)
+	for _, m := range []string{"view.split", "view.zoom", "view.focus"} {
+		if _, err := vs.do(m, proto.ViewParams{Client: a.id}); err == nil {
+			t.Fatalf("%s, gone with split panes, answered", m)
+		}
 	}
 	if _, err := vs.do(proto.MethodViewAttach, proto.ViewParams{Client: a.id, Session: "nope"}); err == nil {
 		t.Fatal("attached a session that doesn't exist")
@@ -359,7 +324,7 @@ func TestViewsOwn(t *testing.T) {
 	if woken(main) {
 		t.Fatal("main heard of an own view's change")
 	}
-	if v, _ := vs.get(view.Main); v.Mode != view.ModeDashboard || v.Root != nil {
+	if v, _ := vs.get(view.Main); v.Mode != view.ModeDashboard || v.Focus != "" {
 		t.Fatalf("main changed: %+v", v)
 	}
 	vs.leave(name, own)
@@ -377,10 +342,6 @@ func TestViewsPersist(t *testing.T) {
 	vs := newViews(h, path, nil)
 	a, _ := join(t, vs, proto.ViewSubscribeParams{Cols: 120, Rows: 30})
 	mustDo(t, vs, proto.MethodViewAttach, proto.ViewParams{Client: a.id, Session: "s-1", Project: "p"})
-	vs.mu.Lock()
-	vs.byName[view.Main].v.Split("s-1", "s-2", false)
-	vs.changedLocked(vs.byName[view.Main])
-	vs.mu.Unlock()
 	mustDo(t, vs, proto.MethodViewSidebar, proto.ViewParams{Client: a.id, Sidebar: &view.Sidebar{Width: 30}})
 	join(t, vs, proto.ViewSubscribeParams{Own: true, Cols: 80, Rows: 24})
 
@@ -392,8 +353,8 @@ func TestViewsPersist(t *testing.T) {
 	if !ok || v.Mode != view.ModeLayout || v.Current != "p" || v.Sidebar.Width != 30 || v.Latest != "" {
 		t.Fatalf("loaded: %+v", v)
 	}
-	if got := v.Root.Leaves(); !slices.Equal(got, []string{"s-1"}) || v.Focus != "s-1" {
-		t.Fatalf("loaded panes %v focus %s", got, v.Focus)
+	if v.Focus != "s-1" {
+		t.Fatalf("loaded pane %s", v.Focus)
 	}
 	if len(vs2.byName) != 1 {
 		t.Fatalf("own views were saved: %v", vs2.byName)
@@ -401,8 +362,15 @@ func TestViewsPersist(t *testing.T) {
 	// Nothing survives: the dashboard.
 	vs3 := newViews(newFakeHost(), path, nil)
 	vs3.load()
-	if v, _ := vs3.get(view.Main); v.Mode != view.ModeDashboard || v.Root != nil || v.Current != "p" {
+	if v, _ := vs3.get(view.Main); v.Mode != view.ModeDashboard || v.Focus != "" || v.Current != "p" {
 		t.Fatalf("loaded without sessions: %+v", v)
+	}
+	// A views.json from before single panes: the split tree goes, the
+	// session in front stays.
+	vs4 := newViews(newFakeHost("s-1", "s-2"), "", nil)
+	vs4.loadBytes([]byte(`{"version":1,"views":[{"name":"main","mode":"layout","root":{"side":true,"ratio":0.3,"a":{"session":"s-1"},"b":{"session":"s-2"}},"focus":"s-2","zoom":true}]}`))
+	if v, _ := vs4.get(view.Main); v.Mode != view.ModeLayout || v.Focus != "s-2" {
+		t.Fatalf("an old split view: %+v", v)
 	}
 }
 

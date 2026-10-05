@@ -12,8 +12,6 @@ import (
 	"syscall"
 	"testing"
 	"time"
-
-	"github.com/theclifmeister/termalator/internal/emu"
 )
 
 // paneSize returns a session's pane size as the server reports it.
@@ -229,43 +227,6 @@ func TestSmokeAttachLatestTypistResizes(t *testing.T) {
 	env.AssertMirrorsServer(w2)
 }
 
-// TestAttachTypingClaimsAllPanes: typing in a split window gives every
-// pane it shows its rectangle back, not only the focused one.
-func TestAttachTypingClaimsAllPanes(t *testing.T) {
-	env := New(t)
-	s1 := env.Start("printer", "-lines", "5")
-	env.WaitFor(s1, "ready", wait)
-	w1 := env.Attach(120, 30, s1.ID)
-	w1.WaitFor("ready", wait)
-	w1.Prefix("%")
-	var s2 *Session
-	Poll(wait, func() bool {
-		for _, info := range env.Sessions() {
-			if info.ID != s1.ID {
-				s2 = &Session{ID: info.ID, PID: info.PID}
-			}
-		}
-		return s2 != nil
-	})
-	if s2 == nil {
-		t.Fatal("prefix % started no session")
-	}
-	env.track(s2.PID, "session "+s2.ID)
-	// The panes share the window less the sidebar's 24 columns.
-	waitPaneSize(t, env, s1, 48, 30)
-	waitPaneSize(t, env, s2, 47, 30)
-
-	w2 := env.Attach(80, 24, s1.ID)
-	w2.WaitFor("ready", wait)
-	w2.Type("x")
-	waitPaneSize(t, env, s1, 73, 24) // less the slim strip
-
-	// The focus in w1 is on the new shell, yet s1 takes its half again.
-	w1.Type("y")
-	waitPaneSize(t, env, s1, 48, 30)
-	waitPaneSize(t, env, s2, 47, 30)
-}
-
 // TestAttachExplicitAgentKeepsSize: an agent whose manifest says
 // screen.resize = "explicit" isn't resized by typing, only by a real
 // window resize.
@@ -429,7 +390,7 @@ func TestRunScriptLoginShellQueries(t *testing.T) {
 	env.MustCLI("server", "stop")
 
 	// make run, in a window the size of the user's: s starts the login
-	// shell at the window's size, less the sidebar and the status bar,
+	// shell at the window's size, less the sidebar, the status bar and the row above it,
 	// and attaches.
 	w := env.WindowCmd(76, 53, filepath.Join(root, "scripts", "run.sh"))
 	w.WaitFor("no sessions; s starts a shell", wait)
@@ -444,7 +405,7 @@ func TestRunScriptLoginShellQueries(t *testing.T) {
 	}
 	s := &Session{ID: list[0].ID, PID: list[0].PID}
 	env.track(s.PID, "session "+s.ID)
-	assertPaneSize(t, env, s, 69, 52) // 76 is narrow: the sidebar is its slim strip of 7
+	assertPaneSize(t, env, s, 69, 51) // 76 is narrow: the sidebar is its slim strip of 7
 	// mirrored: w runs tm attach itself (not run.sh), so it can be asked
 	// for a digest check.
 	check := func(w *Window, marker string, mirrored bool) {
@@ -486,62 +447,46 @@ func waitPaneSize(t *testing.T, env *Env, s *Session, cols, rows uint16) {
 	}
 }
 
-// columnOf is the cell column where text starts on the screen, -1 when
-// it isn't there.
-func columnOf(screen, text string) int {
-	for _, l := range strings.Split(screen, "\n") {
-		if i := strings.Index(l, text); i >= 0 {
-			return len([]rune(l[:i]))
-		}
-	}
-	return -1
-}
-
-// TestSmokeAttachSplitPanes: in the attach view, prefix % starts a shell
-// beside the session and both resize to their halves; keys go to the
-// focused pane; prefix ← moves the focus, z zooms, ctrl+→ resizes (and
-// repeats without the prefix), x closes a pane and leaves its session
-// running, " splits below and space switches the layout. The projects
-// sidebar keeps its columns on the left throughout: the panes share what
-// it leaves. The prefix twice sends the prefix key itself.
-func TestSmokeAttachSplitPanes(t *testing.T) {
+// TestSmokeAttachPane: the attach view is one pane beside the projects
+// sidebar, with an empty row between it and the status bar: the pane
+// gets the window less both, so nothing is cropped. Split panes and zoom
+// are gone: their old prefix keys cancel. The prefix twice sends the
+// prefix key itself.
+func TestSmokeAttachPane(t *testing.T) {
 	env := New(t)
 	s1 := env.StartSize(120, 29, "shell")
 	w := env.Window(120, 30)
 	w.WaitFor(s1.ID+" ", wait)
 	w.Key(Enter)
 	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, `prefix+d dashboard`) })
-
-	w.Prefix("%")
-	w.WaitUntil("two panes", wait, func(sc string) bool { return lastLine(sc, "pane 2/2") })
-	var s2 *Session
-	Poll(wait, func() bool {
-		for _, info := range env.Sessions() {
-			if info.ID != s1.ID {
-				s2 = &Session{ID: info.ID, PID: info.PID}
-			}
-		}
-		return s2 != nil
-	})
-	if s2 == nil {
-		t.Fatal("prefix % started no session")
+	w.Type("echo pane-$((2*3))\r")
+	w.WaitFor("pane-6", wait)
+	// 96 columns beside the sidebar, 28 rows above the empty row and the
+	// status bar.
+	waitPaneSize(t, env, s1, 96, 28)
+	rows := strings.Split(w.Screen(), "\n")
+	if r := []rune(rows[28]); len(r) < 24 || strings.TrimSpace(string(r[24:])) != "" {
+		t.Fatalf("the row above the status bar isn't empty:\n%s", w.Screen())
 	}
-	env.track(s2.PID, "session "+s2.ID)
-	// The sidebar takes 24 columns; the panes split the other 96.
-	waitPaneSize(t, env, s1, 48, 29)
-	waitPaneSize(t, env, s2, 47, 29)
-	for i, l := range strings.Split(w.Screen(), "\n")[:29] {
-		if r := []rune(l); len(r) <= 72 || r[23] != '│' || r[72] != '│' {
-			t.Fatalf("row %d has no sidebar border at column 23 or divider at column 72:\n%s", i, w.Screen())
+	if !strings.Contains(rows[29], "prefix+d dashboard") {
+		t.Fatalf("no status bar on the last row:\n%s", w.Screen())
+	}
+	for _, b := range []string{"│ ─", "⤢"} {
+		if strings.Contains(rows[29], b) {
+			t.Fatalf("the status bar has window buttons %q:\n%s", b, rows[29])
 		}
 	}
 
-	// Keys go to the focused pane: the new one, on the right.
-	w.Type("echo right-$((2*3))\r")
-	w.WaitFor("right-6", wait)
-	if c := columnOf(w.Screen(), "right-6"); c < 73 {
-		t.Fatalf("right-6 at column %d, not in the right pane:\n%s", c, w.Screen())
+	// The old split and zoom keys cancel: no new session, the same size.
+	for _, k := range []string{"%", `"`, "z", "x"} {
+		w.Prefix(k)
 	}
+	w.Quiet(300 * time.Millisecond)
+	if n := len(env.Sessions()); n != 1 {
+		t.Fatalf("%d sessions after the old split keys", n)
+	}
+	assertPaneSize(t, env, s1, 96, 28)
+
 	// The prefix twice sends Ctrl+B itself: od shows the byte, 002.
 	w.Type("od -c\r")
 	w.Quiet(300 * time.Millisecond)
@@ -549,47 +494,9 @@ func TestSmokeAttachSplitPanes(t *testing.T) {
 	w.Key(CtrlB)
 	w.Type("\r\x04")
 	w.WaitFor("002  \\n", wait)
-	w.Key(CtrlB)
-	w.Key(emu.Key{Special: emu.KeyLeft})
-	w.WaitUntil("focus on the left", wait, func(sc string) bool { return lastLine(sc, s1.ID+" ") && lastLine(sc, "pane 1/2") })
-	w.Type("echo left-$((3*3))\r")
-	w.WaitFor("left-9", wait)
-	if c := columnOf(w.Screen(), "left-9"); c < 24 || c >= 72 {
-		t.Fatalf("left-9 at column %d, not in the left pane:\n%s", c, w.Screen())
-	}
-
-	// Zoom and back.
-	w.Prefix("z")
-	w.WaitUntil("zoomed", wait, func(sc string) bool { return lastLine(sc, "pane 1/2 zoomed") })
-	waitPaneSize(t, env, s1, 96, 29)
-	w.Prefix("z")
-	waitPaneSize(t, env, s1, 48, 29)
-
-	// Resize: prefix ctrl+→ moves the divider 2 cells; ctrl+→ right after
-	// needs no prefix.
-	ctrlRight := emu.Key{Special: emu.KeyRight, Mods: emu.ModCtrl}
-	w.Key(CtrlB)
-	w.Key(ctrlRight)
-	w.Key(ctrlRight)
-	waitPaneSize(t, env, s1, 51, 29)
-	waitPaneSize(t, env, s2, 44, 29)
-
-	// Close the left pane: its session keeps running, the right one
-	// takes the window.
-	w.Prefix("x")
-	w.WaitUntil("one pane", wait, func(sc string) bool { return lastLine(sc, s2.ID+" ") && !lastLine(sc, "pane ") })
-	waitPaneSize(t, env, s2, 96, 29)
-	env.AssertAlive(s1)
-
-	// " splits below; space puts the two side by side.
-	w.Prefix(`"`)
-	w.WaitUntil("two panes", wait, func(sc string) bool { return lastLine(sc, "pane 2/2") })
-	waitPaneSize(t, env, s2, 96, 14)
-	w.Prefix(" ")
-	waitPaneSize(t, env, s2, 48, 29)
 
 	w.Detach()
-	w.WaitFor("SESSIONS 3", wait)
+	w.WaitFor("SESSIONS 1", wait)
 	w.Type("q")
 	w.WaitExit(wait)
 }

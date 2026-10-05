@@ -89,8 +89,8 @@ func TestSmokeProjectOpenAndSwitch(t *testing.T) {
 // on every screen, shared by the consoles of view main. ▸ ▾ open and
 // close a project in both consoles; a project row shows its dashboard, a
 // coordinator row attaches the coordinator, a thread row watches the
-// thread, from the dashboard and from (split) panes; the sidebar stays
-// left of split panes; prefix } widens it and a drag on its border moves
+// thread, from the dashboard and from a session; the sidebar stays left
+// of the pane; prefix } widens it and a drag on its border moves
 // it, both resizing the panes and kept in ui.json; a narrow window gets
 // the slim strip. tm attach shows the sidebar too, and a click on it
 // switches that console to the full UI on view main.
@@ -134,28 +134,23 @@ func TestSmokeSidebar(t *testing.T) {
 	w.WaitUntil("attached to beta", agentWait, func(sc string) bool { return lastLine(sc, beta+" coordinator") })
 	w.WaitFor("Fake Claude Code", agentWait)
 	b := coordinatorOf(t, env, beta)
-	waitPaneSize(t, env, b, 96, 29)
-
-	// A split: the sidebar stays, the panes share the 96 columns.
-	w.Prefix("%")
-	w.WaitUntil("two panes", wait, func(sc string) bool { return lastLine(sc, "pane 2/2") })
-	waitPaneSize(t, env, b, 48, 29)
-	for i, l := range strings.Split(w.Screen(), "\n")[:29] {
-		if r := []rune(l); len(r) <= 72 || r[23] != '│' || r[72] != '│' {
-			t.Fatalf("row %d lacks the sidebar's border or the divider:\n%s", i, w.Screen())
+	waitPaneSize(t, env, b, 96, 28)
+	for i, l := range strings.Split(w.Screen(), "\n")[:28] {
+		if r := []rune(l); len(r) <= 23 || r[23] != '│' {
+			t.Fatalf("row %d lacks the sidebar's border:\n%s", i, w.Screen())
 		}
 	}
 
-	// From the split: ▸ opens demo in place, and its thread's row watches
-	// the thread, still in the attach view.
+	// From the session: ▸ opens demo in place, and its thread's row
+	// watches the thread, still in the attach view.
 	w.Click(0, sideRow(t, w.Screen(), demo))
-	w.WaitUntil("demo open", wait, func(sc string) bool { return treeRow(sc, demo, "Small fix") >= 0 && lastLine(sc, "pane 2/2") })
+	w.WaitUntil("demo open", wait, func(sc string) bool { return treeRow(sc, demo, "Small fix") >= 0 && lastLine(sc, beta+" coordinator") })
 	w.Click(5, treeRow(w.Screen(), demo, "Small fix"))
 	for _, x := range both {
-		x.WaitUntil("watching t-0001", wait, func(sc string) bool { return lastLine(sc, "watch-only") && !lastLine(sc, "pane ") })
+		x.WaitUntil("watching t-0001", wait, func(sc string) bool { return lastLine(sc, "watch-only") })
 	}
 	// No console sized the thread yet: the first to watch it fills it.
-	waitPaneSize(t, env, th, 96, 29)
+	waitPaneSize(t, env, th, 96, 28)
 	// beta's row, from the pane, shows beta's dashboard on both consoles;
 	// its coordinator's row attaches the coordinator again.
 	w.Click(4, sideRow(t, w.Screen(), beta))
@@ -168,13 +163,13 @@ func TestSmokeSidebar(t *testing.T) {
 	// Prefix } widens the sidebar: a layout change, so the pane follows,
 	// and ui.json keeps the width.
 	w.Prefix("}")
-	waitPaneSize(t, env, b, 94, 29)
+	waitPaneSize(t, env, b, 94, 28)
 	if !Poll(wait, func() bool { return strings.Contains(readFile(env.Home, "ui.json"), `"width": 26`) }) {
 		t.Fatalf("ui.json: %s", readFile(env.Home, "ui.json"))
 	}
 	// Dragging its border to column 29 makes it 30 wide.
 	w.Drag(25, 29, 5)
-	waitPaneSize(t, env, b, 90, 29)
+	waitPaneSize(t, env, b, 90, 28)
 	if !Poll(wait, func() bool { return strings.Contains(readFile(env.Home, "ui.json"), `"width": 30`) }) {
 		t.Fatalf("ui.json after the drag: %s", readFile(env.Home, "ui.json"))
 	}
@@ -182,7 +177,7 @@ func TestSmokeSidebar(t *testing.T) {
 	// A narrow window: the slim strip of projects, 7 columns, never
 	// nothing; beta, the focused pane's, is marked.
 	w.Resize(70, 30)
-	waitPaneSize(t, env, b, 63, 29)
+	waitPaneSize(t, env, b, 63, 28)
 	w.WaitFor("▸○beta│", wait)
 	w.WaitFor(" ·demo│", wait)
 	w.Resize(120, 30)

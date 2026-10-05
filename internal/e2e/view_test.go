@@ -11,8 +11,7 @@ import (
 )
 
 // TestSmokeViewsShared: two consoles on view main. Opening a project's
-// coordinator in one shows it in both; splits, focus, zoom and the
-// sidebar mirror; the console typed in sizes the panes, and the other
+// coordinator in one shows it in both; the sidebar mirrors; the console typed in sizes the panes, and the other
 // shows the same frame padded; a console with --own stays apart.
 func TestSmokeViewsShared(t *testing.T) {
 	env := New(t)
@@ -34,17 +33,17 @@ func TestSmokeViewsShared(t *testing.T) {
 	}
 	a := coordinatorOf(t, env, alpha)
 	// Started at w1's size, the window less the sidebar and status bar.
-	waitPaneSize(t, env, a, 96, 29)
+	waitPaneSize(t, env, a, 96, 28)
 	// Watching from w2 resized nothing.
-	assertPaneSize(t, env, a, 96, 29)
+	assertPaneSize(t, env, a, 96, 28)
 
 	// Typing in w2 claims the view's size: the pane takes w2's
 	// rectangle, and w1 shows the same frame, padded on the right.
 	w2.Type("x")
-	waitPaneSize(t, env, a, 76, 25)
+	waitPaneSize(t, env, a, 76, 24)
 	w1.WaitUntil("w1 padded", wait, func(sc string) bool {
 		lines := strings.Split(sc, "\n")
-		for _, l := range lines[:25] {
+		for _, l := range lines[:24] {
 			if r := []rune(l); len(r) > 100 && strings.TrimSpace(string(r[100:])) != "" {
 				return false
 			}
@@ -53,25 +52,7 @@ func TestSmokeViewsShared(t *testing.T) {
 	})
 	// And typing in w1 claims it back.
 	w1.Type("y")
-	waitPaneSize(t, env, a, 96, 29)
-
-	// A split in w1 shows in w2; so do the focus and the zoom from w2.
-	w1.Prefix("%")
-	for _, w := range []*Window{w1, w2} {
-		w.WaitUntil("two panes", wait, func(sc string) bool { return lastLine(sc, "pane 2/2") })
-	}
-	w2.Prefix("o")
-	for _, w := range []*Window{w1, w2} {
-		w.WaitUntil("the focus on pane 1", wait, func(sc string) bool { return lastLine(sc, "pane 1/2") })
-	}
-	w2.Prefix("z")
-	for _, w := range []*Window{w1, w2} {
-		w.WaitUntil("zoomed", wait, func(sc string) bool { return lastLine(sc, "pane 1/2 zoomed") })
-	}
-	w2.Prefix("z")
-	for _, w := range []*Window{w1, w2} {
-		w.WaitUntil("unzoomed", wait, func(sc string) bool { return lastLine(sc, "pane 1/2") && !lastLine(sc, "zoomed") })
-	}
+	waitPaneSize(t, env, a, 96, 28)
 
 	// The sidebar: prefix } in w2 widens it in w1 too (24 → 26 columns).
 	w2.Prefix("}")
@@ -93,7 +74,7 @@ func TestSmokeViewsShared(t *testing.T) {
 	}
 	w3.Detach()
 	w3.WaitFor("SESSIONS", wait)
-	if sc := w1.Screen(); !lastLine(sc, "pane 1/2") {
+	if sc := w1.Screen(); !lastLine(sc, alpha+" coordinator") {
 		t.Fatalf("an own view's detach reached main:\n%s", sc)
 	}
 	w3.Type("q")
@@ -174,29 +155,29 @@ func TestSmokeFirstViewFills(t *testing.T) {
 	w1.WaitFor("▾○ alpha", wait)
 	clickCoordinator(t, w1, alpha)
 	w1.WaitUntil("attached to alpha", agentWait, func(sc string) bool { return lastLine(sc, alpha+" coordinator") })
-	waitPaneSize(t, env, co, 112, 39)
+	waitPaneSize(t, env, co, 112, 38)
 
 	// A second console showing it later resizes nothing.
 	w2 := env.Attach(100, 26, co.ID)
 	w2.WaitFor("Fake Claude Code", agentWait)
 	time.Sleep(time.Second) // longer than the server's resize quiet time
-	assertPaneSize(t, env, co, 112, 39)
+	assertPaneSize(t, env, co, 112, 38)
 
 	// Typing claims as before: w2's rectangle, then w1's again.
 	w2.Type("x")
-	waitPaneSize(t, env, co, 76, 25) // less the status bar
+	waitPaneSize(t, env, co, 76, 24) // less the status bar and the row above it
 	w1.Type("y")
-	waitPaneSize(t, env, co, 112, 39)
+	waitPaneSize(t, env, co, 112, 38)
 
 	// The watch-only thread fills its first console too, and the next
 	// one to watch it leaves it alone.
 	w3 := env.Attach(120, 30, th.ID)
 	w3.WaitFor("Fake Claude Code", agentWait)
-	waitPaneSize(t, env, th, 96, 29) // the watch-only status bar takes a row
+	waitPaneSize(t, env, th, 96, 28) // the watch-only status bar and the row above it
 	w4 := env.Attach(90, 24, th.ID)
 	w4.WaitFor("Fake Claude Code", agentWait)
 	time.Sleep(time.Second)
-	assertPaneSize(t, env, th, 96, 29)
+	assertPaneSize(t, env, th, 96, 28)
 	for _, w := range []*Window{w2, w3, w4} {
 		w.Detach()
 		w.WaitExit(wait)

@@ -28,17 +28,17 @@ import (
 )
 
 // The attach client (docs/SPEC.md §3.3). It draws a server-owned view's
-// layout: one pane per session in the view's split tree, each with its
-// own attach connection and a mirror of the session's emulator, restored
+// pane: the session the view shows, with its own attach connection and a
+// mirror of the session's emulator, restored
 // from the server's snapshot, then fed exactly the bytes and resizes the
 // server's emulator gets, in the same order. It draws the outer terminal
-// from the mirrors and encodes input against the focused mirror's modes,
+// from the mirror and encodes input against the mirror's modes,
 // so neither needs a round trip.
 //
-// The layout is the view's, not the client's: the prefix then % splits,
-// arrows focus and so on are view.* calls, and every console joined to
-// the view redraws from the version that comes back. The panes'
-// rectangles are laid out at the view's size, the window of its latest
+// The view is the server's, not the client's: showing a session, the
+// sidebar's width and tree are view.* calls, and every console joined to
+// the view redraws from the version that comes back. The pane's
+// rectangle is laid out at the view's size, the window of its latest
 // client; a smaller window shows the same frame cropped, a larger one
 // padded. What stays here is this console's own: its window, the outer
 // terminal's modes, the local scrollback, the prefix and the takeovers.
@@ -244,15 +244,14 @@ type client struct {
 	// answer at once.
 	syncMu sync.Mutex
 
-	mu       sync.Mutex // guards everything below, and the panes' state
-	v        view.View  // the version drawn
-	geo      view.Geometry
-	panes    map[string]*pane
-	focus    *pane // keys, paste and the cursor go here; nil without panes
-	dividers []view.Divider
-	single   bool // one pane shown: its renderer has the window to itself
-	full     bool // the next frame repaints the whole window
-	closed   bool
+	mu     sync.Mutex // guards everything below, and the panes' state
+	v      view.View  // the version drawn
+	geo    view.Geometry
+	panes  map[string]*pane
+	focus  *pane // the view's pane: keys, paste and the cursor go here; nil without one
+	single bool  // the pane draws alone: its renderer has the window to itself
+	full   bool  // the next frame repaints the whole window
+	closed bool
 	// claimSeq is the view's version when this console last claimed the
 	// size by typing: it claims again only once the view changed.
 	claimSeq uint64
@@ -260,11 +259,10 @@ type client struct {
 	// lastReason is why the last pane's session ended, for the result.
 	lastReason string
 
-	prefix      chord
-	pending     bool      // the prefix was typed: the next key is a command
-	repeatUntil time.Time // until then, a resize key repeats without the prefix
-	flash       string    // a note for the status bar until the next key
-	confirm     *pane     // asking whether to take over this watch-only pane
+	prefix  chord
+	pending bool   // the prefix was typed: the next key is a command
+	flash   string // a note for the status bar until the next key
+	confirm *pane  // asking whether to take over this watch-only pane
 	// confirmRemote: asking whether to turn this coordinator's remote
 	// control on or off.
 	confirmRemote *pane
@@ -273,12 +271,9 @@ type client struct {
 	// focus (a menu's "take over…").
 	askFor string
 
-	// The mouse (attachmouse.go): the open menu, the divider being
-	// dragged, the last click (for double-clicks) and the status bar's
+	// The mouse (attachmouse.go): the open menu and the status bar's
 	// buttons, by column from its start.
 	menu       *amenu
-	divDrag    *view.Divider
-	lastClick  click
 	statusHits []hint
 
 	bare      bool     // the view has no dashboard: detaching leaves
@@ -291,7 +286,7 @@ type client struct {
 	sideFocus   bool
 	cols, rows  int // the window
 	paneCols    int // the columns right of the sidebar
-	paneRows    int // the rows above the status bar
+	paneRows    int // the rows above the status bar and the empty row over it
 	statusText  string
 	statusDrawn string
 	lastCursor  string
@@ -331,7 +326,7 @@ func (c *client) setWindow(cols, rows int) {
 	c.paneCols = max(cols-c.sideW, 1)
 	c.paneRows = rows
 	if c.statusBar {
-		c.paneRows = max(rows-1, 1)
+		c.paneRows = max(rows-2, 1)
 	}
 }
 
@@ -387,7 +382,7 @@ func (c *client) sync(v view.View) error {
 	c.mu.Unlock()
 	var opened []*pane
 	var note string
-	for _, id := range v.Root.Leaves() {
+	for _, id := range v.Visible() {
 		if have[id] {
 			continue
 		}
@@ -420,7 +415,7 @@ func (c *client) sync(v view.View) error {
 	}
 	var gone []*pane
 	for id, p := range c.panes {
-		if !v.Root.Has(id) {
+		if !v.Has(id) {
 			gone = append(gone, p)
 			delete(c.panes, id)
 			c.free(p)
@@ -468,7 +463,7 @@ func (c *client) viewLoop(watch <-chan struct{}) {
 		if same {
 			continue
 		}
-		if v.Mode != view.ModeLayout || v.Root == nil {
+		if v.Mode != view.ModeLayout || v.Focus == "" {
 			c.finish(c.endResult())
 			return
 		}
@@ -490,7 +485,7 @@ func (c *client) apply(v view.View) {
 	}
 	newer := v.Name == c.v.Name && v.Seq > c.v.Seq
 	c.mu.Unlock()
-	if newer && v.Mode == view.ModeLayout && v.Root != nil {
+	if newer && v.Mode == view.ModeLayout && v.Focus != "" {
 		c.syncMu.Lock()
 		defer c.syncMu.Unlock()
 		c.sync(v)
@@ -736,17 +731,7 @@ func (c *client) relayout() {
 	c.paneCols = max(c.cols-c.sideW, 1)
 	c.paneRows = max(c.rows-c.geo.Status, 1)
 	own := view.Rect{X: c.sideW, Y: 0, W: c.paneCols, H: c.paneRows}
-	if p := c.panes[c.v.Focus]; p != nil {
-		c.focus = p
-	} else if c.focus == nil || c.focus.gone {
-		c.focus = nil
-		for _, id := range c.v.Root.Leaves() {
-			if p := c.panes[id]; p != nil {
-				c.focus = p
-				break
-			}
-		}
-	}
+	c.focus = c.panes[c.v.Focus]
 	if c.askFor != "" && c.focus != nil && c.focus.info.ID == c.askFor {
 		// A menu's "take over…": ask now its pane has the focus.
 		if c.focus.watch {
@@ -755,8 +740,9 @@ func (c *client) relayout() {
 		c.askFor = ""
 	}
 	vis := c.visible()
-	// One pane draws alone, unless it shares the window with the sidebar.
-	c.single = len(vis) == 1 && c.side == nil
+	// The pane draws alone, unless it shares the window with the sidebar
+	// or the status bar (which has an empty row above it).
+	c.single = len(vis) == 1 && c.side == nil && !c.statusBar
 	for _, p := range vis {
 		if c.single {
 			p.rect = own
@@ -766,12 +752,6 @@ func (c *client) relayout() {
 		p.rect = clip(c.geo.Panes[p.info.ID], own)
 		if p.rect.W > 0 && p.rect.H > 0 {
 			p.r.SetRect(p.rect.X, p.rect.Y, p.rect.W, p.rect.H)
-		}
-	}
-	c.dividers = c.dividers[:0]
-	for _, d := range c.geo.Dividers {
-		if d.At = clip(d.At, own); d.At.W > 0 && d.At.H > 0 {
-			c.dividers = append(c.dividers, d)
 		}
 	}
 	c.full = true
@@ -811,16 +791,8 @@ func (c *client) shown() []*pane {
 	return out
 }
 
-// leaves are the open panes in the layout's order. c.mu held.
-func (c *client) leaves() []*pane {
-	var out []*pane
-	for _, id := range c.v.Root.Leaves() {
-		if p := c.panes[id]; p != nil {
-			out = append(out, p)
-		}
-	}
-	return out
-}
+// leaves are the open panes: the view's one, when open. c.mu held.
+func (c *client) leaves() []*pane { return c.visible() }
 
 // needClaim says whether typing into this console must first claim the
 // view's size (docs/SPEC.md §3.3): when another console sizes the view,
@@ -1017,7 +989,7 @@ func (c *client) key(k uv.Key) {
 		c.sideKeyboard(k)
 		return
 	}
-	do := prefixStep(c.prefix, pending, time.Now().Before(c.repeatUntil), k, c.dashboard)
+	do := prefixStep(c.prefix, pending, k, c.dashboard)
 	c.pending = do.arm
 	redraw := pending || do.arm || c.flash != ""
 	c.flash = ""
@@ -1057,7 +1029,7 @@ type prefixDo struct {
 	input  bool   // the program gets it
 	detach bool   // detach, then run then on the dashboard
 	then   string //
-	pane   string // a split-pane command (paneCommands)
+	pane   string // a sidebar command (paneCommands)
 	// takeover asks to take over the focused watch-only pane.
 	takeover bool
 	// remote asks to turn the focused coordinator's remote control on
@@ -1065,21 +1037,18 @@ type prefixDo struct {
 	remote bool
 }
 
-// paneCommands are the keys that, after the prefix, act on the window's
-// panes: split beside (%) or below ("), focus (arrows, o), resize
-// (ctrl+arrows), zoom (z), close (x) and switch layout (space).
-var paneCommands = map[string]bool{
-	"%": true, `"`: true, "o": true, "z": true, "x": true, "space": true,
-	"{": true, "}": true, "b": true, "tab": true, // the sidebar
-	"left": true, "right": true, "up": true, "down": true,
-	"ctrl+left": true, "ctrl+right": true, "ctrl+up": true, "ctrl+down": true,
-}
+// paneCommands are the keys that, after the prefix, act on the window
+// itself: the sidebar's width ({ }), its slim strip (b) and its keyboard
+// (tab).
+var paneCommands = map[string]bool{"{": true, "}": true, "b": true, "tab": true}
 
 // keyName names k as paneCommands does.
 func keyName(k uv.Key) string {
 	switch {
 	case k.Code == uv.KeySpace || k.Text == " ":
 		return "space"
+	case k.Code == uv.KeyTab && k.Mod == 0:
+		return "tab"
 	case k.Text != "":
 		return k.Text
 	}
@@ -1090,15 +1059,12 @@ func keyName(k uv.Key) string {
 // dashboard key detaches and runs there (only when there is a dashboard
 // to go back to), a pane command acts on the panes, u takes over a
 // watch-only pane, the prefix again goes to the program, and anything
-// else cancels. While repeat holds (just
-// after a resize) a resize key needs no prefix.
-func prefixStep(prefix chord, pending, repeat bool, k uv.Key, dashboard bool) prefixDo {
+// else cancels.
+func prefixStep(prefix chord, pending bool, k uv.Key, dashboard bool) prefixDo {
 	name := keyName(k)
 	switch {
 	case !pending && prefix.match(k):
 		return prefixDo{arm: true}
-	case !pending && repeat && strings.HasPrefix(name, "ctrl+") && paneCommands[name]:
-		return prefixDo{pane: name}
 	case !pending, prefix.match(k):
 		return prefixDo{input: true}
 	case name == "d":
@@ -1153,57 +1119,17 @@ func (c *client) detachResult() Result {
 	return res
 }
 
-// paneCommand runs a split-pane command: a view action, which every
-// console joined to the view then shows.
+// paneCommand runs a command on the window: the sidebar's width, its
+// slim strip, its keyboard.
 func (c *client) paneCommand(cmd string) {
 	switch cmd {
-	case "%", `"`:
-		// The server starts the shell; that takes a moment.
-		go c.act(proto.MethodViewSplit, proto.ViewParams{Side: cmd == "%"})
-	case "x":
-		if !c.lock() {
-			return
-		}
-		p, last := c.focus, len(c.v.Root.Leaves()) == 1
-		c.mu.Unlock()
-		switch {
-		case p == nil:
-		case last && c.bare:
-			c.detachThen("")
-		default:
-			c.act(proto.MethodViewClose, proto.ViewParams{Session: p.info.ID})
-		}
 	case "{", "}", "b":
 		c.sideKey(cmd)
 	case "tab":
 		c.sideFocusOn(true)
-	case "left", "right", "up", "down":
-		d := directions[cmd]
-		c.act(proto.MethodViewFocus, proto.ViewParams{DX: d[0], DY: d[1]})
-	case "o":
-		c.act(proto.MethodViewFocus, proto.ViewParams{Next: true})
-	case "z":
-		c.act(proto.MethodViewZoom, proto.ViewParams{})
-	case "space":
-		c.act(proto.MethodViewEven, proto.ViewParams{})
-	case "ctrl+left", "ctrl+right", "ctrl+up", "ctrl+down":
-		side := cmd == "ctrl+left" || cmd == "ctrl+right"
-		cells := map[string]int{"ctrl+left": -2, "ctrl+right": 2, "ctrl+up": -1, "ctrl+down": 1}[cmd]
-		if c.lock() {
-			c.repeatUntil = time.Now().Add(resizeRepeat)
-			c.mu.Unlock()
-		}
-		c.act(proto.MethodViewResize, proto.ViewParams{Side: side, Cells: cells})
 	}
 	c.poke()
 }
-
-// directions are the focus keys' (dx, dy).
-var directions = map[string][2]int{"left": {-1, 0}, "right": {1, 0}, "up": {0, -1}, "down": {0, 1}}
-
-// resizeRepeat is how long a resize key keeps working without the
-// prefix, as tmux's repeat-time.
-const resizeRepeat = 500 * time.Millisecond
 
 // askTakeover asks, in the status bar, whether to take over the focused
 // pane when it is watch-only.
@@ -1290,17 +1216,6 @@ func (c *client) status() {
 	case c.focus.info.Role == proto.RoleThread:
 		where = "taken over"
 	}
-	if ps := c.leaves(); len(ps) > 1 {
-		where = strings.TrimPrefix(where+" · ", " · ")
-		for i, p := range ps {
-			if p == c.focus {
-				where += fmt.Sprintf("pane %d/%d", i+1, len(ps))
-			}
-		}
-		if c.v.Zoom {
-			where += " zoomed"
-		}
-	}
 	if c.flash != "" {
 		where = strings.TrimPrefix(where+" · "+c.flash, " · ")
 	}
@@ -1363,11 +1278,10 @@ func (c *client) input(k uv.Key) {
 }
 
 // mouse handles a mouse event (attachmouse.go): the open menu, a
-// question in the status bar, a divider being dragged, the sidebar, the
-// status bar and the dividers are tm's. Over a pane, a click focuses it;
-// the event goes to the program when it tracks the mouse and the pane
-// isn't watch-only, and otherwise a double-click zooms the pane and a
-// right-click opens the ≡ menu. The outer terminal reports the mouse
+// question in the status bar, the sidebar and the status bar are tm's.
+// Over the pane, a click takes the keyboard back from the sidebar; the
+// event goes to the program when it tracks the mouse and the pane isn't
+// watch-only, and otherwise a right-click opens the ≡ menu. The outer terminal reports the mouse
 // while the focused program tracks it or the sidebar shows (see
 // outerModes).
 func (c *client) mouse(ev uv.Event) {
@@ -1390,9 +1304,6 @@ func (c *client) mouse(ev uv.Event) {
 			c.answerRemote(c.confirmRemote, yes)
 		}
 		return
-	case c.divDrag != nil:
-		c.dragMouse(m)
-		return
 	case c.side != nil && (m.X < c.sideW || c.side.drag):
 		if press && m.Button == emu.MouseRight && !c.side.drag {
 			c.sideMenu(m)
@@ -1403,12 +1314,6 @@ func (c *client) mouse(ev uv.Event) {
 	case status:
 		c.statusMouse(m)
 		return
-	case press && m.Button == emu.MouseLeft:
-		if d := c.dividerAt(m.X, m.Y); d != nil {
-			c.divDrag = d
-			c.mu.Unlock()
-			return
-		}
 	}
 	var p *pane
 	for _, q := range c.shown() {
@@ -1416,7 +1321,7 @@ func (c *client) mouse(ev uv.Event) {
 			p = q
 		}
 	}
-	if p == nil { // a divider or padding
+	if p == nil { // padding, or the empty row above the status bar
 		c.mu.Unlock()
 		return
 	}
@@ -1427,29 +1332,16 @@ func (c *client) mouse(ev uv.Event) {
 		c.status()
 		c.poke()
 	}
-	refocus := click && p != c.focus
-	if refocus {
-		c.focus = p // at once here; the view follows
-		c.full = true
-		c.status()
-	}
 	if p.watch || !p.mirror.Modes().MouseTracking() {
 		// tm's: the program doesn't take the mouse.
-		double := press && m.Button == emu.MouseLeft && c.doubleAt(m.X, m.Y)
 		if press && m.Button == emu.MouseRight {
 			c.openMenu("", c.sessionItems(), m.X, m.Y, false)
 		}
 		_, wheel := ev.(uv.MouseWheelEvent)
 		claim := !p.watch && (click || wheel) && c.needClaim()
 		c.mu.Unlock()
-		if refocus {
-			c.act(proto.MethodViewFocus, proto.ViewParams{Session: p.info.ID})
-		}
 		if claim {
 			c.claim(p.info.ID)
-		}
-		if double {
-			c.act(proto.MethodViewZoom, proto.ViewParams{})
 		}
 		c.poke()
 		return
@@ -1468,10 +1360,6 @@ func (c *client) mouse(ev uv.Event) {
 		b, err = c.enc.Mouse(p.mirror, m)
 	}
 	c.mu.Unlock()
-	if refocus {
-		c.act(proto.MethodViewFocus, proto.ViewParams{Session: p.info.ID})
-		c.poke()
-	}
 	if claim {
 		c.claim(p.info.ID)
 	}
@@ -1615,8 +1503,8 @@ func (c *client) renderLoop(out io.Writer) Result {
 	}
 }
 
-// frameSplit draws a window of several panes (or one beside the
-// sidebar): the dividers, each pane's changes, the status bar, then the
+// frameSplit draws the pane beside the sidebar or above the status bar:
+// the sidebar, the pane's changes, the status bar, then the
 // focused pane's cursor, all in one synchronised update; nil when nothing
 // changed. c.mu held.
 func (c *client) frameSplit(vis []*pane) ([]byte, error) {
@@ -1627,7 +1515,6 @@ func (c *client) frameSplit(vis []*pane) ([]byte, error) {
 		for _, p := range vis {
 			p.r.Invalidate()
 		}
-		b = c.appendDividers(b)
 		c.statusDrawn, c.full, wrote = "", false, true
 		if c.side != nil {
 			c.side.drawn = nil
@@ -1671,28 +1558,6 @@ func (c *client) frameSplit(vis []*pane) ([]byte, error) {
 	b = append(b, "\x1b[?2026l"...)
 	c.buf = b
 	return b, nil
-}
-
-// appendDividers draws the lines between panes; those of the splits
-// holding the focused pane in the accent colour. c.mu held.
-func (c *client) appendDividers(b []byte) []byte {
-	for _, d := range c.dividers {
-		st := styleFaint
-		if d.Focused {
-			st = styleAccent
-		}
-		if d.Side {
-			cell := st.Render("│")
-			for y := range d.At.H {
-				b = append(b, fmt.Sprintf("\x1b[%d;%dH", d.At.Y+y+1, d.At.X+1)...)
-				b = append(b, cell...)
-			}
-			continue
-		}
-		b = append(b, fmt.Sprintf("\x1b[%d;%dH", d.At.Y+1, d.At.X+1)...)
-		b = append(b, st.Render(strings.Repeat("─", d.At.W))...)
-	}
-	return b
 }
 
 func errString(err error) string {

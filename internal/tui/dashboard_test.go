@@ -336,19 +336,21 @@ func TestStatusLine(t *testing.T) {
 		State: "working", TodosDone: 2, TodosTotal: 5, Current: "Write §8"}
 	got := statusLine(info, nil, false, 100, "")
 	want := "\x1b[7m s-4 · termalator coordinator · working 40% 2/5 ▸ Write §8"
-	if !strings.HasPrefix(got, want) || !strings.HasSuffix(got, `│ ─ ⤢ × ≡  prefix+d dashboard `+"\x1b[27m") {
+	if !strings.HasPrefix(got, want) || !strings.HasSuffix(got, ` ≡  prefix+d dashboard `+"\x1b[27m") {
 		t.Fatalf("status line %q", got)
 	}
 	if w := len([]rune(strings.TrimSuffix(strings.TrimPrefix(got, "\x1b[7m"), "\x1b[27m"))); w != 100 {
 		t.Fatalf("status line is %d cells, want 100", w)
 	}
-	// Split panes: where the focused one is.
-	if got := statusLine(info, nil, false, 120, "pane 2/3"); !strings.Contains(got, "▸ Write §8 · pane 2/3 ") {
-		t.Fatalf("status line with panes %q", got)
+	// No window buttons: split panes and zoom are gone.
+	for _, b := range []string{"│", "─", "⤢", "×"} {
+		if strings.Contains(got, b) {
+			t.Fatalf("status line has %q: %q", b, got)
+		}
 	}
 	// After the prefix: the commands.
 	got = statusLine(info, nil, true, 160, "")
-	if !strings.Contains(got, `d dashboard · a project · p ] [ projects · i t , ? · % " split`) || !strings.Contains(got, `prefix again sends it`) {
+	if !strings.Contains(got, `d dashboard · a project · p ] [ projects · i t , ? · { } b sidebar · tab sidebar keys`) || !strings.Contains(got, `prefix again sends it`) {
 		t.Fatalf("pending status line %q", got)
 	}
 }

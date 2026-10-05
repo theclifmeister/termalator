@@ -130,7 +130,7 @@ func TestEveryKeyHasMousePath(t *testing.T) {
 			t.Errorf("the session's ≡ menu lacks prefix+%s", k)
 			continue
 		}
-		if keyName(cmdKey(k)) != k || prefixStep(prefix, true, false, cmdKey(k), true) == (prefixDo{}) {
+		if keyName(cmdKey(k)) != k || prefixStep(prefix, true, cmdKey(k), true) == (prefixDo{}) {
 			t.Errorf("the menu's prefix+%s does nothing", k)
 		}
 	}
@@ -374,8 +374,7 @@ func TestHints(t *testing.T) {
 	for _, h := range hits {
 		got[h.key] = string(plain[h.x0:min(h.x1, len(plain))])
 	}
-	for key, text := range map[string]string{"%": "│ ", `"`: "─ ", "z": "⤢ ", "x": "× ", "menu": "≡ ",
-		"d": "prefix+d dashboard", "u": takeOverHint} {
+	for key, text := range map[string]string{"menu": "≡ ", "d": "prefix+d dashboard", "u": takeOverHint} {
 		if got[key] != text {
 			t.Errorf("status button %s shows %q, want %q", key, got[key], text)
 		}
@@ -384,7 +383,7 @@ func TestHints(t *testing.T) {
 	line, hits = statusBar(info, nil, true, 300, "")
 	plain = []rune(ansi.Strip(line))
 	for _, h := range hits {
-		if h.key == "z" && !strings.HasPrefix(string(plain[h.x0:]), "z zoom") {
+		if h.key == "tab" && !strings.HasPrefix(string(plain[h.x0:]), "tab sidebar keys") {
 			t.Errorf("z at %d: %q", h.x0, string(plain[h.x0:]))
 		}
 	}

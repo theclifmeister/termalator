@@ -1,10 +1,9 @@
 // Package view is the server-owned view (docs/SPEC.md §3.3, Views): what
-// every console joined to it shows. The screen (the dashboard or the
-// attached layout), the split tree with its ratios, the focus and zoom,
-// the dashboard's selection, the current project and the projects
+// every console joined to it shows. The screen (the dashboard or an
+// attached session), the session it shows, the dashboard's selection, the current project and the projects
 // sidebar with its tree live here, once, in the server; consoles only render them.
 //
-// The package is the model alone, with no I/O: the tree, the actions on
+// The package is the model alone, with no I/O: the view, the actions on
 // it and the geometry. The server (internal/server) keeps the views, applies
 // the actions its clients send and broadcasts each new version; clients
 // (internal/tui) lay out the same tree with the same functions, so every
@@ -29,7 +28,7 @@ const MaxExpanded = 256
 // Modes: what the view shows.
 const (
 	ModeDashboard = "dashboard"
-	ModeLayout    = "layout" // the split layout of attached sessions
+	ModeLayout    = "layout" // an attached session (the name predates single panes)
 )
 
 // View is one view, as the server keeps and broadcasts it.
@@ -49,10 +48,10 @@ type View struct {
 	// version it has seen.
 	Seq uint64 `json:"seq"`
 
-	Mode  string `json:"mode"`
-	Root  *Node  `json:"root,omitempty"`
-	Focus string `json:"focus,omitempty"` // a session in Root
-	Zoom  bool   `json:"zoom,omitempty"`
+	Mode string `json:"mode"`
+	// Focus is the session the view shows: one pane, beside the sidebar
+	// (ModeLayout). It stays while the dashboard shows, for going back.
+	Focus string `json:"focus,omitempty"`
 
 	// Selected is the dashboard's selected row (its key).
 	Selected string `json:"selected,omitempty"`
@@ -78,27 +77,15 @@ type View struct {
 	Rows   uint16 `json:"rows,omitempty"`
 }
 
-// Node is a split or, with Session set, one pane.
-type Node struct {
-	Session string `json:"session,omitempty"`
-	// Side is true for panes side by side (a divider column between
-	// them), false for one above the other (a divider row).
-	Side  bool    `json:"side,omitempty"`
-	Ratio float64 `json:"ratio,omitempty"` // A's share of the room left after the divider
-	A     *Node   `json:"a,omitempty"`
-	B     *Node   `json:"b,omitempty"`
-}
-
-// Clone is a deep copy of v, safe to hand to another goroutine.
+// Clone is a copy of v, safe to hand to another goroutine.
 func (v View) Clone() View {
-	v.Root = v.Root.clone()
 	v.Expanded = slices.Clone(v.Expanded)
 	return v
 }
 
-// Here is what the sidebar's tree highlights, the row you are on: in the
-// layout, the focused session (its coordinator or thread row); on the
-// dashboard, the current project's row (session "").
+// Here is what the sidebar's tree highlights, the row you are on: with a
+// session shown, its coordinator or thread row; on the dashboard, the
+// current project's row (session "").
 func (v *View) Here() (project, session string) {
 	if v.Mode == ModeLayout {
 		return v.Current, v.Focus
@@ -112,81 +99,30 @@ func (v *View) IsExpanded(project string) bool {
 	return project != "" && (project == v.Current || slices.Contains(v.Expanded, project))
 }
 
-func (n *Node) clone() *Node {
-	if n == nil {
-		return nil
-	}
-	c := *n
-	c.A, c.B = n.A.clone(), n.B.clone()
-	return &c
-}
+// Has says whether session id is the view's pane.
+func (v *View) Has(id string) bool { return id != "" && v.Focus == id }
 
-// Leaves are the sessions under n, left to right and top to bottom.
-func (n *Node) Leaves() []string { return n.leaves(nil) }
-
-func (n *Node) leaves(out []string) []string {
-	switch {
-	case n == nil:
-		return out
-	case n.Session != "":
-		return append(out, n.Session)
-	}
-	return n.B.leaves(n.A.leaves(out))
-}
-
-// Has says whether session id is a pane of n.
-func (n *Node) Has(id string) bool { return slices.Contains(n.Leaves(), id) }
-
-// Visible are the sessions shown: every pane, or the zoomed one.
+// Visible are the sessions shown: the view's one pane, when it shows a
+// session.
 func (v *View) Visible() []string {
-	if v.Mode != ModeLayout || v.Root == nil {
+	if v.Mode != ModeLayout || v.Focus == "" {
 		return nil
 	}
-	if v.Zoom && v.Root.Has(v.Focus) {
-		return []string{v.Focus}
-	}
-	return v.Root.Leaves()
+	return []string{v.Focus}
 }
 
-// Valid checks a view read from disk or the wire: a tree whose leaves
-// are distinct sessions, splits with two children, a focus in the tree.
+// Valid checks a view read from disk or the wire.
 func (v *View) Valid() error {
-	seen := map[string]bool{}
-	var walk func(n *Node, depth int) error
-	walk = func(n *Node, depth int) error {
-		switch {
-		case depth > 64:
-			return fmt.Errorf("view %s: the tree is too deep", v.Name)
-		case n.Session != "":
-			if n.A != nil || n.B != nil {
-				return fmt.Errorf("view %s: pane %s has children", v.Name, n.Session)
-			}
-			if seen[n.Session] {
-				return fmt.Errorf("view %s: %s shows twice", v.Name, n.Session)
-			}
-			seen[n.Session] = true
-			return nil
-		case n.A == nil || n.B == nil:
-			return fmt.Errorf("view %s: a split without two sides", v.Name)
-		}
-		if err := walk(n.A, depth+1); err != nil {
-			return err
-		}
-		return walk(n.B, depth+1)
-	}
-	if v.Root != nil {
-		if err := walk(v.Root, 0); err != nil {
-			return err
-		}
-	}
-	if v.Focus != "" && !seen[v.Focus] {
-		return fmt.Errorf("view %s: the focus %s is not a pane", v.Name, v.Focus)
+	if len(v.Focus) > MaxKey {
+		return fmt.Errorf("view %s: a session id too long", v.Name)
 	}
 	return nil
 }
 
-// Normalize repairs what Valid allows to be loose: ratios in range, a
-// focus when there are panes, the dashboard when there are none.
+// Normalize repairs what Valid allows to be loose: the dashboard when
+// there is no session to show. Views saved before panes were single
+// (a split tree in "root") keep their focused session, the one they
+// showed in front.
 func (v *View) Normalize() {
 	v.Sidebar = v.Sidebar.Clamp()
 	if len(v.Expanded) > 0 {
@@ -199,34 +135,11 @@ func (v *View) Normalize() {
 	} else {
 		v.Expanded = nil
 	}
-	var fix func(n *Node)
-	fix = func(n *Node) {
-		if n == nil || n.Session != "" {
-			return
-		}
-		if n.Ratio <= 0 || n.Ratio >= 1 {
-			n.Ratio = 0.5
-		}
-		fix(n.A)
-		fix(n.B)
-	}
-	fix(v.Root)
 	if v.Mode != ModeLayout && v.Mode != ModeDashboard {
 		v.Mode = ModeDashboard
 	}
-	leaves := v.Root.Leaves()
-	if len(leaves) == 0 {
-		v.Root, v.Focus, v.Zoom = nil, "", false
-		if v.Mode == ModeLayout {
-			v.Mode = ModeDashboard
-		}
-		return
-	}
-	if !slices.Contains(leaves, v.Focus) {
-		v.Focus = leaves[0]
-	}
-	if len(leaves) == 1 {
-		v.Zoom = false
+	if v.Focus == "" && v.Mode == ModeLayout {
+		v.Mode = ModeDashboard
 	}
 }
 
