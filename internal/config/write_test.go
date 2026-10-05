@@ -77,7 +77,7 @@ func TestSetProject(t *testing.T) {
 	if err := SetProject("demo", "nonsense", true); err == nil {
 		t.Error("an unknown key was written")
 	}
-	for key, v := range map[string]any{"parallel_threads": 0, "auto_close_days": 366, "auto_close": "never"} {
+	for key, v := range map[string]any{"parallel_threads": 0, "auto_close_days": 366, "auto_close": "never", "complete_tasks": "later"} {
 		if err := SetProject("demo", key, v); err == nil {
 			t.Errorf("%s took %v", key, v)
 		}

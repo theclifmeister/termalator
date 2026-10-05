@@ -11,7 +11,7 @@
                                │    │ ON DECK                                                                     │
                                │    │ T2    Ship it  open                                                         │
                                │    │                                                                             │
-                               │    │ done: 0 · the coordinator changes tasks                                     │
+                               │    │ the coordinator changes tasks                                               │
                                │    │                                                                             │
                                │    │                                                                             │
                                │    │                                                                             │
