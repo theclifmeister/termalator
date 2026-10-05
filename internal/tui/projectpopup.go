@@ -236,7 +236,7 @@ func (pv *projectView) box(m *dash) box {
 	for len(all) < len(head)+len(body) {
 		all = append(all, noHit)
 	}
-	b := box{title: pv.slug + " · prefix = " + m.prefix, head: head, body: body, sel: -1, hits: all, keys: keys, width: width, height: height}
+	b := box{title: pv.slug, head: head, body: body, sel: -1, hits: all, keys: keys, width: width, height: height}
 	b.scroll = pv.scroll(m.boxRows(b)-len(head), sel, len(body))
 	return b
 }
