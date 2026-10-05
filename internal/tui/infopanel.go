@@ -289,13 +289,22 @@ func (c *client) infoX() int { return c.cols - c.infoW }
 func (c *client) infoLayout() {
 	ip := c.info
 	ip.lines, ip.hits = infoLines(ip.data, max(c.infoW-1, 1), time.Now())
-	ip.top = min(ip.top, max(len(ip.lines)-c.rows, 0))
+	ip.top = min(ip.top, max(len(ip.lines)-c.infoRows(), 0))
 }
 
 // infoScroll moves the panel's content by d lines. c.mu held.
 func (c *client) infoScroll(d int) {
 	ip := c.info
-	ip.top = min(max(ip.top+d, 0), max(len(ip.lines)-c.rows, 0))
+	ip.top = min(max(ip.top+d, 0), max(len(ip.lines)-c.infoRows(), 0))
+}
+
+// infoRows is the panel's height: the window less the status bar, which
+// runs under the pane and the panel. c.mu held.
+func (c *client) infoRows() int {
+	if c.statusBar {
+		return max(c.rows-1, 1)
+	}
+	return c.rows
 }
 
 // appendInfo draws the panel's changed lines: its border, then its
@@ -307,7 +316,7 @@ func (c *client) appendInfo(b []byte, wrote bool) ([]byte, bool) {
 		border = styleAccent.Render("│")
 	}
 	x, w := c.infoX(), c.infoW-1
-	lines := make([]string, c.rows)
+	lines := make([]string, c.infoRows())
 	for y := range lines {
 		l := ""
 		if i := ip.top + y; i < len(ip.lines) {

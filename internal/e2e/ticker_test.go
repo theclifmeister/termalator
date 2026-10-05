@@ -285,7 +285,7 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	// enter on the thread: attached, with nothing to take over.
 	w.Key(Enter)
 	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, "demo t-0001") })
-	if cols, rows := paneSize(env, th); cols == 110 && rows == 28 {
+	if cols, rows := paneSize(env, th); cols == threadCols(110+sideDefault) && rows == 28 {
 		t.Fatalf("the thread's pane already fits the window: the size check below proves nothing")
 	}
 	if sc := w.Screen(); strings.Contains(sc, "watch-only") || strings.Contains(sc, "taken over") {
@@ -293,7 +293,7 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	}
 	w.Type("qqq")
 	w.WaitFor("qqq", wait)
-	waitPaneSize(t, env, th, 110, 28) // typing claims the size
+	waitPaneSize(t, env, th, threadCols(110+sideDefault), 28) // typing claims the size
 	waitInbox(t, env, "takeover: the user typed into t-0001 (T1 Fix the login)'s pane")
 	w.Type("www")
 	w.WaitFor("www", wait)

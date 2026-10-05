@@ -179,11 +179,11 @@ func TestSmokeFirstViewFills(t *testing.T) {
 	// it leaves it alone.
 	w3 := env.Attach(120, 30, th.ID)
 	w3.WaitFor("Fake Claude Code", agentWait)
-	waitPaneSize(t, env, th, paneCols(120), 28) // the status bar and the row above it
+	waitPaneSize(t, env, th, threadCols(120), 28) // the status bar and the row above it
 	w4 := env.Attach(90, 24, th.ID)
 	w4.WaitFor("Fake Claude Code", agentWait)
 	time.Sleep(time.Second)
-	assertPaneSize(t, env, th, paneCols(120), 28)
+	assertPaneSize(t, env, th, threadCols(120), 28)
 	for _, w := range []*Window{w2, w3, w4} {
 		w.Detach()
 		w.WaitExit(wait)

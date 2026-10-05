@@ -306,7 +306,7 @@ type client struct {
 	infoW       int
 	infoFocus   bool
 	cols, rows  int // the window
-	paneCols    int // the columns right of the sidebar
+	paneCols    int // the columns between the sidebar and the info panel
 	paneRows    int // the rows above the status bar and the empty row over it
 	statusText  string
 	statusDrawn string
@@ -1266,7 +1266,7 @@ func (c *client) status() {
 		return
 	}
 	if p := c.confirmRemote; p != nil {
-		line := "\x1b[7m" + fit(" "+remoteQuestion(p.info)+" y yes · any other key no", c.paneCols) + "\x1b[27m"
+		line := "\x1b[7m" + fit(" "+remoteQuestion(p.info)+" y yes · any other key no", c.cols-c.sideW) + "\x1b[27m"
 		if c.single {
 			c.focus.r.SetStatus(line)
 		}
@@ -1283,7 +1283,7 @@ func (c *client) status() {
 	if c.flash != "" {
 		where = strings.TrimPrefix(where+" · "+c.flash, " · ")
 	}
-	line, hits := statusBar(c.focus.info, c.focus.status, c.pending, c.paneCols, where)
+	line, hits := statusBar(c.focus.info, c.focus.status, c.pending, c.cols-c.sideW, where)
 	if c.single {
 		c.focus.r.SetStatus(line)
 	}
@@ -1352,7 +1352,8 @@ func (c *client) mouse(ev uv.Event) {
 		return
 	}
 	press := m.Action == emu.MousePress && (m.Button == emu.MouseLeft || m.Button == emu.MouseRight || m.Button == emu.MouseMiddle)
-	status := c.statusBar && m.Y >= c.paneRows && m.X >= c.sideW && m.X < c.cols-c.infoW
+	// The status bar runs under the pane and the info panel.
+	status := c.statusBar && m.X >= c.sideW && (m.Y >= c.rows-1 || m.Y >= c.paneRows && m.X < c.cols-c.infoW)
 	switch {
 	case c.menu != nil:
 		c.menuMouse(m)
@@ -1369,7 +1370,7 @@ func (c *client) mouse(ev uv.Event) {
 		}
 		c.sideMouse(m)
 		return
-	case c.infoW > 0 && (m.X >= c.infoX() || c.info.drag):
+	case c.infoW > 0 && (m.X >= c.infoX() && !status || c.info.drag):
 		c.infoMouse(m)
 		return
 	case status:
