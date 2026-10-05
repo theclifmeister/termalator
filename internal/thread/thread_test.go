@@ -1,6 +1,7 @@
 package thread
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -208,5 +209,38 @@ func TestFiles(t *testing.T) {
 	}
 	if ctx := ResetContext(p, r.ID); !strings.Contains(ctx, "brief.md") || !strings.Contains(ctx, "Report: new") {
 		t.Fatalf("reset context:\n%s", ctx)
+	}
+}
+
+// TestReportPRs: every report's PR, oldest first, each once; reports
+// past the tenth sort by number.
+func TestReportPRs(t *testing.T) {
+	t.Setenv("TERMILATOR_HOME", t.TempDir())
+	p, err := project.New(project.Options{Name: "demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := Create(p, Record{Title: "Two PRs", Agent: "claude", State: Running})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prs := ReportPRs(p, r.ID); len(prs) != 0 {
+		t.Fatalf("PRs before any report: %q", prs)
+	}
+	report := "## Report\nok\n## Next\nMerge\n"
+	pr := func(n int) string { return fmt.Sprintf("PR: https://github.com/o/r/pull/%d\n%s", n, report) }
+	reps := []string{pr(7), report}
+	for range 9 {
+		reps = append(reps, pr(7))
+	}
+	reps = append(reps, pr(9), pr(8), report)
+	for i, rep := range reps {
+		if _, err := StoreReport(p, r.ID, rep, nil, time.Now()); err != nil {
+			t.Fatalf("report %d: %v", i, err)
+		}
+	}
+	want := "https://github.com/o/r/pull/7 https://github.com/o/r/pull/9 https://github.com/o/r/pull/8"
+	if prs := ReportPRs(p, r.ID); strings.Join(prs, " ") != want {
+		t.Fatalf("ReportPRs = %q, want %s", prs, want)
 	}
 }

@@ -218,6 +218,8 @@ func TestLeftovers(t *testing.T) {
 	git(t, repo, "checkout", "-q", "tm/demo/t-0009-gone")
 	git(t, repo, "commit", "-q", "--allow-empty", "-m", "work")
 	git(t, repo, "checkout", "-q", "main")
+	// A resolved thread's second branch (a second PR's), merged: offered.
+	git(t, repo, "branch", "tm/demo/t-0002-second")
 	// An empty folder with no thread at all.
 	stray := filepath.Join(d.Paths.Home, "worktrees", "demo", "t-0042-stray")
 	os.MkdirAll(stray, 0o755)
@@ -238,6 +240,7 @@ func TestLeftovers(t *testing.T) {
 		stray + ": thread t-0042 has no record":                                       true,
 		clean.Branch + " in " + repo:                                                  true,
 		"tm/demo/t-0009-gone in " + repo:                                              false,
+		"tm/demo/t-0002-second in " + repo + ": thread t-0002 is resolved":            true,
 	}
 	for sub, fix := range want {
 		found := false
@@ -269,8 +272,12 @@ func TestLeftovers(t *testing.T) {
 		}
 	}
 	branches := git(t, repo, "branch", "--list", "tm/*")
-	if strings.Contains(branches, clean.Branch) || !strings.Contains(branches, "t-0009-gone") || !strings.Contains(branches, running.Branch) {
+	if strings.Contains(branches, clean.Branch) || strings.Contains(branches, "t-0002-second") || !strings.Contains(branches, "t-0009-gone") || !strings.Contains(branches, running.Branch) {
 		t.Errorf("branches after fix:\n%s", branches)
+	}
+	journal, _ := os.ReadFile(p.Path("JOURNAL.md"))
+	if w := "human branch.delete t-0002 tm/demo/t-0002-second (merged into main, tm doctor --fix)"; !strings.Contains(string(journal), w) {
+		t.Errorf("journal lacks %q:\n%s", w, journal)
 	}
 	// Second run: only the kept ones remain.
 	if n := len(Fixes(Leftovers(d, Live{}))); n != 0 {

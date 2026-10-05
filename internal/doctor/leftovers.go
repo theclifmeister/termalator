@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/theclifmeister/termilator/internal/caller"
 	"github.com/theclifmeister/termilator/internal/project"
 	"github.com/theclifmeister/termilator/internal/thread"
 	"github.com/theclifmeister/termilator/internal/worktree"
@@ -249,8 +250,26 @@ func leftoverBranches(d Deps, ix *threadIndex, removable map[string]bool) []Chec
 			}
 			out = append(out, Check{Group: g, Name: "branch", Status: Warn,
 				Detail: fmt.Sprintf("%s in %s: %s and merged into %s", br, repo, reason, base),
-				Fix:    &Fix{Desc: "delete branch " + br + " in " + repo, Apply: func() error { return worktree.DeleteBranch(repo, br) }}})
+				Fix:    &Fix{Desc: "delete branch " + br + " in " + repo, Apply: func() error { return pruneBranch(repo, br, parts[1], threadID(parts[2])) }}})
 		}
 	}
 	return out
+}
+
+// pruneBranch deletes a leftover branch with git branch -d, rechecking
+// that nothing on it is lost (worktree.PruneBranch), and journals it in
+// its project as resolve does.
+func pruneBranch(repo, br, slug, id string) error {
+	ok, why := worktree.PruneBranch(repo, br)
+	if !ok {
+		return fmt.Errorf("kept %s: %s", br, why)
+	}
+	if p, err := project.Open(slug); err == nil {
+		ref := id
+		if ref == "" {
+			ref = br
+		}
+		return p.Journal(caller.Caller{Kind: caller.Human}, "branch.delete", ref, br+" (merged into "+why+", tm doctor --fix)")
+	}
+	return nil
 }

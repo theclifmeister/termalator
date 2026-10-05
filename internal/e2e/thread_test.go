@@ -349,14 +349,54 @@ func TestThreadResolveMergedBranch(t *testing.T) {
 	git(b.Repo, "fetch", "-q", "origin")
 	resolve(b, "t-0002", "kept branch "+b.Branch+" (no merged PR found)", false)
 
+	// A thread with more branches of its own (a second PR's): one merged
+	// on origin is deleted with git branch -d although the repo's main
+	// lags origin's; an unmerged one, and one checked out in another
+	// worktree, are kept and the item says why.
+	e := thread("t-0003", "Two PRs")
+	second, third, fourth := "tm/demo/t-0003-second", "tm/demo/t-0003-third", "tm/demo/t-0003-fourth"
+	git(e.Worktree, "checkout", "-q", "-b", second)
+	os.WriteFile(filepath.Join(e.Worktree, "second"), []byte("2"), 0o644)
+	git(e.Worktree, "add", ".")
+	git(e.Worktree, "commit", "-q", "-m", "second")
+	git(e.Worktree, "push", "-q", "origin", "HEAD:main")
+	git(e.Worktree, "checkout", "-q", "-b", third)
+	git(e.Worktree, "commit", "-q", "--allow-empty", "-m", "unmerged")
+	git(e.Worktree, "checkout", "-q", e.Branch)
+	git(e.Repo, "fetch", "-q", "origin")
+	git(e.Repo, "branch", fourth, "origin/main")
+	elsewhere := filepath.Join(t.TempDir(), "elsewhere")
+	git(e.Repo, "worktree", "add", "-q", elsewhere, fourth)
+	resolve(e, "t-0003", "deleted branch "+second+" (merged into origin/main)", true)
+	res := env.MustCLI("inbox", "list", "--project", "demo")
+	for _, w := range []string{"kept branch " + third + " (not merged into origin/main)", "kept branch " + fourth + " (checked out in "} {
+		if !strings.Contains(res, w) {
+			t.Errorf("resolve item lacks %q:\n%s", w, res)
+		}
+	}
+	for br, want := range map[string]bool{second: false, third: true, fourth: true} {
+		cmd := exec.Command("git", "rev-parse", "--verify", "--quiet", "refs/heads/"+br)
+		cmd.Dir = e.Repo
+		if exists := cmd.Run() == nil; exists != want {
+			t.Errorf("branch %s exists %v, want %v", br, exists, want)
+		}
+	}
+	journal, _ := os.ReadFile(filepath.Join(projDir, "JOURNAL.md"))
+	for _, w := range []string{"human branch.delete t-0003 " + e.Branch + " (merged into origin/main)", "human branch.delete t-0003 " + second + " (merged into origin/main)"} {
+		if !strings.Contains(string(journal), w) {
+			t.Errorf("journal lacks %q:\n%s", w, journal)
+		}
+	}
+	git(e.Repo, "worktree", "remove", elsewhere)
+
 	// A repo without remote, merged by fast-forward (tm's own todo
 	// project): deleted; an unmerged branch is kept.
-	c := thread("t-0003", "Local")
-	d := thread("t-0004", "Unmerged")
+	c := thread("t-0004", "Local")
+	d := thread("t-0005", "Unmerged")
 	git(c.Repo, "remote", "remove", "origin")
 	git(c.Repo, "merge", "-q", "--ff-only", c.Branch)
-	resolve(c, "t-0003", "deleted branch "+c.Branch+" (merged into main)", true)
-	resolve(d, "t-0004", "kept branch "+d.Branch+" (no merged PR found)", false)
+	resolve(c, "t-0004", "deleted branch "+c.Branch+" (merged into main)", true)
+	resolve(d, "t-0005", "kept branch "+d.Branch+" (no merged PR found)", false)
 }
 
 // TestThreadRestartResumes: a thread that worked on a prompt is resumed
