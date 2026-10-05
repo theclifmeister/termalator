@@ -238,8 +238,8 @@ func TestSidebarFocusNoLeak(t *testing.T) {
 
 	c.key(pk)
 	c.key(tab)
-	if !c.sideFocus || !strings.Contains(c.statusText, "sidebar: ↑ ↓ move") {
-		t.Fatalf("prefix+tab: focus %v status %q", c.sideFocus, c.statusText)
+	if c.kb != areaSide || !strings.Contains(c.statusText, "sidebar: ↑ ↓ move") {
+		t.Fatalf("prefix+tab: focus %d status %q", c.kb, c.statusText)
 	}
 	for _, k := range []uv.Key{{Code: 'x', Text: "x"}, {Code: uv.KeyF5}, {Code: 'c', Mod: uv.ModCtrl}} {
 		c.key(k)
@@ -247,25 +247,25 @@ func TestSidebarFocusNoLeak(t *testing.T) {
 	c.handle(uv.PasteEvent{Content: "hello"})
 	c.key(pk)
 	c.key(pk) // the prefix twice: still not to the pane
-	if !c.sideFocus {
+	if c.kb != areaSide {
 		t.Fatal("lost the focus")
 	}
 	c.key(uv.Key{Code: uv.KeyEscape})
-	if c.sideFocus || strings.Contains(c.statusText, "sidebar:") {
-		t.Fatalf("esc: focus %v status %q", c.sideFocus, c.statusText)
+	if c.kb == areaSide || strings.Contains(c.statusText, "sidebar:") {
+		t.Fatalf("esc: focus %d status %q", c.kb, c.statusText)
 	}
 	c.key(pk)
 	c.key(tab)
 	c.key(pk)
 	c.key(tab)
-	if c.sideFocus {
+	if c.kb == areaSide {
 		t.Fatal("prefix+tab didn't give the keyboard back")
 	}
 	// No sidebar: prefix+tab says so.
 	c.side, c.sideW = nil, 0
 	c.key(pk)
 	c.key(tab)
-	if c.sideFocus || !strings.Contains(c.statusText, "no sidebar") {
-		t.Fatalf("no sidebar: focus %v status %q", c.sideFocus, c.statusText)
+	if c.kb == areaSide || !strings.Contains(c.statusText, "no sidebar") {
+		t.Fatalf("no sidebar: focus %d status %q", c.kb, c.statusText)
 	}
 }

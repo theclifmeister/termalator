@@ -51,8 +51,8 @@ func TestDashboardPrefixQuits(t *testing.T) {
 			m.confirm("sure?", func() tea.Cmd { return nil })
 		},
 		"the menu":    func(m *dash) { m.openMenu("", m.dashItems(), 0, m.bodyRows()) },
-		"the sidebar": func(m *dash) { m.focus = focusSide },
-		"the details": func(m *dash) { m.focus = focusDetails },
+		"the sidebar": func(m *dash) { m.focus = areaSide },
+		"the details": func(m *dash) { m.focus = areaDetails },
 	}
 	for name, open := range places {
 		m := newDash(DashOptions{Source: src, Width: 160, Height: 40, State: DashState{Current: "alpha"}})
@@ -137,7 +137,7 @@ func TestAttachPrefixQuits(t *testing.T) {
 			c.focus = &pane{info: proto.SessionInfo{ID: "s-1", Role: proto.RoleCoordinator, Project: "demo"}}
 			c.v = view.View{Mode: view.ModeLayout, Focus: "s-1"}
 			open(c)
-			if name == "the sidebar" && !c.sideFocus || name == "the menu" && c.menu == nil || name == "a question" && c.confirmRemote == nil {
+			if name == "the sidebar" && c.kb != areaSide || name == "the menu" && c.menu == nil || name == "a question" && c.confirmRemote == nil {
 				t.Fatalf("bare %v, %s: didn't open", bare, name)
 			}
 			c.key(pk)

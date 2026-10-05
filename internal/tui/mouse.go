@@ -227,9 +227,9 @@ func (m *dash) press(mo tea.Mouse) tea.Cmd {
 	switch mo.Button {
 	case tea.MouseLeft:
 		// A click gives its area the keyboard.
-		m.focus = focusList
+		m.focus = areaMain
 		if split, lw := m.split(); split && x > lw {
-			m.focus = focusDetails
+			m.focus = areaDetails
 		}
 		return m.click(x, y, double)
 	case tea.MouseRight:
