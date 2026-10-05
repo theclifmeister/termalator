@@ -50,6 +50,9 @@ func tickerEnv(t *testing.T) (env *Env, projDir, out string) {
 	}
 	env.Setenv("TERMILATOR_TICK_SWEEP", "300ms")
 	env.Setenv("TERMILATOR_TICK_PR", "500ms")
+	// Never the machine's own gh: a logged-out one would raise
+	// gh-failing items. This one knows no PR until a test sets one.
+	fakeGH(t, env)
 	return env, projDir, out
 }
 
