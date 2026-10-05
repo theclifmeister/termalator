@@ -65,6 +65,9 @@ type Host interface {
 	// Resolve runs `tm thread resolve` for the ticker and returns its
 	// output.
 	Resolve(slug, threadID string) (string, error)
+	// Remote turns a coordinator's remote control on or off, as
+	// session.remote does.
+	Remote(session string, on bool) (proto.SessionRemoteResult, error)
 }
 
 // Options configure a Ticker. Zero durations take the defaults.
@@ -74,6 +77,9 @@ type Options struct {
 	Sweep  time.Duration
 	PRPoll time.Duration
 	Nudge  time.Duration
+	// RemoteEvery and RemoteGrace pace keepRemote (remote.go).
+	RemoteEvery time.Duration
+	RemoteGrace time.Duration
 	// Day is how long a day of auto_close_days lasts (tests shorten it).
 	Day time.Duration
 	// State is the file that keeps what the ticker already reported
@@ -132,6 +138,8 @@ type projectMemo struct {
 	// task was completed for by complete_tasks, by task ref (complete.go).
 	Merges    map[string]*mergeMemo `json:"merges,omitempty"`
 	Completed map[string]string     `json:"completed,omitempty"`
+	// Remote is what keepRemote saw of the coordinator (remote.go).
+	Remote *remoteMemo `json:"remote,omitempty"`
 }
 
 // repoMemo is a repo's checkout as the last sync left it, and the PR
@@ -151,6 +159,12 @@ func New(o Options) *Ticker {
 	}
 	if o.Nudge <= 0 {
 		o.Nudge = DefaultNudge
+	}
+	if o.RemoteEvery <= 0 {
+		o.RemoteEvery = DefaultRemoteEvery
+	}
+	if o.RemoteGrace <= 0 {
+		o.RemoteGrace = DefaultRemoteGrace
 	}
 	if o.Day <= 0 {
 		o.Day = 24 * time.Hour
@@ -307,6 +321,7 @@ func (t *Ticker) Sweep() {
 		}
 		t.followMain(p, sessions, safety, now)
 		t.nudge(p, sessions, now)
+		t.keepRemote(p, sessions, safety, now)
 		if prune {
 			if n, err := p.PruneDone(DoneMaxAge); err != nil {
 				t.o.Log.Printf("ticker: %s: prune inbox: %v", p.Slug, err)

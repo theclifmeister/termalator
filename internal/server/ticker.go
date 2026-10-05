@@ -21,6 +21,9 @@ const (
 	envTickPR    = "TERMILATOR_TICK_PR"
 	envTickNudge = "TERMILATOR_TICK_NUDGE"
 	envTickDay   = "TERMILATOR_TICK_DAY" // the length of an auto-close day
+	// The remote control enforcement's pace and grace.
+	envTickRemote = "TERMILATOR_TICK_REMOTE"
+	envTickGrace  = "TERMILATOR_TICK_REMOTE_GRACE"
 )
 
 func envDuration(k string) time.Duration {
@@ -44,6 +47,14 @@ func (h tickerHost) Prompt(id, text string) error {
 }
 
 func (h tickerHost) Alert(msg string) { h.s.alert(msg) }
+
+func (h tickerHost) Remote(id string, on bool) (proto.SessionRemoteResult, error) {
+	res, perr := h.s.remote(proto.SessionRemoteParams{ID: id, On: on})
+	if perr != nil {
+		return proto.SessionRemoteResult{}, perr
+	}
+	return res.(proto.SessionRemoteResult), nil
+}
 
 func (h tickerHost) Resolve(slug, id string) (string, error) {
 	if h.s.opts.RunCLI == nil {
@@ -69,7 +80,7 @@ func (s *Server) startTicker(ctx context.Context) <-chan struct{} {
 	t := ticker.New(ticker.Options{
 		Host: tickerHost{s, ctx}, Log: s.log, State: ticker.StatePath(s.opts.Paths.Sessions),
 		Sweep: envDuration(envTickSweep), PRPoll: envDuration(envTickPR), Nudge: envDuration(envTickNudge),
-		Day: envDuration(envTickDay),
+		Day: envDuration(envTickDay), RemoteEvery: envDuration(envTickRemote), RemoteGrace: envDuration(envTickGrace),
 	})
 	s.mu.Lock()
 	s.tick = t

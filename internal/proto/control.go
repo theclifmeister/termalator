@@ -93,6 +93,10 @@ const (
 type SessionRemoteResult struct {
 	RemoteControl bool   `json:"remote_control"`
 	How           string `json:"how"`
+	// Held: turned off while the project's setting keeps coordinators'
+	// remote control on; the ticker leaves it off until the coordinator
+	// is started anew (docs/SPEC.md §11.2).
+	Held bool `json:"held,omitempty"`
 }
 
 // ServerStatus is the result of server.status.
@@ -170,6 +174,10 @@ type SessionInfo struct {
 	Queued       int    `json:"queued_prompts,omitempty"`
 	// RemoteControl: the agent is reachable from another device.
 	RemoteControl bool `json:"remote_control,omitempty"`
+	// RemoteHeld: the user turned the coordinator's remote control off
+	// (session.remote); the ticker doesn't turn it back on until the
+	// coordinator is started anew.
+	RemoteHeld bool `json:"remote_held,omitempty"`
 }
 
 // SessionStartParams are the params of session.start.
