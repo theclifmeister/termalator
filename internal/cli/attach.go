@@ -11,11 +11,11 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/theclifmeister/termalator/internal/config"
-	"github.com/theclifmeister/termalator/internal/project"
-	"github.com/theclifmeister/termalator/internal/proto"
-	"github.com/theclifmeister/termalator/internal/server"
-	"github.com/theclifmeister/termalator/internal/tui"
+	"github.com/theclifmeister/termilator/internal/config"
+	"github.com/theclifmeister/termilator/internal/project"
+	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/server"
+	"github.com/theclifmeister/termilator/internal/tui"
 )
 
 const attachUsage = `usage: tm attach [SESSION]   (the newest session when none is named; the prefix, Ctrl+B, then d detaches)
@@ -26,11 +26,11 @@ A click on the projects sidebar switches to that shared view.`
 
 // reexecEnv marks a tm that was re-executed as the server's binary, so a
 // build mismatch that survives the re-exec fails instead of looping.
-const reexecEnv = "TERMALATOR_REEXEC"
+const reexecEnv = "TERMILATOR_REEXEC"
 
 // attachLogEnv names a file for the attach client's diagnostics (digest
 // checks, key encodings). Tests read it.
-const attachLogEnv = "TERMALATOR_ATTACH_LOG"
+const attachLogEnv = "TERMILATOR_ATTACH_LOG"
 
 func init() { commands["attach"] = runAttach }
 

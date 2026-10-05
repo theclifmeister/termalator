@@ -9,7 +9,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/theclifmeister/termalator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/proto"
 )
 
 const sessionUsage = `usage: tm session list [--json]

@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/theclifmeister/termalator/internal/caller"
-	"github.com/theclifmeister/termalator/internal/mdfile"
+	"github.com/theclifmeister/termilator/internal/caller"
+	"github.com/theclifmeister/termilator/internal/mdfile"
 )
 
 // Error is a refusal with a stable code (exit 1 in the CLI, §6.3), such

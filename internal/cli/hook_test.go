@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termalator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/proto"
 )
 
 // hookEnv runs `tm hook` in-process against a socket in a short temp dir.
@@ -23,10 +23,10 @@ func hookEnv(t *testing.T, payload string) (*Env, *bytes.Buffer, *bytes.Buffer, 
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
 	sock := filepath.Join(dir, "tm.sock")
-	t.Setenv("TERMALATOR_HOME", filepath.Join(dir, "home"))
-	t.Setenv("TERMALATOR_SOCKET", sock)
+	t.Setenv("TERMILATOR_HOME", filepath.Join(dir, "home"))
+	t.Setenv("TERMILATOR_SOCKET", sock)
 	var out, errb bytes.Buffer
-	vars := map[string]string{"TERMALATOR_SESSION": "s-1"}
+	vars := map[string]string{"TERMILATOR_SESSION": "s-1"}
 	e := &Env{Stdin: strings.NewReader(payload), Stdout: &out, Stderr: &errb, Getenv: func(k string) string { return vars[k] }}
 	return e, &out, &errb, sock
 }
@@ -183,8 +183,8 @@ func FuzzHookInput(f *testing.F) {
 	f.Fuzz(func(t *testing.T, in []byte) {
 		var out, errb bytes.Buffer
 		e := &Env{Stdin: bytes.NewReader(in), Stdout: &out, Stderr: &errb,
-			Getenv: func(k string) string { return map[string]string{"TERMALATOR_SESSION": "s-1"}[k] }}
-		t.Setenv("TERMALATOR_SOCKET", "/nonexistent/tm.sock")
+			Getenv: func(k string) string { return map[string]string{"TERMILATOR_SESSION": "s-1"}[k] }}
+		t.Setenv("TERMILATOR_SOCKET", "/nonexistent/tm.sock")
 		if code, _ := e.Run([]string{"hook", "--agent", "claude"}); code != 0 || errb.Len() != 0 {
 			t.Fatalf("exit %d stderr %q", code, errb.String())
 		}

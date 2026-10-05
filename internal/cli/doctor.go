@@ -6,14 +6,16 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
-	"github.com/theclifmeister/termalator/internal/doctor"
-	"github.com/theclifmeister/termalator/internal/emu"
-	"github.com/theclifmeister/termalator/internal/server"
-	"github.com/theclifmeister/termalator/internal/update"
-	"github.com/theclifmeister/termalator/internal/version"
+	"github.com/theclifmeister/termilator/internal/doctor"
+	"github.com/theclifmeister/termilator/internal/emu"
+	"github.com/theclifmeister/termilator/internal/legacy"
+	"github.com/theclifmeister/termilator/internal/server"
+	"github.com/theclifmeister/termilator/internal/update"
+	"github.com/theclifmeister/termilator/internal/version"
 )
 
 const doctorUsage = `usage: tm doctor [--fix [--yes]] [--json]`
@@ -56,6 +58,31 @@ func doctorCmd(e *Env, args []string) int {
 			return fmt.Errorf("tm server restart exited %d", code)
 		}
 		return nil
+	}
+	d.UserHome, _ = os.UserHomeDir()
+	d.LegacyRestart = func() error {
+		old, nu, ok := legacy.Pending()
+		if !ok {
+			return nil
+		}
+		if code := e.legacyStop("restart", []string{"--yes"}, old, nu); code != ExitOK {
+			return fmt.Errorf("tm server restart exited %d", code)
+		}
+		return nil
+	}
+	d.ServiceRun = func(name string, args ...string) error {
+		if serviceRun != nil {
+			return serviceRun(name, args...)
+		}
+		return exec.Command(name, args...).Run()
+	}
+	d.InstallService = func() error {
+		c, err := serviceConfig(e)
+		if err != nil {
+			return err
+		}
+		_, err = c.Install()
+		return err
 	}
 	checks := doctor.Run(d)
 	fixes := doctor.Fixes(checks)

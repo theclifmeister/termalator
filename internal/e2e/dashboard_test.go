@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termalator/internal/emu"
+	"github.com/theclifmeister/termilator/internal/emu"
 )
 
 // Dashboard keys.

@@ -21,7 +21,7 @@ func config(t *testing.T, goos string) (Config, *fakeRunner) {
 	h := t.TempDir()
 	return Config{
 		GOOS: goos, UID: 501, UserHome: h, Bin: "/opt/tm dir/bin/tm",
-		Home: "/data/tm & co", LogDir: filepath.Join(h, ".termalator", "logs"),
+		Home: "/data/tm & co", LogDir: filepath.Join(h, ".termilator", "logs"),
 		Path: "/usr/bin:/bin", Run: f.run,
 	}, f
 }
@@ -44,10 +44,10 @@ func TestPlist(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"<string>dev.termalator.server</string>",
+		"<string>dev.termilator.server</string>",
 		"<string>/opt/tm dir/bin/tm</string>\n\t\t<string>server</string>\n\t\t<string>run</string>",
 		"<key>RunAtLoad</key>\n\t<true/>", "<key>KeepAlive</key>\n\t<false/>",
-		"<key>TERMALATOR_HOME</key>\n\t\t<string>/data/tm &amp; co</string>",
+		"<key>TERMILATOR_HOME</key>\n\t\t<string>/data/tm &amp; co</string>",
 		"<key>PATH</key>\n\t\t<string>/usr/bin:/bin</string>",
 		"logs/service.log</string>",
 	} {
@@ -55,7 +55,7 @@ func TestPlist(t *testing.T) {
 			t.Errorf("plist lacks %q:\n%s", want, data)
 		}
 	}
-	if p, _ := c.File(); !strings.HasSuffix(p, "Library/LaunchAgents/dev.termalator.server.plist") {
+	if p, _ := c.File(); !strings.HasSuffix(p, "Library/LaunchAgents/dev.termilator.server.plist") {
 		t.Errorf("file %s", p)
 	}
 }
@@ -68,7 +68,7 @@ func TestUnit(t *testing.T) {
 	}
 	for _, want := range []string{
 		`ExecStart="/opt/tm dir/bin/tm" server run`,
-		`Environment="TERMALATOR_HOME=/data/tm & co"`,
+		`Environment="TERMILATOR_HOME=/data/tm & co"`,
 		"Environment=PATH=/usr/bin:/bin",
 		"KillMode=mixed", "WantedBy=default.target",
 	} {
@@ -76,7 +76,7 @@ func TestUnit(t *testing.T) {
 			t.Errorf("unit lacks %q:\n%s", want, data)
 		}
 	}
-	if p, _ := c.File(); !strings.HasSuffix(p, ".config/systemd/user/termalator.service") {
+	if p, _ := c.File(); !strings.HasSuffix(p, ".config/systemd/user/termilator.service") {
 		t.Errorf("file %s", p)
 	}
 }
@@ -96,12 +96,12 @@ func TestSystemdQuote(t *testing.T) {
 func TestInstallUninstall(t *testing.T) {
 	for goos, want := range map[string][2][]string{
 		"darwin": {
-			{"launchctl bootout gui/501/dev.termalator.server", "launchctl bootstrap gui/501 "},
-			{"launchctl bootout gui/501/dev.termalator.server"},
+			{"launchctl bootout gui/501/dev.termilator.server", "launchctl bootstrap gui/501 "},
+			{"launchctl bootout gui/501/dev.termilator.server"},
 		},
 		"linux": {
-			{"systemctl --user daemon-reload", "systemctl --user enable --now termalator.service"},
-			{"systemctl --user disable --now termalator.service", "systemctl --user daemon-reload"},
+			{"systemctl --user daemon-reload", "systemctl --user enable --now termilator.service"},
+			{"systemctl --user disable --now termilator.service", "systemctl --user daemon-reload"},
 		},
 	} {
 		c, f := config(t, goos)

@@ -3,7 +3,7 @@ package server
 import (
 	"strings"
 
-	"github.com/theclifmeister/termalator/internal/agent"
+	"github.com/theclifmeister/termilator/internal/agent"
 )
 
 // Variables that leak the launching terminal's identity into a session
@@ -16,11 +16,13 @@ var terminalEnv = []string{
 	"WT_SESSION", "VTE_VERSION", "TERM_PROGRAM", "TERM_PROGRAM_VERSION",
 	"ZELLIJ", "ZELLIJ_SESSION_NAME", "ZELLIJ_PANE_ID",
 	"COLUMNS", "LINES",
-	"TERMALATOR_*", "HERDR_*",
+	"TERMILATOR_*", "HERDR_*",
+	// Termalator's names, which tm still reads (internal/legacy).
+	"TERMALATOR", "TERMALATOR_*",
 }
 
 // sessionEnv builds a session's environment from base (the server's own)
-// plus set, the termalator variables.
+// plus set, the termilator variables.
 func sessionEnv(base []string, set map[string]string) []string {
 	env := agent.FilterEnv(base, append(append([]string{}, terminalEnv...), agent.BuiltinUnsetEnv()...))
 	out := env[:0]

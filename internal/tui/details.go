@@ -8,9 +8,9 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theclifmeister/termalator/internal/proto"
-	"github.com/theclifmeister/termalator/internal/tasks"
-	"github.com/theclifmeister/termalator/internal/thread"
+	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/tasks"
+	"github.com/theclifmeister/termilator/internal/thread"
 )
 
 // The details panel: everything about the selected row, beside the list

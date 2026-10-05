@@ -7,10 +7,10 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theclifmeister/termalator/internal/agent"
-	"github.com/theclifmeister/termalator/internal/proto"
-	"github.com/theclifmeister/termalator/internal/tasks"
-	"github.com/theclifmeister/termalator/internal/thread"
+	"github.com/theclifmeister/termilator/internal/agent"
+	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/tasks"
+	"github.com/theclifmeister/termilator/internal/thread"
 )
 
 // TestProgressSameEverywhere: the dashboard row, the details panel and

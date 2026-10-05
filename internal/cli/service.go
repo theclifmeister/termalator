@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/theclifmeister/termalator/internal/home"
-	"github.com/theclifmeister/termalator/internal/server"
-	"github.com/theclifmeister/termalator/internal/service"
+	"github.com/theclifmeister/termilator/internal/home"
+	"github.com/theclifmeister/termilator/internal/server"
+	"github.com/theclifmeister/termilator/internal/service"
 )
 
 const serviceUsage = `usage: tm server service install|uninstall [--print]`

@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/theclifmeister/termalator/internal/caller"
-	"github.com/theclifmeister/termalator/internal/config"
-	"github.com/theclifmeister/termalator/internal/home"
-	"github.com/theclifmeister/termalator/internal/mdfile"
-	"github.com/theclifmeister/termalator/internal/tasks"
+	"github.com/theclifmeister/termilator/internal/caller"
+	"github.com/theclifmeister/termilator/internal/config"
+	"github.com/theclifmeister/termilator/internal/home"
+	"github.com/theclifmeister/termilator/internal/mdfile"
+	"github.com/theclifmeister/termilator/internal/tasks"
 )
 
 // Meta is PROJECT.md's front matter.
@@ -26,7 +26,7 @@ type Meta struct {
 	Created time.Time `toml:"created"`
 }
 
-// Project is one project folder, ~/.termalator/projects/<slug>/.
+// Project is one project folder, ~/.termilator/projects/<slug>/.
 type Project struct {
 	Slug string
 	Dir  string
@@ -285,7 +285,7 @@ func GroupKey(g tasks.Group) string {
 }
 
 // Resolve picks the project for a command (§6.3): the --project flag,
-// then $TERMALATOR_PROJECT, then the project whose folder or thread
+// then $TERMILATOR_PROJECT, then the project whose folder or thread
 // worktree contains cwd. It returns "" when none applies.
 func Resolve(flag string, getenv func(string) string, cwd string) (string, error) {
 	if flag != "" {

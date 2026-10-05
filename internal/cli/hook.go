@@ -8,10 +8,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/theclifmeister/termalator/internal/agent"
-	"github.com/theclifmeister/termalator/internal/proto"
-	"github.com/theclifmeister/termalator/internal/server"
-	"github.com/theclifmeister/termalator/internal/version"
+	"github.com/theclifmeister/termilator/internal/agent"
+	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/server"
+	"github.com/theclifmeister/termilator/internal/version"
 )
 
 // Hook deadlines (docs/SPEC.md §8.2). The hook runs synchronously inside
@@ -45,7 +45,7 @@ func runHook(e *Env, args []string) error {
 			name = a[8:]
 		}
 	}
-	session := e.Getenv("TERMALATOR_SESSION")
+	session := e.Getenv("TERMILATOR_SESSION")
 	data, _ := io.ReadAll(io.LimitReader(e.Stdin, maxHookPayload))
 	if name == "" || session == "" {
 		return nil

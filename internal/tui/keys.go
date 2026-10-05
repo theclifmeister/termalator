@@ -11,8 +11,8 @@ import (
 	"github.com/BurntSushi/toml"
 	uv "github.com/charmbracelet/ultraviolet"
 
-	"github.com/theclifmeister/termalator/internal/config"
-	"github.com/theclifmeister/termalator/internal/emu"
+	"github.com/theclifmeister/termilator/internal/config"
+	"github.com/theclifmeister/termilator/internal/emu"
 )
 
 // DefaultPrefixKey is Ctrl+B, as in tmux. Outer terminals send it as

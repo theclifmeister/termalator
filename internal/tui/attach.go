@@ -19,12 +19,12 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"golang.org/x/term"
 
-	"github.com/theclifmeister/termalator/internal/emu"
-	"github.com/theclifmeister/termalator/internal/project"
-	"github.com/theclifmeister/termalator/internal/proto"
-	"github.com/theclifmeister/termalator/internal/server"
-	"github.com/theclifmeister/termalator/internal/thread"
-	"github.com/theclifmeister/termalator/internal/view"
+	"github.com/theclifmeister/termilator/internal/emu"
+	"github.com/theclifmeister/termilator/internal/project"
+	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/server"
+	"github.com/theclifmeister/termilator/internal/thread"
+	"github.com/theclifmeister/termilator/internal/view"
 )
 
 // The attach client (docs/SPEC.md §3.3). It draws a server-owned view's

@@ -4,7 +4,7 @@
 // outside internal/agent/<name> may mention a specific agent.
 //
 // Most of an agent is data: a manifest (manifests/<name>.toml, or a user
-// file in ~/.termalator/agents/) declares how to recognise it, launch it,
+// file in ~/.termilator/agents/) declares how to recognise it, launch it,
 // map its hook events to states, which screen rules cross-check those
 // states, and how prompts and context get in. A manifest alone yields a
 // working Agent (FromManifest). Go code is only needed for what data cannot

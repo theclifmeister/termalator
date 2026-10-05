@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theclifmeister/termalator/internal/agent"
+	"github.com/theclifmeister/termilator/internal/agent"
 )
 
 func claudeEngine(t *testing.T) *Engine {

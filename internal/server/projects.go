@@ -6,18 +6,18 @@ package server
 // into threads/<id>/.
 
 import (
-	"github.com/theclifmeister/termalator/internal/agent"
-	"github.com/theclifmeister/termalator/internal/caller"
-	"github.com/theclifmeister/termalator/internal/project"
-	"github.com/theclifmeister/termalator/internal/proto"
-	"github.com/theclifmeister/termalator/internal/pty"
-	"github.com/theclifmeister/termalator/internal/session"
-	"github.com/theclifmeister/termalator/internal/thread"
+	"github.com/theclifmeister/termilator/internal/agent"
+	"github.com/theclifmeister/termilator/internal/caller"
+	"github.com/theclifmeister/termilator/internal/project"
+	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/pty"
+	"github.com/theclifmeister/termilator/internal/session"
+	"github.com/theclifmeister/termilator/internal/thread"
 )
 
 // callerOf tells who is calling from the peer pid: a process that
 // descends from a coordinator or thread session is that agent; anything
-// else (a shell outside termalator, a shell session) is the human. This
+// else (a shell outside termilator, a shell session) is the human. This
 // is soft, as the spec says: an agent can start a process outside its
 // tree. File access rules are the second layer (§5.2).
 func (s *Server) callerOf(pid int) caller.Caller {

@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termalator/internal/proto"
-	"github.com/theclifmeister/termalator/internal/view"
+	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/view"
 )
 
 // fakeHost is a viewHost with sessions in memory.

@@ -1,7 +1,7 @@
 package session
 
 import (
-	"github.com/theclifmeister/termalator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/proto"
 )
 
 // MaxPending bounds how far an attach client may lag behind. Past it the

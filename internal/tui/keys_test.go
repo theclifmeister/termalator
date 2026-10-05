@@ -12,10 +12,10 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 
-	"github.com/theclifmeister/termalator/internal/emu"
-	"github.com/theclifmeister/termalator/internal/proto"
-	"github.com/theclifmeister/termalator/internal/server"
-	"github.com/theclifmeister/termalator/internal/view"
+	"github.com/theclifmeister/termilator/internal/emu"
+	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/server"
+	"github.com/theclifmeister/termilator/internal/view"
 )
 
 func TestParseChord(t *testing.T) {
@@ -57,7 +57,7 @@ func TestParseChord(t *testing.T) {
 
 func TestPrefixKeyFromConfig(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("TERMALATOR_HOME", home)
+	t.Setenv("TERMILATOR_HOME", home)
 	if c, err := prefixKey(); err != nil || c.r != 'b' {
 		t.Fatalf("no config: %q %v", c.r, err)
 	}

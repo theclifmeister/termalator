@@ -9,8 +9,8 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theclifmeister/termalator/internal/emu"
-	"github.com/theclifmeister/termalator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/emu"
+	"github.com/theclifmeister/termilator/internal/proto"
 )
 
 // at is where text first shows right of the sidebar, as a window cell;

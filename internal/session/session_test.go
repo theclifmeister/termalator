@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termalator/internal/emu"
-	"github.com/theclifmeister/termalator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/emu"
+	"github.com/theclifmeister/termilator/internal/proto"
 )
 
 func start(t *testing.T, argv ...string) *Session {

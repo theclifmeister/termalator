@@ -13,13 +13,13 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 
-	"github.com/theclifmeister/termalator/internal/config"
-	"github.com/theclifmeister/termalator/internal/emu"
-	"github.com/theclifmeister/termalator/internal/project"
-	"github.com/theclifmeister/termalator/internal/proto"
-	"github.com/theclifmeister/termalator/internal/server"
-	"github.com/theclifmeister/termalator/internal/thread"
-	"github.com/theclifmeister/termalator/internal/view"
+	"github.com/theclifmeister/termilator/internal/config"
+	"github.com/theclifmeister/termilator/internal/emu"
+	"github.com/theclifmeister/termilator/internal/project"
+	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/server"
+	"github.com/theclifmeister/termilator/internal/thread"
+	"github.com/theclifmeister/termilator/internal/view"
 )
 
 // The projects sidebar (docs/SPEC.md §4): a column on the left of every
@@ -285,7 +285,7 @@ func coordLook(state string) (string, lipgloss.Style) {
 
 // treeLine is one tree row cw cells wide. Full width:
 //
-//	"▾● termalator   ◆ 2 "   a project: open or closed, its coordinator's
+//	"▾● termilator   ◆ 2 "   a project: open or closed, its coordinator's
 //	                         glyph, the hint, its open threads
 //	"  ○ coordinator"        its coordinator
 //	"  ● Bootstrap re…  40%" a thread's title, with its progress

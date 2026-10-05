@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termalator/internal/agent"
-	"github.com/theclifmeister/termalator/internal/project"
-	"github.com/theclifmeister/termalator/internal/tasks"
+	"github.com/theclifmeister/termilator/internal/agent"
+	"github.com/theclifmeister/termilator/internal/project"
+	"github.com/theclifmeister/termilator/internal/tasks"
 )
 
 func steps(done ...bool) []tasks.Step {
@@ -156,7 +156,7 @@ func FuzzStatus(f *testing.F) {
 
 // TestFiles: create a thread, write task text and brief, store reports.
 func TestFiles(t *testing.T) {
-	t.Setenv("TERMALATOR_HOME", t.TempDir())
+	t.Setenv("TERMILATOR_HOME", t.TempDir())
 	p, err := project.New(project.Options{Name: "demo"})
 	if err != nil {
 		t.Fatal(err)

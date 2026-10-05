@@ -8,9 +8,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/theclifmeister/termalator/internal/project"
-	"github.com/theclifmeister/termalator/internal/thread"
-	"github.com/theclifmeister/termalator/internal/worktree"
+	"github.com/theclifmeister/termilator/internal/project"
+	"github.com/theclifmeister/termilator/internal/thread"
+	"github.com/theclifmeister/termilator/internal/worktree"
 )
 
 // threadIndex is every thread record of every project.

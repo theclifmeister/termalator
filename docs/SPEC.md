@@ -1,16 +1,16 @@
-# Termalator v0.1 specification
+# Termilator v0.1 specification
 
-Status: draft, 2026-10-04. Owner: the coordinator of project `termalator`.
+Status: draft, 2026-10-04. Owner: the coordinator of project `termilator`.
 
-Termalator (`tm`) is one Go binary that does three jobs:
+Termilator (`tm`) is one Go binary that does three jobs:
 
 - it hosts coding-agent sessions in a background server;
 - it gives the human a dashboard and one attached pane at a time;
 - it runs projects, in which a **coordinator** agent is the human's single point of contact and hands work to **threads** (agents in git worktrees).
 
-All project progress lives in markdown under `~/.termalator/projects/<slug>/`. Every agent session can read those files, so clearing an agent's context loses nothing. Termalator merges the essential ideas of herdr (pane host), herdr-projects (coordinator, threads, reports) and tsk (task board), and leaves out their polish.
+All project progress lives in markdown under `~/.termilator/projects/<slug>/`. Every agent session can read those files, so clearing an agent's context loses nothing. Termilator merges the essential ideas of herdr (pane host), herdr-projects (coordinator, threads, reports) and tsk (task board), and leaves out their polish.
 
-Background: the t-0001 feasibility study (`library/t-0001/termalator-feasibility.md` in the herdr-projects project) and the user's design decisions (own Go pane host, libghostty-vt, one attached pane plus a dashboard, state in `~/.termalator`, Claude Code first, macOS and Linux only, start fresh).
+Background: the t-0001 feasibility study (`library/t-0001/termilator-feasibility.md` in the herdr-projects project) and the user's design decisions (own Go pane host, libghostty-vt, one attached pane plus a dashboard, state in `~/.termilator`, Claude Code first, macOS and Linux only, start fresh).
 
 ### How to read this document
 
@@ -43,7 +43,7 @@ Background: the t-0001 feasibility study (`library/t-0001/termalator-feasibility
  tm task …──┤   (NDJSON)        │  emulator (libghostty-vt)                       │
  tm hook  ──┤                   │  agent adapter (manifest + optional Go)         │
             │                   ticker ── inbox/, STATUS, PR polling, nudges      │
-            └─────── reads/writes ~/.termalator/ (projects, state, logs) ─────────┘
+            └─────── reads/writes ~/.termilator/ (projects, state, logs) ─────────┘
 ```
 
 One binary, several roles:
@@ -90,13 +90,13 @@ The dependency rule: `server`, `session`, `ticker`, `tui`, `project`, `thread` a
 - **Auto-start.** Every `tm` command that needs the server connects to the socket. If nothing answers, it starts the server and retries for up to 5 s. If the server still doesn't answer, it fails with a pointer to the server log.
 - **Full detachment.** To start the server, the CLI re-execs itself as `tm server run --detached`. The child:
   1. calls `setsid()`, so it has a new session and no controlling terminal;
-  2. points stdin, stdout and stderr at `/dev/null`, and logs to `~/.termalator/logs/server.log` (rotated at 10 MB, 3 files kept);
+  2. points stdin, stdout and stderr at `/dev/null`, and logs to `~/.termilator/logs/server.log` (rotated at 10 MB, 3 files kept);
   3. ignores `SIGHUP` and `SIGINT`;
   4. `chdir("/")` and sets umask `077`;
-  5. writes `~/.termalator/run/server.pid`.
+  5. writes `~/.termilator/run/server.pid`.
 
   The parent waits until the socket answers `hello`, then exits. Closing the terminal window, killing the client, or an SSH disconnect therefore never reaches the server or its agents.
-- **Single instance.** The server takes an exclusive `flock` on `~/.termalator/run/server.lock` and keeps it while it runs. A second server exits at once with "already running (pid N)".
+- **Single instance.** The server takes an exclusive `flock` on `~/.termilator/run/server.lock` and keeps it while it runs. A second server exits at once with "already running (pid N)".
 - **Stopping.** Only an explicit command stops the server:
   - `tm server stop` stops it gracefully. Every session gets `SIGHUP`, then `SIGKILL` after 5 s. `sessions.json` is saved, then the socket is removed.
   - `SIGTERM` (for example at system shutdown) does the same.
@@ -106,19 +106,19 @@ The dependency rule: `server`, `session`, `ticker`, `tui`, `project`, `thread` a
 - **Other commands.** `tm server status` prints the pid, uptime, version, protocol and session count. `tm server restart` is stop, then start, then resume (§3.6).
 - **Foreground mode.** `tm server run` without `--detached` stays in the foreground and logs to stderr. Tests and service managers use this mode.
 - **Start at login (optional).** `tm server service install|uninstall` writes and loads a service file:
-  - macOS: a launchd agent, `~/Library/LaunchAgents/dev.termalator.server.plist`, with `KeepAlive=false` and `RunAtLoad=true`;
-  - Linux: a systemd user unit, `~/.config/systemd/user/termalator.service`.
+  - macOS: a launchd agent, `~/Library/LaunchAgents/dev.termilator.server.plist`, with `KeepAlive=false` and `RunAtLoad=true`;
+  - Linux: a systemd user unit, `~/.config/systemd/user/termilator.service`.
 
   Both run `tm server run`. Nothing else depends on this, because auto-start covers normal use.
 
 ### 3.2 Socket location, permissions, stale sockets
 
 - **Run directory.** Every socket and lock lives in one short, per-user run directory, never under a project path. Project paths can be long, and macOS limits a socket path to 104 bytes (`internal/server/paths.go`).
-  - The run directory is `$XDG_RUNTIME_DIR/termalator` on Linux when that is set, and `~/.termalator/run` otherwise.
-  - If `<run dir>/tm.sock` would be over 100 bytes, the run directory falls back to `/tmp/termalator-<uid>-<hash>`, where `<hash>` is 8 hex digits of the SHA-256 of `TERMALATOR_HOME` (cleaned, with the symlinks in its existing part resolved). Every home keeps its own server even with the fallback; the default `~/.termalator` is unaffected unless its own path is that long.
-  - `$TERMALATOR_SOCKET` overrides the socket path, and an override over 100 bytes is refused, not truncated.
-  - `TERMALATOR_HOME` (default `~/.termalator`) moves everything else, which is how tests run isolated servers. A custom `TERMALATOR_HOME` ignores `$XDG_RUNTIME_DIR`, so a test server never shares a run directory with the user's.
-  - `server.lock` and `server.pid` sit next to the socket, in the run directory. A `$TERMALATOR_SOCKET` override therefore isolates the lock too (`server.ResolvePaths`).
+  - The run directory is `$XDG_RUNTIME_DIR/termilator` on Linux when that is set, and `~/.termilator/run` otherwise.
+  - If `<run dir>/tm.sock` would be over 100 bytes, the run directory falls back to `/tmp/termilator-<uid>-<hash>`, where `<hash>` is 8 hex digits of the SHA-256 of `TERMILATOR_HOME` (cleaned, with the symlinks in its existing part resolved). Every home keeps its own server even with the fallback; the default `~/.termilator` is unaffected unless its own path is that long.
+  - `$TERMILATOR_SOCKET` overrides the socket path, and an override over 100 bytes is refused, not truncated.
+  - `TERMILATOR_HOME` (default `~/.termilator`) moves everything else, which is how tests run isolated servers. Termilator was called Termalator up to v0.1.0: `internal/legacy` still reads `TERMALATOR_*` when the new variable is unset and moves a `~/.termalator` to `~/.termilator` once no Termalator server holds it (docs/OPERATIONS.md, "Upgrading from Termalator"); a later release drops it. A custom `TERMILATOR_HOME` ignores `$XDG_RUNTIME_DIR`, so a test server never shares a run directory with the user's.
+  - `server.lock` and `server.pid` sit next to the socket, in the run directory. A `$TERMILATOR_SOCKET` override therefore isolates the lock too (`server.ResolvePaths`).
 - **Permissions.**
   - The run directory is `0700` and owned by the user; the server refuses to use it otherwise.
   - The socket file is `0600`.
@@ -127,7 +127,7 @@ The dependency rule: `server`, `session`, `ticker`, `tui`, `project`, `thread` a
 - **Bind before spawn.** The server binds its socket before it starts any session. A bind failure must never leave an agent running that nobody can reach.
 - **Stale sockets.** A client that gets `ECONNREFUSED` or `ENOENT` tries the lock:
   - If it can take `server.lock`, no server is running. It removes the leftover socket and pid file, then auto-starts a server.
-  - If the lock is held but the socket doesn't answer within 2 s, the server is hung. The client reports `server unresponsive (pid N); see ~/.termalator/logs/server.log or run tm server stop --force`. `--force` sends `SIGKILL` to the pid recorded in `server.pid`, but only if that pid still holds the lock.
+  - If the lock is held but the socket doesn't answer within 2 s, the server is hung. The client reports `server unresponsive (pid N); see ~/.termilator/logs/server.log or run tm server stop --force`. `--force` sends `SIGKILL` to the pid recorded in `server.pid`, but only if that pid still holds the lock.
 
 ### 3.3 Protocol
 
@@ -182,7 +182,7 @@ The server MAY serve file-only operations such as `task.*` itself, so that all w
 - **Clients render the view.** A console opens an attach connection for the view's pane and closes it when another session shows, and lays the view out with the same function as the server (`view.Lay`), at the view's size: every console computes the same rectangle. The dashboard's selection, current project and sidebar (its width and tree) come from the view too; the tree's highlighted row, the row you are on, follows from the view's screen, focus and current project, so every console of the view shows the same tree; this console's own selections win while they are on their way. A console whose dashboard is showing switches to the session when the view does, and back.
 - **What stays per console:** the window's size, the outer terminal's modes (mouse, focus reports, kitty flags), the local scrollback position, native text selection, popups and overlays (help, the inbox, the switcher, a prompt being typed: their results are view actions), the prefix state and status-bar notes, takeovers of watch-only panes (§4), and the dashboard's details panel (`ui.json`).
 - **Sessions ending** leave every view; a view showing one goes back to the dashboard.
-- **Persistence.** Every view but the own ones is saved in `~/.termalator/state/views.json` on each change. After a restart the server loads them, drops the pane whose session didn't come back (shells, §3.6) and forgets the latest client: a console that joins sees the same screen. A `views.json` from before single panes loads too: its split tree is dropped and the session it had in front (`focus`) is kept.
+- **Persistence.** Every view but the own ones is saved in `~/.termilator/state/views.json` on each change. After a restart the server loads them, drops the pane whose session didn't come back (shells, §3.6) and forgets the latest client: a console that joins sees the same screen. A `views.json` from before single panes loads too: its split tree is dropped and the session it had in front (`focus`) is kept.
 
 **Attach connections: mirror emulators.** The server keeps the **authoritative** emulator for every pane. Each attached client keeps its **own mirror**: it is restored from a snapshot, then fed exactly the same bytes in the same order. The client renders from its mirror and encodes input against the mirror's modes. As a result:
 - the server parses each byte once and only forwards it;
@@ -234,18 +234,18 @@ After the hello the client sends `{"attach":{"session":"s-…","cols":C,"rows":R
 - **Several clients.** Any number of consoles may attach over time and at once. Consoles joined to one view show the same screen and layout; consoles of different views may show the same pane. Every console attached to a pane receives its output and may type into it. The pane's size follows the view's latest console: the one that last typed, resized its window or changed the layout (sizing, above).
 - **The client's own terminal going away.** SIGHUP, or EOF/EIO on stdin, is a detach: the client exits within about 50 ms, and the server and agent are unaffected. On attach the client paints the snapshot at once, even when the pane is idle.
 - **Fallback considered and rejected.** Replaying the VT formatter's output into a fresh emulator is version-independent, but it loses the inactive screen: primary scrollback and its kitty flags disappear while an app is on the alt screen. It stays a debug aid, not a protocol.
-- **Pane `TERM`:** `xterm-256color`, plus `COLORTERM=truecolor` and `TERM_PROGRAM=termalator`. The spike ran Claude with these, with no issues.
+- **Pane `TERM`:** `xterm-256color`, plus `COLORTERM=truecolor` and `TERM_PROGRAM=termilator`. The spike ran Claude with these, with no issues.
 
 ### 3.4 Session environment
 
 Every hosted process gets these variables, which is how hooks and the CLI find their session:
 
-- `TERMALATOR=1`
-- `TERMALATOR_SESSION=<id>`
-- `TERMALATOR_SOCKET`
-- `TERMALATOR_BIN` (absolute path of `tm`)
-- `TERMALATOR_PROJECT=<slug>` and `TERMALATOR_THREAD=<id>`, when they apply
-- `TERMALATOR_ROLE=coordinator|thread|shell`. Until the server serves project calls, `tm` derives the caller (§11.1) from this and `TERMALATOR_SESSION`; the server will use the peer pid instead
+- `TERMILATOR=1`
+- `TERMILATOR_SESSION=<id>`
+- `TERMILATOR_SOCKET`
+- `TERMILATOR_BIN` (absolute path of `tm`)
+- `TERMILATOR_PROJECT=<slug>` and `TERMILATOR_THREAD=<id>`, when they apply
+- `TERMILATOR_ROLE=coordinator|thread|shell`. Until the server serves project calls, `tm` derives the caller (§11.1) from this and `TERMILATOR_SESSION`; the server will use the peer pid instead
 - `TERM`, `COLORTERM`, `TERM_PROGRAM` (§3.3)
 
 The server removes variables that leak the launching terminal's identity, such as `TMUX`, `TERM_SESSION_ID` and `WINDOWID`. Each agent's manifest adds its own `unset_env` list (`agent.FilterEnv`).
@@ -261,7 +261,7 @@ For Claude that list is the inherited session variables: `CLAUDECODE`, `CLAUDE_C
 
 The processes die with the server, because the PTY master closes and the children get `SIGHUP`. Recovery works like herdr's `session.json` combined with resume flags:
 
-- **Persistence.** On every session change the server atomically rewrites `~/.termalator/state/sessions.json`. For each session it records:
+- **Persistence.** On every session change the server atomically rewrites `~/.termilator/state/sessions.json`. For each session it records:
   - id, role (coordinator, thread or shell), project and thread
   - agent name and the agent's **latest** session id (§8.5; Claude rotates it on `/clear`)
   - cwd, model, yolo flag, created time
@@ -274,7 +274,7 @@ The processes die with the server, because the PTY master closes and the childre
 - **Reporting.** Each restart writes an inbox item (`kind = "server-restart"`, raised by the ticker, §7.5) to every affected project with the counts of resumed and lost sessions; the server log names them: "server restarted after crash; resumed coordinator, t-0003; lost shell s-12". The coordinator decides what to re-prompt.
 - **Upgrade.**
   - Installing a new `tm` doesn't touch a running server. Attach keeps working, because the client re-execs the server's binary (§3.3).
-  - The server pins that binary: on start it hard-links its executable to `~/.termalator/server-bin/tm-<build>` (copies it across file systems) and removes the other pins. That path, not the installed one, is what the hello advertises for re-exec and what sessions get as `TERMALATOR_BIN` for their hooks, so both keep working after `tm update` renames a new binary over the old one or `brew upgrade` deletes the old keg.
+  - The server pins that binary: on start it hard-links its executable to `~/.termilator/server-bin/tm-<build>` (copies it across file systems) and removes the other pins. That path, not the installed one, is what the hello advertises for re-exec and what sessions get as `TERMILATOR_BIN` for their hooks, so both keep working after `tm update` renames a new binary over the old one or `brew upgrade` deletes the old keg.
   - A control client with a newer protocol asks the human to run `tm server restart`, which works whatever the server speaks (§3.3, Stopping across protocols). Restart warns about how many agents are mid-turn and asks for confirmation on a TTY.
   - **Later, not v0.1:** a live handoff. The old server passes each PTY master to the new one over `SCM_RIGHTS`, with a snapshot of each emulator, so no agent has to restart. Snapshots make this feasible; it needs its own small spike.
 - **Views.** The server-owned views come back from `views.json` (§3.3, Views), with the panes whose sessions were resumed.
@@ -290,9 +290,9 @@ The processes die with the server, because the PTY master closes and the childre
 
 ```
  PROJECTS 2            │ tm dashboard                                        ● server ok · 6 sessions
-▾○ termalator        3 │ NEEDS YOU 1 ──────────────────────────────────────────────────────────────
+▾○ termilator        3 │ NEEDS YOU 1 ──────────────────────────────────────────────────────────────
   ○ coordinator        │ ! foodperfect  coordinator           ▲ blocked  question
-  ● Bootstrap re…  60%│ termalator ───────────────────────────────────────────────────────────────
+  ● Bootstrap re…  60%│ termilator ───────────────────────────────────────────────────────────────
   ● libghostty s…  30%│  coordinator                         ○ idle     2 inbox
   ▲ Claude spike       │  t-0002 Bootstrap repo + spec        ● working  T3  60% 3/5 ▸ Write SPEC §8  4m
 ▸▲ foodperfect       0 │  t-0003 libghostty spike             ● working  T4  30% 2/7 ▸ Build the lib  1m
@@ -304,7 +304,7 @@ The processes die with the server, because the PTY master closes and the childre
                        │ enter attach · t tasks · i inbox · p projects · ? help · q quit
 ```
 
-- **Rows.** There are three sections. NEEDS YOU comes first, across every project. Then the current project's own section (headed by its slug): its coordinator, its threads, its other sessions and its task counts; the sidebar's tree lists every project, so the list has no section of all projects. A click on a project in the tree shows its section. OTHER SESSIONS, last, lists the sessions outside the projects (shells, the user's own agents); when there are none but the header counts some, it says how many are in the projects. The header names the app (`tm dashboard`), never a project, so a project called `termalator` isn't named twice.
+- **Rows.** There are three sections. NEEDS YOU comes first, across every project. Then the current project's own section (headed by its slug): its coordinator, its threads, its other sessions and its task counts; the sidebar's tree lists every project, so the list has no section of all projects. A click on a project in the tree shows its section. OTHER SESSIONS, last, lists the sessions outside the projects (shells, the user's own agents); when there are none but the header counts some, it says how many are in the projects. The header names the app (`tm dashboard`), never a project, so a project called `termilator` isn't named twice.
 - **NEEDS YOU** lists only what waits on the user: coordinators that are `blocked` (a question or a permission dialog), and blocked sessions of the user's own outside the projects (an agent started with `tm session start`, which has no coordinator). Everything about threads (a blocked thread, an unacknowledged report, a `Waiting for you` self-report) and tasks in `review` or `blocked` goes to the coordinator's inbox; the coordinator asks the user when it needs them.
 - **Per-row data.** Each row shows:
   - the state from the server's arbitration (§8.4);
@@ -323,12 +323,12 @@ The processes die with the server, because the PTY master closes and the childre
   4. **Settings**: the project's settings (§11.2) as plain labels, each with a line on what it does, changed in place with `enter` or `space`: Start threads (ask first / automatically), Yolo mode (turning it on asks first), Coordinator approves, Parallel threads (a number, with how many work now: `10 · 3 working now`), Auto-close finished threads (off / when its pull request merges / N days after it finishes), Pull request follow-up, Remote control (with the running coordinator's state when `prefix+r` changed it since). `enter` steps a number through common values (1, 2, 3, 5, 10, 15, 20) and `+` / `-` change it by one; on auto-close, `enter` cycles the three choices and `+` / `-` change the days. A change is saved at once and shows on every console's next poll.
   5. **Keys**: the help's list.
 - **Settings** (`,`): the settings of every project, changed in place the same way: the prefix key (`enter`, then press the new `ctrl+<key>`; inside tmux, which takes Ctrl+B, pick another), the default agent (the agent new coordinators run; `enter` steps through the agents `tm` knows), the details panel and list width (this console's, `ui.json`) and the sidebar's slim strip (the view's). A project's own settings are in its popup.
-- **No files in the UI.** No screen, popup, hint or message names the settings file, TOML, a setting's key, a path under `~/.termalator` or an editor; settings have plain labels. A broken settings file is reported by line (`the settings can't be read: line 3 is broken`). This document and `tm context` (for agents) name the file.
+- **No files in the UI.** No screen, popup, hint or message names the settings file, TOML, a setting's key, a path under `~/.termilator` or an editor; settings have plain labels. A broken settings file is reported by line (`the settings can't be read: line 3 is broken`). This document and `tm context` (for agents) name the file.
 - **Projects sidebar.** A column on the left of every screen, the dashboard, an attached session, `tm attach` and `tm project open` alike, holds the project tree. A `⌁` after a project's name and after its coordinator, in both widths, means the coordinator's remote control is on (§11.2):
 
   ```
    PROJECTS 2            │
-  ▾○ termalator        2 │   a project: ▾ open / ▸ closed, its coordinator's glyph, its open threads
+  ▾○ termilator        2 │   a project: ▾ open / ▸ closed, its coordinator's glyph, its open threads
     ○ coordinator        │   its coordinator (· when none runs)
     ● Bootstrap re…  60%│   each open thread: state glyph, title, progress
     ▲ Claude spike       │
@@ -337,7 +337,7 @@ The processes die with the server, because the PTY master closes and the childre
 
   - Every project has a row with its coordinator's state glyph (`·` when none runs), `◆` when one of its threads is blocked or waiting on someone (a `Waiting for you` self-report), and its count of open (unresolved) threads. Under an open project come its coordinator and each open thread with its state glyph (`✓` once done), its title (the id is in the details and the status bar) and its percent, in a column of its own so every title is cut at the same place; resolved threads disappear.
   - The current project is always open: on the dashboard the one it lists (the view's current project, else the first); while attached, the focused pane's project (else the view's). Others open and close with a click on their `▸` / `▾` (the first two columns). Which projects are open is part of the view (`view.expand`), so every console of `main` shows the same tree; `--own` views keep their own.
-  - The row you are on is drawn in reverse video: the current project's row on the dashboard, the focused session's coordinator or thread row while attached. The current project's name is bold, and the status bar names the project too (`s-4 · termalator coordinator · …`), so the context is never lost.
+  - The row you are on is drawn in reverse video: the current project's row on the dashboard, the focused session's coordinator or thread row while attached. The current project's name is bold, and the status bar names the project too (`s-4 · termilator coordinator · …`), so the context is never lost.
   - A click on a project row shows that project's dashboard (`view.project`); on a coordinator row attaches its coordinator (started if none runs); on a thread row watches the thread's pane (watch-only; a thread without a running session says so). This works from the dashboard, under a popup, and while attached: the view changes on every console. In `tm attach` and `tm project open` a click hands the console over to a full one of view `main` (§3.3). The prefix then `p`, `]` and `[` and the switcher open coordinators from the keys.
   - It is 24 columns wide by default (its border included), 14 to 48. Dragging its border, `{` and `}` (2 columns) on the dashboard, or the prefix then `{` or `}` while attached, change the width; `b` (prefix then `b` while attached) turns it into the slim strip and back. The width is the view's, so every console of the view follows; `ui.json` (§5.1) keeps the last one set as the width of new views.
   - When a full sidebar would leave less than 60 columns, it shrinks to the slim strip, 7 columns listing projects only: a marker on the current one, the glyph (`◆` for the thread hint) and the slug's first four letters (`▸●term`). A click on one shows its dashboard. It never disappears.
@@ -395,7 +395,7 @@ The processes die with the server, because the PTY master closes and the childre
 - **Project switching.** While attached, the prefix then `p` opens the project switcher, and the prefix then `]` or `[` jumps to the next or previous project's coordinator. These run on the dashboard, so they are the dashboard's own keys and no key is taken from the pane but the prefix. "Next" is relative to the project last attached to; the status bar always names the current project.
 - **Projects.** A project row with no running coordinator says so; `enter` on it starts the coordinator (as `tm project open` does) and attaches.
 - **Rendering.** The dashboard uses Bubble Tea v2 and Lip Gloss v2. The attached panes bypass Bubble Tea: a cell renderer per pane draws dirty rows from its mirror (§3.3).
-- **Alerts stay in the terminal.** Termalator sends no desktop notifications (no `osascript`, Notification Center or `notify-send`; user, 2026-10-04), and the client does not pass a pane's OSC 9/777 notifications to the outer terminal. When a session becomes `blocked`, or a thread reports, every client (dashboard or attached) rings the bell on its terminal; the event itself shows in the projects sidebar's state glyphs, the status bar, NEEDS YOU (coordinators) and the coordinator's inbox and nudges. The client re-emits a pane's OSC 52 clipboard writes to the outer terminal while attached. OSC 52 reads are denied.
+- **Alerts stay in the terminal.** Termilator sends no desktop notifications (no `osascript`, Notification Center or `notify-send`; user, 2026-10-04), and the client does not pass a pane's OSC 9/777 notifications to the outer terminal. When a session becomes `blocked`, or a thread reports, every client (dashboard or attached) rings the bell on its terminal; the event itself shows in the projects sidebar's state glyphs, the status bar, NEEDS YOU (coordinators) and the coordinator's inbox and nudges. The client re-emits a pane's OSC 52 clipboard writes to the outer terminal while attached. OSC 52 reads are denied.
 
 ---
 
@@ -404,7 +404,7 @@ The processes die with the server, because the PTY master closes and the childre
 ### 5.1 Layout
 
 ```
-~/.termalator/                         TERMALATOR_HOME
+~/.termilator/                         TERMILATOR_HOME
   config.toml                          user settings: default agent, keys, per-project safety (§11.2)   [human; tm only from the TUI's settings popups]
   ui.json                              this console's layout: details panel on or off, list width; the projects sidebar new views start with (§4)  [tm]
   agents/<name>.toml                   user agent manifests (§8.2)                   [human]
@@ -412,7 +412,7 @@ The processes die with the server, because the PTY master closes and the childre
   state/sessions.json                  live sessions, for resume (§3.6)              [server]
   state/views.json                     the server-owned views but own ones: screen, the session shown, selection, current project, sidebar (§3.3)  [server]
   logs/server.log                                                                    [server]
-  worktrees/<slug>/<id>-<title-slug>/  thread worktrees: plain git checkouts, nothing termalator-owned inside (§9)
+  worktrees/<slug>/<id>-<title-slug>/  thread worktrees: plain git checkouts, nothing termilator-owned inside (§9)
   projects/<slug>/                     one project = the coordinator's cwd
     PROJECT.md                         TOML front matter (name, goal, repos) + standing instructions   [coordinator, human]
     AGENTS.md                          generated role file; CLAUDE.md -> AGENTS.md   [tm]
@@ -446,15 +446,15 @@ The processes die with the server, because the PTY master closes and the childre
 
 | | Coordinator | Thread |
 |---|---|---|
-| cwd | `~/.termalator/projects/<slug>/` | its worktree (`~/.termalator/worktrees/<slug>/<id>-…`) |
-| Reads | everything in the project; thread worktrees (`Read` grant on `~/.termalator/worktrees/<slug>/`, so it can review code without prompts) | its worktree; the project folder, read-only, by absolute path |
+| cwd | `~/.termilator/projects/<slug>/` | its worktree (`~/.termilator/worktrees/<slug>/<id>-…`) |
+| Reads | everything in the project; thread worktrees (`Read` grant on `~/.termilator/worktrees/<slug>/`, so it can review code without prompts) | its worktree; the project folder, read-only, by absolute path |
 | Writes | `CONTEXT.md`, `MEMORY.md`, `memory/`, `PROJECT.md` (body and goal) directly; all `tm task` and `tm thread` operations | its worktree only |
 | Reports through | — | `tm status`, `tm report`, `tm done`, `tm task steps` on its own task (§11.1) |
 | Server socket | allowed | allowed (in the sandbox's socket allow list) |
 
 **Enforcement uses the agent's own permission settings plus its sandbox, not symlinks.** The core decides the policy per role and passes it to the agent as `LaunchSpec.Access` (a `Read` list and a `NoWrite` list of absolute directories) together with the socket path. The agent's manifest turns that policy into the harness's settings (§8.2). For Claude Code (§8.6) that means:
 
-- a `Read(//<home>/.termalator/projects/<slug>/**)` allow rule, so reads are silent;
+- a `Read(//<home>/.termilator/projects/<slug>/**)` allow rule, so reads are silent;
 - an `Edit(…)` deny rule on the same directory, which covers Write, Edit and NotebookEdit, so the file tools can't write there in any permission mode, yolo included (verified by t-0004);
 - for threads, the Bash sandbox enabled. It blocks writes outside the worktree at the OS level and checks real paths;
 - the server's socket in `sandbox.network.allowUnixSockets`. Without it, sandboxed `tm` calls fail with `EPERM`.
@@ -465,7 +465,7 @@ The processes die with the server, because the PTY master closes and the childre
 - The Write and Edit tools refuse to write to a file that is itself a symlink.
 - `git worktree remove` (without `--force`) and `git clean -fdx` **silently delete ignored files** in a worktree, which would include any report kept there.
 
-So **nothing termalator-owned lives in a worktree**. There is no `.termalator/` folder, no `info/exclude` entry, no symlink, no mirror and no copy-home step. A worktree is an ordinary checkout. Removing it by any means loses nothing, because reports and status are already in the project folder.
+So **nothing termilator-owned lives in a worktree**. There is no `.termilator/` folder, no `info/exclude` entry, no symlink, no mirror and no copy-home step. A worktree is an ordinary checkout. Removing it by any means loses nothing, because reports and status are already in the project folder.
 
 **Live context.** Threads read `PROJECT.md`, `CONTEXT.md`, `MEMORY.md`, `memory/` and `TASKS.md` by absolute path whenever they need them. They see edits the coordinator makes after they started; this fixes herdr-projects' snapshot problem without copying.
 
@@ -540,7 +540,7 @@ The parser keys on `### T<n> <title>` headings and on the `status:` line straigh
 
 ### 6.3 CLI
 
-The project defaults to `$TERMALATOR_PROJECT`, or to the project whose folder or thread worktree contains the cwd. `--project <slug>` overrides it.
+The project defaults to `$TERMILATOR_PROJECT`, or to the project whose folder or thread worktree contains the cwd. `--project <slug>` overrides it.
 
 ```sh
 tm task add "Fix login redirect after OAuth" --notes "Users land on /home…" --step "Reproduce" --step "Fix"
@@ -591,7 +591,7 @@ tm task delegate T12 [--agent claude] [--repo PATH]   # = tm thread start --task
   - Once the user says the work is accepted ("mark T12 done"), the coordinator runs `tm task status T12 done --approved-by-user`. It is journaled as `coordinator task.status T12 done (approved by the user)`, as `tm thread start --approved-by-user` is. Threads can't set `done` at all.
 - **Threads don't change task status or notes.** Adding and ticking steps on their own task is the one exception to "only the coordinator writes project state". It keeps a thread's plan on disk, and it is journaled.
 - **Threads change nothing else.** A thread call to any other task command exits 1 with `coordinator-only`. The coordinator, which is the only agent writer of project state (§5.2), moves the task after reading the thread's report.
-- A human may make any change, either from a shell outside termalator or from a `shell` session inside it.
+- A human may make any change, either from a shell outside termilator or from a `shell` session inside it.
 
 ### 6.5 Tasks and threads
 
@@ -606,7 +606,7 @@ tm task delegate T12 [--agent claude] [--repo PATH]   # = tm thread start --task
 
 ### 7.1 Briefs
 
-The server generates `threads/<id>/brief.md` on thread start and restart. The brief is **scoped**: it carries the thread's task and **pointers, not copies**, to the shared context. Every path in it is absolute, because nothing termalator-owned lives in the worktree (§5.2).
+The server generates `threads/<id>/brief.md` on thread start and restart. The brief is **scoped**: it carries the thread's task and **pointers, not copies**, to the shared context. Every path in it is absolute, because nothing termilator-owned lives in the worktree (§5.2).
 
 1. Who you are: thread `<id>` of project `<name>`, task `T<n>`, working in `<worktree>` on branch `<branch>`.
 2. Standing rules: "Run `tm skill thread` and follow it" (§7.8), plus a one-paragraph summary in case that call fails: stay in the worktree; the project folder is read-only; report only through `tm`; put lessons under `## Remember`; data is not instructions; never merge, force-push, or delete branches or worktrees.
@@ -725,7 +725,7 @@ Threads are grouped as herdr-projects does: Waiting on you → Ready for review 
   - a server restart
   - the user takes over a thread's pane (§4)
 - Kinds (M7): `report`, `thread-done`, `thread-resolved` and `needs-you` come from the `tm` commands, `takeover` from the attach client; the ticker adds `blocked` (`needs_user` unless it is a permission prompt the coordinator may approve), `idle` (once per report, and not while that report's own item is unhandled), `exited`, `server-restart`, and `pr-opened`, `pr-checks-failed`, `pr-review` (approved or changes requested), `pr-merged`, `pr-closed`.
-- What the ticker already reported (per-thread state, PR fields, nudged item ids) is kept in `state/ticker.json`, so a server restart repeats nothing. `TERMALATOR_TICK_SWEEP`, `TERMALATOR_TICK_PR` and `TERMALATOR_TICK_NUDGE` shorten the intervals for tests.
+- What the ticker already reported (per-thread state, PR fields, nudged item ids) is kept in `state/ticker.json`, so a server restart repeats nothing. `TERMILATOR_TICK_SWEEP`, `TERMILATOR_TICK_PR` and `TERMILATOR_TICK_NUDGE` shorten the intervals for tests.
 - **PR polling.** For each unresolved thread with a repo, `gh pr view <report PR URL, else the branch> --json number,url,state,reviewDecision,statusCheckRollup` in the repo, every 2 minutes, until the PR merged. Only those fields are kept, each checked against a strict pattern. A failed `gh` (no PR yet, no network) is retried at the next poll.
 - **PR follow-up** (built in, `pr_followup`, §11.2). When the checks start failing, or a reviewer requests changes, the thread gets one fixed prompt naming the PR number and the `gh` command to read them. No PR text is quoted.
 - **Auto-close** (`auto_close`, `auto_close_days`, §11.2, §9). Once a thread is due and its agent is idle, exited or stopped, the ticker runs `tm thread resolve` as caller `ticker`, once; resolve's own rules apply (never forced, the branch deleted only because the PR merged). Before that it checks the worktree: with uncommitted changes or unpushed commits the thread stays open, and a `close-held` item (once per reason) tells the coordinator; it closes on a later sweep once the work is committed and pushed.
@@ -837,19 +837,19 @@ An agent is first of all a TOML manifest. `internal/agent/manifests/claude.toml`
 
 **Match syntax**, the same everywhere: keys are dotted payload paths. A value means equals; `"!value"` means absent or different; `"*"` means present and non-empty; `"!*"` means absent or empty. Numbers and booleans compare as their text.
 
-**The hook endpoint.** All generated hook files call `"$TERMALATOR_BIN" hook --agent <name>` as a **command** hook. That is the `tm` binary itself, so the hook always exists. The spike measured why each of the following rules matters:
-- **Delivery.** It reads the payload from stdin, trims it with `[hook]`, wraps it in an envelope (`TERMALATOR_SESSION`, a timestamp, the parent pid), and sends it over a **stream** connection of kind `hook` to the server socket.
+**The hook endpoint.** All generated hook files call `"$TERMILATOR_BIN" hook --agent <name>` as a **command** hook. That is the `tm` binary itself, so the hook always exists. The spike measured why each of the following rules matters:
+- **Delivery.** It reads the payload from stdin, trims it with `[hook]`, wraps it in an envelope (`TERMILATOR_SESSION`, a timestamp, the parent pid), and sends it over a **stream** connection of kind `hook` to the server socket.
   - Datagrams are not usable: macOS caps them at 2048 bytes, and bigger payloads were dropped silently.
   - About 4 ms per event, end to end.
 - **Deadlines.** Dial 50 ms, write 100 ms, and 500 ms in total when a response (context) is expected. It never waits longer, even when the server is wedged.
 - **Never break the agent.** It always exits 0 and never writes to stderr. If the server is down it prints nothing. An `http` hook is not used, because Claude shows a red error line every time its target is down.
 - **Synchronous.** Hooks are sync, so a pane's events arrive in order, and the server's receive order is the sequence number. They carry a 5 s timeout as an outer safety net.
 
-**Loading.** `tm` loads its built-in manifests (embedded with `go:embed`), then every `~/.termalator/agents/*.toml`. A user file with a built-in's name replaces the built-in. A broken user manifest (bad TOML, unknown keys, a bad regex, a bad status word) is reported by `tm agent list` and `tm doctor` and skipped, without blocking the other agents. `tm agent check <file>` validates a manifest, and `tm agent reload` asks the server to re-read them for new sessions.
+**Loading.** `tm` loads its built-in manifests (embedded with `go:embed`), then every `~/.termilator/agents/*.toml`. A user file with a built-in's name replaces the built-in. A broken user manifest (bad TOML, unknown keys, a bad regex, a bad status word) is reported by `tm agent list` and `tm doctor` and skipped, without blocking the other agents. `tm agent check <file>` validates a manifest, and `tm agent reload` asks the server to re-read them for new sessions.
 
 ### 8.3 What needs Go, and what doesn't
 
-**No recompiling needed.** Adding an agent whose integration is CLI flags, hook commands or an extension file, a status file, a transcript, plus screen text, is a new manifest in `~/.termalator/agents/`. Data covers:
+**No recompiling needed.** Adding an agent whose integration is CLI flags, hook commands or an extension file, a status file, a transcript, plus screen text, is a new manifest in `~/.termilator/agents/`. Data covers:
 - launch, resume, yolo, model, environment cleanup, generated plugin and extension files;
 - the access policy, rendered as the harness's own permission settings;
 - hook-to-state mapping, background counters, session-id tracking, context re-injection;
@@ -858,7 +858,7 @@ An agent is first of all a TOML manifest. `internal/agent/manifests/claude.toml`
 - screen rules and paste-based prompts.
 
 **Go needed** (a package `internal/agent/<name>` that wraps `FromManifest` and calls `agent.RegisterGo`) only for:
-- a **live protocol client**. Example: Codex's app-server, where termalator connects as a second JSON-RPC client to read `thread/status/changed`, or sends `turn/start`.
+- a **live protocol client**. Example: Codex's app-server, where termilator connects as a second JSON-RPC client to read `thread/status/changed`, or sends `turn/start`.
 - a **structured prompt channel** with a feature probe. Examples: Claude's `uds-messaging` socket (§8.6); a pi extension's `sendUserMessage`.
 - **payload logic templates can't express**, such as stateful correlation across events.
 - **process identification** beyond argv basenames.
@@ -923,18 +923,18 @@ Claude Code is pure data (`manifests/claude.toml`), except for the optional sock
   ```json
   {
     "permissions": {
-      "allow": ["Read(//Users/me/.termalator/projects/demo/**)"],
-      "deny":  ["Edit(//Users/me/.termalator/projects/demo/**)"]
+      "allow": ["Read(//Users/me/.termilator/projects/demo/**)"],
+      "deny":  ["Edit(//Users/me/.termilator/projects/demo/**)"]
     },
-    "sandbox": {"enabled": true, "network": {"allowUnixSockets": ["/Users/me/.termalator/run/tm.sock"]}}
+    "sandbox": {"enabled": true, "network": {"allowUnixSockets": ["/Users/me/.termilator/run/tm.sock"]}}
   }
   ```
 
   - **Only `Edit(...)` deny rules.** They cover Write, Edit and NotebookEdit; Claude warns that `Write(...)` rules aren't matched by file checks.
   - The spike verified that, in interactive mode **and under yolo**, reads are silent, Write is refused by the deny rule, and a Bash write is refused by the sandbox.
-  - The coordinator gets a `Read` rule for `~/.termalator/worktrees/<slug>/`, no forced sandbox, and one deny rule, `Edit(//<home>/.termalator/config.toml)`, so it can't change the human's safety settings (§11.2). It keeps the socket allowance.
+  - The coordinator gets a `Read` rule for `~/.termilator/worktrees/<slug>/`, no forced sandbox, and one deny rule, `Edit(//<home>/.termilator/config.toml)`, so it can't change the human's safety settings (§11.2). It keeps the socket allowance.
   - A thread also gets that config deny, plus an `Edit(//<repo>/.git/**)` allow rule for its worktree's git common dir (`LaunchSpec.Access.Write`): a worktree's commits are written to the main repo's `.git`, outside the cwd the sandbox allows. Whether Claude's sandbox honours this allow rule is not yet verified with real Claude (M6).
-  - Rules name real paths, because Claude resolves symlinks before checking. `~/.termalator` itself must not be a symlink; `tm doctor` checks this.
+  - Rules name real paths, because Claude resolves symlinks before checking. `~/.termilator` itself must not be a symlink; `tm doctor` checks this.
 - **State sources, in rank order (§8.4):**
   1. **Status file** `~/.claude/sessions/<pid>.json`, written atomically by Claude. `status`: `idle` → idle, `busy` → working, `waiting` → blocked, with `waitingFor`: `"permission prompt"` → permission, `"input needed"` → question. It also carries `sessionId`, `version` and `messagingSocketPath`.
 
@@ -995,7 +995,7 @@ Claude Code is pure data (`manifests/claude.toml`), except for the optional sock
 
 ### 8.7 Adding a new agent
 
-1. Write `~/.termalator/agents/<name>.toml`, starting from a copy of `claude.toml`. Fill in `[identify]`, `[launch]` (including `resume_args` and the §7.8 kickoff), and the files the harness loads per session (a plugin dir, an `-e` extension, a settings file). Render `.Access` into the harness's permission and sandbox settings, so a thread can read the project but not write it, and can reach the socket. If the harness has no way to enforce read-only, say so in a comment; `tm agent list` then marks it `unenforced`.
+1. Write `~/.termilator/agents/<name>.toml`, starting from a copy of `claude.toml`. Fill in `[identify]`, `[launch]` (including `resume_args` and the §7.8 kickoff), and the files the harness loads per session (a plugin dir, an `-e` extension, a settings file). Render `.Access` into the harness's permission and sandbox settings, so a thread can read the project but not write it, and can reach the socket. If the harness has no way to enforce read-only, say so in a comment; `tm agent list` then marks it `unenforced`.
 2. Find the agent's best **level** signal. Is there a file it keeps current with its state (`[status_file]`), or a log it appends to (`[jsonl_tail]`)? Pin `tested_versions` if the file is undocumented. Then map hook or extension events in `[[hooks]]`. Check for cases where a hook never fires (cancel with Esc, interrupts), because those are exactly what goes stale. Add a `counter` for background work, `session_field`, and `[hook]` trimming.
 3. If it has a todo or plan tool, add `[[todos]]` entries: `replace` for a whole-list tool, `upsert` for diffs, `reset` on its context reset. Add a `respond` template on the event that fires after a context clear, if the harness has one.
 4. Add 3–6 `[[rules]]` for what only the screen shows: pre-hook dialogs (trust), blockers, and the idle prompt (with `skip_dim` if it shows ghost text).
@@ -1009,12 +1009,12 @@ Expected next agents: **Codex** (hooks need a trust step, so the better route is
 
 ## 9. Worktree lifecycle
 
-A worktree is a plain git checkout. Termalator puts nothing in it: no `.termalator/` folder, no `info/exclude` entry, no symlinks (§5.2). Everything the thread produces for the project goes through `tm`.
+A worktree is a plain git checkout. Termilator puts nothing in it: no `.termilator/` folder, no `info/exclude` entry, no symlinks (§5.2). Everything the thread produces for the project goes through `tm`.
 
 - **Create.** `tm thread start` with a repo:
   1. `git fetch origin`;
   2. base = `origin/HEAD`'s target, unless `--base` is given;
-  3. `git worktree add -b tm/<slug>/<id>-<title-slug> <dir> <base>`, where `<dir>` = `~/.termalator/worktrees/<slug>/<id>-<title-slug>`;
+  3. `git worktree add -b tm/<slug>/<id>-<title-slug> <dir> <base>`, where `<dir>` = `~/.termilator/worktrees/<slug>/<id>-<title-slug>`;
   4. launch the agent with cwd = the worktree and the thread's access policy (§5.2).
 
   Without a repo, the thread gets an empty directory at the same place. It is never inside the project folder: that folder is read-only for threads, and it holds the coordinator's `CLAUDE.md`.
@@ -1029,7 +1029,7 @@ A worktree is a plain git checkout. Termalator puts nothing in it: no `.termalat
 
   **Auto-close.** The ticker resolves a finished thread by itself, under the same rules, as the project's `auto_close` says (§11.2): `merged`, once its PR merged; `days`, `auto_close_days` days after it finished, i.e. after the earlier of its `tm done` (when no prompt came after it) and its PR's merge; `off`, never. In every case its agent must be idle, exited or stopped, and its worktree must lose nothing: no uncommitted changes, and no commit that isn't on a remote-tracking branch or the merged PR's head commit (a repo without remotes has nowhere to push, and resolve keeps its branch). A thread with such work stays open and the coordinator gets a `close-held` item. A thread without a repo has only a folder, which resolve keeps unless it is empty.
 - **Parallel threads cap.** At most `parallel_threads` threads of a project (§11.2, default 10) may work at once. A thread counts while it is open (not stopped or resolved), its session runs, its agent is not idle (working, blocked or not yet known), and it hasn't called `tm done` since its last prompt. At the cap, `tm thread start` and `tm task delegate` refuse with code `over-cap` (exit 1) and say how many work; the coordinator proposes the thread instead and starts it once one finishes. `--over-cap` starts it anyway, once: the coordinator adds it only when the user says so in chat, and it is journaled as `(over the parallel threads cap, approved by the user)`; it also counts as the user's go-ahead under `start_threads = "propose"`. Restarting a thread is not capped.
-- **Leftovers.** `tm doctor` lists worktrees under `~/.termalator/worktrees/<slug>/` with no open thread, plus merged `tm/<slug>/…` branches. It removes nothing without `--fix` and a TTY confirmation.
+- **Leftovers.** `tm doctor` lists worktrees under `~/.termilator/worktrees/<slug>/` with no open thread, plus merged `tm/<slug>/…` branches. It removes nothing without `--fix` and a TTY confirmation.
 
 ---
 
@@ -1068,16 +1068,16 @@ Every agent-facing command prints short, stable, plain text. It never prints unt
 
 ### 10.1 Releases, install and update
 
-- **Releases.** A `v*` tag runs `.github/workflows/release.yml` on one macOS runner. goreleaser cross-compiles darwin and linux × amd64 and arm64 with `zig cc` (§12). A build hook (`scripts/release/sign.sh`) signs each darwin binary with the Developer ID (hardened runtime, secure timestamp, identifier `dev.termalator.tm`) and notarises it with `notarytool`, before it is archived. The archives and `checksums.txt` go to a draft release; `scripts/release/check.sh --signed` checks what was uploaded, Gatekeeper's verdict included; then the release is published, and `Formula/termalator.rb` is rewritten from `checksums.txt` in a pull request that merges itself. Snapshots (`make release-snapshot`, CI) skip signing and say so.
+- **Releases.** A `v*` tag runs `.github/workflows/release.yml` on one macOS runner. goreleaser cross-compiles darwin and linux × amd64 and arm64 with `zig cc` (§12). A build hook (`scripts/release/sign.sh`) signs each darwin binary with the Developer ID (hardened runtime, secure timestamp, identifier `dev.termilator.tm`) and notarises it with `notarytool`, before it is archived. The archives and `checksums.txt` go to a draft release; `scripts/release/check.sh --signed` checks what was uploaded, Gatekeeper's verdict included; then the release is published, and `Formula/termilator.rb` is rewritten from `checksums.txt` in a pull request that merges itself. Snapshots (`make release-snapshot`, CI) skip signing and say so.
 - **Gatekeeper.** A bare Mach-O can't carry a stapled ticket; Apple records the notarisation against its cdhash. A quarantined copy (a browser download) is accepted after an online check; curl and Homebrew formulae set no quarantine flag, so nothing is checked. `spctl --type execute` rejects every bare binary; `spctl --assess --type open --context context:primary-signature` reports `source=Notarized Developer ID`.
-- **Homebrew.** One formula for macOS and Linux (`brew tap theclifmeister/termalator https://github.com/theclifmeister/termalator`, `brew install termalator`), with `on_macos`/`on_linux` × `on_arm`/`on_intel` archives. Not a cask: casks are macOS-only, and the formula installs the signed binary unchanged.
+- **Homebrew.** One formula for macOS and Linux (`brew tap theclifmeister/termilator https://github.com/theclifmeister/termilator`, `brew install termilator`), with `on_macos`/`on_linux` × `on_arm`/`on_intel` archives. Not a cask: casks are macOS-only, and the formula installs the signed binary unchanged.
 - **Install method.** `internal/update` tells three apart: a source build (`version.Channel` empty: `make`, `go build`), Homebrew (the resolved executable is under a `Cellar/` or `Caskroom/`), and a direct install (any other release binary).
 - **`tm update`.** Looks up the latest release through the GitHub API, unauthenticated; when the API refuses (60 requests an hour per address) it reads the tag from the `releases/latest` redirect instead.
   - Source build: refuses (exit 1) and says `git pull && make`.
-  - Homebrew: never touches Homebrew's files; prints `brew upgrade termalator` and runs it after a `y` on a terminal or with `--yes`.
+  - Homebrew: never touches Homebrew's files; prints `brew upgrade termilator` and runs it after a `y` on a terminal or with `--yes`.
   - Direct: asks on a terminal (`--yes` skips; without a terminal it needs `--yes`), downloads the platform's archive and `checksums.txt`, checks the sha256, extracts `tm` next to the installed one, checks it on macOS with `codesign` (a valid Developer ID signature with the hardened runtime, of the same team as this build's `version.TeamID`), runs `version` on it, and renames it over the installed file.
   - The server: it keeps running the old binary (pinned, §3.6). `tm update` says so and how many sessions it has, and that a restart ends running turns (agents resume, shells are lost). It restarts the server only with `--restart`, or after a `y` on a terminal, and then `tm server restart` still asks when agents are mid-turn. Otherwise it prints `tm server restart` for later. The restart runs the new binary's `tm server restart`, which stops a server of any protocol (§3.3), so it works even when the old server is older than the `tm` that runs the update.
-  - `--check` only reports the install method, path, and latest release (`--json` for scripts). `tm doctor` shows the same as its `install` group; `TERMALATOR_UPDATE_URL=off` turns the network check off (the e2e harness does).
+  - `--check` only reports the install method, path, and latest release (`--json` for scripts). `tm doctor` shows the same as its `install` group; `TERMILATOR_UPDATE_URL=off` turns the network check off (the e2e harness does).
 
 ---
 
@@ -1088,9 +1088,9 @@ Every agent-facing command prints short, stable, plain text. It never prints unt
 The server tells them apart by the caller's pid (§3.2). `tm task`, `tm inbox` and `tm project` ask it with `caller.who` (since M4): the server walks the peer pid's ancestors to a hosted session. The CLI combines that answer with the session environment (§3.4) and keeps the narrower of the two, so neither unsetting the variables nor leaving the session's process tree widens an agent's rights. Without a server, read-only commands still work and the environment alone decides:
 
 - If the calling process descends from a hosted session's process **and** that session's role is `coordinator` or `thread`, the call is an **agent call**.
-- Everything else is a **human call**: a shell outside termalator, or a hosted `shell` session.
+- Everything else is a **human call**: a shell outside termilator, or a hosted `shell` session.
 
-Agent calls of project commands (`tm task`, `thread`, `report`, `status`, `done`, `inbox`, `context`, `project`) run **inside the server** (`cli.run`): the CLI sees `TERMALATOR_SESSION`, sends its arguments, cwd and (when the command reads it) stdin, and the server runs the command with the caller it derived from the peer pid's process tree. That also lets a sandboxed thread's `tm report` write the project folder it can't write itself (§5.2). Without a server, the command runs in the CLI with the caller from the environment.
+Agent calls of project commands (`tm task`, `thread`, `report`, `status`, `done`, `inbox`, `context`, `project`) run **inside the server** (`cli.run`): the CLI sees `TERMILATOR_SESSION`, sends its arguments, cwd and (when the command reads it) stdin, and the server runs the command with the caller it derived from the peer pid's process tree. That also lets a sandboxed thread's `tm report` write the project folder it can't write itself (§5.2). Without a server, the command runs in the CLI with the caller from the environment.
 
 This is stronger than herdr-projects' TTY check, because an agent's own shell has a TTY. It is still **soft**: an agent with a shell could, for example, start a detached process outside its tree. This document says so plainly, as herdr-projects' docs do.
 
@@ -1098,7 +1098,7 @@ A thread call is further limited to its own thread: `tm status`, `tm report`, `t
 
 Human-only operations:
 - `task status … done` (§6.4), which the coordinator relays with `--approved-by-user` once the user accepted the work;
-- changing safety settings. These live in `~/.termalator/config.toml` under `[projects.<slug>]`, not in `PROJECT.md`, so the coordinator editing `PROJECT.md` can't touch them. `tm` writes them only from the TUI's settings popups, on the human's keypress: there is no CLI command or socket method that changes them, the dashboard refuses (`human-only`) when it runs inside an agent's session, and coordinators keep their `Edit` deny rule on the file;
+- changing safety settings. These live in `~/.termilator/config.toml` under `[projects.<slug>]`, not in `PROJECT.md`, so the coordinator editing `PROJECT.md` can't touch them. `tm` writes them only from the TUI's settings popups, on the human's keypress: there is no CLI command or socket method that changes them, the dashboard refuses (`human-only`) when it runs inside an agent's session, and coordinators keep their `Edit` deny rule on the file;
 - `tm server stop|restart`;
 - `--fix` in `tm doctor`;
 - approving proposed threads.
@@ -1169,7 +1169,7 @@ Never automated, in any mode: merging PRs, force-pushes, deleting branches with 
 - Agents other than Claude Code. Codex and pi come later through §8.7; plain shell sessions are supported.
 - Headless agent modes (`claude -p`, `codex exec`) for threads.
 - Plugins other than agent manifests; routines and schedules (PR follow-up is built in); several coordinators per project; renaming or archiving projects.
-- Threads writing project files directly, and anything termalator-owned inside a worktree (§5.2).
+- Threads writing project files directly, and anything termilator-owned inside a worktree (§5.2).
 - Importing `~/.herdr-projects` or `~/.tsk` data.
 - tsk's TUI polish: multi-select, undo, search, wide stage, notices, trash.
 - An installer script (`tm update` and the Homebrew tap exist, §10.1).
@@ -1198,7 +1198,7 @@ All three spikes have reported:
 | Hook reliability | Not enough alone: three Esc cases fire no closing hook. Status file first, then hooks, transcript, screen | 8.4, 8.6 |
 | Hook delivery | Stream socket, about 4 ms, bounded deadlines, sync, exit 0; no datagrams (2 KB cap on macOS), no http hooks | 8.2 |
 | Screen strings | New rules for 2.1.289; herdr's don't match | 8.6 |
-| `TERMALATOR_*` in hooks | Yes | 8.6 |
+| `TERMILATOR_*` in hooks | Yes | 8.6 |
 | Todos | `TaskCreate`/`TaskUpdate` diffs → `upsert`/`reset` ops plus a snapshot dir | 7.3, 8.2, 8.6 |
 | Read-only project folder | `Read` allow + `Edit` deny + sandbox hold interactively and under yolo, on macOS | 5.2, 8.6 |
 | Kickoff argument | Must follow `--` | 8.6 |
@@ -1303,7 +1303,7 @@ Sizes: **S** ≤ 2 days, **M** 3–5 days, **L** 1–2 weeks, for one developer 
 ### M5: Projects and tasks (M)
 - **Goal:** project folders and the tsk-style task board, usable from the CLI by a human and by the coordinator.
 - **Deliverables:**
-  - the `~/.termalator` layout (§5.1) and `internal/mdfile` (lock + atomic rename);
+  - the `~/.termilator` layout (§5.1) and `internal/mdfile` (lock + atomic rename);
   - `tm project new|list|open`, `PROJECT.md`, generated `AGENTS.md` and the `CLAUDE.md` symlink;
   - safety settings in `config.toml`;
   - `TASKS.md` and all of `tm task` (§6) with the exit-code contract and `--json`;
@@ -1322,7 +1322,7 @@ Sizes: **S** ≤ 2 days, **M** 3–5 days, **L** 1–2 weeks, for one developer 
 ### M6: Threads (L)
 - **Goal:** the coordinator hands a task to a thread that runs in its own worktree, reads the project read-only, and reports back only through `tm`.
 - **Deliverables:**
-  - worktree create and resolve (§9), with nothing termalator-owned in the worktree;
+  - worktree create and resolve (§9), with nothing termilator-owned in the worktree;
   - the per-role access policy (§5.2) rendered by the manifest;
   - scoped briefs with absolute paths; kickoff and `SessionStart` re-injection (§7.8);
   - `tm thread start|list|show|read|prompt|approve|ack|stop|restart|resolve` and `tm task delegate`;
@@ -1381,7 +1381,7 @@ Sizes: **S** ≤ 2 days, **M** 3–5 days, **L** 1–2 weeks, for one developer 
 
 ## 16. Testing
 
-Termalator has a test strategy from the first milestone, not a test phase at the end. Four principles:
+Termilator has a test strategy from the first milestone, not a test phase at the end. Four principles:
 - **Every milestone's "Try it" becomes an automated scenario.**
 - **Agents are faked by default.** The real `claude` is checked on demand and nightly, because we depend on its undocumented files.
 - **Every parser of outside input is fuzzed.**
@@ -1392,7 +1392,7 @@ Termalator has a test strategy from the first milestone, not a test phase at the
 |---|---|---|---|
 | **Unit** | One package, no processes, no sockets. Manifest mapping, arbitration tables, `ApplyTodo`, `TASKS.md` round trips, report validation, path rules | `go test -race ./...` | every PR |
 | **Fuzz** | Every parser of input we don't control (§16.5) | seed corpora run as unit tests on every PR; `make fuzz` (5 min per target) nightly | every PR (seeds), nightly (search) |
-| **Integration** | A real `tm server` in an isolated `TERMALATOR_HOME` (a `t.TempDir()`, with a short run dir under `/tmp`), driven through the CLI and the socket. Lifecycle, stale sockets, handshake, sessions, hooks, tasks, threads with the fake agent | `go test -race ./...` (packages under `internal/…` with `_integration_test.go` files) | every PR |
+| **Integration** | A real `tm server` in an isolated `TERMILATOR_HOME` (a `t.TempDir()`, with a short run dir under `/tmp`), driven through the CLI and the socket. Lifecycle, stale sockets, handshake, sessions, hooks, tasks, threads with the fake agent | `go test -race ./...` (packages under `internal/…` with `_integration_test.go` files) | every PR |
 | **End-to-end** | The whole product as the user sees it: `tm` and `tm attach` running inside a **virtual terminal** (libghostty), keys typed, screens compared with golden files, windows closed, clients and servers killed | `internal/e2e`, `make e2e` (all) / `make e2e-smoke` (a core set under about 2 minutes) | smoke on every PR; full suite and race-built smoke nightly |
 | **Real agent** | The same scenarios against the installed `claude`, to catch Claude releases that change hooks, screens, the session file, or the task tools | build tag `realclaude`, `make test-claude` | on demand, and nightly on a machine with a Claude login (not GitHub-hosted CI) |
 
@@ -1408,7 +1408,7 @@ The harness is built in M1, ported from `spikes/libghostty/cmd/harness`, and liv
 
 ```go
 func TestDetachReattach(t *testing.T) {
-	env := e2e.New(t)                         // isolated TERMALATOR_HOME, short run dir, tm built once per run
+	env := e2e.New(t)                         // isolated TERMILATOR_HOME, short run dir, tm built once per run
 	s := env.Start("shell")                   // tm session start, via the CLI
 	w := env.Window(120, 40, "attach", s.ID)  // `tm attach` in a PTY, parsed by a libghostty "outer terminal"
 	w.Type("seq 1 300\r")
@@ -1426,20 +1426,20 @@ What the harness provides (M1 built `Env`, `Window` without `Key`/`Paste`/`Wheel
 - **Running it.** Scenarios skip unless `E2E=1`, which `make e2e` and `make e2e-smoke` set, so `go test ./...` stays fast. The smoke set is every scenario named `TestSmoke*`. With `E2E_RACE=1` (`make e2e-smoke-race`, nightly) the harness builds `tm` with `-race` and fails any scenario whose `tm` printed `WARNING: DATA RACE`. PRs run the smoke set without it: a race-built `tm` takes about a second to start, and every agent hook starts one, which made the smoke step take 6–7 minutes.
 - **`Env`**:
   - builds `tm` once per test run;
-  - an isolated `TERMALATOR_HOME` and `HOME` (so the fake agent's `~/.claude/` is private);
+  - an isolated `TERMILATOR_HOME` and `HOME` (so the fake agent's `~/.claude/` is private);
   - a short run dir for the socket;
   - `Start(app, args…)` (`"shell"`, a deterministic app by name, or any command), `CLI` (runs `tm …` and returns stdout, stderr and the exit code), `Screen`, `WaitFor`, `Keys`, `AssertAlive`;
   - `KillServer`, `RestartServer`;
   - cleanup that **fails the test if any process outlives it**, so orphaned agents can't go unnoticed.
-- **No test server outlives its test.** Every server a test starts is stopped in its cleanup: `Env`'s cleanup runs `tm server stop --yes` (which works whatever the server speaks, §3.3) and SIGKILLs the server if it is still there; `internal/cli`'s binary tests stop any server they started the same way (`t.Cleanup`). For what a cleanup never gets to run (a `go test` timeout, ^C, SIGKILL), every test `tm` gets `TERMALATOR_TEST_OWNER=<pid of the test process>`: a server with it stops itself within a second of that process exiting. New harnesses that start servers must do both.
-- **Test hooks in the server.** `TERMALATOR_TEST_HELLO=protocol=N` makes a server claim protocol N at the handshake, `=deaf` makes it hang up on every hello; `TestSmokeReplaceOldServer` uses them to play a server of an older version that `tm server restart`, `stop` and `tm doctor --fix` must replace, with the agents resumed.
+- **No test server outlives its test.** Every server a test starts is stopped in its cleanup: `Env`'s cleanup runs `tm server stop --yes` (which works whatever the server speaks, §3.3) and SIGKILLs the server if it is still there; `internal/cli`'s binary tests stop any server they started the same way (`t.Cleanup`). For what a cleanup never gets to run (a `go test` timeout, ^C, SIGKILL), every test `tm` gets `TERMILATOR_TEST_OWNER=<pid of the test process>`: a server with it stops itself within a second of that process exiting. New harnesses that start servers must do both.
+- **Test hooks in the server.** `TERMILATOR_TEST_HELLO=protocol=N` makes a server claim protocol N at the handshake, `=deaf` makes it hang up on every hello; `TestSmokeReplaceOldServer` uses them to play a server of an older version that `tm server restart`, `stop` and `tm doctor --fix` must replace, with the agents resumed.
 - **`Window`**: a PTY running `tm` or `tm attach` (`env.Window`), or a shell the test types `"$TM" …` into (`env.Shell`), whose output feeds a libghostty terminal (the "outer screen"). It offers:
   - `Type`, `Key` (libghostty's key encoder, honouring the kitty flags the client pushed), `Paste`, `Wheel`, `Resize`;
   - `CloseWindow` (close the PTY master), `KillClient` (`SIGKILL`);
   - `WaitFor`, `Quiet`, `Screen`.
 - **Several consoles.** A scenario opens several `tm` windows at once, of different sizes, to check that a view's consoles show the same thing (`TestSmokeViewsShared`: screens, the sidebar, latest-typist sizing with padding in the larger window, `--own` kept apart) and that the view survives `tm server restart` (`TestSmokeViewSurvivesRestart`).
 - **Golden screens.** `testdata/golden/*.txt` holds the plain text of the viewport, plus an optional attribute layer (later). `make e2e E2E_FLAGS=-update` rewrites them. Volatile parts (session ids, pids, durations) are masked by named regexes (`e2e.Mask`, `e2e.DefaultMasks`) and read `<name>` in the file.
-- **Consistency checks.** `AssertMirrorsServer` signals the client (`SIGUSR1`), which asks for an in-stream `DIGEST` and logs whether its mirror matches (`TERMALATOR_ATTACH_LOG`): modes, the active screen, recent scrollback.
+- **Consistency checks.** `AssertMirrorsServer` signals the client (`SIGUSR1`), which asks for an in-stream `DIGEST` and logs whether its mirror matches (`TERMILATOR_ATTACH_LOG`): modes, the active screen, recent scrollback.
 - **Artifacts on failure:** every window's last screen and raw bytes, the server log and `sessions.json` (from M3: `tm agent explain` for each session), saved under `$E2E_ARTIFACTS/<test>` and uploaded by CI.
 - **Deterministic apps.** Scenarios use small purpose-built TUIs under `internal/e2e/apps/`: a stream printer, a full-screen mouse app, an inline redraw app. Real programs such as `vim` and `htop` vary between machines.
 
@@ -1470,7 +1470,7 @@ Built in M3 (`internal/e2e/fakeagent`, a small Go TUI). It behaves like Claude C
   - every screen rule still matches its screen;
   - `SessionStart` context re-injection;
   - the access policy: a thread can't write the project folder, interactively and under yolo.
-- A failure files an inbox item in the `termalator` project, or prints a summary when run by hand, naming the manifest lines involved.
+- A failure files an inbox item in the `termilator` project, or prints a summary when run by hand, naming the manifest lines involved.
 
 ### 16.5 Race detector and fuzzing
 

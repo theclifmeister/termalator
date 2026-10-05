@@ -12,16 +12,16 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theclifmeister/termalator/internal/agent"
-	"github.com/theclifmeister/termalator/internal/config"
-	"github.com/theclifmeister/termalator/internal/project"
-	"github.com/theclifmeister/termalator/internal/proto"
-	"github.com/theclifmeister/termalator/internal/tasks"
-	"github.com/theclifmeister/termalator/internal/thread"
+	"github.com/theclifmeister/termilator/internal/agent"
+	"github.com/theclifmeister/termilator/internal/config"
+	"github.com/theclifmeister/termilator/internal/project"
+	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/tasks"
+	"github.com/theclifmeister/termilator/internal/thread"
 )
 
 // fakeSource records the dashboard's actions. Settings go to the real
-// settings file under the test's TERMALATOR_HOME, and Load reads them
+// settings file under the test's TERMILATOR_HOME, and Load reads them
 // back once one was set.
 type fakeSource struct {
 	data     Data
@@ -332,10 +332,10 @@ func hasBell(cmd tea.Cmd) bool {
 }
 
 func TestStatusLine(t *testing.T) {
-	info := proto.SessionInfo{ID: "s-4", Role: proto.RoleCoordinator, Project: "termalator", Agent: "claude",
+	info := proto.SessionInfo{ID: "s-4", Role: proto.RoleCoordinator, Project: "termilator", Agent: "claude",
 		State: "working", TodosDone: 2, TodosTotal: 5, Current: "Write §8"}
 	got := statusLine(info, nil, false, 100, "")
-	want := "\x1b[7m s-4 · termalator coordinator · working 40% 2/5 ▸ Write §8"
+	want := "\x1b[7m s-4 · termilator coordinator · working 40% 2/5 ▸ Write §8"
 	if !strings.HasPrefix(got, want) || !strings.HasSuffix(got, ` ≡  prefix+d dashboard `+"\x1b[27m") {
 		t.Fatalf("status line %q", got)
 	}
@@ -559,7 +559,7 @@ func TestDashboardFooter(t *testing.T) {
 // settings popup has the settings of every project.
 func TestDashboardPopups(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("TERMALATOR_HOME", home)
+	t.Setenv("TERMILATOR_HOME", home)
 	src := &fakeSource{data: testData()}
 	src.data.Projects[0].Items = []project.Item{{ID: "x", Kind: "report", Summary: "t-0002 handed in report 1"}}
 	m := newDash(DashOptions{Source: src, Width: 100, Height: 30})

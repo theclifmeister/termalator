@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theclifmeister/termalator/internal/mdfile"
-	"github.com/theclifmeister/termalator/internal/project"
+	"github.com/theclifmeister/termilator/internal/mdfile"
+	"github.com/theclifmeister/termilator/internal/project"
 )
 
 // TestSmokeProjectOpenAndSwitch: tm project open starts a project's
@@ -303,7 +303,7 @@ func TestSmokeServerCallerCheck(t *testing.T) {
 	env.scripts(map[string]string{"sneak": `
 [[step]]
 do = "run"
-cmd = 'env -u TERMALATOR_SESSION -u TERMALATOR_ROLE -u TERMALATOR_PROJECT "$TERMALATOR_BIN" task status T1 done --project demo 2>&1; echo "exit=$?"'
+cmd = 'env -u TERMILATOR_SESSION -u TERMILATOR_ROLE -u TERMILATOR_PROJECT "$TERMILATOR_BIN" task status T1 done --project demo 2>&1; echo "exit=$?"'
 `})
 	slug, dir := newProject(env, "Demo")
 	env.Trust(dir)
@@ -317,10 +317,10 @@ cmd = 'env -u TERMALATOR_SESSION -u TERMALATOR_ROLE -u TERMALATOR_PROJECT "$TERM
 		t.Fatalf("a coordinator without its variables set done:\n%s", out)
 	}
 
-	// The human, from a shell session inside termalator.
+	// The human, from a shell session inside termilator.
 	sh := env.Start("shell")
 	env.WaitFor(sh, "$", wait)
-	env.Keys(sh, `"$TERMALATOR_BIN" task status T1 done --project demo; echo "rc=$?"`+"\r")
+	env.Keys(sh, `"$TERMILATOR_BIN" task status T1 done --project demo; echo "rc=$?"`+"\r")
 	env.WaitFor(sh, "rc=0", wait)
 	if out := env.MustCLI("task", "show", "T1", "--project", slug, "--json"); !strings.Contains(out, `"status": "done"`) {
 		t.Fatalf("the human's done didn't stick:\n%s", out)
@@ -335,7 +335,7 @@ cmd = 'env -u TERMALATOR_SESSION -u TERMALATOR_ROLE -u TERMALATOR_PROJECT "$TERM
 func TestSmokeClearLosesNothing(t *testing.T) {
 	env := New(t)
 	env.FakeClaude()
-	tm := `"$TERMALATOR_BIN" `
+	tm := `"$TERMILATOR_BIN" `
 	env.scripts(map[string]string{"work": `
 [[step]]
 do = "run"

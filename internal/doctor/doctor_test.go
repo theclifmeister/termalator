@@ -10,11 +10,11 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/theclifmeister/termalator/internal/project"
-	"github.com/theclifmeister/termalator/internal/server"
-	"github.com/theclifmeister/termalator/internal/thread"
-	"github.com/theclifmeister/termalator/internal/update"
-	"github.com/theclifmeister/termalator/internal/worktree"
+	"github.com/theclifmeister/termilator/internal/project"
+	"github.com/theclifmeister/termilator/internal/server"
+	"github.com/theclifmeister/termilator/internal/thread"
+	"github.com/theclifmeister/termilator/internal/update"
+	"github.com/theclifmeister/termilator/internal/worktree"
 )
 
 // testDeps is an isolated home with a short run dir, no server, and the
@@ -22,7 +22,7 @@ import (
 func testDeps(t *testing.T) Deps {
 	t.Helper()
 	h := t.TempDir()
-	t.Setenv("TERMALATOR_HOME", h)
+	t.Setenv("TERMILATOR_HOME", h)
 	run, err := os.MkdirTemp("/tmp", "tmdoc-")
 	if err != nil {
 		t.Fatal(err)
@@ -290,11 +290,11 @@ func TestInstall(t *testing.T) {
 	if got := Install(d); got != nil {
 		t.Fatalf("no install info: %+v", got)
 	}
-	d.Install = &update.Install{Method: update.Homebrew, Path: "/opt/homebrew/Cellar/termalator/0.1.0/bin/tm", Upgrade: "brew upgrade termalator"}
+	d.Install = &update.Install{Method: update.Homebrew, Path: "/opt/homebrew/Cellar/termilator/0.1.0/bin/tm", Upgrade: "brew upgrade termilator"}
 	d.Latest = func() (string, error) { return "v0.2.0", nil }
 	got := Install(d)
-	if len(got) != 2 || got[0].Detail != "homebrew, /opt/homebrew/Cellar/termalator/0.1.0/bin/tm" ||
-		got[1].Status != Warn || got[1].Detail != "v0.2.0 is available: brew upgrade termalator" {
+	if len(got) != 2 || got[0].Detail != "homebrew, /opt/homebrew/Cellar/termilator/0.1.0/bin/tm" ||
+		got[1].Status != Warn || got[1].Detail != "v0.2.0 is available: brew upgrade termilator" {
 		t.Fatalf("newer release: %+v", got)
 	}
 	d.Latest = func() (string, error) { return "v0.1.0", nil }

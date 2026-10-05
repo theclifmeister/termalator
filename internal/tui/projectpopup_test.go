@@ -11,11 +11,11 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theclifmeister/termalator/internal/config"
-	"github.com/theclifmeister/termalator/internal/project"
-	"github.com/theclifmeister/termalator/internal/proto"
-	"github.com/theclifmeister/termalator/internal/tasks"
-	"github.com/theclifmeister/termalator/internal/thread"
+	"github.com/theclifmeister/termilator/internal/config"
+	"github.com/theclifmeister/termilator/internal/project"
+	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/tasks"
+	"github.com/theclifmeister/termilator/internal/thread"
 )
 
 // keyPress sends a named key: tab, shift+tab, esc, space, enter, up,
@@ -58,7 +58,7 @@ func act(m *dash, src *fakeSource, name string) {
 
 func popupData(t *testing.T) (*fakeSource, *dash) {
 	t.Helper()
-	t.Setenv("TERMALATOR_HOME", t.TempDir())
+	t.Setenv("TERMILATOR_HOME", t.TempDir())
 	src := &fakeSource{data: testData(), agents: []string{"claude", "pi"}}
 	alpha := &src.data.Projects[0]
 	alpha.Name, alpha.Goal, alpha.Repos = "Alpha", "Ship the alpha", []string{"/src/alpha"}
