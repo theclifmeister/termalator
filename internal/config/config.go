@@ -1,6 +1,7 @@
 // Package config reads and writes ~/.termilator/config.toml, the human's
 // settings (docs/SPEC.md §5.1, §11.2): the per-project safety settings
-// under [projects.<slug>] and the default agent; the prefix key ([keys])
+// under [projects.<slug>], the all-projects ones under [defaults] that a
+// project follows for every key it doesn't set, and the default agent; the prefix key ([keys])
 // and the icon set ([ui] icons) belong to the TUI, which reads them
 // itself.
 //
@@ -87,7 +88,8 @@ type Safety struct {
 	FastForwardCheckout bool `json:"fast_forward_checkout"`
 }
 
-// Defaults are the settings of a project that config.toml doesn't name.
+// Defaults are the settings of a project that neither its own table nor
+// [defaults] (all projects) name.
 var Defaults = Safety{StartThreads: StartPropose, Yolo: false, CoordinatorApproves: true,
 	ParallelThreads: 10, AutoClose: CloseMerged, AutoCloseDays: 7, PRFollowup: true,
 	CompleteTasks: CompleteUser, FastForwardCheckout: true}
@@ -112,6 +114,8 @@ type rawSafety struct {
 type Config struct {
 	Path     string
 	projects map[string]rawSafety
+	// defaults is the [defaults] table: the all-projects settings.
+	defaults rawSafety
 	agent    string
 }
 
@@ -125,8 +129,8 @@ func Path() (string, error) {
 }
 
 // Load reads config.toml. A missing file gives the defaults. Unknown keys
-// inside a [projects.<slug>] table are errors, so a typo can't silently
-// leave a safety setting at its default.
+// inside a [projects.<slug>] or the [defaults] table are errors, so a typo
+// can't silently leave a safety setting at its default.
 func Load() (*Config, error) {
 	path, err := Path()
 	if err != nil {
@@ -135,6 +139,7 @@ func Load() (*Config, error) {
 	var raw struct {
 		DefaultAgent string               `toml:"default_agent"`
 		Projects     map[string]rawSafety `toml:"projects"`
+		Defaults     rawSafety            `toml:"defaults"`
 	}
 	md, err := toml.DecodeFile(path, &raw)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -144,11 +149,14 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	for _, k := range md.Undecoded() {
-		if len(k) >= 3 && k[0] == "projects" {
+		if len(k) >= 3 && k[0] == "projects" || len(k) >= 2 && k[0] == "defaults" {
 			return nil, fmt.Errorf("%s: unknown setting %s", path, k.String())
 		}
 	}
-	c := &Config{Path: path, projects: raw.Projects, agent: raw.DefaultAgent}
+	c := &Config{Path: path, projects: raw.Projects, defaults: raw.Defaults, agent: raw.DefaultAgent}
+	if _, err := c.AllProjects(); err != nil {
+		return nil, err
+	}
 	for slug := range raw.Projects {
 		if _, err := c.Safety(slug); err != nil {
 			return nil, err
@@ -157,19 +165,65 @@ func Load() (*Config, error) {
 	return c, nil
 }
 
-// Safety returns a project's settings, defaults filled in.
+// Safety returns a project's settings: each key the project's own
+// value, else the all-projects one ([defaults]), else Defaults.
 func (c *Config) Safety(slug string) (Safety, error) {
-	s := Defaults
+	s, err := c.AllProjects()
+	if err != nil {
+		return s, err
+	}
 	r, ok := c.projects[slug]
 	if !ok {
 		return s, nil
 	}
+	return s, r.apply(&s, c.Path, "projects."+slug)
+}
+
+// AllProjects returns the all-projects settings ([defaults]), Defaults
+// filled in: what a project follows for each key it doesn't set.
+func (c *Config) AllProjects() (Safety, error) {
+	s := Defaults
+	if c == nil {
+		return s, nil
+	}
+	return s, c.defaults.apply(&s, c.Path, "defaults")
+}
+
+// Own lists the keys slug's table sets itself (ProjectKeys order),
+// auto_resolve as auto_close; the rest follow all projects.
+func (c *Config) Own(slug string) []string {
+	if c == nil {
+		return nil
+	}
+	r, ok := c.projects[slug]
+	if !ok {
+		return nil
+	}
+	set := map[string]bool{
+		"start_threads": r.StartThreads != nil, "yolo": r.Yolo != nil,
+		"coordinator_approves": r.CoordinatorApproves != nil, "parallel_threads": r.ParallelThreads != nil,
+		"auto_close": r.AutoClose != nil || r.AutoResolve != nil, "auto_close_days": r.AutoCloseDays != nil,
+		"pr_followup": r.PRFollowup != nil, "complete_tasks": r.CompleteTasks != nil,
+		"coordinator_remote_control": r.CoordinatorRC != nil, "fast_forward_checkout": r.FastForward != nil,
+	}
+	var out []string
+	for _, k := range ProjectKeys {
+		if set[k] {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// apply sets in s every setting r names, checked; table names it in
+// errors ("projects.demo", "defaults").
+func (r rawSafety) apply(s *Safety, path, table string) error {
 	if r.StartThreads != nil {
 		switch *r.StartThreads {
 		case StartPropose, StartAuto:
 			s.StartThreads = *r.StartThreads
 		default:
-			return s, fmt.Errorf("%s: projects.%s.start_threads must be %q or %q, not %q", c.Path, slug, StartPropose, StartAuto, *r.StartThreads)
+			return fmt.Errorf("%s: %s.start_threads must be %q or %q, not %q", path, table, StartPropose, StartAuto, *r.StartThreads)
 		}
 	}
 	if r.Yolo != nil {
@@ -180,24 +234,24 @@ func (c *Config) Safety(slug string) (Safety, error) {
 	}
 	if r.ParallelThreads != nil {
 		if n := *r.ParallelThreads; n < 1 || n > MaxParallelThreads {
-			return s, fmt.Errorf("%s: projects.%s.parallel_threads must be 1 to %d, not %d", c.Path, slug, MaxParallelThreads, n)
+			return fmt.Errorf("%s: %s.parallel_threads must be 1 to %d, not %d", path, table, MaxParallelThreads, n)
 		}
 		s.ParallelThreads = *r.ParallelThreads
 	}
-	if r.AutoResolve != nil && !*r.AutoResolve {
-		s.AutoClose = CloseOff
+	if r.AutoResolve != nil {
+		s.AutoClose = map[bool]string{true: CloseMerged, false: CloseOff}[*r.AutoResolve]
 	}
 	if r.AutoClose != nil {
 		switch *r.AutoClose {
 		case CloseOff, CloseMerged, CloseDays:
 			s.AutoClose = *r.AutoClose
 		default:
-			return s, fmt.Errorf("%s: projects.%s.auto_close must be %q, %q or %q, not %q", c.Path, slug, CloseOff, CloseMerged, CloseDays, *r.AutoClose)
+			return fmt.Errorf("%s: %s.auto_close must be %q, %q or %q, not %q", path, table, CloseOff, CloseMerged, CloseDays, *r.AutoClose)
 		}
 	}
 	if r.AutoCloseDays != nil {
 		if n := *r.AutoCloseDays; n < 1 || n > MaxAutoCloseDays {
-			return s, fmt.Errorf("%s: projects.%s.auto_close_days must be 1 to %d, not %d", c.Path, slug, MaxAutoCloseDays, n)
+			return fmt.Errorf("%s: %s.auto_close_days must be 1 to %d, not %d", path, table, MaxAutoCloseDays, n)
 		}
 		s.AutoCloseDays = *r.AutoCloseDays
 	}
@@ -211,7 +265,7 @@ func (c *Config) Safety(slug string) (Safety, error) {
 		case CompleteRemoved:
 			s.CompleteTasks = CompleteUser
 		default:
-			return s, fmt.Errorf("%s: projects.%s.complete_tasks must be %q or %q, not %q", c.Path, slug, CompleteUser, CompleteMerged, *r.CompleteTasks)
+			return fmt.Errorf("%s: %s.complete_tasks must be %q or %q, not %q", path, table, CompleteUser, CompleteMerged, *r.CompleteTasks)
 		}
 	}
 	if r.CoordinatorRC != nil {
@@ -220,11 +274,12 @@ func (c *Config) Safety(slug string) (Safety, error) {
 	if r.FastForward != nil {
 		s.FastForwardCheckout = *r.FastForward
 	}
-	return s, nil
+	return nil
 }
 
 // Removed lists, sorted, the projects whose complete_tasks still names
-// the removed "released" (CompleteRemoved), read as CompleteUser.
+// the removed "released" (CompleteRemoved), read as CompleteUser; all
+// projects ([defaults]) is AllProjectsName, first.
 func (c *Config) Removed() []string {
 	var out []string
 	for slug, r := range c.projects {
@@ -233,8 +288,14 @@ func (c *Config) Removed() []string {
 		}
 	}
 	sort.Strings(out)
+	if r := c.defaults; r.CompleteTasks != nil && *r.CompleteTasks == CompleteRemoved {
+		out = append([]string{AllProjectsName}, out...)
+	}
 	return out
 }
+
+// AllProjectsName is how the UI and tm doctor name [defaults].
+const AllProjectsName = "all projects"
 
 // DefaultAgent is the agent new coordinators run (default_agent), or
 // fallback when the file doesn't set one.
