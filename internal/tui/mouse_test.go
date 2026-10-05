@@ -113,7 +113,7 @@ func TestEveryKeyHasMousePath(t *testing.T) {
 			}
 		}
 	}
-	session := map[string]bool{"d": true, "u": true, "r": true}
+	session := map[string]bool{"d": true, "r": true}
 	for k := range prefixCommands {
 		session[k] = true
 	}
@@ -281,18 +281,18 @@ func TestDashboardMenus(t *testing.T) {
 	}
 	keyPress(m, "esc")
 
-	// A thread's menu has take over.
+	// A thread's menu attaches it, with nothing to take over.
 	m.current = "beta"
 	m.rebuild()
 	x, y = at(t, m, "t-0005")
 	mouseAt(m, tea.MouseRight, x, y)
 	mv = m.top().(*menuView)
-	if !slices.ContainsFunc(mv.items, func(it menuItem) bool { return it.label == "take over…" }) {
-		t.Fatalf("a thread's menu lacks take over: %+v", mv.items)
+	if slices.ContainsFunc(mv.items, func(it menuItem) bool { return strings.Contains(it.label, "take over") }) {
+		t.Fatalf("a thread's menu has take over: %+v", mv.items)
 	}
-	clickItem(t, m, "take over…")
-	if m.result.TakeOver != "s-5" || m.result.Attach != "s-5" {
-		t.Fatalf("take over didn't ask to attach s-5: %+v", m.result)
+	clickItem(t, m, "attach")
+	if m.result.Attach != "s-5" {
+		t.Fatalf("attach didn't attach s-5: %+v", m.result)
 	}
 	m.busy, m.result = false, DashResult{}
 
@@ -372,13 +372,13 @@ func TestHints(t *testing.T) {
 		t.Fatalf("hints %v, want %v", hs, want)
 	}
 	info := proto.SessionInfo{ID: "s-4", Role: proto.RoleThread, Project: "p", Thread: "t-1"}
-	line, hits := statusBar(info, nil, false, 100, "watch-only, "+takeOverHint)
+	line, hits := statusBar(info, nil, false, 100, "")
 	plain := []rune(ansi.Strip(line))
 	got := map[string]string{}
 	for _, h := range hits {
 		got[h.key] = string(plain[h.x0:min(h.x1, len(plain))])
 	}
-	for key, text := range map[string]string{"menu": "≡ ", "d": "prefix+d dashboard", "u": takeOverHint} {
+	for key, text := range map[string]string{"menu": "≡ ", "d": "prefix+d dashboard"} {
 		if got[key] != text {
 			t.Errorf("status button %s shows %q, want %q", key, got[key], text)
 		}
@@ -401,7 +401,7 @@ func TestHints(t *testing.T) {
 // box is where at says.
 func TestAttachMenu(t *testing.T) {
 	c := &client{cols: 100, rows: 30, sideW: 24, dashboard: true,
-		focus: &pane{watch: true, info: proto.SessionInfo{ID: "s-2", Role: proto.RoleThread}}}
+		focus: &pane{info: proto.SessionInfo{ID: "s-2", Role: proto.RoleThread}}}
 	labels := func(items []aitem) string {
 		var out []string
 		for _, it := range items {
@@ -410,8 +410,8 @@ func TestAttachMenu(t *testing.T) {
 		return strings.Join(out, " ")
 	}
 	got := labels(c.sessionItems())
-	if !strings.Contains(got, "prefix+u") || strings.Contains(got, "prefix+r") || !strings.Contains(got, "prefix+a") {
-		t.Fatalf("a watched thread's menu: %s", got)
+	if strings.Contains(got, "prefix+u") || strings.Contains(got, "prefix+r") || !strings.Contains(got, "prefix+a") {
+		t.Fatalf("a thread's menu: %s", got)
 	}
 	c.bare, c.dashboard = true, false
 	c.focus = &pane{info: proto.SessionInfo{ID: "s-1", Role: proto.RoleCoordinator}}

@@ -203,9 +203,9 @@ func TestSmokeTickerPRMergedAutoResolve(t *testing.T) {
 // TestSmokeProjectDashboard: the project view of M7. A thread with a
 // task and a report shows its progress line, PR and Next lines when
 // selected, only to read: the coordinator acks the report (tm thread
-// ack), and i shows the project's inbox. enter watches the thread: keys
-// don't reach it until prefix u, y takes it over, which the coordinator
-// is told about.
+// ack), and i shows the project's inbox. enter attaches the thread, which
+// takes keys like any pane: typing claims its size, and the first input
+// tells the coordinator, once for the attach, without asking.
 func TestSmokeProjectDashboard(t *testing.T) {
 	env, projDir, out := tickerEnv(t)
 	os.WriteFile(filepath.Join(env.scriptsDir(), "thread-report-ok.toml"), []byte(`
@@ -226,8 +226,8 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	}
 	env.WaitState(th, "idle", agentWait)
 
-	// Another console watches the thread first, so it fills that one
-	// and w's watching below has a size to leave alone.
+	// Another console shows the thread first, so it fills that one
+	// and w's attach below has a size to leave alone.
 	pre := env.Attach(90, 24, th.ID)
 	pre.WaitFor("Fake Claude Code", agentWait)
 	waitPaneSize(t, env, th, uint16(90-SideCols(90)), 22) // less the status bar and the row above it
@@ -249,7 +249,7 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	wide := env.Window(140+24, 30, "--own")
 	wide.WaitFor("t-0001 Fix the login", wait)
 	wide.Type("j")
-	wide.WaitFor("enter watches it", wait)
+	wide.WaitFor("enter attaches it", wait)
 	wide.Golden("dashboard-split.txt", dashMasks...)
 	wide.Type("q")
 	wide.WaitExit(wait)
@@ -269,29 +269,30 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	w.Golden("dashboard-inbox.txt", dashMasks...)
 	w.Key(keyEsc)
 
-	// enter on the thread: watch-only.
+	// enter on the thread: attached, with nothing to take over.
 	w.Key(Enter)
-	w.WaitUntil("watching", wait, func(sc string) bool { return lastLine(sc, "watch-only") })
-	cols, rows := paneSize(env, th)
-	if cols == 110 && rows == 29 {
-		t.Fatalf("the thread's pane already fits the window: the size checks below prove nothing")
+	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, "demo t-0001") })
+	if cols, rows := paneSize(env, th); cols == 110 && rows == 28 {
+		t.Fatalf("the thread's pane already fits the window: the size check below proves nothing")
 	}
-	w.Type("zzz")
-	w.Quiet(500 * time.Millisecond)
-	if strings.Contains(w.Screen(), "zzz") {
-		t.Fatalf("keys reached a watch-only thread:\n%s", w.Screen())
+	if sc := w.Screen(); strings.Contains(sc, "watch-only") || strings.Contains(sc, "taken over") {
+		t.Fatalf("the status bar talks of taking over:\n%s", sc)
 	}
-	assertPaneSize(t, env, th, cols, rows) // watching never claims the size
-	w.Prefix("u")
-	w.WaitUntil("asked", wait, func(sc string) bool { return lastLine(sc, "take over t-0001") })
-	w.Type("y")
-	w.WaitUntil("taken over", wait, func(sc string) bool { return lastLine(sc, "taken over") })
 	w.Type("qqq")
 	w.WaitFor("qqq", wait)
-	waitPaneSize(t, env, th, 110, 28) // taken over: typing claims it
-	waitInbox(t, env, "takeover: the user took over t-0001 (T1 Fix the login)'s pane")
-	if j, _ := os.ReadFile(filepath.Join(projDir, "JOURNAL.md")); !strings.Contains(string(j), "human thread.takeover t-0001") {
+	waitPaneSize(t, env, th, 110, 28) // typing claims the size
+	waitInbox(t, env, "takeover: the user typed into t-0001 (T1 Fix the login)'s pane")
+	w.Type("www")
+	w.WaitFor("www", wait)
+	w.Quiet(500 * time.Millisecond)
+	if items := env.MustCLI("inbox", "list", "--project", "demo"); strings.Count(items, "takeover: ") != 1 {
+		t.Fatalf("more than one takeover for the attach:\n%s", items)
+	}
+	if j, _ := os.ReadFile(filepath.Join(projDir, "JOURNAL.md")); strings.Count(string(j), "human thread.takeover t-0001") != 1 {
 		t.Fatalf("journal:\n%s", j)
+	}
+	if strings.Contains(w.Screen(), "take over") || strings.Contains(w.Screen(), "took over") {
+		t.Fatalf("the takeover showed:\n%s", w.Screen())
 	}
 	w.Detach()
 	w.WaitFor("SESSIONS", wait)

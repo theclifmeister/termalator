@@ -71,9 +71,6 @@ type DashOptions struct {
 type DashResult struct {
 	Attach string
 	State  DashState
-	// TakeOver is the session of Attach to ask about taking over at once:
-	// a thread's "take over…" picked from a menu.
-	TakeOver string
 }
 
 // Dashboard runs the dashboard until the user quits or picks a session.
@@ -357,7 +354,6 @@ func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case actionMsg:
 		m.busy = false
 		if msg.err != nil {
-			m.result.TakeOver = ""
 			m.fail(msg.err)
 			return m, m.load()
 		}
@@ -403,7 +399,7 @@ func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // sideClick handles a click on the sidebar, from under any popup: its
 // border starts a drag, a project row shows
 // its dashboard, the coordinator row opens the coordinator, a thread row
-// watches its session.
+// attaches its session.
 func (m *dash) sideClick(mo tea.Mouse) tea.Cmd {
 	if mo.Button != tea.MouseLeft {
 		return nil
@@ -423,7 +419,7 @@ func (m *dash) sideClick(mo tea.Mouse) tea.Cmd {
 }
 
 // openTarget opens a sidebar row's target, closing any popup: a thread's
-// session is watched, a coordinator opened, else the project's dashboard
+// session is attached, a coordinator opened, else the project's dashboard
 // shown.
 func (m *dash) openTarget(t Target) tea.Cmd {
 	m.stack = nil

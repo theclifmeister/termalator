@@ -19,7 +19,7 @@ func TestText(t *testing.T) {
 		}
 	}
 	coord, _ := Text("coordinator", "dev")
-	for _, w := range []string{"tm context", "tm inbox done", "propose", "Only the user accepts work", "--approved-by-user", "watch-only", "Needs you:", "id (task + short title)", "parallel_threads", "--over-cap"} {
+	for _, w := range []string{"tm context", "tm inbox done", "propose", "Only the user accepts work", "--approved-by-user", "a `takeover` item", "Needs you:", "id (task + short title)", "parallel_threads", "--over-cap"} {
 		if !strings.Contains(coord, w) {
 			t.Errorf("coordinator rules lack %q", w)
 		}

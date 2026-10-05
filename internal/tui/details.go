@@ -135,7 +135,7 @@ func (m *dash) threadPanel(d *panel, r row) {
 	}
 	d.gap()
 	if r.session != "" {
-		d.add(styleFaint.Render("enter watches it; the coordinator acts on it"))
+		d.add(styleFaint.Render("enter attaches it; the coordinator acts on it"))
 	} else {
 		d.add(styleFaint.Render("the coordinator acts on it"))
 	}
