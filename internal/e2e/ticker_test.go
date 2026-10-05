@@ -230,7 +230,7 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	// and w's watching below has a size to leave alone.
 	pre := env.Attach(90, 24, th.ID)
 	pre.WaitFor("Fake Claude Code", agentWait)
-	waitPaneSize(t, env, th, uint16(90-SideCols(90)), 23) // less the status bar
+	waitPaneSize(t, env, th, uint16(90-SideCols(90)), 22) // less the status bar and the row above it
 	pre.Detach()
 	pre.WaitExit(wait)
 
@@ -288,7 +288,7 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	w.WaitUntil("taken over", wait, func(sc string) bool { return lastLine(sc, "taken over") })
 	w.Type("qqq")
 	w.WaitFor("qqq", wait)
-	waitPaneSize(t, env, th, 110, 29) // taken over: typing claims it
+	waitPaneSize(t, env, th, 110, 28) // taken over: typing claims it
 	waitInbox(t, env, "takeover: the user took over t-0001's pane")
 	if j, _ := os.ReadFile(filepath.Join(projDir, "JOURNAL.md")); !strings.Contains(string(j), "human thread.takeover t-0001") {
 		t.Fatalf("journal:\n%s", j)

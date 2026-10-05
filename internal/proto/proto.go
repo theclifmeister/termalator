@@ -11,8 +11,10 @@ import (
 // goes up when a method's meaning or the attach framing changes. 2: the
 // server-owned views (view.*), which consoles need. 3: the sidebar's
 // tree (view.project, view.expand). 4: view.drag, a divider dragged
-// with the mouse. 5: view.sidesel, the sidebar's keyboard row.
-const Protocol = 5
+// with the mouse. 5: view.sidesel, the sidebar's keyboard row. 6: one
+// pane per view (no split tree, zoom or view.split/close/focus/zoom/
+// even/resize/drag).
+const Protocol = 6
 
 // Kind is what a connection is for.
 type Kind string
@@ -91,7 +93,7 @@ const (
 
 	// client → server
 	FrameInput     FrameType = 10 // bytes for the PTY, already encoded for the pane's modes
-	FrameSetSize   FrameType = 11 // u16 cols, u16 rows: the user really resized the window or changed its split panes
+	FrameSetSize   FrameType = 11 // u16 cols, u16 rows: the user really resized the window
 	FrameDigestReq FrameType = 12 // ask for a FrameDigest in the stream
 	FrameDetach    FrameType = 13
 	// FrameColorScheme carries one byte, 1 dark or 2 light: the client's

@@ -20,7 +20,7 @@ import (
 // the renderer scrolls its view so the cursor stays visible.
 //
 // With SetRect the renderer draws into one rectangle of a window it
-// shares with other panes (split panes): it never clears or erases
+// shares with the sidebar and the status bar: it never clears or erases
 // outside that rectangle, and leaves the frame's synchronisation, the
 // cursor and the title to the caller (Cursor gives the cursor).
 type Renderer struct {

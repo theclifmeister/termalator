@@ -81,37 +81,36 @@ func TestPrefixStep(t *testing.T) {
 	p := chord{'\\'}
 	pk := uv.Key{Code: '\\', Mod: uv.ModCtrl}
 	key := func(s string) uv.Key { return uv.Key{Code: rune(s[0]), Text: s} }
-	ctrlRight := uv.Key{Code: uv.KeyRight, Mod: uv.ModCtrl}
 	cases := []struct {
-		name            string
-		pending, repeat bool
-		k               uv.Key
-		dashboard       bool
-		want            prefixDo
+		name      string
+		pending   bool
+		k         uv.Key
+		dashboard bool
+		want      prefixDo
 	}{
-		{"a key goes to the program", false, false, key("x"), true, prefixDo{input: true}},
-		{"the prefix arms", false, false, pk, true, prefixDo{arm: true}},
-		{"prefix twice sends it", true, false, pk, true, prefixDo{input: true}},
-		{"prefix d detaches", true, false, key("d"), false, prefixDo{detach: true}},
-		{"prefix p detaches to the switcher", true, false, key("p"), true, prefixDo{detach: true, then: "p"}},
-		{"prefix ] without a dashboard cancels", true, false, key("]"), false, prefixDo{}},
-		{"prefix x closes the pane", true, false, key("x"), true, prefixDo{pane: "x"}},
-		{"prefix q cancels", true, false, key("q"), true, prefixDo{}},
-		{"d alone is typed", false, false, key("d"), true, prefixDo{input: true}},
-		{"prefix % splits", true, false, key("%"), false, prefixDo{pane: "%"}},
-		{`prefix " splits`, true, false, key(`"`), false, prefixDo{pane: `"`}},
-		{"prefix space switches layout", true, false, uv.Key{Code: uv.KeySpace, Text: " "}, false, prefixDo{pane: "space"}},
-		{"prefix → moves the focus", true, false, uv.Key{Code: uv.KeyRight}, false, prefixDo{pane: "right"}},
-		{"prefix ctrl+→ resizes", true, false, ctrlRight, false, prefixDo{pane: "ctrl+right"}},
-		{"ctrl+→ repeats without the prefix", false, true, ctrlRight, false, prefixDo{pane: "ctrl+right"}},
-		{"ctrl+→ without the repeat is typed", false, false, ctrlRight, false, prefixDo{input: true}},
-		{"→ never repeats", false, true, uv.Key{Code: uv.KeyRight}, false, prefixDo{input: true}},
-		{"prefix u takes over", true, false, key("u"), false, prefixDo{takeover: true}},
-		{"prefix r toggles remote control", true, false, key("r"), false, prefixDo{remote: true}},
-		{"u alone is typed", false, false, key("u"), true, prefixDo{input: true}},
+		{"a key goes to the program", false, key("x"), true, prefixDo{input: true}},
+		{"the prefix arms", false, pk, true, prefixDo{arm: true}},
+		{"prefix twice sends it", true, pk, true, prefixDo{input: true}},
+		{"prefix d detaches", true, key("d"), false, prefixDo{detach: true}},
+		{"prefix p detaches to the switcher", true, key("p"), true, prefixDo{detach: true, then: "p"}},
+		{"prefix ] without a dashboard cancels", true, key("]"), false, prefixDo{}},
+		{"prefix q cancels", true, key("q"), true, prefixDo{}},
+		{"d alone is typed", false, key("d"), true, prefixDo{input: true}},
+		{"prefix { narrows the sidebar", true, key("{"), false, prefixDo{pane: "{"}},
+		{"prefix tab: the sidebar's keyboard", true, uv.Key{Code: uv.KeyTab}, false, prefixDo{pane: "tab"}},
+		{"tab alone is typed", false, uv.Key{Code: uv.KeyTab}, false, prefixDo{input: true}},
+		// Split panes are gone: their keys cancel.
+		{"prefix % cancels", true, key("%"), false, prefixDo{}},
+		{"prefix x cancels", true, key("x"), true, prefixDo{}},
+		{"prefix z cancels", true, key("z"), true, prefixDo{}},
+		{"prefix → cancels", true, uv.Key{Code: uv.KeyRight}, false, prefixDo{}},
+		{"ctrl+→ is typed", false, uv.Key{Code: uv.KeyRight, Mod: uv.ModCtrl}, false, prefixDo{input: true}},
+		{"prefix u takes over", true, key("u"), false, prefixDo{takeover: true}},
+		{"prefix r toggles remote control", true, key("r"), false, prefixDo{remote: true}},
+		{"u alone is typed", false, key("u"), true, prefixDo{input: true}},
 	}
 	for _, c := range cases {
-		if got := prefixStep(p, c.pending, c.repeat, c.k, c.dashboard); got != c.want {
+		if got := prefixStep(p, c.pending, c.k, c.dashboard); got != c.want {
 			t.Errorf("%s: %+v, want %+v", c.name, got, c.want)
 		}
 	}
@@ -154,7 +153,7 @@ func TestWatchOnlyPane(t *testing.T) {
 	c.takeover = func(s proto.SessionInfo) error { told <- s; return nil }
 	// No connection: a key sent to the program would panic.
 	p := &pane{watch: true, info: proto.SessionInfo{ID: "s-2", Role: proto.RoleThread, Project: "demo", Thread: "t-0001"}}
-	c.v = view.View{Mode: view.ModeLayout, Root: &view.Node{Session: "s-2"}, Focus: "s-2"}
+	c.v = view.View{Mode: view.ModeLayout, Focus: "s-2"}
 	c.panes["s-2"], c.focus = p, p
 	c.status()
 	if !strings.Contains(c.statusText, `watch-only, prefix+u takes over`) {
@@ -239,7 +238,7 @@ func TestSidebarFocusNoLeak(t *testing.T) {
 	c.prefix, c.statusBar = chord{'\\'}, true
 	c.setWindow(160, 40)
 	p := &pane{info: proto.SessionInfo{ID: "s-1", Role: proto.RoleCoordinator, Project: "demo"}}
-	c.v = view.View{Mode: view.ModeLayout, Root: &view.Node{Session: "s-1"}, Focus: "s-1"}
+	c.v = view.View{Mode: view.ModeLayout, Focus: "s-1"}
 	c.panes["s-1"], c.focus = p, p
 	c.side, c.sideW = &sidebar{}, sideDefault
 	pk := uv.Key{Code: '\\', Mod: uv.ModCtrl}

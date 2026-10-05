@@ -270,7 +270,7 @@ func (m *dash) call(method string, p proto.ViewParams) tea.Cmd {
 // shows sessions now, from here or another console, the dashboard ends.
 func (m *dash) fromView() tea.Cmd {
 	v := m.view.View()
-	if v.Mode == view.ModeLayout && v.Root != nil && v.Seq != m.viewSeq {
+	if v.Mode == view.ModeLayout && v.Focus != "" && v.Seq != m.viewSeq {
 		m.result.Attach = cmp.Or(v.Focus, "view")
 		return tea.Quit
 	}
@@ -620,8 +620,9 @@ func (m *dash) move(d int) {
 	}
 }
 
-// paneSize is the size new sessions get: the window less the status bar.
-func (m *dash) paneSize() (int, int) { return m.w, max(m.h-1, 1) }
+// paneSize is the size new sessions get: the window less the status bar
+// and the empty row above it.
+func (m *dash) paneSize() (int, int) { return m.w, max(m.h-2, 1) }
 
 // key sends a key to the topmost overlay, else to the list's actions.
 // The prefix works here as in a session, so the same keys do the same
