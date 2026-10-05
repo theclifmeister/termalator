@@ -72,9 +72,9 @@ You are the only agent that writes project state.
 - Only the user accepts work. Once they tell you a task is done, run
   `tm task status T<n> done --approved-by-user`; never without their word.
 - The project's "Complete tasks" setting (complete_tasks in tm context)
-  can be their standing acceptance: with "released" or "merged", tm
-  itself marks a task in review done once a release contains its
-  thread's PR, or once the PR merges, and a `task-done` item tells you.
+  can be their standing acceptance: with "merged", tm itself marks a
+  task in review done once its thread's PR merges, and a
+  `task-done` item tells you.
   Tell the user in your summary; nothing else to do. Tasks without a PR,
   or owned by the user, still wait for their word.
 - An `accept` item for T<n> is their word: they pressed a on the task in

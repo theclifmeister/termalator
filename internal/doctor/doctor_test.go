@@ -358,3 +358,18 @@ func TestKeychain(t *testing.T) {
 		}
 	}
 }
+
+// TestSettingsRemovedComplete: a project still set to the removed
+// complete_tasks "released" gets one warning, with no fix (the user
+// picks again in Settings); none without it.
+func TestSettingsRemovedComplete(t *testing.T) {
+	d := testDeps(t)
+	if cs := Settings(d); len(cs) != 0 {
+		t.Fatalf("no config: %+v", cs)
+	}
+	os.WriteFile(filepath.Join(d.Paths.Home, "config.toml"), []byte("[projects.demo]\ncomplete_tasks = \"released\"\n\n[projects.ok]\ncomplete_tasks = \"merged\"\n"), 0o600)
+	cs := Settings(d)
+	if len(cs) != 1 || cs[0].Status != Warn || cs[0].Fix != nil || !strings.Contains(cs[0].Detail, "when released\" was removed, so tasks complete by you in demo: pick again in Settings") {
+		t.Fatalf("%+v", cs)
+	}
+}

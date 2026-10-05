@@ -1,14 +1,12 @@
 package ticker
 
 // Completing tasks by the project's setting (docs/SPEC.md §6.4, §7.5):
-// with complete_tasks "released" or "merged", a task in review is marked
-// done once its thread's PR merged, or once a tag (a release) contains
-// that merge. The setting is the user's standing acceptance; the
+// with complete_tasks "merged", a task in review is marked done once its
+// thread's PR merged. The setting is the user's standing acceptance; the
 // coordinator gets a task-done item, and a send-back reopens the task.
 
 import (
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -24,15 +22,12 @@ import (
 const KindTaskDone = "task-done"
 
 // mergeMemo is a thread's merged PR: kept past the thread's resolve, so
-// a release later still finds the merge commit.
+// a task still in review later still finds the merge commit.
 type mergeMemo struct {
 	Repo  string `json:"repo"`
 	PR    int    `json:"pr"`
 	Merge string `json:"merge"`
 }
-
-// tagRE is a tag name fit for a journal line and an item.
-var tagRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+/-]{0,63}$`)
 
 // rememberMerge keeps thread r's PR merge commit for completeTasks.
 func (t *Ticker) rememberMerge(p *project.Project, r *thread.Record, pr PR) {
@@ -90,8 +85,7 @@ func byUser(owner string) bool {
 }
 
 // completeTasks marks done each task in review whose thread's PR merged
-// (complete_tasks "merged") or was released (a tag contains its merge
-// commit; "released"), once per merge commit: a task the user sent back
+// (complete_tasks "merged"), once per merge commit: a task the user sent back
 // after that stays open until a new PR ships. Tasks without a PR, and
 // tasks the user owns, are left to the user.
 func (t *Ticker) completeTasks(p *project.Project, safety config.Safety) {
@@ -118,7 +112,7 @@ func (t *Ticker) completeTasks(p *project.Project, safety config.Safety) {
 			delete(pm.Completed, ref)
 		}
 	}
-	if safety.CompleteTasks != config.CompleteReleased && safety.CompleteTasks != config.CompleteMerged {
+	if safety.CompleteTasks != config.CompleteMerged {
 		return
 	}
 	for _, tk := range board.Tasks {
@@ -129,14 +123,7 @@ func (t *Ticker) completeTasks(p *project.Project, safety config.Safety) {
 		if mm == nil || pm.Completed[tk.Ref()] == mm.Merge {
 			continue
 		}
-		why, rule := fmt.Sprintf("merged (PR #%d)", mm.PR), "when merged"
-		if safety.CompleteTasks == config.CompleteReleased {
-			tag, ok := worktree.ReleasedIn(mm.Repo, mm.Merge)
-			if !ok || !tagRE.MatchString(tag) {
-				continue // not released yet, or not fetched
-			}
-			why, rule = fmt.Sprintf("released in %s (PR #%d)", tag, mm.PR), "when released"
-		}
+		why := fmt.Sprintf("merged (PR #%d)", mm.PR)
 		res, err := p.Tasks().CompleteBySetting(caller.Caller{Kind: caller.Ticker}, tk.ID, why)
 		if err != nil {
 			t.o.Log.Printf("ticker: %s: complete %s: %v", p.Slug, tk.Ref(), err)
@@ -149,7 +136,7 @@ func (t *Ticker) completeTasks(p *project.Project, safety config.Safety) {
 			pm.Completed = map[string]string{}
 		}
 		pm.Completed[tk.Ref()] = mm.Merge
-		t.item(p, KindTaskDone, tk.Ref(), fmt.Sprintf("%s is done: %s, as the user's setting says (complete tasks %s); the user can still send it back",
-			thread.TaskLabel(p, tk.Ref()), why, rule), false)
+		t.item(p, KindTaskDone, tk.Ref(), fmt.Sprintf("%s is done: %s, as the user's setting says (complete tasks when merged); the user can still send it back",
+			thread.TaskLabel(p, tk.Ref()), why), false)
 	}
 }

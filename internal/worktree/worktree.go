@@ -224,21 +224,3 @@ func MergeCommit(repo string, n int) string {
 	}
 	return ""
 }
-
-// ReleasedIn is the first tag, in version order, that contains commit:
-// the release that shipped it, "" when none has yet. ok is false when
-// the repo doesn't have the commit (not fetched), so it can't tell.
-func ReleasedIn(repo, commit string) (tag string, ok bool) {
-	if commit == "" || strings.HasPrefix(commit, "-") {
-		return "", false
-	}
-	if _, err := git(repo, "cat-file", "-e", commit+"^{commit}"); err != nil {
-		return "", false
-	}
-	out, err := git(repo, "tag", "--contains", commit, "--sort=v:refname")
-	if err != nil {
-		return "", false
-	}
-	tag, _, _ = strings.Cut(out, "\n")
-	return strings.TrimSpace(tag), true
-}

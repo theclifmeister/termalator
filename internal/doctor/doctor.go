@@ -2,7 +2,8 @@
 // the toolchain, the server and its run dir (and, on macOS, whether its
 // sessions can reach the keychain), the agents against their
 // manifests' tested_versions, the sandbox prerequisites, and leftovers of
-// threads (worktrees and merged branches nobody uses any more).
+// threads (worktrees and merged branches nobody uses any more), and
+// settings in config.toml that tm no longer has.
 //
 // Checks only look. Each problem that can be repaired carries a Fix,
 // which `tm doctor --fix` applies after the human confirms.
@@ -129,6 +130,7 @@ func Run(d Deps) []Check {
 	out = append(out, Agents(d)...)
 	out = append(out, Sandbox(d)...)
 	out = append(out, Leftovers(d, live)...)
+	out = append(out, Settings(d)...)
 	out = append(out, Legacy(d)...)
 	return out
 }

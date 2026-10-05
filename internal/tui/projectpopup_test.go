@@ -244,19 +244,19 @@ func TestProjectSettingsNumbers(t *testing.T) {
 		t.Fatalf("auto-close off:\n%s", out)
 	}
 	keyPress(m, "down")
-	for _, want := range []string{"when released", "when merged", "by you", "when released"} {
+	for _, want := range []string{"when merged", "by you", "when merged"} {
 		act(m, src, "enter")
 		if out := screen(m); !regexp.MustCompile(`Complete tasks +` + want).MatchString(out) {
 			t.Fatalf("complete tasks, want %q:\n%s", want, out)
 		}
 	}
 	cfg, _ := config.Load()
-	if s := must(cfg.Safety("alpha")); s.ParallelThreads != 13 || s.AutoClose != config.CloseOff || s.AutoCloseDays != 9 || s.CompleteTasks != config.CompleteReleased {
+	if s := must(cfg.Safety("alpha")); s.ParallelThreads != 13 || s.AutoClose != config.CloseOff || s.AutoCloseDays != 9 || s.CompleteTasks != config.CompleteMerged {
 		t.Fatalf("saved %+v", s)
 	}
 	path, _ := config.Path()
 	data, _ := os.ReadFile(path)
-	if want := "[projects.alpha]\nparallel_threads = 13\nauto_close = \"off\"\nauto_close_days = 9\ncomplete_tasks = \"released\"\n"; string(data) != want {
+	if want := "[projects.alpha]\nparallel_threads = 13\nauto_close = \"off\"\nauto_close_days = 9\ncomplete_tasks = \"merged\"\n"; string(data) != want {
 		t.Fatalf("file:\n%s", data)
 	}
 	for _, bad := range []string{"config", "toml", "auto_close", "parallel_threads", "complete_tasks"} {
@@ -568,8 +568,7 @@ func TestProjectPopupFixed(t *testing.T) {
 	}
 }
 
-// needsYouData is popupData with a task in review (T3, its PR merged
-// but not released) and a blocked one (T4) in NEEDS YOU.
+// needsYouData is popupData with a task in review (T3, its PR merged) and a blocked one (T4) in NEEDS YOU.
 func needsYouData(t *testing.T, width int) (*fakeSource, *dash) {
 	t.Helper()
 	src, m := popupData(t)
@@ -578,7 +577,7 @@ func needsYouData(t *testing.T, width int) (*fakeSource, *dash) {
 			Notes: "Do the thing.\n\nreview (2026-10-05): Check: the bell shows whole"},
 		&tasks.Task{ID: 4, Title: "Pick a licence", Status: tasks.Blocked,
 			Notes: "blocked (2026-10-04): old\n\nblocked (2026-10-05): which licence, MIT or Apache?"})
-	src.reviews = map[int]Review{3: {Check: []string{"Run tm, press t"}, PR: 61, Ship: ShipUnreleased}}
+	src.reviews = map[int]Review{3: {Check: []string{"Run tm, press t"}, PR: 61, Ship: ShipMerged}}
 	m.Update(tea.WindowSizeMsg{Width: width, Height: 40})
 	return src, m
 }
@@ -679,7 +678,7 @@ func TestSendBack(t *testing.T) {
 func TestSendBackDone(t *testing.T) {
 	src, m := needsYouData(t, 86+sideDefault)
 	src.board.Tasks = append(src.board.Tasks, &tasks.Task{ID: 5, Title: "Shipped", Status: tasks.Done, Thread: "t-0009",
-		Notes: "done (2026-10-05): released in v0.5.0 (PR #70), by the project's setting"})
+		Notes: "done (2026-10-05): merged (PR #70), by the project's setting"})
 	m.Update(keyPress(m, "t")())
 	out := screen(m)
 	if !strings.Contains(out, "DONE") || !strings.Contains(out, "T5    Shipped") {
@@ -716,7 +715,7 @@ func TestReviewDetail(t *testing.T) {
 	m.Update(keyPress(m, "t")())
 	keyPress(m, "enter")
 	out := screen(m)
-	for _, want := range []string{"PR #61 merged, not released: wait for the next release to test it",
+	for _, want := range []string{"PR #61 merged",
 		"How to check", "• Run tm, press t", "• the bell shows whole", "A accept · x send back · esc back"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("review detail lacks %q:\n%s", want, out)
@@ -730,9 +729,9 @@ func TestReviewDetail(t *testing.T) {
 	keyPress(m, "esc")
 	keyPress(m, "esc")
 
-	for ship, want := range map[string]string{ShipReleased: "PR #61 released in v0.4.0", ShipOpen: "PR #61 open, not merged yet",
+	for ship, want := range map[string]string{ShipOpen: "PR #61 open, not merged yet",
 		ShipMerged: "PR #61 merged", ShipClosed: "PR #61 closed without merging"} {
-		if got := ansi.Strip(shipLine(Review{PR: 61, Ship: ship, Tag: "v0.4.0"})); got != want {
+		if got := ansi.Strip(shipLine(Review{PR: 61, Ship: ship})); got != want {
 			t.Errorf("shipLine(%s) = %q, want %q", ship, got, want)
 		}
 	}
@@ -744,7 +743,7 @@ func TestReviewDetail(t *testing.T) {
 	keyPress(m, "3")
 	keyPress(m, "enter")
 	b, ok := m.top().(*boardView)
-	if !ok || !b.open || !strings.Contains(screen(m), "PR #61 merged, not released") {
+	if !ok || !b.open || !strings.Contains(screen(m), "PR #61 merged") {
 		t.Fatalf("enter in the Tasks tab: %T\n%s", m.top(), screen(m))
 	}
 	keyPress(m, "down") // stays on the task
