@@ -251,7 +251,7 @@ func nextSplit(cur float64) float64 {
 
 func (sv *settingsView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	switch k.String() {
-	case "esc", "q", ",":
+	case "esc":
 		m.pop()
 		return nil
 	}

@@ -36,6 +36,13 @@ type fakeSource struct {
 	asked     []string
 	reviews   map[int]Review
 	agents    []string
+	remote    []string // "slug on" or "slug off"
+}
+
+func (f *fakeSource) SetRemote(slug string, on bool) (string, error) {
+	state := map[bool]string{true: "on", false: "off"}[on]
+	f.remote = append(f.remote, slug+" "+state)
+	return "remote control " + state + " for " + slug, nil
 }
 
 func (f *fakeSource) Load() Data {
@@ -428,8 +435,12 @@ func TestDashboardOverlays(t *testing.T) {
 		t.Fatal("down closed the help")
 	}
 	press(m, "x")
+	if m.top() == nil {
+		t.Fatal("x closed the help")
+	}
+	keyPress(m, "esc")
 	if m.top() != nil {
-		t.Fatal("any key closes the help")
+		t.Fatal("esc didn't close the help")
 	}
 
 	// A failed board load closes the board and says why.
@@ -532,7 +543,7 @@ func TestDashboardPrefix(t *testing.T) {
 	m.sel = "p:alpha"
 	prefix := tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl}
 	m.Update(prefix)
-	if !m.prefixed || !strings.Contains(screen(m), `prefix ▸ any dashboard key`) {
+	if !m.prefixed || !strings.Contains(screen(m), `prefix ▸ d dashboard`) {
 		t.Fatalf("prefix not shown:\n%s", screen(m))
 	}
 	press(m, "t")
@@ -640,7 +651,7 @@ func TestDashboardPopups(t *testing.T) {
 
 	press(m, "i")
 	out := screen(m)
-	for _, want := range []string{"╭─ alpha inbox ─", "│ ", "t-0002 handed in report 1", "╰─", "r refresh · esc back",
+	for _, want := range []string{"╭─ alpha inbox ─", "│ ", "t-0002 handed in report 1", "╰─", "esc back",
 		"NEEDS YOU 2"} { // the list stays in view behind the box
 		if !strings.Contains(out, want) {
 			t.Errorf("inbox popup lacks %q:\n%s", want, out)
