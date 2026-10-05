@@ -24,15 +24,15 @@ func TestLay(t *testing.T) {
 	// Every view has the sidebar: here the 7-column slim strip; a bare
 	// view has no status bar.
 	g := v.Lay(88, 24)
-	if len(g.Panes) != 1 || g.Panes["a"] != (Rect{7, 0, 81, 24}) {
-		t.Fatalf("rects %+v", g.Panes)
+	if g.Pane != "a" || g.Area != (Rect{7, 0, 81, 24}) {
+		t.Fatalf("geometry %+v", g)
 	}
 
 	// A shared view has the sidebar and the status bar, with an empty
 	// row between the pane and it.
 	v.Bare, v.Sidebar.Slim = false, false
 	g = v.Lay(120, 30)
-	if g.SideW != SideDefault || g.Status != 2 || g.Area != (Rect{SideDefault, 0, 120 - SideDefault, 28}) || g.Panes["a"] != g.Area {
+	if g.SideW != SideDefault || g.Status != 2 || g.Area != (Rect{SideDefault, 0, 120 - SideDefault, 28}) || g.Pane != "a" {
 		t.Fatalf("chrome %+v", g)
 	}
 	// Narrow: the slim strip.
@@ -49,8 +49,8 @@ func TestLay(t *testing.T) {
 	}
 	// On the dashboard nothing is laid out.
 	v.Dashboard()
-	if g = v.Lay(120, 30); len(g.Panes) != 0 {
-		t.Fatalf("dashboard panes %+v", g.Panes)
+	if g = v.Lay(120, 30); g.Pane != "" {
+		t.Fatalf("dashboard pane %q", g.Pane)
 	}
 }
 
@@ -100,7 +100,7 @@ func TestActions(t *testing.T) {
 		t.Fatal("attaching again changed the view")
 	}
 	v.Attach("d", "other")
-	if got := v.Visible(); len(got) != 1 || got[0] != "d" || v.Current != "other" {
+	if got := v.Shown(); got != "d" || v.Current != "other" {
 		t.Fatalf("attach d: %v %+v", got, v)
 	}
 	if v.Remove("a") {
@@ -136,7 +136,7 @@ func TestValidNormalize(t *testing.T) {
 		t.Fatal(err)
 	}
 	o.Normalize()
-	if o.Mode != ModeLayout || o.Focus != "s-2" || len(o.Visible()) != 1 {
+	if o.Mode != ModeLayout || o.Focus != "s-2" || o.Shown() != "s-2" {
 		t.Fatalf("an old split view: %+v", o)
 	}
 	if err := (&View{Focus: strings.Repeat("x", MaxKey+1)}).Valid(); err == nil {
@@ -255,7 +255,7 @@ func TestInfo(t *testing.T) {
 		{80, SideSlim, 0}, // narrow: the slim strip, no panel
 	} {
 		g := v.Lay(c.cols, 30)
-		if g.SideW != c.side || g.InfoW != c.info || g.Area.W != c.cols-c.side-c.info || g.Panes["a"] != g.Area {
+		if g.SideW != c.side || g.InfoW != c.info || g.Area.W != c.cols-c.side-c.info || g.Pane != "a" {
 			t.Errorf("%d columns: %+v, want sidebar %d, panel %d", c.cols, g, c.side, c.info)
 		}
 		if g.InfoW > 0 && g.Area.W < SideRoom {

@@ -90,13 +90,12 @@ func (v *View) Here() (project, session string) {
 // Has says whether session id is the view's pane.
 func (v *View) Has(id string) bool { return id != "" && v.Focus == id }
 
-// Visible are the sessions shown: the view's one pane, when it shows a
-// session.
-func (v *View) Visible() []string {
-	if v.Mode != ModeLayout || v.Focus == "" {
-		return nil
+// Shown is the session the view shows in its pane, "" for none.
+func (v *View) Shown() string {
+	if v.Mode != ModeLayout {
+		return ""
 	}
-	return []string{v.Focus}
+	return v.Focus
 }
 
 // Valid checks a view read from disk or the wire.

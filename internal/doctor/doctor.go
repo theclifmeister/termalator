@@ -76,15 +76,6 @@ type Deps struct {
 	// keychain (keychain.Probe); nil offers no restart for a server that
 	// can't.
 	Keychain func() proto.KeychainStatus
-	// The Termalator → Termilator checks (Legacy). UserHome is ~ ("" skips
-	// the service check); LegacyRestart is tm server restart while a
-	// Termalator server runs; ServiceRun runs launchctl or systemctl and
-	// InstallService installs the Termilator login service (nil: neither
-	// is offered as a fix).
-	UserHome       string
-	LegacyRestart  func() error
-	ServiceRun     func(name string, args ...string) error
-	InstallService func() error
 }
 
 // DefaultDeps uses the real system.
@@ -131,7 +122,6 @@ func Run(d Deps) []Check {
 	out = append(out, Sandbox(d)...)
 	out = append(out, Leftovers(d, live)...)
 	out = append(out, Settings(d)...)
-	out = append(out, Legacy(d)...)
 	return out
 }
 

@@ -44,9 +44,6 @@ var sessionMenu = []struct{ label, key string }{
 	{"send the prefix key", "prefix"},
 }
 
-// sessionMouse are the prefix commands whose mouse path isn't the menu.
-var sessionMouse = map[string]string{}
-
 // cmdKey is the key a prefix command's name stands for.
 func cmdKey(name string) uv.Key {
 	if name == "tab" {
