@@ -119,11 +119,11 @@ type dash struct {
 	sideSel  string
 	sideSent string
 	sideBusy bool
-	msg         string
-	errMsg      string    // msg when it reports a failure, drawn as one
-	busy        bool      // an action is running
-	stack       []overlay // views open on top of the list, topmost last
-	geo         *boxGeo   // where the topmost was drawn, for the mouse
+	msg      string
+	errMsg   string    // msg when it reports a failure, drawn as one
+	busy     bool      // an action is running
+	stack    []overlay // views open on top of the list, topmost last
+	geo      *boxGeo   // where the topmost was drawn, for the mouse
 	// lastClick is the last left click, for double-clicks; detailTop is
 	// the details panel's first line, scrolled with the wheel, for the
 	// row detailKey (another row shows from the top).
