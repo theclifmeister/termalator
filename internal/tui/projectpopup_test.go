@@ -759,7 +759,7 @@ func TestBlockedTask(t *testing.T) {
 	src, m := needsYouData(t, 86+sideDefault)
 	m.Update(keyPress(m, "t")())
 	keyPress(m, "down")
-	if out := screen(m); !strings.Contains(out, "enter show · c coordinator · esc back") {
+	if out := screen(m); !strings.Contains(out, "enter show · c coordinator · D delegate · esc back") {
 		t.Fatalf("blocked keys:\n%s", out)
 	}
 	keyPress(m, "enter")
@@ -803,7 +803,7 @@ func TestNeedsYouNarrow(t *testing.T) {
 	}
 	keyPress(m, "esc")
 	keyPress(m, "down")
-	if f := foot(); !strings.Contains(f, "enter show · c coordinator · esc back") {
+	if f := foot(); !strings.Contains(f, "enter show · c coordinator · D delegate · esc back") {
 		t.Fatalf("blocked keys:\n%s", f)
 	}
 	keyPress(m, "enter")

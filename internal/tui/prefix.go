@@ -20,7 +20,7 @@ func isPrefixCommand(key string) bool {
 }
 
 // prefixHint is the footer while the prefix waits for its command.
-const prefixHint = "prefix ▸ d dashboard · q quit · a i t , ? popups · p ] [ projects · | details · r remote · esc cancel"
+const prefixHint = "prefix ▸ d dashboard · q quit · a i t , ? popups · p ] [ projects · { } b sidebar · | details · tab area · r remote · esc cancel"
 
 // prefixCommand runs the key typed after the prefix.
 func (m *dash) prefixCommand(key string) tea.Cmd {

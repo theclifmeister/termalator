@@ -484,10 +484,8 @@ func (m *dash) openMenu(title string, items []menuItem, x, y int) {
 
 func (mv *menuView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	switch k.String() {
-	case "up", "k":
-		mv.sel = moveSel(mv.sel, -1, len(mv.items))
-	case "down", "j":
-		mv.sel = moveSel(mv.sel, 1, len(mv.items))
+	case "up", "k", "down", "j", "pgup", "pgdown":
+		mv.sel = moveSel(mv.sel, scrollKeys[k.String()], len(mv.items))
 	case "enter", "space":
 		return mv.pick(m, mv.sel)
 	case "esc":

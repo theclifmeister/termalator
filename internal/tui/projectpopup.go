@@ -122,10 +122,10 @@ func (pv *projectView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	case "esc":
 		m.pop()
 		return nil
-	case "right", "l":
+	case "right":
 		pv.tab = (pv.tab + 1) % tabCount
 		return nil
-	case "left", "h":
+	case "left":
 		pv.tab = (pv.tab + tabCount - 1) % tabCount
 		return nil
 	case "1", "2", "3", "4", "5":
@@ -193,12 +193,12 @@ func (pv *projectView) count(m *dash) int {
 func (pv *projectView) repoKey(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	slug, repos := pv.slug, pv.data(m).Repos
 	switch k.String() {
-	case "+", "n":
+	case "+":
 		m.prompt("add a repository (its directory): ", m.cwd, func(path string) tea.Cmd {
 			path = absPath(path, m.cwd)
 			return m.setRepo(slug, path, true, "added "+path)
 		})
-	case "x", "delete", "backspace":
+	case "x":
 		i := pv.sel[tabOverview]
 		if i >= len(repos) {
 			return nil

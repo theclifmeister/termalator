@@ -828,12 +828,8 @@ func (m *dash) sendSideSel() tea.Cmd {
 // other keys, which go to the list's actions.
 func (m *dash) detailsKey(key string) (tea.Cmd, bool) {
 	switch key {
-	case "up", "k", "down", "j":
-		d := 1
-		if key == "up" || key == "k" {
-			d = -1
-		}
-		m.scrollDetails(d)
+	case "up", "k", "down", "j", "pgup", "pgdown":
+		m.scrollDetails(scrollKeys[key])
 	case "esc":
 		m.focus = areaMain
 	default:

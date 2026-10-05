@@ -339,8 +339,8 @@ func TestSmokeDelegateFromList(t *testing.T) {
 	w.WaitFor("1 in motion · 1 on deck", wait)
 	w.Type("t")
 	w.WaitFor("demo tasks", wait)
-	w.WaitFor("D delegate", wait)
-	// T2 (in motion) first: D only says why.
+	// T2 (in motion) first: its footer offers no D, and D only says why.
+	w.WaitFor("enter show · esc back", wait)
 	w.Type("D")
 	w.WaitFor("T2 is started: a thread already works on it", wait)
 	w.Type("j")
@@ -423,7 +423,7 @@ func TestSmokeAcceptSendBack(t *testing.T) {
 	}
 
 	w.Type("j")
-	w.WaitFor("enter show · c coordinator · esc back", wait)
+	w.WaitFor("enter show · c coordinator · D delegate · esc back", wait)
 	w.Key(keyEnter)
 	w.WaitFor("Blocked on: which licence, MIT or Apache?", wait)
 	for _, ref := range []string{"T1", "T2"} {
