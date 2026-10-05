@@ -8,11 +8,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"runtime"
 
 	"golang.org/x/sys/unix"
 
 	"github.com/theclifmeister/termilator/internal/caller"
+	"github.com/theclifmeister/termilator/internal/keychain"
 	"github.com/theclifmeister/termilator/internal/proto"
 	"github.com/theclifmeister/termilator/internal/server"
 )
@@ -68,14 +71,26 @@ func (e *Env) srvJSON(v any) int {
 	return ExitOK
 }
 
-// connect opens a control connection, starting the server if needed.
+// connect opens a control connection, starting the server if needed,
+// with a warning when that start is over SSH (warnSSH).
 func connect(autostart bool) (*server.Client, server.Paths, error) {
 	p, err := server.ResolvePaths()
 	if err != nil {
 		return nil, p, err
 	}
 	c, err := server.Connect(p, autostart)
+	if c != nil && c.Started {
+		warnSSH(os.Stderr, runtime.GOOS, os.Getenv)
+	}
 	return c, p, err
+}
+
+// warnSSH warns, on macOS, that a server started from an SSH login can't
+// give its sessions the keychain (docs/SPEC.md §3.1). It never refuses.
+func warnSSH(w io.Writer, goos string, getenv func(string) string) {
+	if msg := keychain.StartWarning(goos, getenv); msg != "" {
+		fmt.Fprintln(w, "tm: "+msg)
+	}
 }
 
 func isTTY(f *os.File) bool {

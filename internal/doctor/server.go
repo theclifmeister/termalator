@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/theclifmeister/termilator/internal/keychain"
 	"github.com/theclifmeister/termilator/internal/proto"
 	"github.com/theclifmeister/termilator/internal/server"
 )
@@ -121,6 +122,11 @@ func Server(d Deps) ([]Check, Live) {
 		out = append(out, Check{Group: g, Name: "server build", Status: Warn,
 			Detail: fmt.Sprintf("the server runs build %s, this tm is %s; tm server restart switches it (agents are resumed)", st.Build, d.Build)})
 	}
+	if d.GOOS == "darwin" {
+		var ks proto.KeychainStatus
+		err := c.Call(proto.MethodServerKeychain, nil, &ks)
+		out = append(out, keychainCheck(d, ks, err)...)
+	}
 	if st.PreviousShutdown == "crash" {
 		detail := "the previous server crashed"
 		if len(st.Lost) > 0 {
@@ -137,6 +143,34 @@ func Server(d Deps) ([]Check, Live) {
 		out = append(out, runtimeDirs(p, live)...)
 	}
 	return out, live
+}
+
+// keychainCheck reports whether the server's sessions can reach the
+// macOS login keychain (server.keychain). A restart is offered only when
+// this tm can reach it itself: a restart from an SSH login, or from a
+// session of the same server, would start the server where it was.
+func keychainCheck(d Deps, ks proto.KeychainStatus, err error) []Check {
+	const g, name = "server", "keychain"
+	var perr *proto.Error
+	switch {
+	case errors.As(err, &perr) && perr.Code == proto.ErrUnknownMethod:
+		return nil // an older server; the build check says to restart it
+	case err != nil:
+		return []Check{{Group: g, Name: name, Status: Warn, Detail: "couldn't ask the server: " + err.Error()}}
+	case !ks.Checked:
+		return nil
+	case ks.OK:
+		return []Check{{Group: g, Name: name, Status: OK, Detail: "sessions can reach the login keychain"}}
+	}
+	c := Check{Group: g, Name: name, Status: Warn,
+		Detail: ks.Detail + "; gh and git push over https fail in its sessions: " + keychain.Fix}
+	if d.Restart != nil && d.Keychain != nil {
+		if self := d.Keychain(); self.OK && !self.OverSSH {
+			c.Fix = &Fix{Desc: "restart the server from this terminal, so its sessions can reach the keychain; agents are resumed",
+				Apply: d.Restart}
+		}
+	}
+	return []Check{c}
 }
 
 // runtimeDirs finds session runtime dirs (<run dir>/s/<id>) of sessions
