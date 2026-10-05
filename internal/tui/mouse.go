@@ -54,7 +54,7 @@ type hint struct {
 // x: "enter attach · a project" has enter at the first, a at the second.
 // A hint naming several keys ("p ] [ projects") has a button per key, its
 // words go to the first; hints whose first word isn't a key (↑ ↓ scroll,
-// 1-5 pick one) are no buttons.
+// 1-6 pick one) are no buttons.
 func hints(keys string, x int) []hint {
 	var out []hint
 	for i, p := range strings.Split(keys, " · ") {
@@ -487,10 +487,8 @@ func (m *dash) openMenu(title string, items []menuItem, x, y int) {
 
 func (mv *menuView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	switch k.String() {
-	case "up", "k":
-		mv.sel = moveSel(mv.sel, -1, len(mv.items))
-	case "down", "j":
-		mv.sel = moveSel(mv.sel, 1, len(mv.items))
+	case "up", "k", "down", "j", "pgup", "pgdown":
+		mv.sel = moveSel(mv.sel, scrollKeys[k.String()], len(mv.items))
 	case "enter", "space":
 		return mv.pick(m, mv.sel)
 	case "esc":
