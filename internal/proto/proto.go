@@ -40,11 +40,20 @@ type MismatchError struct {
 	Reason string
 	ReExec bool
 	Bin    string // the server's executable, when ReExec is set
+	// Server is the server's hello: `tm server stop` and `restart` use
+	// its protocol and pid to stop a server of another protocol.
+	Server Hello
 }
 
 func (e *MismatchError) Error() string { return e.Reason }
 
 // Check decides whether a client may proceed after the hello exchange.
+//
+// Every server, of every protocol, keeps two promises so that any tm can
+// stop it (docs/SPEC.md §3.3, Stopping across protocols): its hello
+// carries Protocol and PID, and a control hello at its own protocol may
+// call server.stop with {"yes": bool}. A client newer than the server
+// redials claiming the server's protocol for that one call.
 //
 // Control and hook connections accept an older or equal client protocol:
 // methods and fields are only ever added. Attach needs the identical
@@ -52,8 +61,9 @@ func (e *MismatchError) Error() string { return e.Reason }
 // libghostty snapshot whose format is not stable between builds.
 func Check(client, server Hello) error {
 	if client.Protocol > server.Protocol {
-		return &MismatchError{Reason: fmt.Sprintf(
-			"tm server speaks protocol %d (%s), this tm speaks %d (%s); run 'tm server restart' (agents are resumed)",
+		return &MismatchError{Server: server, Reason: fmt.Sprintf(
+			"the running tm server is older than this tm (protocol %d, %s; this tm speaks %d, %s); "+
+				"run 'tm server restart' to switch it to this tm (agents are resumed)",
 			server.Protocol, server.Version, client.Protocol, client.Version)}
 	}
 	if client.Kind == KindAttach && client.Build != server.Build {
@@ -61,6 +71,7 @@ func Check(client, server Hello) error {
 			Reason: fmt.Sprintf("tm server is build %s, this tm is %s", server.Build, client.Build),
 			ReExec: server.Bin != "",
 			Bin:    server.Bin,
+			Server: server,
 		}
 	}
 	return nil

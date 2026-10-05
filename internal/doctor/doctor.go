@@ -41,7 +41,8 @@ type Check struct {
 	Fix *Fix `json:"fix,omitempty"`
 }
 
-// Fix is one removal `tm doctor --fix` may do.
+// Fix is one repair `tm doctor --fix` may do: a removal, or restarting a
+// server this tm can't talk to.
 type Fix struct {
 	Desc  string       `json:"desc"`
 	Apply func() error `json:"-"`
@@ -64,6 +65,9 @@ type Deps struct {
 	Install *update.Install
 	// Latest returns the latest release's tag; nil skips that check.
 	Latest func() (string, error)
+	// Restart restarts the server as `tm server restart --yes` does;
+	// nil offers no restart.
+	Restart func() error
 }
 
 // DefaultDeps uses the real system.
