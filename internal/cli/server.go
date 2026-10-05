@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -59,6 +60,10 @@ func serverRun(e *Env, args []string) int {
 	}
 	logger := log.New(e.Stderr, "", log.LstdFlags|log.Lmicroseconds)
 	sigs := []os.Signal{syscall.SIGTERM, syscall.SIGINT}
+	if !*detached || !server.IsSessionLeader() {
+		// Started by hand; a detached child of StartDetached logs it.
+		warnSSH(e.Stderr, runtime.GOOS, e.Getenv)
+	}
 	if *detached {
 		if !server.IsSessionLeader() {
 			// Started by hand from a shell: get a fresh session first.
@@ -120,6 +125,7 @@ func serverStart(e *Env, args []string) int {
 	}
 	defer c.Close()
 	fmt.Fprintf(e.Stdout, "started (pid %d)\n", c.Server.PID)
+	warnSSH(e.Stderr, runtime.GOOS, e.Getenv)
 	return ExitOK
 }
 

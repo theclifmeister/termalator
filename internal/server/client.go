@@ -47,6 +47,8 @@ type Client struct {
 	frameBuf []byte
 	// Server is the server's hello.
 	Server proto.Hello
+	// Started is set by Connect when it started the server.
+	Started bool
 }
 
 // Dial connects to the socket and performs the handshake for kind.
@@ -116,7 +118,11 @@ func Connect(p Paths, autostart bool) (*Client, error) {
 		if err := StartDetached(p); err != nil {
 			return nil, err
 		}
-		return Dial(p, proto.KindControl)
+		c, err := Dial(p, proto.KindControl)
+		if c != nil {
+			c.Started = true
+		}
+		return c, err
 	case errors.Is(lerr, ErrLocked):
 		// A server holds the lock: it may still be starting up.
 		deadline := time.Now().Add(UnresponsiveTimeout)
