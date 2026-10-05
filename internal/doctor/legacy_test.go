@@ -23,7 +23,10 @@ func TestLegacy(t *testing.T) {
 	os.WriteFile(unit, []byte("[Unit]\n"), 0o644)
 	d.UserHome = user
 	var ran []string
-	d.ServiceRun = func(name string, args ...string) error { ran = append(ran, name+" "+strings.Join(args, " ")); return nil }
+	d.ServiceRun = func(name string, args ...string) error {
+		ran = append(ran, name+" "+strings.Join(args, " "))
+		return nil
+	}
 	installed := false
 	d.InstallService = func() error { installed = true; return nil }
 

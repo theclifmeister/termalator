@@ -146,7 +146,9 @@ func Migrate(old, new string, w io.Writer) error {
 		}
 		return err
 	}
-	warn := func(format string, a ...any) { fmt.Fprintf(w, "tm: moving to %s: "+format+"\n", append([]any{new}, a...)...) }
+	warn := func(format string, a ...any) {
+		fmt.Fprintf(w, "tm: moving to %s: "+format+"\n", append([]any{new}, a...)...)
+	}
 	err := filepath.WalkDir(new, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil

@@ -221,7 +221,10 @@ func TestOldService(t *testing.T) {
 		t.Fatalf("OldServiceFile = %q %v", p, ok)
 	}
 	var ran []string
-	run := func(name string, args ...string) error { ran = append(ran, name+" "+strings.Join(args, " ")); return nil }
+	run := func(name string, args ...string) error {
+		ran = append(ran, name+" "+strings.Join(args, " "))
+		return nil
+	}
 	if err := RemoveOldService("darwin", p, run); err != nil {
 		t.Fatal(err)
 	}
