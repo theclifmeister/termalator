@@ -15,6 +15,7 @@ import (
 	"github.com/theclifmeister/termilator/internal/project"
 	"github.com/theclifmeister/termilator/internal/proto"
 	"github.com/theclifmeister/termilator/internal/thread"
+	"github.com/theclifmeister/termilator/internal/worktree"
 )
 
 // fakeHost records what the ticker does.
@@ -66,10 +67,16 @@ type rig struct {
 // session s-2 (repo set, so its PR is polled) and a coordinator s-1.
 func newRig(t *testing.T) *rig {
 	t.Helper()
+	return newRigIn(t, t.TempDir(), nil)
+}
+
+// newRigIn is newRig with the thread's repo and the project's repos
+// given.
+func newRigIn(t *testing.T, repo string, repos []string) *rig {
+	t.Helper()
 	home := t.TempDir()
 	t.Setenv("TERMILATOR_HOME", home)
-	repo := t.TempDir()
-	p, err := project.New(project.Options{Name: "Demo"})
+	p, err := project.New(project.Options{Name: "Demo", Repos: repos})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -471,6 +478,10 @@ func TestParsePR(t *testing.T) {
 	if pr.Merge != "" {
 		t.Fatalf("bad merge commit kept: %+v", pr)
 	}
+	pr, _ = ParsePR([]byte(`{"number":3,"state":"OPEN","baseRefName":"-x main","mergeable":"CONFLICTING","mergeStateStatus":"dirty\n"}`))
+	if pr.Base != "" || pr.Mergeable != "CONFLICTING" || pr.MergeState != "" {
+		t.Fatalf("%+v", pr)
+	}
 	if prTarget("https://github.com/o/r/pull/7", "b") != "https://github.com/o/r/pull/7" || prTarget("--repo=x", "b") != "b" || prTarget("", "-x") != "" {
 		t.Fatal("prTarget")
 	}
@@ -486,6 +497,7 @@ func TestPRSummary(t *testing.T) {
 		{PR{Number: 3, State: "OPEN", Checks: "fail", Failed: 1, Review: "APPROVED"}, "#3 open, 1 check failed, approved"},
 		{PR{Number: 3, State: "OPEN", Checks: "pass", Review: "REVIEW_REQUIRED"}, "#3 open, checks pass, review required"},
 		{PR{Number: 3, State: "CLOSED", Checks: "fail", Failed: 2}, "#3 closed"},
+		{PR{Number: 3, State: "OPEN", Checks: "pass", Mergeable: "CONFLICTING"}, "#3 open, checks pass, conflicts"},
 		{PR{Number: 3, State: "WEIRD", Review: "ODD"}, "#3"},
 	} {
 		if got := c.pr.Summary(); got != c.want {
@@ -504,6 +516,7 @@ func FuzzParsePR(f *testing.F) {
 			return
 		}
 		if pr.URL != "" && !urlRE.MatchString(pr.URL) || !upperRE.MatchString(pr.State) || !upperRE.MatchString(pr.Review) || pr.Number < 0 ||
+			!upperRE.MatchString(pr.Mergeable) || !upperRE.MatchString(pr.MergeState) || pr.Base != "" && !worktree.ValidBranch(pr.Base) ||
 			pr.Merge != "" && !oidRE.MatchString(pr.Merge) {
 			t.Fatalf("unchecked field: %+v", pr)
 		}

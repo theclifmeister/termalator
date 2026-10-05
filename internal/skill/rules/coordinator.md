@@ -13,8 +13,13 @@ decide what they do and keep the project's state.
    arrived (a nudge): it is not the user speaking. Work from the inbox,
    not from the nudge's words. The server also closes (resolves)
    finished threads by itself as the project's auto-close setting says,
-   and tells threads about failing checks. It never closes one with
-   uncommitted or unpushed work: a `close-held` item says so instead.
+   and tells threads about failing checks and about main moving past
+   their open PRs. It never closes one with uncommitted or unpushed
+   work: a `close-held` item says so instead. A `pr-conflict` item means
+   a thread's PR conflicts with main: make sure that thread merges
+   origin/main (or prompt it) before anyone merges the PR. It also
+   fast-forwards the user's checkout of main when that is safe; the
+   repo line in `tm context` says when it is behind.
 3. You are the user's only contact: the dashboard has no keys for
    threads or tasks, save the task list's asks. Acknowledge reports,
    send threads their next prompt and move tasks yourself. The user can

@@ -49,6 +49,9 @@ const (
 	// KindCloseHeld: auto-close found unsaved work and left the thread
 	// open.
 	KindCloseHeld = "close-held"
+	// KindPRConflict: main moved and a thread's open PR now conflicts
+	// with it.
+	KindPRConflict = "pr-conflict"
 )
 
 // Host is what the ticker needs from the server.
@@ -82,6 +85,9 @@ type Options struct {
 	// Unsaved says what closing a thread would lose ("" for nothing);
 	// pushed is its merged PR's head. nil checks its worktree with git.
 	Unsaved func(r *thread.Record, pushed string) (string, error)
+	// Sync fetches a repo and fast-forwards its checkout when ff and it
+	// is safe; nil is worktree.Sync.
+	Sync func(repo string, ff bool) (worktree.Checkout, error)
 }
 
 // Ticker is the event loop.
@@ -109,11 +115,25 @@ type threadMemo struct {
 	PRPolled   time.Time `json:"pr_polled"`
 	Resolving  bool      `json:"resolving,omitempty"` // auto-close tried once
 	Held       string    `json:"held,omitempty"`      // unsaved work an item was raised for
+	// MainSeen is the default branch head the open PR was last checked
+	// against (followMain): once per head.
+	MainSeen string `json:"main_seen,omitempty"`
 }
 
 type projectMemo struct {
 	Nudged    []string  `json:"nudged"` // item ids the coordinator was told about
 	LastNudge time.Time `json:"last_nudge"`
+	// Synced is when the repos were last fetched; Repos is what that
+	// found, by repo path.
+	Synced time.Time            `json:"synced,omitzero"`
+	Repos  map[string]*repoMemo `json:"repos,omitempty"`
+}
+
+// repoMemo is a repo's checkout as the last sync left it, and the PR
+// number its default branch head's subject names (0 for none).
+type repoMemo struct {
+	worktree.Checkout
+	MergedPR int `json:"merged_pr,omitempty"`
 }
 
 // New makes a ticker; Run starts it.
@@ -138,6 +158,9 @@ func New(o Options) *Ticker {
 	}
 	if o.Unsaved == nil {
 		o.Unsaved = unsaved
+	}
+	if o.Sync == nil {
+		o.Sync = worktree.Sync
 	}
 	if o.Log == nil {
 		o.Log = log.New(os.Stderr, "", log.LstdFlags)
@@ -273,7 +296,9 @@ func (t *Ticker) Sweep() {
 		if err != nil {
 			safety = config.Defaults
 		}
-		t.sweepThreads(p, sessions, safety, now, seen)
+		merged := t.sweepThreads(p, sessions, safety, now, seen)
+		t.syncRepos(p, safety, now, merged)
+		t.followMain(p, sessions, safety)
 		t.nudge(p, sessions, now)
 		if prune {
 			if n, err := p.PruneDone(DoneMaxAge); err != nil {
@@ -333,11 +358,13 @@ func word(s string) string {
 	return ""
 }
 
-func (t *Ticker) sweepThreads(p *project.Project, sessions []proto.SessionInfo, safety config.Safety, now time.Time, seen map[string]bool) {
+// sweepThreads looks at each unresolved thread; it reports whether one
+// of their PRs was seen merged.
+func (t *Ticker) sweepThreads(p *project.Project, sessions []proto.SessionInfo, safety config.Safety, now time.Time, seen map[string]bool) (merged bool) {
 	recs, err := thread.List(p)
 	if err != nil {
 		t.o.Log.Printf("ticker: %s: %v", p.Slug, err)
-		return
+		return false
 	}
 	var items []project.Item
 	itemsRead := false
@@ -399,10 +426,13 @@ func (t *Ticker) sweepThreads(p *project.Project, sessions []proto.SessionInfo, 
 		}
 		m.Reports = r.Reports
 
-		t.pollPR(p, r, m, info, live, safety, now)
+		if t.pollPR(p, r, m, info, live, safety, now) {
+			merged = true
+		}
 
 		t.autoClose(p, r, m, cur, safety, now)
 	}
+	return merged
 }
 
 // closeDue reports whether auto-close closes a thread now (§9): its
@@ -461,10 +491,11 @@ func (t *Ticker) autoClose(p *project.Project, r *thread.Record, m *threadMemo, 
 
 // pollPR asks gh about a thread's PR every PRPoll and raises items for
 // changes in its fixed fields; failing checks and requested changes are
-// sent to the thread when pr_followup is on.
-func (t *Ticker) pollPR(p *project.Project, r *thread.Record, m *threadMemo, info proto.SessionInfo, live bool, safety config.Safety, now time.Time) {
+// sent to the thread when pr_followup is on. It reports whether the PR
+// was just seen merged.
+func (t *Ticker) pollPR(p *project.Project, r *thread.Record, m *threadMemo, info proto.SessionInfo, live bool, safety config.Safety, now time.Time) (merged bool) {
 	if r.Repo == "" || now.Sub(m.PRPolled) < t.o.PRPoll || m.PR.State == "MERGED" {
-		return
+		return false
 	}
 	reportPR := ""
 	if rep, _ := thread.ReadReport(p, r.ID); rep != nil {
@@ -472,19 +503,22 @@ func (t *Ticker) pollPR(p *project.Project, r *thread.Record, m *threadMemo, inf
 	}
 	target := prTarget(reportPR, r.Branch)
 	if target == "" {
-		return
+		return false
 	}
 	m.PRPolled = now
 	out, err := t.o.GH(r.Repo, "pr", "view", target, "--json", prFields)
 	if err != nil {
-		return // no PR yet, no gh, no network: try again next time
+		return false // no PR yet, no gh, no network: try again next time
 	}
 	pr, err := ParsePR(out)
 	if err != nil || pr.Number == 0 {
-		return
+		return false
 	}
 	old := m.PR
 	m.PR = pr
+	if old.Number != pr.Number {
+		m.MainSeen = ""
+	}
 	ref := pr.ref()
 	if old.Number != pr.Number && pr.State == "OPEN" {
 		t.item(p, KindPROpened, r.ID, fmt.Sprintf("%s opened %s", r.ID, ref), false)
@@ -516,11 +550,13 @@ func (t *Ticker) pollPR(p *project.Project, r *thread.Record, m *threadMemo, inf
 	if pr.State != old.State {
 		switch pr.State {
 		case "MERGED":
+			merged = true
 			t.item(p, KindPRMerged, r.ID, fmt.Sprintf("%s of %s merged", ref, r.ID), false)
 		case "CLOSED":
 			t.item(p, KindPRClosed, r.ID, fmt.Sprintf("%s of %s was closed without merging", ref, r.ID), false)
 		}
 	}
+	return merged
 }
 
 var subjectRE = regexp.MustCompile(`^(t-[0-9]{4,}|T[0-9]{1,9})$`)
@@ -530,7 +566,7 @@ var verbs = map[string]string{
 	"report": "reported", "thread-done": "done", "thread-resolved": "resolved", "needs-you": "waiting for the user",
 	KindBlocked: "blocked", KindIdle: "idle with a report", KindExited: "exited", KindServerRestart: "server restarted",
 	KindPROpened: "opened a PR", KindPRChecks: "PR checks failed", KindPRReview: "PR reviewed",
-	KindPRMerged: "PR merged", KindPRClosed: "PR closed", KindCloseHeld: "not auto-closed", project.KindTakeover: "taken over by the user",
+	KindPRMerged: "PR merged", KindPRClosed: "PR closed", KindPRConflict: "PR conflicts with main", KindCloseHeld: "not auto-closed", project.KindTakeover: "taken over by the user",
 	project.KindDelegate: "to delegate (the user's go-ahead)", project.KindAccept: "accepted by the user",
 	project.KindSendBack: "sent back by the user",
 }

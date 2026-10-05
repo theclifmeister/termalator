@@ -163,7 +163,8 @@ func TestDoneApproved(t *testing.T) {
 
 func TestContextDeterministicAndCapped(t *testing.T) {
 	setup(t)
-	p, _ := New(Options{Name: "demo app", Goal: "Ship v1"})
+	repo := t.TempDir()
+	p, _ := New(Options{Name: "demo app", Goal: "Ship v1", Repos: []string{repo}})
 	s := p.Tasks()
 	var items []tasks.NewTask
 	for i := 0; i < 15; i++ {
@@ -185,17 +186,19 @@ func TestContextDeterministicAndCapped(t *testing.T) {
 	prs := map[string]string{"t-0001": "#8 open, checks pass"}
 	p.AddItem("thread-done", "t-0001", "t-0001 reported", false)
 
-	sec1, err := p.Context(prs)
+	seen := Ticked{PRs: prs, Checkouts: map[string]string{p.Meta.Repos[0]: "local main is 3 behind origin (uncommitted changes)"}}
+	sec1, err := p.Context(seen)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sec2, _ := p.Context(prs)
+	sec2, _ := p.Context(seen)
 	out := RenderContext(sec1)
 	if out != RenderContext(sec2) {
 		t.Fatal("context not deterministic")
 	}
 	for _, want := range []string{
 		"Goal: Ship v1",
+		"Repo: " + p.Meta.Repos[0] + " · local main is 3 behind origin (uncommitted changes)",
 		"[… 80 more lines in CONTEXT.md]",
 		"In motion (1)\n  T16  started  Fix login  0/2",
 		"Done (15)",

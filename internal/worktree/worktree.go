@@ -5,17 +5,30 @@ package worktree
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // git runs git in dir and returns its trimmed stdout.
 func git(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
+	return gitWithin(0, dir, args...)
+}
+
+// gitWithin is git that is killed after timeout (0: never).
+func gitWithin(timeout time.Duration, dir string, args ...string) (string, error) {
+	ctx := context.Background()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	var out, errb bytes.Buffer

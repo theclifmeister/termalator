@@ -419,9 +419,12 @@ func (pv *projectView) overview(m *dash, p ProjectData, w int) ([]string, int, [
 		if i == pv.sel[tabOverview] {
 			sel = len(out)
 			out = append(out, label+styleSel.Render(fit(r, w-14)))
-			continue
+		} else {
+			out = append(out, label+r)
 		}
-		out = append(out, label+r)
+		if n := p.Checkouts[r]; n != "" {
+			out = append(out, field("")+styleWarn.Render(fit(n, w-14)))
+		}
 	}
 	out = append(out, "")
 	host, _ := os.Hostname()

@@ -50,7 +50,10 @@ type ProjectData struct {
 	// NeedsYou are the tasks in the board's Needs you group (review or
 	// blocked), in board order, for NEEDS YOU.
 	NeedsYou []*tasks.Task
-	Err      string
+	// Checkouts are notes on the repos whose local default branch is
+	// behind origin, by repo path, as the ticker last saw them.
+	Checkouts map[string]string
+	Err       string
 }
 
 // ThreadRow is one thread: its record (thread.toml) and its STATUS.md,
@@ -175,7 +178,8 @@ func (s *ServerSource) Load() Data {
 	}
 	for _, sum := range list {
 		pd := ProjectData{Slug: sum.Slug, Name: sum.Name, Goal: sum.Goal, Repos: sum.Repos,
-			Counts: sum.Counts, Safety: sum.Safety, Err: sum.Error}
+			Counts: sum.Counts, Safety: sum.Safety, Err: sum.Error,
+			Checkouts: ticker.Checkouts(ticker.StatePath(s.Paths.Sessions), sum.Slug)}
 		if p, err := project.Open(sum.Slug); err == nil {
 			b, err := p.Tasks().Load()
 			if err != nil {

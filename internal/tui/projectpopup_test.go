@@ -63,6 +63,7 @@ func popupData(t *testing.T) (*fakeSource, *dash) {
 	src := &fakeSource{data: testData(), agents: []string{"claude", "pi"}}
 	alpha := &src.data.Projects[0]
 	alpha.Name, alpha.Goal, alpha.Repos = "Alpha", "Ship the alpha", []string{"/src/alpha"}
+	alpha.Checkouts = map[string]string{"/src/alpha": "local main is 3 behind origin (uncommitted changes)"}
 	alpha.Items = []project.Item{{ID: "x", Kind: "report", Summary: "t-0002 handed in report 1"}}
 	// t-0002 is blocked (it counts toward the cap), t-0003 idle.
 	alpha.Threads = []ThreadRow{
@@ -93,7 +94,7 @@ func TestProjectPopup(t *testing.T) {
 	m.Update(cmd()) // the board
 	out := screen(m)
 	for _, want := range []string{"─ alpha ─", "1 Overview", "2 Inbox 1", "5 Keys",
-		"Project", "Alpha", "Goal", "Ship the alpha", "Repositories", "/src/alpha", "Machines", "this one",
+		"Project", "Alpha", "Goal", "Ship the alpha", "Repositories", "/src/alpha", "local main is 3 behind origin (uncommitted changes)", "Machines", "this one",
 		"Coordinator", "claude · s-1 blocked", "1 needs you (3 → Tasks) · 1 in motion"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("overview lacks %q:\n%s", want, out)
@@ -191,6 +192,16 @@ func TestProjectSettingsToggle(t *testing.T) {
 	data, _ := os.ReadFile(path)
 	if want := "[projects.alpha]\nstart_threads = \"auto\"\nyolo = true\ncoordinator_remote_control = true\n"; string(data) != want {
 		t.Fatalf("file:\n%s", data)
+	}
+
+	// Keep my checkout current: on by default, enter turns it off.
+	keyPress(m, "down")
+	if out := screen(m); !strings.Contains(out, "Keep my checkout current     on") {
+		t.Fatalf("checkout row:\n%s", out)
+	}
+	act(m, src, "enter")
+	if cfg, _ := config.Load(); must(cfg.Safety("alpha")).FastForwardCheckout {
+		t.Fatal("fast-forward still on")
 	}
 }
 
