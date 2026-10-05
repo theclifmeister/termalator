@@ -8,7 +8,7 @@ import (
 
 // rig drives a tracker through the Claude manifest with a fake clock, so
 // every row of the arbitration table (docs/SPEC.md §8.4) and every stale
-// case of the spike (§8.6, spikes/claude FINDINGS §2) is one test step.
+// case of the spike (§8.6, docs/research/claude.md §2) is one test step.
 type rig struct {
 	t   *testing.T
 	a   Agent

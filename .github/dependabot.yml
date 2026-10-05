@@ -4,7 +4,6 @@
 # GHOSTTY_REV in the Makefile (the bindings track one Ghostty commit, and
 # the snapshot format is not stable), so it is bumped by hand. Zig is
 # pinned in the Makefile and the workflows for the same reason.
-# spikes/ are throwaway experiments and are not watched.
 version: 2
 updates:
   - package-ecosystem: gomod

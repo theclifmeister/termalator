@@ -1,8 +1,0 @@
-## files after adddir-sandbox
-.termalator-spike/projects/demo/w2.md: w2 adddir-sandbox
-.termalator-spike/projects/demo/w4.md: w4 adddir-sandbox
-.termalator-spike/projects/demo/w5.md: w5 adddir-sandbox
-.termalator-spike/projects/demo/threads/t1/out/REPORT.md: report adddir-sandbox
-.termalator-spike/projects/demo/threads/t1/out/STATUS.md: status adddir-sandbox
-brief: BRIEF-TOKEN: mango-9
-brief still symlink: yes
