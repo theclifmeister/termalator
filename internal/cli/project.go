@@ -12,6 +12,7 @@ import (
 	"github.com/theclifmeister/termilator/internal/project"
 	"github.com/theclifmeister/termilator/internal/proto"
 	"github.com/theclifmeister/termilator/internal/skill"
+	"github.com/theclifmeister/termilator/internal/ticker"
 	"github.com/theclifmeister/termilator/internal/tui"
 	"github.com/theclifmeister/termilator/internal/version"
 )
@@ -145,7 +146,7 @@ func runContext(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
-	sections, err := p.Context()
+	sections, err := p.Context(ticker.Summaries(tickerState(), p.Slug))
 	if err != nil {
 		return err
 	}

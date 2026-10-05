@@ -269,9 +269,16 @@ func TestPRPollFollowUpAndAutoResolve(t *testing.T) {
 	if k := r.kinds(); k != KindPROpened {
 		t.Fatalf("kinds %s", k)
 	}
+	pr := func() string { return Summaries(r.tk.o.State, "demo")["t-0001"] }
+	if s := pr(); s != "#7 open, checks pending" {
+		t.Fatalf("PR state %q", s)
+	}
 	r.sweep(2 * time.Minute)
 	if s := r.summaries(); !strings.Contains(s, "PR #7 of t-0001 (T1 Fix it): 2 check(s) failed") || len(r.items()) != 2 {
 		t.Fatalf("checks: %s", s)
+	}
+	if s := pr(); s != "#7 open, 2 checks failed" {
+		t.Fatalf("PR state %q", s)
 	}
 	if len(r.host.prompts) != 1 || !strings.HasPrefix(r.host.prompts[0], "s-2 [tm] 2 check(s) failed on your PR #7. Read them with `gh pr checks 7`") {
 		t.Fatalf("follow-up %q", r.host.prompts)
@@ -285,7 +292,16 @@ func TestPRPollFollowUpAndAutoResolve(t *testing.T) {
 			t.Fatalf("PR text in a prompt: %q", p)
 		}
 	}
+	if s := pr(); s != "#7 open, checks pass, changes requested" {
+		t.Fatalf("PR state %q", s)
+	}
 	r.sweep(2 * time.Minute) // merged, but the thread is working
+	if s := pr(); s != "#7 merged" {
+		t.Fatalf("PR state %q", s)
+	}
+	if len(PRs(r.tk.o.State, "dem")) != 0 || len(PRs(filepath.Join(r.t.TempDir(), "none.json"), "demo")) != 0 {
+		t.Fatal("PRs of another project or a missing file")
+	}
 	if k := r.kinds(); !strings.Contains(k, KindPRMerged) || len(r.host.resolved) != 0 {
 		t.Fatalf("kinds %s resolved %v", k, r.host.resolved)
 	}
@@ -444,6 +460,24 @@ func TestParsePR(t *testing.T) {
 	}
 	if prTarget("https://github.com/o/r/pull/7", "b") != "https://github.com/o/r/pull/7" || prTarget("--repo=x", "b") != "b" || prTarget("", "-x") != "" {
 		t.Fatal("prTarget")
+	}
+}
+
+func TestPRSummary(t *testing.T) {
+	for _, c := range []struct {
+		pr   PR
+		want string
+	}{
+		{PR{}, ""},
+		{PR{Number: 3, State: "OPEN"}, "#3 open"},
+		{PR{Number: 3, State: "OPEN", Checks: "fail", Failed: 1, Review: "APPROVED"}, "#3 open, 1 check failed, approved"},
+		{PR{Number: 3, State: "OPEN", Checks: "pass", Review: "REVIEW_REQUIRED"}, "#3 open, checks pass, review required"},
+		{PR{Number: 3, State: "CLOSED", Checks: "fail", Failed: 2}, "#3 closed"},
+		{PR{Number: 3, State: "WEIRD", Review: "ODD"}, "#3"},
+	} {
+		if got := c.pr.Summary(); got != c.want {
+			t.Errorf("%+v: %q, want %q", c.pr, got, c.want)
+		}
 	}
 }
 

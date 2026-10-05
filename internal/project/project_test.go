@@ -179,13 +179,17 @@ func TestContextDeterministicAndCapped(t *testing.T) {
 	os.MkdirAll(p.Path("threads", "t-0001"), 0o755)
 	os.WriteFile(p.Path("threads", "t-0001", "thread.toml"), []byte("task = \"T16\"\ntitle = \"Fix login\"\n"), 0o644)
 	os.WriteFile(p.Path("threads", "t-0001", "REPORT.md"), []byte("## Report\nok\n\n## Next\nMerge the PR\n"), 0o644)
+	os.MkdirAll(p.Path("threads", "t-0002"), 0o755)
+	os.WriteFile(p.Path("threads", "t-0002", "thread.toml"), []byte("title = \"Docs\"\n"), 0o644)
+	os.WriteFile(p.Path("threads", "t-0002", "REPORT.md"), []byte("PR: https://github.com/o/r/pull/9\n## Report\nok\n\n## Next\nReview it\n"), 0o644)
+	prs := map[string]string{"t-0001": "#8 open, checks pass"}
 	p.AddItem("thread-done", "t-0001", "t-0001 reported", false)
 
-	sec1, err := p.Context()
+	sec1, err := p.Context(prs)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sec2, _ := p.Context()
+	sec2, _ := p.Context(prs)
 	out := RenderContext(sec1)
 	if out != RenderContext(sec2) {
 		t.Fatal("context not deterministic")
@@ -196,7 +200,8 @@ func TestContextDeterministicAndCapped(t *testing.T) {
 		"In motion (1)\n  T16  started  Fix login  0/2",
 		"Done (15)",
 		"[… 5 done tasks not shown (tm task list)]",
-		"t-0001  T16  Fix login  report: yes\n    next: Merge the PR",
+		"t-0001  T16  Fix login  report: yes  PR: #8 open, checks pass\n    next: Merge the PR",
+		"t-0002  Docs  report: yes  PR: https://github.com/o/r/pull/9\n    next: Review it",
 		"thread-done: t-0001 reported",
 		"human task.add T16 Fix login",
 	} {

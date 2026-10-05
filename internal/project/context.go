@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -36,8 +37,10 @@ type Section struct {
 }
 
 // Context builds `tm context`. It only reads files, and the same files
-// always give the same output (§7.6).
-func (p *Project) Context() ([]Section, error) {
+// always give the same output (§7.6). prs is each thread's PR state as
+// the ticker last saw it (ticker.PRs, its Summary), by thread id; nil
+// for none.
+func (p *Project) Context(prs map[string]string) ([]Section, error) {
 	var out []Section
 
 	head := []string{
@@ -85,7 +88,7 @@ func (p *Project) Context() ([]Section, error) {
 	}
 	out = append(out, ts)
 
-	th, err := p.threadSection()
+	th, err := p.threadSection(prs)
 	if err != nil {
 		return nil, err
 	}
@@ -174,10 +177,10 @@ func countGroup(b *tasks.Board, g tasks.Group) int {
 	return n
 }
 
-// threadSection lists threads/<id>/ with what their files say. Live agent
-// state and progress come from the server once threads exist (M6); here
-// it is what is on disk.
-func (p *Project) threadSection() (Section, error) {
+// threadSection lists threads/<id>/ with what their files say, and the
+// PR state the ticker keeps (prs). Live agent state and progress come
+// from the server (tm thread list); here it is what is on disk.
+func (p *Project) threadSection(prs map[string]string) (Section, error) {
 	s := Section{Title: "Threads"}
 	entries, err := os.ReadDir(p.Path("threads"))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -203,11 +206,17 @@ func (p *Project) threadSection() (Section, error) {
 				line += "  " + v
 			}
 		}
-		next, hasReport := reportNext(p.Path("threads", id, "REPORT.md"))
+		next, prURL, hasReport := reportNext(p.Path("threads", id, "REPORT.md"))
 		if hasReport {
 			line += "  report: yes"
 		} else {
 			line += "  report: none"
+		}
+		switch {
+		case prs[id] != "":
+			line += "  PR: " + prs[id]
+		case prURL != "":
+			line += "  PR: " + prURL
 		}
 		s.Lines = append(s.Lines, line)
 		for j, n := range next {
@@ -226,16 +235,22 @@ func (p *Project) threadSection() (Section, error) {
 	return s, nil
 }
 
-// reportNext returns the "## Next" lines of a report.
-func reportNext(path string) ([]string, bool) {
+// reportNext returns the "## Next" lines of a report and the URL on its
+// "PR:" line, when it is one tm report accepts.
+func reportNext(path string) ([]string, string, bool) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, false
+		return nil, "", false
 	}
 	var next []string
+	pr := ""
 	in := false
-	for _, l := range strings.Split(string(data), "\n") {
+	for i, l := range strings.Split(string(data), "\n") {
 		t := strings.TrimSpace(l)
+		if i == 0 && reportPRRE.MatchString(t) {
+			pr = strings.TrimPrefix(t, "PR: ")
+			continue
+		}
 		if strings.HasPrefix(t, "## ") {
 			in = t == "## Next"
 			continue
@@ -244,8 +259,11 @@ func reportNext(path string) ([]string, bool) {
 			next = append(next, t)
 		}
 	}
-	return next, true
+	return next, pr, true
 }
+
+// reportPRRE is tm report's PR line (thread.Validate).
+var reportPRRE = regexp.MustCompile(`^PR: https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/[0-9]+$`)
 
 // RenderContext prints sections as plain text.
 func RenderContext(sections []Section) string {

@@ -711,13 +711,15 @@ The dashboard and `tm context` show one merged line per thread. It combines:
 - the agent state (§8.4): working, blocked, idle or exited;
 - progress (§7.3): the derived percent with its source, done/total, and the current todo or step;
 - the report status: none, new (unacknowledged) or acknowledged;
-- the PR state.
+- the PR state: what the ticker last saw (§7.5), in fixed words (`#12 open, checks pass, approved`; `2 checks failed`, `checks pending`, `changes requested`, `review required`; `#12 merged`, `#12 closed`), else the report's PR URL, else nothing.
 
 For example:
 
 ```
-t-0005 T12 Fix login redirect   working  45% steps+todos  1/3 steps · 2/4 todos  ▸ Fix the redirect   report: none  PR: —
+t-0005 T12 Fix login redirect   working  45% steps+todos  1/3 steps · 2/4 todos  ▸ Fix the redirect   report: new  PR: #12 open, 1 check failed
 ```
+
+`tm thread list --json` gives the ticker's fields as `pr_state` (number, url, state, checks, failed, review) beside the report's `pr`.
 
 Threads are grouped as herdr-projects does: Waiting on you → Ready for review → Working → Idle → Resolved.
 
@@ -733,7 +735,7 @@ Threads are grouped as herdr-projects does: Waiting on you → Ready for review 
 - Kinds (M7): `report`, `thread-done`, `thread-resolved` and `needs-you` come from the `tm` commands, `takeover` from the attach client (the first input into a thread's pane during an attach, §4), `delegate` from the task list (`d`, the user's go-ahead to delegate the task named in its subject, §4); the ticker adds `blocked` (`needs_user` unless it is a permission prompt the coordinator may approve), `idle` (once per report, and not while that report's own item is unhandled), `exited`, `server-restart`, and `pr-opened`, `pr-checks-failed`, `pr-review` (approved or changes requested), `pr-merged`, `pr-closed`.
 - A summary names its thread with the task and title, e.g. `t-0003 (T10 Make needs-you tasks easy to find) opened PR #53`, so the coordinator needs no lookup (`thread.Label`: the task's title from `TASKS.md`, else the thread's own title, one printable line of at most 60 runes).
 - What the ticker already reported (per-thread state, PR fields, nudged item ids) is kept in `state/ticker.json`, so a server restart repeats nothing. `TERMILATOR_TICK_SWEEP`, `TERMILATOR_TICK_PR` and `TERMILATOR_TICK_NUDGE` shorten the intervals for tests.
-- **PR polling.** For each unresolved thread with a repo, `gh pr view <report PR URL, else the branch> --json number,url,state,reviewDecision,statusCheckRollup` in the repo, every 2 minutes, until the PR merged. Only those fields are kept, each checked against a strict pattern. A failed `gh` (no PR yet, no network) is retried at the next poll.
+- **PR polling.** For each unresolved thread with a repo, `gh pr view <report PR URL, else the branch> --json number,url,state,reviewDecision,statusCheckRollup` in the repo, every 2 minutes, until the PR merged. Only those fields are kept, each checked against a strict pattern. A failed `gh` (no PR yet, no network) is retried at the next poll. `tm thread list` and `tm context` read them from `state/ticker.json` (§7.4).
 - **PR follow-up** (built in, `pr_followup`, §11.2). When the checks start failing, or a reviewer requests changes, the thread gets one fixed prompt naming the PR number and the `gh` command to read them. No PR text is quoted.
 - **Auto-close** (`auto_close`, `auto_close_days`, §11.2, §9). Once a thread is due and its agent is idle, exited or stopped, the ticker runs `tm thread resolve` as caller `ticker`, once; resolve's own rules apply (never forced, the branch deleted only when its PR merged or the default branch has its commits). Before that it checks the worktree: with uncommitted changes or unpushed commits the thread stays open, and a `close-held` item (once per reason) tells the coordinator; it closes on a later sweep once the work is committed and pushed.
 - **Alerts.** A thread's new report, like a session becoming blocked, raises the server's alert count (`session.list`'s `alerts`); every client rings its bell when the count goes up (§4). No desktop notification is sent.
@@ -748,7 +750,7 @@ Threads are grouped as herdr-projects does: Waiting on you → Ready for review 
 2. `CONTEXT.md`
 3. the `MEMORY.md` index
 4. tasks by group
-5. threads with their merged state (§7.4): agent state, derived percent, done/total, current todo or step, report and PR state, and `## Next` lines
+5. threads with their merged state (§7.4): agent state, derived percent, done/total, current todo or step, report and PR state, and `## Next` lines (the PR state as `tm thread list` shows it, from `state/ticker.json`)
 6. unhandled inbox items
 7. the last 20 `JOURNAL.md` lines
 

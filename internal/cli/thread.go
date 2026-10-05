@@ -18,8 +18,10 @@ import (
 	"github.com/theclifmeister/termilator/internal/config"
 	"github.com/theclifmeister/termilator/internal/project"
 	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/server"
 	"github.com/theclifmeister/termilator/internal/tasks"
 	"github.com/theclifmeister/termilator/internal/thread"
+	"github.com/theclifmeister/termilator/internal/ticker"
 	"github.com/theclifmeister/termilator/internal/worktree"
 )
 
@@ -408,13 +410,17 @@ type threadRow struct {
 	AgentState string         `json:"agent_state"` // working, blocked, idle, exited, stopped, resolved
 	Reason     string         `json:"reason,omitempty"`
 	Status     *thread.Status `json:"status"`
-	Report     string         `json:"report"` // none, new, acked
-	PR         string         `json:"pr,omitempty"`
+	Report     string         `json:"report"`             // none, new, acked
+	PR         string         `json:"pr,omitempty"`       // the report's PR URL
+	PRState    *ticker.PR     `json:"pr_state,omitempty"` // as the ticker last saw it
 	Next       []string       `json:"next"`
 }
 
-func (e *Env) rowOf(p *project.Project, r *thread.Record, sessions map[string]proto.SessionInfo) threadRow {
+func (e *Env) rowOf(p *project.Project, r *thread.Record, sessions map[string]proto.SessionInfo, prs map[string]ticker.PR) threadRow {
 	row := threadRow{Record: r, Report: r.ReportState(), Next: []string{}}
+	if pr, ok := prs[r.ID]; ok {
+		row.PRState = &pr
+	}
 	row.Status, _ = thread.ReadStatus(p, r.ID)
 	if row.Status == nil {
 		row.Status = &thread.Status{SelfPercent: -1}
@@ -437,6 +443,16 @@ func (e *Env) rowOf(p *project.Project, r *thread.Record, sessions map[string]pr
 		row.AgentState = "exited"
 	}
 	return row
+}
+
+// tickerState is the ticker's state file, "" when the paths can't be
+// worked out.
+func tickerState() string {
+	paths, err := server.ResolvePaths()
+	if err != nil {
+		return ""
+	}
+	return ticker.StatePath(paths.Sessions)
 }
 
 func (e *Env) liveSessions() map[string]proto.SessionInfo {
@@ -483,7 +499,10 @@ func (row threadRow) Line() string {
 		b.WriteString("  done")
 	}
 	fmt.Fprintf(&b, "  report: %s", row.Report)
-	if row.PR != "" {
+	switch {
+	case row.PRState != nil && row.PRState.Summary() != "":
+		b.WriteString("  PR: " + row.PRState.Summary())
+	case row.PR != "":
 		b.WriteString("  PR: " + row.PR)
 	}
 	return b.String()
@@ -495,9 +514,10 @@ func (e *Env) threadList(p *project.Project, asJSON bool) error {
 		return err
 	}
 	sessions := e.liveSessions()
+	prs := ticker.PRs(tickerState(), p.Slug)
 	rows := make([]threadRow, 0, len(recs))
 	for _, r := range recs {
-		rows = append(rows, e.rowOf(p, r, sessions))
+		rows = append(rows, e.rowOf(p, r, sessions, prs))
 	}
 	if asJSON {
 		return e.printJSON(rows)
@@ -517,7 +537,7 @@ func (e *Env) threadShow(p *project.Project, id string, asJSON bool) error {
 	if err != nil {
 		return err
 	}
-	row := e.rowOf(p, r, e.liveSessions())
+	row := e.rowOf(p, r, e.liveSessions(), ticker.PRs(tickerState(), p.Slug))
 	rep, _ := thread.ReadReport(p, id)
 	if asJSON {
 		out := map[string]any{"thread": row}
