@@ -83,6 +83,7 @@ func (e *Env) fullConsole(own bool, goTo *tui.Target, agentName string) int {
 	}
 	attach := vc.View().Mode == view.ModeLayout
 	for {
+		var over *tui.Over
 		if attach {
 			ares, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Agent: agentName}, args)
 			if code != ExitOK {
@@ -92,14 +93,17 @@ func (e *Env) fullConsole(own bool, goTo *tui.Target, agentName string) int {
 				return ExitOK
 			}
 			st.Message = strings.TrimPrefix(ares.Session+": "+ares.Reason, ": ")
-			st.Then = ares.Then // prefix then p, ], [, … in the session
-			if ares.Then != "" || ares.GoTo != nil {
-				// Left to run a key or open a row there: no news.
+			st.Then = ares.Then // prefix then p, ] or [ in the session
+			if ares.Then != "" || ares.GoTo != nil || ares.Over != nil {
+				// Left to run a key, open a row or a popup: no news.
 				st.Message = ""
 			}
+			// Prefix then a, i, t, , or ?: the popup over the session,
+			// which attaches again once it closes.
+			over = ares.Over
 		}
 		res, err := tui.Dashboard(tui.DashOptions{Source: src, In: os.Stdin, Out: os.Stdout,
-			Cwd: e.Cwd, State: st, UIFile: uiFile, Prefix: tui.ConfigPrefix(), View: vc})
+			Cwd: e.Cwd, State: st, UIFile: uiFile, Prefix: tui.ConfigPrefix(), View: vc, Over: over})
 		if err != nil {
 			return e.srvFail("dashboard", err)
 		}

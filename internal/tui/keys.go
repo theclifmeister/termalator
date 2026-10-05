@@ -22,9 +22,10 @@ import (
 // writes [keys] prefix in config.toml.
 //
 // The prefix starts a key command, as in tmux (docs/SPEC.md §4): in a
-// session, prefix then d returns to the dashboard, prefix then a, p, ],
-// [, i, t, , or ? returns and opens that view, and prefix twice sends the
-// prefix itself to the program.
+// session, prefix then d returns to the dashboard, prefix then a, i, t,
+// , or ? opens that popup over the session, prefix then p, ] or [
+// returns and runs it there, and prefix twice sends the prefix itself to
+// the program.
 const DefaultPrefixKey = "ctrl+b"
 
 // chord is a Ctrl+<character> key combination.
@@ -82,9 +83,15 @@ func ConfigPrefix() string {
 	return c.String()
 }
 
-// prefixCommands are the keys that, after the prefix in a session, return
-// to the dashboard and run there: the same keys as on the dashboard.
+// prefixCommands are the dashboard's keys that work after the prefix in a
+// session, as on the dashboard. Those of popupCommands open their popup
+// over the session (Over); p ] [ return to the dashboard and run there.
 var prefixCommands = map[string]bool{"a": true, "p": true, "]": true, "[": true, "i": true, "t": true, ",": true, "?": true}
+
+// popupCommands are the prefix commands that open a popup over the
+// session: the project popup, the inbox, the tasks, the settings and the
+// help.
+var popupCommands = map[string]bool{"a": true, "i": true, "t": true, ",": true, "?": true}
 
 var specialKeys = map[rune]emu.SpecialKey{
 	uv.KeyEnter: emu.KeyEnter, uv.KeyTab: emu.KeyTab,
