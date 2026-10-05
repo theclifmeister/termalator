@@ -77,6 +77,15 @@ func init() {
 			run: (*dash).enter},
 		{keys: []string{"s"}, label: "s", help: "new shell session (in the directory tm was started in)", menu: []string{"new shell"},
 			run: (*dash).startShell},
+		{keys: []string{"T"}, label: "T", help: "on an agent session outside the projects (one you started yourself): ask the current project's coordinator to adopt it as a thread (asks first)",
+			menu: []string{"adopt as a thread"},
+			foot: func(m *dash, r row, ok bool) string {
+				if _, why := m.adoptable(r, ok); why == "" {
+					return "adopt"
+				}
+				return ""
+			},
+			run: (*dash).adopt},
 		{keys: []string{"n"}, label: "n", help: "new project", menu: []string{"new project"},
 			foot: func(m *dash, _ row, _ bool) string {
 				if len(m.data.Projects) == 0 {

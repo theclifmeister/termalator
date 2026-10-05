@@ -101,6 +101,10 @@ type Source interface {
 	// with the user's note) that is the user's word (docs/SPEC.md §4).
 	// It reports false when an item already asks something of the task.
 	Ask(slug string, id int, kind, note string) (bool, error)
+	// AskAdopt asks the project's coordinator to adopt session s, an
+	// agent session outside the projects, as a thread (docs/SPEC.md §4,
+	// Adopt). It reports false when an item already asks it.
+	AskAdopt(slug string, s proto.SessionInfo) (bool, error)
 	// Review is how to check task t, in review, and whether its change
 	// has shipped.
 	Review(slug string, t *tasks.Task) Review
@@ -369,6 +373,31 @@ func (s *ServerSource) Ask(slug string, id int, kind, note string) (bool, error)
 		return p.AskSendBack(s.Caller, t.Ref(), note)
 	}
 	return p.AskDelegate(s.Caller, t.Ref())
+}
+
+func (s *ServerSource) AskAdopt(slug string, sess proto.SessionInfo) (bool, error) {
+	if s.Caller.IsAgent() {
+		return false, errors.New("human-only: only the human asks the coordinator to adopt a session")
+	}
+	p, err := project.Open(slug)
+	if err != nil {
+		return false, err
+	}
+	return p.AskAdopt(s.Caller, sess.ID, adoptWhere(sess, ""))
+}
+
+// adoptWhere says what runs in session s and where, for an adopt ask:
+// "claude in /src/app on fix-login"; home, when set, is shortened to ~.
+func adoptWhere(s proto.SessionInfo, home string) string {
+	where := s.Cwd
+	if home != "" && strings.HasPrefix(where, home) {
+		where = "~" + where[len(home):]
+	}
+	out := s.Agent + " in " + where
+	if pl, ok := worktree.Locate(s.Cwd); ok && pl.Branch != "" {
+		out += " on " + pl.Branch
+	}
+	return out
 }
 
 func (s *ServerSource) Review(slug string, t *tasks.Task) Review {

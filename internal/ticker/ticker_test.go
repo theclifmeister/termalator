@@ -571,3 +571,14 @@ func FuzzNudgeText(f *testing.F) {
 		}
 	})
 }
+
+// TestUnsavedAdoptedCheckout: a thread adopted in a repository's own
+// checkout loses nothing on close, since resolve keeps the checkout
+// (docs/SPEC.md §9, Adopt); its uncommitted work doesn't hold it.
+func TestUnsavedAdoptedCheckout(t *testing.T) {
+	dir := t.TempDir() // not even a git repo: it isn't looked at
+	why, err := unsaved(&thread.Record{Repo: dir, Worktree: dir, Adopted: true, Checkout: true}, "")
+	if err != nil || why != "" {
+		t.Fatalf("unsaved = %q, %v", why, err)
+	}
+}

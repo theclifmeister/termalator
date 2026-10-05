@@ -56,6 +56,12 @@ type Record struct {
 	ReportAck  int       `toml:"report_acked" json:"report_acked"`
 	Done       bool      `toml:"done,omitempty" json:"done,omitempty"`
 	DoneAt     time.Time `toml:"done_at,omitempty" json:"done_at,omitzero"`
+	// Adopted: the thread was a running agent session made a thread by
+	// tm thread adopt, not started by tm (docs/SPEC.md §9, Adopt).
+	// Checkout: its worktree is a repository's main checkout, which
+	// resolve never removes, nor deletes its branch.
+	Adopted  bool `toml:"adopted,omitempty" json:"adopted,omitempty"`
+	Checkout bool `toml:"checkout,omitempty" json:"checkout,omitempty"`
 }
 
 // ReportState is "none", "new" (unacknowledged) or "acked".

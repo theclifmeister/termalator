@@ -40,6 +40,7 @@ type fakeSource struct {
 	// the other asks: "accept slug T12", "send-back slug T12 note".
 	delegated []string
 	asked     []string
+	adopted   []string // "slug s-3"
 	reviews   map[int]Review
 	agents    []string
 	remote    []string // "slug on" or "slug off"
@@ -98,6 +99,10 @@ func (f *fakeSource) SetRepo(slug, path string, add bool) error {
 		}
 	}
 	return nil
+}
+func (f *fakeSource) AskAdopt(slug string, s proto.SessionInfo) (bool, error) {
+	f.adopted = append(f.adopted, slug+" "+s.ID)
+	return true, nil
 }
 func (f *fakeSource) Ask(slug string, id int, kind, note string) (bool, error) {
 	ref := fmt.Sprintf("T%d", id)
