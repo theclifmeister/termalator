@@ -273,7 +273,7 @@ func TestSmokeThreadLifecycle(t *testing.T) {
 		t.Fatalf("report after removing the worktree: %q", r)
 	}
 	res := env.MustCLI("thread", "resolve", "t-0001", "--project", "demo")
-	if !strings.Contains(res, "worktree was already gone") || !strings.Contains(res, "kept branch tm/demo/t-0001-fix-the-login") {
+	if !strings.Contains(res, "worktree was already gone") || !strings.Contains(res, "deleted branch tm/demo/t-0001-fix-the-login (merged into origin/main)") {
 		t.Fatalf("resolve: %q", res)
 	}
 	if again := env.MustCLI("thread", "resolve", "t-0001", "--project", "demo"); !strings.Contains(again, "already resolved") {
@@ -286,6 +286,77 @@ func TestSmokeThreadLifecycle(t *testing.T) {
 			t.Errorf("journal lacks %q:\n%s", w, journal)
 		}
 	}
+}
+
+// TestThreadResolveMergedBranch: resolve deletes a branch whose commits
+// are on the default branch without any PR (merge commit on origin, a
+// fast-forward in a repo without remote), and keeps a squash-merged or
+// unmerged one; the worktree goes in every case.
+func TestThreadResolveMergedBranch(t *testing.T) {
+	env, projDir, _ := threadEnv(t)
+	git := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@t"}, args...)...)
+		cmd.Dir = dir
+		if b, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, b)
+		}
+	}
+	// thread starts a thread, commits a file in its worktree and returns
+	// its record.
+	type record struct{ Repo, Worktree, Branch, Session string }
+	thread := func(id, title string) record {
+		t.Helper()
+		env.MustCLI("thread", "start", title, "--project", "demo")
+		var rec record
+		readTOML(t, filepath.Join(projDir, "threads", id, "thread.toml"), &rec)
+		env.WaitState(&Session{ID: rec.Session}, "idle", agentWait)
+		os.WriteFile(filepath.Join(rec.Worktree, id), []byte(id), 0o644)
+		git(rec.Worktree, "add", ".")
+		git(rec.Worktree, "commit", "-q", "-m", title)
+		return rec
+	}
+	resolve := func(rec record, id, want string, gone bool) {
+		t.Helper()
+		res := env.MustCLI("thread", "resolve", id, "--project", "demo")
+		if !strings.Contains(res, "removed worktree "+rec.Worktree) || !strings.Contains(res, want) {
+			lg, _ := exec.Command("git", "-C", rec.Repo, "log", "--oneline", "--graph", "--all", "--decorate").CombinedOutput()
+			t.Logf("%s", lg)
+			t.Fatalf("resolve %s: %q, want %q", id, res, want)
+		}
+		if _, err := os.Stat(rec.Worktree); !os.IsNotExist(err) {
+			t.Fatalf("%s: worktree still there: %v", id, err)
+		}
+		cmd := exec.Command("git", "rev-parse", "--verify", "--quiet", "refs/heads/"+rec.Branch)
+		cmd.Dir = rec.Repo
+		if exists := cmd.Run() == nil; exists == gone {
+			t.Fatalf("%s: branch %s exists %v after %q", id, rec.Branch, exists, res)
+		}
+	}
+
+	// Merged on origin with a merge commit, no PR: deleted.
+	a := thread("t-0001", "Merge commit")
+	git(a.Repo, "merge", "-q", "--no-ff", "-m", "Merge", a.Branch)
+	git(a.Repo, "push", "-q", "origin", "main")
+	git(a.Repo, "fetch", "-q", "origin")
+	resolve(a, "t-0001", "deleted branch "+a.Branch+" (merged into origin/main)", true)
+
+	// Squash-merged, no PR: kept (git can't tell its work is on main).
+	b := thread("t-0002", "Squash")
+	git(b.Repo, "merge", "-q", "--squash", b.Branch)
+	git(b.Repo, "commit", "-q", "-m", "Squash (#2)")
+	git(b.Repo, "push", "-q", "origin", "main")
+	git(b.Repo, "fetch", "-q", "origin")
+	resolve(b, "t-0002", "kept branch "+b.Branch+" (no merged PR found)", false)
+
+	// A repo without remote, merged by fast-forward (tm's own todo
+	// project): deleted; an unmerged branch is kept.
+	c := thread("t-0003", "Local")
+	d := thread("t-0004", "Unmerged")
+	git(c.Repo, "remote", "remove", "origin")
+	git(c.Repo, "merge", "-q", "--ff-only", c.Branch)
+	resolve(c, "t-0003", "deleted branch "+c.Branch+" (merged into main)", true)
+	resolve(d, "t-0004", "kept branch "+d.Branch+" (no merged PR found)", false)
 }
 
 // TestThreadRestartResumes: a thread that worked on a prompt is resumed
