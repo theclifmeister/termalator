@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/theclifmeister/termilator/internal/view"
 )
 
 // paneSize returns a session's pane size as the server reports it.
@@ -190,11 +192,12 @@ func TestAttachResize(t *testing.T) {
 	w := env.Attach(100, 30, s.ID)
 	w.WaitFor("ready", wait)
 	// The first window to show the pane fills it.
-	waitPaneSize(t, env, s, 76, 30)
-	w.Resize(90, 20) // less the sidebar's 24 columns
-	env.WaitFor(s, "resized to 66x20", wait)
-	w.WaitFor("resized to 66x20", wait)
-	assertPaneSize(t, env, s, 66, 20)
+	waitPaneSize(t, env, s, paneCols(100), 30)
+	w.Resize(96, 20) // less the sidebar
+	resized := fmt.Sprintf("resized to %dx20", paneCols(96))
+	env.WaitFor(s, resized, wait)
+	w.WaitFor(resized, wait)
+	assertPaneSize(t, env, s, paneCols(96), 20)
 	env.AssertMirrorsServer(w)
 }
 
@@ -208,21 +211,22 @@ func TestSmokeAttachLatestTypistResizes(t *testing.T) {
 	env.WaitFor(s, "ready", wait)
 	w1 := env.Attach(100, 30, s.ID)
 	w1.WaitFor("ready", wait)
-	waitPaneSize(t, env, s, 76, 30)
+	waitPaneSize(t, env, s, paneCols(100), 30)
 	w2 := env.Attach(90, 20, s.ID)
 	w2.WaitFor("ready", wait)
 	time.Sleep(time.Second) // longer than the server's resize quiet time
-	assertPaneSize(t, env, s, 76, 30)
+	assertPaneSize(t, env, s, paneCols(100), 30)
 
 	// Each window's panes are the window less the sidebar.
+	small, big := fmt.Sprintf("resized to %dx20", paneCols(90)), fmt.Sprintf("resized to %dx30", paneCols(100))
 	w2.Type("a")
-	env.WaitFor(s, "resized to 66x20", wait)
-	waitPaneSize(t, env, s, 66, 20)
+	env.WaitFor(s, small, wait)
+	waitPaneSize(t, env, s, paneCols(90), 20)
 	w1.Type("b")
-	env.WaitFor(s, "resized to 76x30", wait)
-	waitPaneSize(t, env, s, 76, 30)
-	w1.WaitFor("resized to 76x30", wait)
-	w2.WaitFor("resized to 76x30", wait)
+	env.WaitFor(s, big, wait)
+	waitPaneSize(t, env, s, paneCols(100), 30)
+	w1.WaitFor(big, wait)
+	w2.WaitFor(big, wait)
 	env.AssertMirrorsServer(w1)
 	env.AssertMirrorsServer(w2)
 }
@@ -243,7 +247,7 @@ func TestAttachExplicitAgentKeepsSize(t *testing.T) {
 	time.Sleep(time.Second) // longer than the server's resize quiet time
 	assertPaneSize(t, env, s, 100, 30)
 	w.Resize(85, 20)
-	waitPaneSize(t, env, s, 85-24, 20) // less the sidebar
+	waitPaneSize(t, env, s, paneCols(85), 20) // less the sidebar
 }
 
 // TestAttachSlowClientResync stops a client while a firehose fills its
@@ -437,6 +441,13 @@ func TestRunScriptLoginShellQueries(t *testing.T) {
 	}
 }
 
+// sideDefault is the full sidebar's default width, its border included.
+const sideDefault = view.SideDefault
+
+// paneCols is a lone pane's width in a window cols wide: the window less
+// the sidebar at the default layout.
+func paneCols(cols int) uint16 { return uint16(cols - SideCols(cols)) }
+
 // waitPaneSize waits until session s is cols×rows: split panes resize
 // their sessions in the background.
 func waitPaneSize(t *testing.T, env *Env, s *Session, cols, rows uint16) {
@@ -461,11 +472,11 @@ func TestSmokeAttachPane(t *testing.T) {
 	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, `prefix+d dashboard`) })
 	w.Type("echo pane-$((2*3))\r")
 	w.WaitFor("pane-6", wait)
-	// 96 columns beside the sidebar, 28 rows above the empty row and the
-	// status bar.
-	waitPaneSize(t, env, s1, 96, 28)
+	// The columns beside the sidebar, 28 rows above the empty row and
+	// the status bar.
+	waitPaneSize(t, env, s1, paneCols(120), 28)
 	rows := strings.Split(w.Screen(), "\n")
-	if r := []rune(rows[28]); len(r) < 24 || strings.TrimSpace(string(r[24:])) != "" {
+	if r, side := []rune(rows[28]), SideCols(120); len(r) < side || strings.TrimSpace(string(r[side:])) != "" {
 		t.Fatalf("the row above the status bar isn't empty:\n%s", w.Screen())
 	}
 	if !strings.Contains(rows[29], "prefix+d dashboard") {
@@ -485,7 +496,7 @@ func TestSmokeAttachPane(t *testing.T) {
 	if n := len(env.Sessions()); n != 1 {
 		t.Fatalf("%d sessions after the old split keys", n)
 	}
-	assertPaneSize(t, env, s1, 96, 28)
+	assertPaneSize(t, env, s1, paneCols(120), 28)
 
 	// The prefix twice sends Ctrl+B itself: od shows the byte, 002.
 	w.Type("od -c\r")

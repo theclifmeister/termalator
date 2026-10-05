@@ -1,40 +1,40 @@
- PROJECTS             1│ tm dashboard                                                           ● server ok · 0 sessions
- ■ demo             0  │ demo ──────────────────────────────────────────────────────────────────────────────────────────
- └─ coordinator       ·│  coo╭─ demo ─────────────────────────────────────────────────────────────────────────────╮
-                       │  tas│  1 Overview   2 Inbox   3 Tasks   4 Settings   5 Keys                              │
-                       │ OTHE│                                                                                    │─────
-                       │  no │ Project       Demo  demo                                                           │
-                       │     │ Goal          none set; ask the coordinator to set one                             │
-                       │     │                                                                                    │
-                       │     │ Repositories  <tmp>│
-                       │     │                                                                                    │
-                       │     │ Machines      <host>│
-                       │     │                                                                                    │
-                       │     │ Coordinator   claude · not running; enter on the project starts it                 │
-                       │     │ Threads       none open                                                            │
-                       │     │               start after asking you (Settings tab)                                │
-                       │     │                                                                                    │
-                       │     │ Tasks         0 needs you · 1 in motion · 1 on deck · 0 done                       │
-                       │     │                                                                                    │
-                       │     │                                                                                    │
-                       │     │                                                                                    │
-                       │     │                                                                                    │
-                       │     │                                                                                    │
-                       │     │                                                                                    │
-                       │     │                                                                                    │
-                       │     │                                                                                    │
-                       │     │                                                                                    │
-                       │     │                                                                                    │
-                       │     │                                                                                    │
-                       │     │                                                                                    │
-                       │     │                                                                                    │
-                       │     │                                                                                    │
-                       │     │                                                                                    │
-                       │     │                                                                                    │
-                       │     │                                                                                    │
-                       │     │                                                                                    │
-                       │     ╰────────────────────────────────────────────────────────────────────────────────────╯
-                       │
-                       │────────────────────────────────────────────────────────────────────────────────────────────────
-                       │ + add repository · x remove it · tab next tab · 1-5 pick one · esc close
-                       │
+ PROJECTS                    1 │ tm dashboard                                                   ● server ok · 0 sessions
+ ■ demo                    0   │ demo ──────────────────────────────────────────────────────────────────────────────────
+ └─ coordinator              · │  co╭─ demo ──────────────────────────────────────────────────────────────────────╮
+                               │  ta│  1 Overview   2 Inbox   3 Tasks   4 Settings   5 Keys                       │
+                               │ OTH│                                                                             │─────
+                               │  no│ Project       Demo  demo                                                    │
+                               │    │ Goal          none set; ask the coordinator to set one                      │
+                               │    │                                                                             │
+                               │    │ Repositories  <tmp>│
+                               │    │                                                                             │
+                               │    │ Machines      <host>│
+                               │    │                                                                             │
+                               │    │ Coordinator   claude · not running; enter on the project starts it          │
+                               │    │ Threads       none open                                                     │
+                               │    │               start after asking you (Settings tab)                         │
+                               │    │                                                                             │
+                               │    │ Tasks         0 needs you · 1 in motion · 1 on deck · 0 done                │
+                               │    │                                                                             │
+                               │    │                                                                             │
+                               │    │                                                                             │
+                               │    │                                                                             │
+                               │    │                                                                             │
+                               │    │                                                                             │
+                               │    │                                                                             │
+                               │    │                                                                             │
+                               │    │                                                                             │
+                               │    │                                                                             │
+                               │    │                                                                             │
+                               │    │                                                                             │
+                               │    │                                                                             │
+                               │    │                                                                             │
+                               │    │                                                                             │
+                               │    │                                                                             │
+                               │    │                                                                             │
+                               │    │                                                                             │
+                               │    ╰─────────────────────────────────────────────────────────────────────────────╯
+                               │
+                               │────────────────────────────────────────────────────────────────────────────────────────
+                               │ + add repository · x remove it · tab next tab · 1-5 pick one · esc close
+                               │

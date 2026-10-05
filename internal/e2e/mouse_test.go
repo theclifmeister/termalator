@@ -74,17 +74,17 @@ func TestSmokeMouseStatusBar(t *testing.T) {
 	w.WaitFor(s1.ID+" ", wait)
 	w.Key(Enter)
 	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, "≡  prefix+d dashboard") })
-	waitPaneSize(t, env, s1, 96, 28)
+	waitPaneSize(t, env, s1, paneCols(120), 28)
 
-	w.DoubleClick(30, 5)
+	w.DoubleClick(40, 5)
 	w.Quiet(300 * time.Millisecond)
 	if sc := w.Screen(); lastLine(sc, "zoom") || len(env.Sessions()) != 1 {
 		t.Fatalf("a double-click did something:\n%s", sc)
 	}
-	assertPaneSize(t, env, s1, 96, 28)
+	assertPaneSize(t, env, s1, paneCols(120), 28)
 
 	// A right-click on the pane: the session's menu; esc closes it.
-	w.RightClick(30, 5)
+	w.RightClick(40, 5)
 	w.WaitFor("narrower sidebar", wait)
 	if sc := w.Screen(); strings.Contains(sc, "split:") || strings.Contains(sc, "zoom") || strings.Contains(sc, "close the pane") {
 		t.Fatalf("the menu has split pane items:\n%s", sc)
@@ -122,7 +122,9 @@ func TestSmokeMousePopupsAndAttach(t *testing.T) {
 	w.RightClick(4, sideRow(t, w.Screen(), "demo"))
 	w.WaitFor("show its dashboard", wait)
 	w.ClickText("show its dashboard", 1)
-	w.WaitUntil("demo's dashboard", wait, func(sc string) bool { return strings.Contains(sc, "t-0001 Small fix") })
+	w.WaitUntil("demo's dashboard", wait, func(sc string) bool {
+		return strings.Contains(sc, " demo ──") && !strings.Contains(sc, "show its dashboard")
+	})
 
 	w.ClickText("a project", 28)
 	w.WaitFor("1 Overview", wait)
@@ -135,8 +137,8 @@ func TestSmokeMousePopupsAndAttach(t *testing.T) {
 	w.Click(40, 1) // above the popup, which takes the dashboard's width
 	w.WaitUntil("the popup closed", wait, func(sc string) bool { return !strings.Contains(sc, "1 Overview") })
 
-	x, y := w.TextAt("t-0001 Small fix", 1)
-	w.RightClick(x, y)
+	x, y := w.TextAt("│  t-0001 Small fix", 1) // the list's row, not the sidebar's
+	w.RightClick(x+3, y)
 	w.WaitFor("attach", wait)
 	if strings.Contains(w.Screen(), "take over") {
 		t.Fatalf("the thread's menu has take over:\n%s", w.Screen())

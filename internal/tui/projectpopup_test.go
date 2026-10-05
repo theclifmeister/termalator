@@ -74,7 +74,7 @@ func popupData(t *testing.T) (*fakeSource, *dash) {
 			Steps: []tasks.Step{{N: 1, Text: "Draft", Done: true}, {N: 2, Text: "Review"}}},
 		{ID: 2, Title: "Ship it", Status: tasks.Ready},
 	}}
-	m := newDash(DashOptions{Source: src, Width: 110, Height: 40, Cwd: "/work"})
+	m := newDash(DashOptions{Source: src, Width: 86 + sideDefault, Height: 40, Cwd: "/work"})
 	m.setData(src.Load())
 	m.sel = "p:alpha"
 	return src, m

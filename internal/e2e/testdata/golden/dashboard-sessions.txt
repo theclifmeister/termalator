@@ -1,24 +1,24 @@
- PROJECTS             1│ tm dashboard                                        ● server ok · 1 session
- ■ demo             0  │ demo ──────────────────────────────────────────────────────────────────────
- └─ coordinator       ·│  coordinator                  —          enter starts the coordinator
-                       │  tasks: 0 needs you · 1 in motion · 1 on deck
-                       │ OTHER SESSIONS 1 ──────────────────────────────────────────────────────────
-                       │  <session>          /bin/sh                ● running  <duration>  /
-                       │
-                       │
-                       │
-                       │
-                       │
-                       │
-                       │
-                       │
-                       │
-                       │
-                       │
-                       │
-                       │
-                       │
-                       │
-                       │────────────────────────────────────────────────────────────────────────────
-                       │ ≡ menu · enter open · a project · t tasks · i inbox · , settings · ? help …
-                       │
+ PROJECTS                    1 │ tm dashboard                                ● server ok · 1 session
+ ■ demo                    0   │ demo ──────────────────────────────────────────────────────────────
+ └─ coordinator              · │  coordinator              —          enter starts the coordinator
+                               │  tasks: 0 needs you · 1 in motion · 1 on deck
+                               │ OTHER SESSIONS 1 ──────────────────────────────────────────────────
+                               │  <session>          /bin/sh              ● running  <duration>  /
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │────────────────────────────────────────────────────────────────────
+                               │ ≡ menu · enter open · a project · t tasks · i inbox · , settings ·…
+                               │
