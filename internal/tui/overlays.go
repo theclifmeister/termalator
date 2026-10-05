@@ -94,7 +94,7 @@ func (h *helpView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 }
 
 func (h *helpView) box(m *dash) box {
-	return box{title: "keys · prefix = " + m.prefix, body: keyLines(m.inner(m.w)), sel: -1, scroll: h.scroll,
+	return box{title: "keys", body: keyLines(m.inner(m.w)), sel: -1, scroll: h.scroll,
 		keys: "↑ ↓ scroll · any other key returns", width: m.w}
 }
 

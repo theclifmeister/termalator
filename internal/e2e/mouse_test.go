@@ -25,14 +25,14 @@ func TestSmokeMouseDashboard(t *testing.T) {
 	w.WaitFor("≡ menu", wait)
 
 	w.ClickText("? help", 28)
-	w.WaitFor("keys · prefix =", wait)
+	w.WaitFor("─ keys ─", wait)
 	w.WaitFor("On the dashboard", wait)
 	// The wheel scrolls the help.
 	top := w.Screen()
 	w.Wheel(false, 80, 10)
 	w.WaitUntil("the help scrolled", wait, func(sc string) bool { return sc != top })
 	w.Click(SideCols(140), 10) // beside the box, which leaves a column each side
-	w.WaitUntil("the help closed", wait, func(sc string) bool { return !strings.Contains(sc, "keys · prefix =") })
+	w.WaitUntil("the help closed", wait, func(sc string) bool { return !strings.Contains(sc, "─ keys ─") })
 
 	w.ClickText("≡ menu", 28)
 	w.WaitFor("switch project", wait)
