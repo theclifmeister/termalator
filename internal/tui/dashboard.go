@@ -110,11 +110,20 @@ type dash struct {
 	// expanded are the projects the sidebar's tree shows open besides
 	// the current one: the view's.
 	expanded []string
-	msg      string
-	errMsg   string    // msg when it reports a failure, drawn as one
-	busy     bool      // an action is running
-	stack    []overlay // views open on top of the list, topmost last
-	geo      *boxGeo   // where the topmost was drawn, for the mouse
+	// focus is the area with this console's keyboard: the list, the
+	// sidebar or the details panel (tab). sideSel is the sidebar's
+	// keyboard row, the view's. sideSent is the last one sent; one is
+	// on its way at a time (sideBusy), so they arrive in order, and the
+	// view's own doesn't overwrite this console's meanwhile.
+	focus    int
+	sideSel  string
+	sideSent string
+	sideBusy bool
+	msg         string
+	errMsg      string    // msg when it reports a failure, drawn as one
+	busy        bool      // an action is running
+	stack       []overlay // views open on top of the list, topmost last
+	geo         *boxGeo   // where the topmost was drawn, for the mouse
 	// lastClick is the last left click, for double-clicks; detailTop is
 	// the details panel's first line, scrolled with the wheel, for the
 	// row detailKey (another row shows from the top).
@@ -165,6 +174,7 @@ func newDash(o DashOptions) *dash {
 		m.view, m.viewSeq = vc, v.Seq
 		m.sel = cmp.Or(v.Selected, m.sel)
 		m.current, m.expanded = v.Current, v.Expanded
+		m.sideSel, m.sideSent = v.SideSel, v.SideSel
 		m.layout.Sidebar, m.viewSide = v.Sidebar, v.Sidebar
 		m.watch, m.stopWatch = vc.Watch()
 	}
@@ -189,8 +199,9 @@ type tickMsg struct{}
 // answered.
 type viewMsg struct{}
 type viewDoneMsg struct {
-	sel bool // a selection
-	err error
+	sel  bool // a selection
+	side bool // a move of the sidebar's keyboard row
+	err  error
 }
 type boardMsg struct {
 	slug  string
@@ -241,13 +252,16 @@ func (m *dash) waitView() tea.Cmd {
 
 // call runs a view action in the background.
 func (m *dash) call(method string, p proto.ViewParams) tea.Cmd {
-	vc, sel := m.view, method == proto.MethodViewSelect
+	vc, sel, side := m.view, method == proto.MethodViewSelect, method == proto.MethodViewSideSel
 	if sel {
 		m.selPending++
 	}
+	if side {
+		m.sideBusy, m.sideSent = true, p.Key
+	}
 	return func() tea.Msg {
 		_, err := vc.Do(method, p)
-		return viewDoneMsg{sel: sel, err: err}
+		return viewDoneMsg{sel: sel, side: side, err: err}
 	}
 }
 
@@ -268,6 +282,9 @@ func (m *dash) fromView() tea.Cmd {
 		m.rebuild()
 	}
 	m.expanded = v.Expanded
+	if !m.sideBusy && m.sideSel == m.sideSent {
+		m.sideSel, m.sideSent = v.SideSel, v.SideSel
+	}
 	if !m.sideDrag && v.Sidebar != m.viewSide {
 		m.layout.Sidebar, m.viewSide = v.Sidebar, v.Sidebar
 		m.setWidth(m.winW)
@@ -312,6 +329,10 @@ func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case viewDoneMsg:
 		if msg.sel {
 			m.selPending--
+		}
+		if msg.side {
+			m.sideBusy = false
+			return m, m.sendSideSel()
 		}
 		if msg.err != nil && !errors.Is(msg.err, ErrViewDown) {
 			m.fail(msg.err)
@@ -402,17 +423,24 @@ func (m *dash) sideClick(mo tea.Mouse) tea.Cmd {
 		return m.expand(r.slug, !r.open)
 	case !can:
 		m.msg = why
-	case t.Session != "":
-		m.stack = nil
-		return m.act(func() actionMsg { return actionMsg{attach: t.Session, current: t.Project} })
-	case t.Coordinator:
-		m.stack = nil
-		return m.openProject(t.Project)
 	default:
-		m.stack = nil
-		return m.showProject(t.Project)
+		return m.openTarget(t)
 	}
 	return nil
+}
+
+// openTarget opens a sidebar row's target, closing any popup: a thread's
+// session is watched, a coordinator opened, else the project's dashboard
+// shown.
+func (m *dash) openTarget(t Target) tea.Cmd {
+	m.stack = nil
+	switch {
+	case t.Session != "":
+		return m.act(func() actionMsg { return actionMsg{attach: t.Session, current: t.Project} })
+	case t.Coordinator:
+		return m.openProject(t.Project)
+	}
+	return m.showProject(t.Project)
 }
 
 // showProject shows project's dashboard: it becomes current, with its
@@ -447,10 +475,80 @@ func (m *dash) expand(slug string, open bool) tea.Cmd {
 }
 
 // tree is the sidebar's tree, from the last poll: the listed project is
-// current, and its row the one you are on.
+// current, and its row the one you are on; the keyboard's row is marked
+// while the sidebar has the focus.
 func (m *dash) tree() []treeRow {
-	return buildTree(m.data.Projects, m.data.Sessions, treeIn{current: listProject(m.data, m.current),
+	rows := buildTree(m.data.Projects, m.data.Sessions, treeIn{current: listProject(m.data, m.current),
 		expanded: func(slug string) bool { return slices.Contains(m.expanded, slug) }})
+	if m.focus == focusSide {
+		markCursor(rows, m.sideW(), m.sideSel)
+	}
+	return rows
+}
+
+// The areas of the dashboard that take the keyboard, in tab's order.
+const (
+	focusList = iota
+	focusDetails
+	focusSide
+)
+
+// area is the area with the keyboard: the list when the details panel
+// has it but doesn't show (the window got narrower).
+func (m *dash) area() int {
+	if split, _ := m.split(); m.focus == focusDetails && !split {
+		return focusList
+	}
+	return m.focus
+}
+
+// cycleFocus moves the keyboard to the next area (tab), or the previous
+// (shift+tab): the list, the details panel when it shows, the sidebar.
+func (m *dash) cycleFocus(key string) tea.Cmd {
+	areas := []int{focusList, focusSide}
+	if split, _ := m.split(); split {
+		areas = []int{focusList, focusDetails, focusSide}
+	}
+	i := max(slices.Index(areas, m.area()), 0)
+	d := 1
+	if key == "shift+tab" {
+		d = len(areas) - 1
+	}
+	m.focus = areas[(i+d)%len(areas)]
+	if m.focus == focusSide {
+		// The keyboard's row starts on the row you are on.
+		m.sideSel = hereKey(m.tree())
+		return m.sendSideSel()
+	}
+	return nil
+}
+
+// sideKey runs a key while the sidebar has the focus; ok is false for a
+// key that isn't the sidebar's, which goes to the list's actions.
+func (m *dash) sideKeyboard(key string) (tea.Cmd, bool) {
+	op, ok := sideOp(key)
+	if !ok {
+		return nil, false
+	}
+	st := sideKeyStep(m.tree(), m.sideW(), m.sideSel, op)
+	var cmds []tea.Cmd
+	if st.msg != "" {
+		m.msg = st.msg
+	}
+	if st.back {
+		m.focus = focusList
+	}
+	if st.sel != "" && st.sel != m.sideSel {
+		m.sideSel = st.sel
+		cmds = append(cmds, m.sendSideSel())
+	}
+	if st.project != "" {
+		cmds = append(cmds, m.expand(st.project, st.open))
+	}
+	if t := st.target; t != nil {
+		cmds = append(cmds, m.openTarget(*t))
+	}
+	return tea.Batch(cmds...), true
 }
 
 // setData takes a poll's result, rebuilds the rows and rings the bell
@@ -552,7 +650,45 @@ func (m *dash) key(k tea.KeyPressMsg) tea.Cmd {
 	if m.busy {
 		return nil
 	}
+	switch m.area() {
+	case focusSide:
+		if cmd, ok := m.sideKeyboard(k.String()); ok {
+			return cmd
+		}
+	case focusDetails:
+		if cmd, ok := m.detailsKey(k.String()); ok {
+			return cmd
+		}
+	}
 	return m.listKey(k.String())
+}
+
+// sendSideSel tells the view where the sidebar's keyboard row is, when
+// it moved since the last time and nothing is on its way.
+func (m *dash) sendSideSel() tea.Cmd {
+	if m.view == nil || m.sideBusy || m.sideSel == m.sideSent {
+		return nil
+	}
+	return m.call(proto.MethodViewSideSel, proto.ViewParams{Key: m.sideSel})
+}
+
+// detailsKey runs a key while the details panel has the focus: the
+// arrows scroll it, esc goes back to the list. ok is false for the
+// other keys, which go to the list's actions.
+func (m *dash) detailsKey(key string) (tea.Cmd, bool) {
+	switch key {
+	case "up", "k", "down", "j":
+		d := 1
+		if key == "up" || key == "k" {
+			d = -1
+		}
+		m.scrollDetails(d)
+	case "esc":
+		m.focus = focusList
+	default:
+		return nil, false
+	}
+	return nil, true
 }
 
 // fail shows err in the footer, as a failure.
@@ -677,6 +813,12 @@ func (m *dash) listBody() []string {
 		m.detailTop = min(m.detailTop, max(len(right)-room, 0))
 		right = right[m.detailTop:]
 	}
+	// The details panel's divider is in the accent colour while the
+	// panel has the keyboard.
+	div := styleFaint.Render("│")
+	if m.focus == focusDetails {
+		div = styleAccent.Render("│")
+	}
 	body := make([]string, room)
 	for i := range body {
 		var l, d string
@@ -686,7 +828,7 @@ func (m *dash) listBody() []string {
 		if i < len(right) {
 			d = right[i]
 		}
-		body[i] = fit(l, lw) + reset + styleFaint.Render("│") + fit(d, m.w-lw-1) + reset
+		body[i] = fit(l, lw) + reset + div + fit(d, m.w-lw-1) + reset
 	}
 	return body
 }
@@ -708,9 +850,13 @@ func (m *dash) listLines(w int, inline bool) (lines, keys []string, sel int) {
 			add(m.ruleIn(countLabel(r.head, r.count), styleTitle, w), "")
 		case r.key != "" && r.key == m.sel:
 			sel = len(lines)
-			add(styleSel.Render(fit(r.text(w), w)), r.key)
+			st := styleSel
+			if m.area() != focusList {
+				st = st.Faint(true) // the keyboard is elsewhere
+			}
+			add(st.Render(fit(r.text(w), w)), r.key)
 			if inline && r.thread != nil && strings.HasPrefix(r.key, "th:") {
-				for _, l := range threadDetail(r.thread, "        ") {
+				for _, l := range threadDetail(r.thread, "        ", true) {
 					add(fit(l, w)+reset, r.key)
 				}
 			}
@@ -761,8 +907,13 @@ func (m *dash) frame(title string, body []string, sel int, keys string) string {
 	}
 	head := fit(left, max(m.w-ansi.StringWidth(right)-1, 1)) + reset + " " + right
 	foot := []string{m.rule("")}
-	if m.prefixed {
+	switch {
+	case m.prefixed:
 		keys = "prefix ▸ any dashboard key · d or esc cancels"
+	case m.focus == focusSide && m.top() == nil:
+		keys = sideHint + " · tab next"
+	case m.area() == focusDetails && m.top() == nil:
+		keys = "details: ↑ ↓ scroll · esc back · tab next"
 	}
 	m.shownKeys = keys
 	foot = append(foot, fit(" "+keysLine(keys), m.w)+reset)

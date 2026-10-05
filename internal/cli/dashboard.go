@@ -94,6 +94,10 @@ func (e *Env) fullConsole(own bool, goTo *tui.Target, agentName string) int {
 			}
 			st.Message = strings.TrimPrefix(ares.Session+": "+ares.Reason, ": ")
 			st.Then = ares.Then // prefix then p, ], [, … in the session
+			if ares.Then != "" || ares.GoTo != nil {
+				// Left to run a key or open a row there: no news.
+				st.Message = ""
+			}
 		}
 		res, err := tui.Dashboard(tui.DashOptions{Source: src, In: os.Stdin, Out: os.Stdout,
 			Cwd: e.Cwd, State: st, UIFile: uiFile, Prefix: tui.ConfigPrefix(), View: vc})

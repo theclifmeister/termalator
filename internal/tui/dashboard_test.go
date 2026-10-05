@@ -290,8 +290,9 @@ func TestDashboardBell(t *testing.T) {
 }
 
 // TestDashboardThreadRow: a selected thread row shows its todos, its
-// task's steps and its report's Next lines, to read: the coordinator
-// acts on them. i opens the project's inbox.
+// task's steps and its report's state, to read: the coordinator acts on
+// them, so the report's Next lines never show. i opens the project's
+// inbox.
 func TestDashboardThreadRow(t *testing.T) {
 	src := &fakeSource{data: testData()}
 	src.data.Projects[1].Items = []project.Item{{ID: "x", Kind: "report", Subject: "t-0005", Summary: "t-0005 handed in report 1"}}
@@ -300,12 +301,12 @@ func TestDashboardThreadRow(t *testing.T) {
 	m.sel = "th:beta:t-0005"
 	out := screen(m)
 	for _, want := range []string{"✓ Outline", "◐ Draft §2", "T4 steps:", "✓ 1 Plan", "○ 2 Write",
-		"report 1 (new) next:", "1 Merge the PR", "2 Delete the branch"} {
+		"report new · for the coordinator"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("thread detail lacks %q:\n%s", want, out)
 		}
 	}
-	for _, not := range []string{"a acks", "1-9"} {
+	for _, not := range []string{"a acks", "1-9", "next:", "Merge the PR", "Delete the branch"} {
 		if strings.Contains(out, not) {
 			t.Errorf("thread detail offers %q:\n%s", not, out)
 		}
@@ -421,11 +422,14 @@ func TestDashboardSplit(t *testing.T) {
 	m.sel = "th:beta:t-0005"
 	out := screen(m)
 	for _, want := range []string{"│ t-0005 Write docs", "● working", "task      T4", "progress  ▰▰▰▱▱ 60% 3/5",
-		"PR        https://github.com/o/r/pull/7", "report    1, new · for the coordinator", "✓ Outline", "1 Merge the PR",
+		"PR        https://github.com/o/r/pull/7", "report    1, new · for the coordinator", "✓ Outline",
 		"enter watches it; the coordinator acts on it"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("details lack %q:\n%s", want, out)
 		}
+	}
+	if strings.Contains(out, "Merge the PR") {
+		t.Errorf("details show the report's Next lines:\n%s", out)
 	}
 	if strings.Contains(out, "        todos:") {
 		t.Errorf("details shown under the row as well as beside it:\n%s", out)
@@ -613,5 +617,33 @@ func TestPromptWraps(t *testing.T) {
 	m.top().(*inputView).text = long
 	if out := screen(m); !strings.Contains(out, "new project name: /var/folders") {
 		t.Fatalf("prompt:\n%s", out)
+	}
+}
+
+// TestPopupMargins: beside a popup, over the details panel and the list
+// alike, no margin too narrow to read shows cut-off letters (a stray
+// "O" of OTHER SESSIONS, "b…" of the details): it is cleared, or the box
+// takes the width.
+func TestPopupMargins(t *testing.T) {
+	for _, w := range []int{60, 100, 140, 180} {
+		for _, key := range []string{"?", "a", ","} {
+			src := &fakeSource{data: testData()}
+			m := newDash(DashOptions{Source: src, Width: w + sideDefault, Height: 40, State: DashState{Current: "beta"}})
+			m.setData(src.data)
+			m.sel = "th:beta:t-0005"
+			keyPress(m, key)
+			lines := strings.Split(screen(m), "\n")
+			g := m.geo
+			if g == nil {
+				t.Fatalf("%d %s: no popup", w, key)
+			}
+			for y := g.y; y < g.y+g.h; y++ {
+				r := []rune(lines[y+1])
+				left, right := string(r[:g.x]), string(r[min(g.x+g.w, len(r)):])
+				if g.x < sliver && strings.TrimSpace(left) != "" || m.w-g.x-g.w < sliver && strings.TrimSpace(right) != "" {
+					t.Fatalf("%d %s: row %d shows %q | %q beside the box:\n%s", w, key, y, left, right, screen(m))
+				}
+			}
+		}
 	}
 }

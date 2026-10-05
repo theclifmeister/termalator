@@ -14,11 +14,11 @@
                        │                                                                                           │ T1 steps:
                        │                                                                                           │   ✓ 1 Reproduce
                        │                                                                                           │   ○ 2 Fix
-                       │                                                                                           │ report 1 (new) next:
-                       │                                                                                           │   1 Merge the PR
-                       │                                                                                           │   2 Remove the worktree
                        │                                                                                           │
                        │                                                                                           │ enter watches it; the coordinator acts on it
+                       │                                                                                           │
+                       │                                                                                           │
+                       │                                                                                           │
                        │                                                                                           │
                        │                                                                                           │
                        │                                                                                           │

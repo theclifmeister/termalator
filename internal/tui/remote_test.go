@@ -31,7 +31,7 @@ func TestRemoteMarkers(t *testing.T) {
 		if slim {
 			w = sideSlim - 1
 		}
-		on, off := ansi.Strip(treeLine(rows[0], w, slim)), ansi.Strip(treeLine(rows[3], w, slim))
+		on, off := ansi.Strip(treeLine(rows[0], w, slim, false)), ansi.Strip(treeLine(rows[3], w, slim, false))
 		if !strings.Contains(on, remoteMark) || strings.Contains(off, remoteMark) {
 			t.Errorf("slim %v: %q / %q", slim, on, off)
 		}
@@ -39,7 +39,7 @@ func TestRemoteMarkers(t *testing.T) {
 			t.Errorf("slim %v: %q is %d wide, want %d", slim, on, ansi.StringWidth(on), w)
 		}
 	}
-	if c := ansi.Strip(treeLine(rows[1], 20, false)); !strings.Contains(c, "coordinator"+remoteMark) {
+	if c := ansi.Strip(treeLine(rows[1], 20, false, false)); !strings.Contains(c, "coordinator"+remoteMark) {
 		t.Errorf("coordinator row %q", c)
 	}
 }

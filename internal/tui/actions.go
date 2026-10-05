@@ -51,6 +51,8 @@ func init() {
 	actions = []action{
 		{keys: []string{"up", "k"}, mouse: "the wheel, or a click on a row", run: func(m *dash, _ string) tea.Cmd { m.move(-1); return nil }},
 		{keys: []string{"down", "j"}, mouse: "the wheel, or a click on a row", run: func(m *dash, _ string) tea.Cmd { m.move(1); return nil }},
+		{keys: []string{"tab", "shift+tab"}, label: "tab shift+tab", help: "the keyboard to the next / previous area: the list, the details panel, the projects sidebar (its keys below); esc back to the list",
+			mouse: "a click on the area", run: (*dash).cycleFocus},
 		{keys: []string{"enter"}, label: "enter", help: "attach to the selected session; on a project, open its coordinator; a thread opens watch-only",
 			menu: []string{"open the selected row"},
 			foot: func(_ *dash, r row, ok bool) string {

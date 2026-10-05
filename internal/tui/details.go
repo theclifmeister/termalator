@@ -125,14 +125,10 @@ func (m *dash) threadPanel(d *panel, r row) {
 		d.field("PR", oneLine(t.Report.PR))
 	}
 	if t.Reports > 0 {
-		rs := fmt.Sprintf("%d, %s", t.Reports, t.ReportState())
-		if t.ReportState() == "new" {
-			rs = styleWarn.Render(rs) + styleFaint.Render(" · for the coordinator")
-		}
-		d.field("report", rs)
+		d.field("report", reportState(t, true))
 	}
 	d.gap()
-	for _, l := range threadDetail(t, "") {
+	for _, l := range threadDetail(t, "", false) {
 		d.add(l)
 	}
 	d.gap()

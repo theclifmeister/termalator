@@ -5,12 +5,12 @@
                        │        T1 steps:
                        │          ✓ 1 Reproduce
                        │          ○ 2 Fix
-                       │        report 1 (acked) next:
-                       │          1 Merge the PR
-                       │          2 Remove the worktree
+                       │        report read
                        │  tasks: 0 needs you · 1 in motion · 0 on deck
-                       │ OT╭─ demo inbox ────────────────────────────────────────────────────────────────────────────────────── × ╮───
-                       │  n│ report           <duration>     t-0001 handed in report 1 (T1)                                               │
+                       │ OTHER SESSIONS ──────────────────────────────────────────────────────────────────────────────────────────────
+                       │  none outside the projects (1 in them); s starts a shell
+                       │   ╭─ demo inbox ────────────────────────────────────────────────────────────────────────────────────── × ╮
+                       │   │ report           <duration>     t-0001 handed in report 1 (T1)                                               │
                        │   │                                                                                                      │
                        │   │ The coordinator handles these (tm inbox done).                                                       │
                        │   ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯

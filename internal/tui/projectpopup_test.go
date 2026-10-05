@@ -36,6 +36,10 @@ func keyPress(m *dash, name string) tea.Cmd {
 		msg = tea.KeyPressMsg{Code: tea.KeyUp}
 	case "down":
 		msg = tea.KeyPressMsg{Code: tea.KeyDown}
+	case "left":
+		msg = tea.KeyPressMsg{Code: tea.KeyLeft}
+	case "right":
+		msg = tea.KeyPressMsg{Code: tea.KeyRight}
 	case "ctrl+a":
 		msg = tea.KeyPressMsg{Code: 'a', Mod: tea.ModCtrl}
 	default:
