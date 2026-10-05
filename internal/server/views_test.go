@@ -263,6 +263,36 @@ func TestViewsLayoutActions(t *testing.T) {
 	}
 }
 
+// TestViewsInfo: a view showing a thread's session has the info panel,
+// which takes columns from the pane: the server sizes the session to
+// what is left; view.info changes it, and a new view takes it from the
+// subscriber's ui.json.
+func TestViewsInfo(t *testing.T) {
+	h := newFakeHost("s-1", "s-2")
+	h.panes["s-2"] = paneInfo{follows: true, thread: true}
+	vs := newViews(h, "", nil)
+	a, _ := join(t, vs, proto.ViewSubscribeParams{Cols: 200, Rows: 30, Info: &view.Info{Width: 50}})
+	v := mustDo(t, vs, proto.MethodViewAttach, proto.ViewParams{Client: a.id, Session: "s-1"})
+	if v.Thread || v.Info.Width != 50 || h.sizes["s-1"] != [2]uint16{200 - view.SideDefault, 28} {
+		t.Fatalf("a plain session: %+v %v", v, h.sizes["s-1"])
+	}
+	v = mustDo(t, vs, proto.MethodViewAttach, proto.ViewParams{Client: a.id, Session: "s-2"})
+	if !v.Thread || h.sizes["s-2"] != [2]uint16{200 - view.SideDefault - 50, 28} {
+		t.Fatalf("a thread: %+v %v", v, h.sizes["s-2"])
+	}
+	v = mustDo(t, vs, proto.MethodViewInfo, proto.ViewParams{Client: a.id, Info: &view.Info{Width: 50, Off: true}})
+	if !v.Info.Off || h.sizes["s-2"] != [2]uint16{200 - view.SideDefault, 28} {
+		t.Fatalf("panel off: %+v %v", v.Info, h.sizes["s-2"])
+	}
+	if _, err := vs.do(proto.MethodViewInfo, proto.ViewParams{Client: a.id}); err == nil {
+		t.Fatal("view.info without a panel answered")
+	}
+	vs.sessionGone("s-2")
+	if v, _ = vs.get(view.Main); v.Thread {
+		t.Fatalf("after the thread ended: %+v", v)
+	}
+}
+
 // TestViewsTree: view.project shows a project's dashboard, on every
 // console of the view, leaving the layout; view.sidesel moves the
 // sidebar's row; an own view keeps its tree to itself; view.expand is

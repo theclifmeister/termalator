@@ -1,0 +1,30 @@
+│ T1 Fix the login
+│ ● started · click to open
+│
+│ steps ▰▰▱▱▱ 33% 1/3
+│ ✓ Find the bug
+│ ◐ Fix it
+│ ○ Test it
+│
+│ thread    t-0001 ○ idle
+│ progress  ▰▰▱▱▱ 30% 1/3
+│ now       ▸ Fix it
+│
+│ branch    tm/demo/t-0001-fix-the-login
+│ <worktree>
+│ active    <duration> ago
+│
+│
+│
+│
+│
+│
+│
+│
+│
+│
+│
+│
+│
+│
+                  ≡  prefix+d dashboard

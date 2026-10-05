@@ -29,7 +29,8 @@ var sessionKeys = []keyHelp{
 	{"prefix+a i t , ?", "the project popup, inbox, tasks, settings or help, over the session or the dashboard; esc closes it"},
 	{"prefix+p ] [", "the project switcher, the next / previous project's coordinator"},
 	{"prefix+{ } b", "narrow / widen the sidebar, or make it a slim strip"},
-	{"prefix+tab", "the keyboard to the next area: in a session the projects sidebar (its keys below) and back to the pane, which gets no keys meanwhile; on the dashboard as tab"},
+	{"prefix+|", "show or hide the panel on the right: beside a thread's pane its info panel (task, steps, state, PR, last report; drag its border to resize it), on the dashboard the details panel"},
+	{"prefix+tab", "the keyboard to the next area: in a session the projects sidebar (its keys below), the info panel (↑ ↓ scroll, enter its task) and back to the pane, which gets no keys meanwhile; on the dashboard as tab"},
 	{"prefix+r", "turn remote control of a coordinator on or off, to continue it from another device (asks first): the session's, or on the dashboard the selected project's"},
 	{"prefix+prefix", "send the prefix key itself to the program"},
 }
@@ -58,8 +59,9 @@ var mouseKeys = []keyHelp{
 	{menuButton + " menu", "every action, first in the footer; in a session, every prefix command, on the status bar"},
 	{"status bar", menuButton + " menu, prefix+d dashboard, y yes"},
 	{"sidebar", "a row takes the keyboard, its cursor on it, and a project shows its dashboard, its coordinator or a thread attaches; a click on the pane gives the keyboard back"},
+	{"info panel", "beside a thread's pane: its task opens the task view, its PR the browser; a click elsewhere gives it the keyboard"},
 	{"wheel", "moves through a list; scrolls the details panel and long popups"},
-	{"drag", "the divider beside the details panel, the sidebar's border"},
+	{"drag", "the divider beside the details panel, the sidebar's border, the info panel's border"},
 	{"shift+drag", "select text, as usual; a pane whose program takes the mouse (Claude Code does) gets its clicks"},
 }
 

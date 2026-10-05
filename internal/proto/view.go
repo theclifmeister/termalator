@@ -26,6 +26,8 @@ const (
 	MethodViewSideSel = "view.sidesel"
 	// MethodViewSidebar sets the projects sidebar (Sidebar).
 	MethodViewSidebar = "view.sidebar"
+	// MethodViewInfo sets the info panel beside a thread's pane (Info).
+	MethodViewInfo = "view.info"
 	// MethodViewSize reports the client's window (Cols, Rows). With
 	// Resize, the user really resized it: the client becomes the view's
 	// latest and the panes follow.
@@ -54,6 +56,9 @@ type ViewSubscribeParams struct {
 	// Sidebar is the sidebar of a view created by this call (from the
 	// client's ui.json); an existing view keeps its own.
 	Sidebar *view.Sidebar `json:"sidebar,omitempty"`
+	// Info is the info panel of a view created by this call (from the
+	// client's ui.json), as Sidebar.
+	Info *view.Info `json:"info,omitempty"`
 }
 
 // ViewSubscribeResult is the answer to view.subscribe: the client's id in
@@ -80,6 +85,7 @@ type ViewParams struct {
 	Project string        `json:"project,omitempty"`
 	Key     string        `json:"key,omitempty"`
 	Sidebar *view.Sidebar `json:"sidebar,omitempty"`
+	Info    *view.Info    `json:"info,omitempty"`
 	Cols    uint16        `json:"cols,omitempty"`
 	Rows    uint16        `json:"rows,omitempty"`
 	Resize  bool          `json:"resize,omitempty"`

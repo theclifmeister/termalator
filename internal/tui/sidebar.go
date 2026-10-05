@@ -615,10 +615,14 @@ func (c *client) sideFocusOn(on bool) {
 	}
 	here := ""
 	switch {
+	case on && c.infoFocus:
+		// The last area: back to the pane.
+		c.infoFocus = false
 	case on && (c.side == nil || c.sideW == 0):
 		c.flash = "no sidebar here"
 	case on && c.sideFocus:
-		c.sideFocus = false
+		// On to the info panel when it shows, else back to the pane.
+		c.sideFocus, c.infoFocus = false, c.infoW > 0
 	case on:
 		// The keyboard's row starts on the row you are on.
 		c.sideFocus = true
@@ -641,6 +645,14 @@ func (c *client) sideFocusOn(on bool) {
 func (c *client) sideKeyboard(k uv.Key) {
 	name := keyName(k)
 	op, ok := sideOp(name)
+	if name == "tab" && c.infoW > 0 {
+		// tab goes on to the info panel, as prefix+tab does.
+		c.sideFocus, c.infoFocus, c.flash = false, true, ""
+		c.status()
+		c.mu.Unlock()
+		c.poke()
+		return
+	}
 	if name == "tab" {
 		op, ok = sideBack, true
 	}
@@ -772,7 +784,7 @@ func (c *client) sideMouse(m emu.Mouse) {
 		// A click on a row gives the sidebar the keyboard, its cursor on
 		// the row; it keeps it while the row's session shows.
 		sel = r.key()
-		c.sideFocus, c.v.SideSel = true, sel
+		c.sideFocus, c.infoFocus, c.v.SideSel = true, false, sel
 		c.flash = ""
 		c.status()
 	}

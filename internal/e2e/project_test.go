@@ -151,7 +151,7 @@ func TestSmokeSidebar(t *testing.T) {
 		x.WaitUntil("on t-0001", wait, func(sc string) bool { return lastLine(sc, demo+" t-0001") })
 	}
 	// No console sized the thread yet: the first to show it fills it.
-	waitPaneSize(t, env, th, paneCols(120), 28)
+	waitPaneSize(t, env, th, threadCols(120), 28)
 	// beta's row, from the pane, shows beta's dashboard on both consoles;
 	// its coordinator's row attaches the coordinator again.
 	w.Click(4, sideRow(t, w.Screen(), beta))

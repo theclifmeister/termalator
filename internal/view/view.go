@@ -60,6 +60,11 @@ type View struct {
 	// "p:<project>", "c:<project>" or "t:<project>/<thread>"); a key no
 	// longer in the tree, or "", means the row you are on (Here).
 	SideSel string `json:"side_sel,omitempty"`
+	// Info is the info panel beside a thread's pane; Thread says the
+	// session shown is a thread's, so the panel shows (the server sets
+	// it from the session's role).
+	Info   Info `json:"info"`
+	Thread bool `json:"thread,omitempty"`
 
 	// Latest is the client whose window sizes the layout: the one that
 	// last typed, resized its window or changed the layout. Cols and Rows
@@ -108,6 +113,10 @@ func (v *View) Valid() error {
 // showed in front.
 func (v *View) Normalize() {
 	v.Sidebar = v.Sidebar.Clamp()
+	v.Info = v.Info.Clamp()
+	if v.Focus == "" {
+		v.Thread = false
+	}
 	if v.Mode != ModeLayout && v.Mode != ModeDashboard {
 		v.Mode = ModeDashboard
 	}

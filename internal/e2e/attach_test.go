@@ -459,6 +459,12 @@ const sideDefault = view.SideDefault
 // the sidebar at the default layout.
 func paneCols(cols int) uint16 { return uint16(cols - SideCols(cols)) }
 
+// threadCols is the width of a thread's pane in a window cols wide: less
+// the sidebar and the info panel beside it.
+func threadCols(cols int) uint16 {
+	return paneCols(cols) - uint16(view.Info{}.Cols(cols, SideCols(cols)))
+}
+
 // waitPaneSize waits until session s is cols×rows: split panes resize
 // their sessions in the background.
 func waitPaneSize(t *testing.T, env *Env, s *Session, cols, rows uint16) {

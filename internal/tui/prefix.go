@@ -12,7 +12,7 @@ import (
 // It never reaches a popup as a plain key: a command that opens or goes
 // somewhere closes the popups first. Its keys are those of a session
 // (prefixStep): d, q, r, the dashboard keys (prefixCommands), the
-// sidebar's (paneCommands) and the prefix itself.
+// sidebar's and the info panel's (paneCommands) and the prefix itself.
 
 // isPrefixCommand says whether key is a command after the prefix.
 func isPrefixCommand(key string) bool {
@@ -20,7 +20,7 @@ func isPrefixCommand(key string) bool {
 }
 
 // prefixHint is the footer while the prefix waits for its command.
-const prefixHint = "prefix ▸ d dashboard · q quit · a i t , ? popups · p ] [ projects · r remote · esc cancel"
+const prefixHint = "prefix ▸ d dashboard · q quit · a i t , ? popups · p ] [ projects · | details · r remote · esc cancel"
 
 // prefixCommand runs the key typed after the prefix.
 func (m *dash) prefixCommand(key string) tea.Cmd {
@@ -41,9 +41,10 @@ func (m *dash) prefixCommand(key string) tea.Cmd {
 		// Already here: back to the bare list.
 		m.stack, m.focus = nil, focusList
 		return nil
-	case m.over != nil && (key == "r" || key == "tab"):
+	case m.over != nil && (key == "r" || key == "tab" || key == "|"):
 		// The session's own: back to it, which runs the command (the
-		// remote control question, the sidebar's keyboard).
+		// remote control question, the sidebar's keyboard, its info
+		// panel).
 		m.stack, m.result.Command = nil, key
 		return nil
 	case key == "r":
