@@ -6,6 +6,7 @@ package e2e
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -368,4 +369,66 @@ func TestSmokeDelegateFromList(t *testing.T) {
 	w.Key(keyEsc)
 	w.Quit()
 	w.WaitExit(wait)
+}
+
+// TestTickerCheckoutSync: when origin's main moves, the ticker
+// fast-forwards the user's clean checkout of it and journals that; with
+// uncommitted changes the checkout stays put and tm context says how far
+// behind it is.
+func TestTickerCheckoutSync(t *testing.T) {
+	env, projDir, _ := tickerEnv(t)
+	startThread(t, env, projDir) // the server, and its ticker, run
+	repo := ""
+	for _, l := range strings.Split(env.MustCLI("context", "--project", "demo"), "\n") {
+		if r, ok := strings.CutPrefix(l, "Repo: "); ok {
+			repo = r
+		}
+	}
+	if repo == "" {
+		t.Fatal("no repo in tm context")
+	}
+	git := func(dir string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@t"}, args...)...)
+		cmd.Dir = dir
+		b, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, b)
+		}
+		return strings.TrimSpace(string(b))
+	}
+	other := filepath.Join(t.TempDir(), "other")
+	git(repo, "clone", "-q", git(repo, "remote", "get-url", "origin"), other)
+	pushMain := func(body string) string {
+		os.WriteFile(filepath.Join(other, "NEWS"), []byte(body), 0o644)
+		git(other, "add", "NEWS")
+		git(other, "commit", "-q", "-m", "Merge pull request #12 from a/b")
+		git(other, "push", "-q", "origin", "HEAD:main")
+		return git(other, "rev-parse", "HEAD")
+	}
+
+	head := pushMain("one\n")
+	if !Poll(agentWait, func() bool { return git(repo, "rev-parse", "HEAD") == head }) {
+		t.Fatal("the checkout was not fast-forwarded")
+	}
+	var j []byte
+	if !Poll(agentWait, func() bool { // written just after the merge
+		j, _ = os.ReadFile(filepath.Join(projDir, "JOURNAL.md"))
+		return strings.Contains(string(j), "ticker repo.fast-forward "+repo+" main ")
+	}) {
+		t.Fatalf("journal:\n%s", j)
+	}
+
+	os.WriteFile(filepath.Join(repo, "README"), []byte("mine\n"), 0o644)
+	pushMain("two\n")
+	var ctx string
+	if !Poll(agentWait, func() bool {
+		ctx = env.MustCLI("context", "--project", "demo")
+		return strings.Contains(ctx, "Repo: "+repo+" · local main is 1 behind origin (uncommitted changes)")
+	}) {
+		t.Fatalf("tm context:\n%s", ctx)
+	}
+	if git(repo, "rev-parse", "HEAD") != head {
+		t.Fatal("moved a dirty checkout")
+	}
 }

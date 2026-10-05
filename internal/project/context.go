@@ -36,11 +36,19 @@ type Section struct {
 	Omitted string `json:"omitted,omitempty"`
 }
 
+// Ticked is what the ticker last saw (state/ticker.json, ticker.Seen):
+// each thread's PR state by thread id (ticker.PR's Summary), and a note
+// by repo path on a checkout that is behind origin
+// (worktree.Checkout's Note). Nil maps hold none.
+type Ticked struct {
+	PRs       map[string]string
+	Checkouts map[string]string
+}
+
 // Context builds `tm context`. It only reads files, and the same files
-// always give the same output (§7.6). prs is each thread's PR state as
-// the ticker last saw it (ticker.PRs, its Summary), by thread id; nil
-// for none.
-func (p *Project) Context(prs map[string]string) ([]Section, error) {
+// always give the same output (§7.6).
+func (p *Project) Context(seen Ticked) ([]Section, error) {
+	prs := seen.PRs
 	var out []Section
 
 	head := []string{
@@ -52,7 +60,11 @@ func (p *Project) Context(prs map[string]string) ([]Section, error) {
 		head = append(head, "Repos: (none)")
 	}
 	for _, r := range p.Meta.Repos {
-		head = append(head, "Repo: "+r)
+		line := "Repo: " + r
+		if n := seen.Checkouts[r]; n != "" {
+			line += " · " + n
+		}
+		head = append(head, line)
 	}
 	cfg, err := config.Load()
 	if err != nil {

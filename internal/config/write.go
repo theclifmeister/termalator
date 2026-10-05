@@ -70,7 +70,7 @@ func validKey(key string) bool {
 }
 
 // ProjectKeys are the settings of a [projects.<slug>] table.
-var ProjectKeys = []string{"start_threads", "yolo", "coordinator_approves", "parallel_threads", "auto_close", "auto_close_days", "auto_resolve", "pr_followup", "coordinator_remote_control"}
+var ProjectKeys = []string{"start_threads", "yolo", "coordinator_approves", "parallel_threads", "auto_close", "auto_close_days", "auto_resolve", "pr_followup", "coordinator_remote_control", "fast_forward_checkout"}
 
 // Set sets key in table ("" is the top level, "keys", "projects.<slug>")
 // to value: a bool, an int or a string.

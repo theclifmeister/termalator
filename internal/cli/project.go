@@ -146,7 +146,7 @@ func runContext(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
-	sections, err := p.Context(ticker.Summaries(tickerState(), p.Slug))
+	sections, err := p.Context(ticker.Seen(tickerState(), p.Slug))
 	if err != nil {
 		return err
 	}

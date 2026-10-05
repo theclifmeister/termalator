@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/theclifmeister/termilator/internal/worktree"
 )
 
 // PR is the fixed set of fields the ticker keeps of a pull request
@@ -22,10 +24,16 @@ type PR struct {
 	// if gh doesn't say); Head is its head commit.
 	MergedAt time.Time `json:"merged_at,omitzero"`
 	Head     string    `json:"head,omitempty"`
+	// Base is the branch it merges into; Mergeable (MERGEABLE,
+	// CONFLICTING, UNKNOWN) and MergeState (BEHIND, DIRTY, CLEAN, …) are
+	// GitHub's word on it against that branch.
+	Base       string `json:"base,omitempty"`
+	Mergeable  string `json:"mergeable,omitempty"`
+	MergeState string `json:"merge_state,omitempty"`
 }
 
 // prFields is what `gh pr view --json` is asked for.
-const prFields = "number,url,state,reviewDecision,statusCheckRollup,mergedAt,headRefOid"
+const prFields = "number,url,state,reviewDecision,statusCheckRollup,mergedAt,headRefOid,baseRefName,mergeable,mergeStateStatus"
 
 // ghPR is gh's answer. statusCheckRollup mixes check runs (status,
 // conclusion) and commit statuses (state).
@@ -36,6 +44,9 @@ type ghPR struct {
 	ReviewDecision string `json:"reviewDecision"`
 	MergedAt       string `json:"mergedAt"`
 	HeadRefOid     string `json:"headRefOid"`
+	BaseRefName    string `json:"baseRefName"`
+	Mergeable      string `json:"mergeable"`
+	MergeState     string `json:"mergeStateStatus"`
 	Rollup         []struct {
 		Status     string `json:"status"`
 		Conclusion string `json:"conclusion"`
@@ -74,6 +85,15 @@ func ParsePR(data []byte) (PR, error) {
 	}
 	if oidRE.MatchString(g.HeadRefOid) {
 		pr.Head = g.HeadRefOid
+	}
+	if worktree.ValidBranch(g.BaseRefName) {
+		pr.Base = g.BaseRefName
+	}
+	if upperRE.MatchString(g.Mergeable) {
+		pr.Mergeable = g.Mergeable
+	}
+	if upperRE.MatchString(g.MergeState) {
+		pr.MergeState = g.MergeState
 	}
 	pending := false
 	for _, c := range g.Rollup {
@@ -150,6 +170,9 @@ func (pr PR) Summary() string {
 			} else {
 				parts = append(parts, strconv.Itoa(pr.Failed)+" checks failed")
 			}
+		}
+		if pr.Mergeable == "CONFLICTING" {
+			parts = append(parts, "conflicts")
 		}
 		switch pr.Review {
 		case "APPROVED":
