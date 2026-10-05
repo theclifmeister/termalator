@@ -70,8 +70,9 @@ type DashOptions struct {
 
 // Over is a popup opened over a session (docs/SPEC.md §4): prefix then
 // a, i, t, , or ? in a session. The dashboard runs its key and draws the
-// popup over the session's screen, dimmed, rather than over the list;
-// the view stays as it is. When the popup closes the dashboard ends with
+// popup over the session's screen, dimmed, rather than over the list,
+// and follows the session's output meanwhile (paneFeed); the view stays
+// as it is. When the popup closes the dashboard ends with
 // Attach set, and the caller attaches again. Should the view go back to
 // its dashboard meanwhile (another console, prefix then d), it carries on
 // as the dashboard.
@@ -81,6 +82,9 @@ type Over struct {
 	Session string   // the session it is drawn over
 	Title   string   // how the header names the session
 	Screen  []string // the session's area as shown, plain, a line per row
+	// Where the pane is in Screen: after X columns of padding, at rows
+	// Y to Y+H, from its row Top. The session's output goes there.
+	X, Y, H, Top int
 }
 
 // DashResult says why the dashboard ended: Attach names a session to
@@ -89,6 +93,10 @@ type Over struct {
 type DashResult struct {
 	Attach string
 	State  DashState
+	// Message is the footer's message when a popup over a session closed
+	// (Over), for the session's status bar: a key that couldn't open its
+	// popup says why there.
+	Message string
 }
 
 // Dashboard runs the dashboard until the user quits or picks a session.
@@ -96,6 +104,17 @@ func Dashboard(opts DashOptions) (DashResult, error) {
 	loadIcons()
 	m := newDash(opts)
 	defer close(m.done)
+	if o := opts.Over; o != nil && o.Session != "" && opts.View != nil {
+		// The session keeps drawing under the popup.
+		if f, err := followPane(opts.View.paths, o.Session); err == nil {
+			m.feed = f
+			defer func() {
+				if m.feed != nil {
+					m.feed.close()
+				}
+			}()
+		}
+	}
 	if m.stopWatch != nil {
 		defer m.stopWatch()
 	}
@@ -170,9 +189,11 @@ type dash struct {
 	sized      bool // the first window size came
 	done       chan struct{}
 
-	// over: a popup over a session (Over), nil for the dashboard.
-	// leaving: a popup action asked the view to show a session.
+	// over: a popup over a session (Over), nil for the dashboard; feed
+	// follows the session under it, nil for none. leaving: a popup action
+	// asked the view to show a session.
 	over    *Over
+	feed    *paneFeed
 	leaving bool
 
 	result DashResult
@@ -253,7 +274,52 @@ func (m *dash) loadBoard(slug string) tea.Cmd {
 	}
 }
 
-func (m *dash) Init() tea.Cmd { return tea.Batch(m.load(), m.waitView()) }
+func (m *dash) Init() tea.Cmd { return tea.Batch(m.load(), m.waitView(), m.waitFeed()) }
+
+// feedMsg: the session under the popup drew something.
+type feedMsg struct{}
+
+// waitFeed waits for the session under the popup to change.
+func (m *dash) waitFeed() tea.Cmd {
+	f, done := m.feed, m.done
+	if f == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		select {
+		case <-f.wake:
+		case <-f.end:
+		case <-done:
+			return nil
+		}
+		time.Sleep(feedInterval) // a burst of output is one redraw
+		return feedMsg{}
+	}
+}
+
+// fromFeed draws the session's screen as it is now under the popup.
+func (m *dash) fromFeed() tea.Cmd {
+	if m.over == nil || m.feed == nil {
+		return nil
+	}
+	if rows := m.feed.screen(); rows != nil {
+		m.over.Screen = m.over.place(rows, len(m.over.Screen))
+	}
+	select {
+	case <-m.feed.end:
+		return nil // the last of it
+	default:
+		return m.waitFeed()
+	}
+}
+
+// dropOver turns the popup over a session into the dashboard.
+func (m *dash) dropOver() {
+	if m.feed != nil {
+		m.feed.close()
+	}
+	m.over, m.feed = nil, nil
+}
 
 // waitView waits for the view's next version.
 func (m *dash) waitView() tea.Cmd {
@@ -295,7 +361,7 @@ func (m *dash) fromView() tea.Cmd {
 		switch {
 		case v.Mode != view.ModeLayout:
 			// Back to its dashboard, from another console: carry on as it.
-			m.over = nil
+			m.dropOver()
 		case v.Focus != "" && v.Focus != m.over.Session:
 			m.result.Attach = v.Focus
 			return tea.Quit
@@ -326,8 +392,9 @@ func (m *dash) fromView() tea.Cmd {
 func (m *dash) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	_, cmd := m.update(msg)
 	if m.overDone() {
-		// The popup over the session closed: back to the session.
-		m.result.Attach = cmp.Or(m.over.Session, "view")
+		// The popup over the session closed: back to the session, with
+		// what the footer said.
+		m.result.Attach, m.result.Message = cmp.Or(m.over.Session, "view"), m.msg
 		return m, tea.Quit
 	}
 	if m.view == nil {
@@ -360,6 +427,8 @@ func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case viewMsg:
 		return m, m.fromView()
+	case feedMsg:
+		return m, m.fromFeed()
 	case viewDoneMsg:
 		if msg.sel {
 			m.selPending--
@@ -658,7 +727,8 @@ func (m *dash) key(k tea.KeyPressMsg) tea.Cmd {
 		m.prefixed = false
 		if k.String() == "d" && m.over != nil {
 			// Over a session, as in it: the view's dashboard.
-			m.over, m.stack = nil, nil
+			m.dropOver()
+			m.stack = nil
 			return m.call(proto.MethodViewDashboard, proto.ViewParams{})
 		}
 		if k.String() == "d" || k.String() == m.prefix || k.String() == "esc" {
