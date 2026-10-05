@@ -15,10 +15,10 @@ Background: the t-0001 feasibility study (`library/t-0001/termilator-feasibility
 ### How to read this document
 
 - **MUST / SHOULD / MAY** have their usual meaning.
-- Three spikes shaped this spec. Their findings are folded in, and §14 lists what they settled and what is still open:
-  - `libghostty`: `spikes/libghostty` (t-0003), the emulator and the attach design.
-  - `claude`: `spikes/claude` (t-0004), the Claude Code integration.
-  - `symlinks`: `spikes/symlinks` (t-0005), sharing state with sandboxed agents, which shaped the access model in §5.2.
+- Three spikes shaped this spec. Their findings are folded in, kept in `docs/research/`, and §14 lists what they settled and what is still open:
+  - `libghostty`: [`docs/research/libghostty.md`](research/libghostty.md) (t-0003), the emulator and the attach design.
+  - `claude`: [`docs/research/claude.md`](research/claude.md) (t-0004), the Claude Code integration.
+  - `symlinks`: [`docs/research/symlinks.md`](research/symlinks.md) (t-0005), sharing state with sandboxed agents, which shaped the access model in §5.2.
 - Section numbers are cited from the Go package docs; keep them stable.
 
 ---
@@ -132,7 +132,7 @@ The dependency rule: `server`, `session`, `ticker`, `tui`, `project`, `thread` a
 
 ### 3.3 Protocol
 
-The libghostty spike (t-0003, `spikes/libghostty/FINDINGS.md`) built this design and verified it end to end with Claude Code 2.1.289:
+The libghostty spike (t-0003, `docs/research/libghostty.md`) built this design and verified it end to end with Claude Code 2.1.289:
 - detach mid-stream, close the window outright, and reattach from a new window at a different size;
 - 21 full-state digest comparisons between client and server, with 0 mismatches.
 
@@ -488,7 +488,7 @@ The processes die with the server, because the PTY master closes and the childre
 - for threads, the Bash sandbox enabled. It blocks writes outside the worktree at the OS level and checks real paths;
 - the server's socket in `sandbox.network.allowUnixSockets`. Without it, sandboxed `tm` calls fail with `EPERM`.
 
-**Why not symlinks.** The symlink spike (t-0005, `spikes/symlinks/FINDINGS.md`) showed:
+**Why not symlinks.** The symlink spike (t-0005, `docs/research/symlinks.md`) showed:
 
 - Claude Code resolves every link and checks the **real path**, so a link gives no access that an absolute path doesn't. It only adds a second path that also needs a rule.
 - The Write and Edit tools refuse to write to a file that is itself a symlink.
@@ -952,7 +952,7 @@ Screen rules run on emulator text (the title, or the bottom N lines of the activ
 
 ### 8.6 Claude Code: the reference agent
 
-The integration spike verified all of this against Claude Code **2.1.289** on macOS (t-0004, `spikes/claude/FINDINGS.md`). The user approved using two undocumented Claude features, behind a version guard with fallbacks:
+The integration spike verified all of this against Claude Code **2.1.289** on macOS (t-0004, `docs/research/claude.md`). The user approved using two undocumented Claude features, behind a version guard with fallbacks:
 - the session status file `~/.claude/sessions/<pid>.json`;
 - the `uds-messaging` socket.
 
@@ -1241,9 +1241,11 @@ Never automated, in any mode: merging PRs, force-pushes, deleting branches with 
 ## 14. Open points
 
 All three spikes have reported:
-- symlinks: t-0005, PR #1;
-- Claude Code: t-0004, PR #3, `spikes/claude/FINDINGS.md`;
-- libghostty: t-0003, PR #4, `spikes/libghostty/FINDINGS.md`.
+- symlinks: t-0005, PR #1, `docs/research/symlinks.md`;
+- Claude Code: t-0004, PR #3, `docs/research/claude.md`;
+- libghostty: t-0003, PR #4, `docs/research/libghostty.md`.
+
+The spike code itself was removed in T39 and is in git history under `spikes/` at commit `41983d953b6d`.
 
 **What they settled:**
 
@@ -1300,7 +1302,7 @@ Sizes: **S** ≤ 2 days, **M** 3–5 days, **L** 1–2 weeks, for one developer 
   - `tm session start|list|read|stop`.
 - **Try it:** `tm session start` (a shell), `tm session list`, `tm session read <id>` shows its screen as text. Close the terminal window, open a new one: `tm session list` still shows it. `tm server stop` ends it.
 - **Tests:**
-  - **`internal/e2e`** ported from `spikes/libghostty/cmd/harness` (§16.2): `Env`, `Window`, golden screens with masks, the orphan-process check, failure artifacts, and the first deterministic app;
+  - **`internal/e2e`** ported from the libghostty spike's `cmd/harness` (§16.2): `Env`, `Window`, golden screens with masks, the orphan-process check, failure artifacts, and the first deterministic app;
   - integration tests for auto-start, detachment (close the launching terminal; the server survives), the lock, stale and overlong sockets, peer-uid rejection, the handshake, and session start/read/stop;
   - a fuzz target for the control NDJSON decoder;
   - `make e2e` and `make e2e-smoke`, with the smoke set wired into `ci.yml`, and the full set into `nightly.yml`.
@@ -1466,7 +1468,7 @@ Termilator has a test strategy from the first milestone, not a test phase at the
 
 ### 16.2 The end-to-end harness: `internal/e2e`
 
-The harness is built in M1, ported from `spikes/libghostty/cmd/harness`, and lives in the product so every milestone can add scenarios to it. A test reads like the user's session:
+The harness is built in M1, ported from the libghostty spike's `cmd/harness` (removed in T39; see §14), and lives in the product so every milestone can add scenarios to it. A test reads like the user's session:
 
 ```go
 func TestDetachReattach(t *testing.T) {
