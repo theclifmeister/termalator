@@ -195,7 +195,7 @@ func TestInfoPanelMouse(t *testing.T) {
 	x := c.infoX() + 3
 	// A click on a plain line: the keyboard.
 	c.mouse(uv.MouseClickEvent{X: x, Y: 2, Button: uv.MouseLeft})
-	if !c.infoFocus || c.sideFocus {
+	if c.kb != areaInfo {
 		t.Fatal("a click didn't give the panel the keyboard")
 	}
 	c.key(uv.Key{Code: uv.KeyDown})
@@ -205,15 +205,15 @@ func TestInfoPanelMouse(t *testing.T) {
 	}
 	c.key(uv.Key{Code: uv.KeyUp})
 	c.key(uv.Key{Code: 'x', Text: "x"}) // dropped: nothing reaches the pane
-	if c.info.top != 1 || !c.infoFocus {
-		t.Fatalf("up: top %d, focus %v", c.info.top, c.infoFocus)
+	if c.info.top != 1 || c.kb != areaInfo {
+		t.Fatalf("up: top %d, focus %d", c.info.top, c.kb)
 	}
 	c.mouse(uv.MouseWheelEvent{X: x, Y: 2, Button: uv.MouseWheelDown})
 	if c.info.top != 4 {
 		t.Fatalf("wheel: top %d", c.info.top)
 	}
 	c.key(uv.Key{Code: uv.KeyEscape})
-	if c.infoFocus {
+	if c.kb == areaInfo {
 		t.Fatal("esc kept the keyboard in the panel")
 	}
 	// The PR: the browser.
@@ -251,16 +251,16 @@ func TestInfoPanelMouse(t *testing.T) {
 func TestInfoPanelKeyboardCycle(t *testing.T) {
 	c := infoClient(t, 200)
 	c.sideW = 32
-	c.sideFocusOn(true)
-	if !c.sideFocus {
+	c.nextArea()
+	if c.kb != areaSide {
 		t.Fatal("not in the sidebar")
 	}
-	c.sideFocusOn(true)
-	if c.sideFocus || !c.infoFocus {
+	c.nextArea()
+	if c.kb != areaInfo {
 		t.Fatal("not on to the info panel")
 	}
-	c.sideFocusOn(true)
-	if c.sideFocus || c.infoFocus {
+	c.nextArea()
+	if c.kb != areaMain {
 		t.Fatal("not back to the pane")
 	}
 }
@@ -272,7 +272,7 @@ func TestInfoPanelClickToFocus(t *testing.T) {
 	c := infoClient(t, 200)
 	c.side.projects = []ProjectData{{Slug: "demo"}}
 	c.mouse(uv.MouseClickEvent{X: c.infoX() + 3, Y: 2, Button: uv.MouseLeft})
-	if !c.infoFocus || c.sideFocus {
+	if c.kb != areaInfo {
 		t.Fatal("a click in the panel didn't give it the keyboard")
 	}
 	c.mu.Lock()
@@ -282,11 +282,46 @@ func TestInfoPanelClickToFocus(t *testing.T) {
 		t.Fatal("no sidebar rows")
 	}
 	c.mouse(uv.MouseClickEvent{X: 3, Y: 1, Button: uv.MouseLeft})
-	if c.infoFocus || !c.sideFocus {
-		t.Fatalf("a click on a sidebar row: info %v, sidebar %v", c.infoFocus, c.sideFocus)
+	if c.kb != areaSide {
+		t.Fatalf("a click on a sidebar row: focus %d", c.kb)
 	}
 	c.mouse(uv.MouseClickEvent{X: c.infoX() + 3, Y: 2, Button: uv.MouseLeft})
-	if !c.infoFocus || c.sideFocus {
+	if c.kb != areaInfo {
 		t.Fatal("a click in the panel didn't take the keyboard from the sidebar")
+	}
+}
+
+// TestOneFocusModel: the dashboard and a session share one keyboard
+// model: cycle steps through the areas shown, both ways; in a session,
+// tab in the sidebar and in the info panel moves on as prefix+tab does.
+func TestOneFocusModel(t *testing.T) {
+	areas := []area{areaMain, areaSide, areaInfo}
+	if cycle(areas, areaMain, false) != areaSide || cycle(areas, areaInfo, false) != areaMain || cycle(areas, areaMain, true) != areaInfo {
+		t.Fatal("cycle")
+	}
+	if cycle(areas[:2], areaInfo, false) != areaSide { // an area gone counts as the first
+		t.Fatal("cycle from an area that no longer shows")
+	}
+	c := infoClient(t, 200)
+	tab := uv.Key{Code: uv.KeyTab}
+	c.nextArea()
+	if c.kb != areaSide {
+		t.Fatalf("prefix+tab: %d", c.kb)
+	}
+	c.key(tab)
+	if c.kb != areaInfo {
+		t.Fatalf("tab in the sidebar: %d", c.kb)
+	}
+	c.key(tab)
+	if c.kb != areaMain {
+		t.Fatalf("tab in the info panel: %d", c.kb)
+	}
+	// Without the panel, the sidebar's tab goes back to the pane.
+	c.v.Info.Off = true
+	c.relayout()
+	c.nextArea()
+	c.key(tab)
+	if c.kb != areaMain {
+		t.Fatalf("tab in the sidebar, no panel: %d", c.kb)
 	}
 }

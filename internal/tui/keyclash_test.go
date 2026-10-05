@@ -144,7 +144,7 @@ func TestPrefixNeverReachesPopup(t *testing.T) {
 			if len(src.asked)+len(src.delegated) > 0 {
 				t.Errorf("%s: prefix+%s reached the popup: asked %v %v", name, k, src.asked, src.delegated)
 			}
-			if k == "tab" && m.focus == focusList {
+			if k == "tab" && m.focus == areaMain {
 				t.Errorf("%s: prefix+tab kept the keyboard on the list", name)
 			}
 		}

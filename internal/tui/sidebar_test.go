@@ -225,7 +225,7 @@ func TestDashboardSidebarKeys(t *testing.T) {
 		t.Fatal("a cursor without the focus")
 	}
 	keyPress(m, "tab")
-	if m.focus != focusSide || cursor() != "p:beta" || !strings.Contains(whole(m), "sidebar: ↑ ↓ move") {
+	if m.focus != areaSide || cursor() != "p:beta" || !strings.Contains(whole(m), "sidebar: ↑ ↓ move") {
 		t.Fatalf("tab: focus %d cursor %q:\n%s", m.focus, cursor(), whole(m))
 	}
 	steps := []struct{ key, cursor string }{
@@ -248,7 +248,7 @@ func TestDashboardSidebarKeys(t *testing.T) {
 		t.Fatal("? with the sidebar focused")
 	}
 	keyPress(m, "esc")
-	if m.focus != focusSide {
+	if m.focus != areaSide {
 		t.Fatal("esc closing the help left the sidebar")
 	}
 	// enter on a thread attaches it.
@@ -259,11 +259,11 @@ func TestDashboardSidebarKeys(t *testing.T) {
 	// esc goes back to the list; shift+tab from the list to the sidebar.
 	m.result = DashResult{}
 	keyPress(m, "esc")
-	if m.focus != focusList || cursor() != "" {
+	if m.focus != areaMain || cursor() != "" {
 		t.Fatalf("esc: focus %d", m.focus)
 	}
 	keyPress(m, "shift+tab")
-	if m.focus != focusSide {
+	if m.focus != areaSide {
 		t.Fatalf("shift+tab: focus %d", m.focus)
 	}
 }
@@ -276,7 +276,7 @@ func TestDashboardFocusCycle(t *testing.T) {
 	m := newDash(DashOptions{Source: src, Width: 140 + sideDefault, Height: 12, State: DashState{Current: "beta"}})
 	m.setData(src.data)
 	m.sel = "th:beta:t-0005"
-	for _, want := range []int{focusDetails, focusSide, focusList} {
+	for _, want := range []area{areaDetails, areaSide, areaMain} {
 		keyPress(m, "tab")
 		if m.focus != want {
 			t.Fatalf("tab: focus %d, want %d", m.focus, want)
@@ -284,7 +284,7 @@ func TestDashboardFocusCycle(t *testing.T) {
 	}
 	keyPress(m, "shift+tab")
 	keyPress(m, "shift+tab")
-	if m.focus != focusDetails {
+	if m.focus != areaDetails {
 		t.Fatalf("shift+tab twice: focus %d", m.focus)
 	}
 	keyPress(m, "down")
@@ -293,7 +293,7 @@ func TestDashboardFocusCycle(t *testing.T) {
 		t.Fatalf("↓ in the details: top %d sel %q", m.detailTop, m.sel)
 	}
 	keyPress(m, "esc")
-	if m.focus != focusList {
+	if m.focus != areaMain {
 		t.Fatalf("esc: focus %d", m.focus)
 	}
 }
@@ -515,48 +515,48 @@ func TestClickFocus(t *testing.T) {
 
 	// A project row: the sidebar, its cursor on alpha; ↓ moves it.
 	m.Update(tea.MouseClickMsg{X: 5, Y: 1, Button: tea.MouseLeft})
-	if m.focus != focusSide || cursor() != "p:alpha" || m.current != "alpha" {
+	if m.focus != areaSide || cursor() != "p:alpha" || m.current != "alpha" {
 		t.Fatalf("project click: focus %d cursor %q current %q", m.focus, cursor(), m.current)
 	}
 	keyPress(m, "down")
-	if cursor() != "c:alpha" || m.focus != focusSide {
+	if cursor() != "c:alpha" || m.focus != areaSide {
 		t.Fatalf("↓ after the click: cursor %q focus %d", cursor(), m.focus)
 	}
 
 	// A list row: the list; the details panel: the panel.
 	_, lw := m.split()
 	m.Update(tea.MouseClickMsg{X: sw + 3, Y: 3, Button: tea.MouseLeft})
-	if m.focus != focusList || cursor() != "" {
+	if m.focus != areaMain || cursor() != "" {
 		t.Fatalf("list click: focus %d cursor %q", m.focus, cursor())
 	}
 	m.Update(tea.MouseClickMsg{X: sw + lw + 5, Y: 3, Button: tea.MouseLeft})
-	if m.focus != focusDetails {
+	if m.focus != areaDetails {
 		t.Fatalf("details click: focus %d", m.focus)
 	}
 
 	// A thread row attaches its session and keeps the sidebar's keyboard,
 	// cursor on the thread.
 	run(m, m.sideClick(tea.Mouse{X: 5, Y: 5, Button: tea.MouseLeft}))
-	if m.result.Attach != "s-5" || m.focus != focusSide || cursor() != "t:beta/t-0005" {
+	if m.result.Attach != "s-5" || m.focus != areaSide || cursor() != "t:beta/t-0005" {
 		t.Fatalf("thread click: attach %q focus %d cursor %q", m.result.Attach, m.focus, cursor())
 	}
 	// A row without a session still takes the keyboard, and says why.
 	m.result = DashResult{}
-	m.focus = focusList
+	m.focus = areaMain
 	m.Update(tea.MouseClickMsg{X: 5, Y: 6, Button: tea.MouseLeft})
-	if m.focus != focusSide || cursor() != "t:beta/t-0006" || !strings.Contains(m.msg, "no running session") {
+	if m.focus != areaSide || cursor() != "t:beta/t-0006" || !strings.Contains(m.msg, "no running session") {
 		t.Fatalf("thread without a session: focus %d cursor %q msg %q", m.focus, cursor(), m.msg)
 	}
 	// enter on the thread gives the session the keyboard.
 	keyPress(m, "up")
 	run(m, keyPress(m, "enter"))
-	if m.result.Attach != "s-5" || m.focus != focusList {
+	if m.result.Attach != "s-5" || m.focus != areaMain {
 		t.Fatalf("enter on t-0005: attach %q focus %d", m.result.Attach, m.focus)
 	}
 
 	// Back from a session whose sidebar had the keyboard: it keeps it.
 	m = newDash(DashOptions{Source: src, Width: 140 + sw, Height: 30, State: DashState{Current: "beta", SideFocus: true}})
-	if m.focus != focusSide {
+	if m.focus != areaSide {
 		t.Fatalf("SideFocus: focus %d", m.focus)
 	}
 }
@@ -581,11 +581,11 @@ func TestSessionSidebarClickFocus(t *testing.T) {
 	c.side, c.sideW = &sidebar{projects: d.Projects, sessions: d.Sessions}, sideDefault
 
 	c.mouse(uv.MouseClickEvent{X: 5, Y: 5, Button: uv.MouseLeft})
-	if !c.sideFocus || c.v.SideSel != "t:beta/t-0005" || !strings.Contains(c.statusText, "you are on it") {
-		t.Fatalf("click on t-0005: focus %v sel %q status %q", c.sideFocus, c.v.SideSel, c.statusText)
+	if c.kb != areaSide || c.v.SideSel != "t:beta/t-0005" || !strings.Contains(c.statusText, "you are on it") {
+		t.Fatalf("click on t-0005: focus %d sel %q status %q", c.kb, c.v.SideSel, c.statusText)
 	}
 	c.key(uv.Key{Code: 'x', Text: "x"}) // the sidebar's: nothing reaches the pane
-	if !c.sideFocus {
+	if c.kb != areaSide {
 		t.Fatal("a key lost the sidebar's focus")
 	}
 	c.finish(Result{Reason: "detached"})

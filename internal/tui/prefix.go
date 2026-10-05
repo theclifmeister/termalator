@@ -39,7 +39,7 @@ func (m *dash) prefixCommand(key string) tea.Cmd {
 		return m.toDashboard()
 	case key == "d":
 		// Already here: back to the bare list.
-		m.stack, m.focus = nil, focusList
+		m.stack, m.focus = nil, areaMain
 		return nil
 	case m.over != nil && (key == "r" || key == "tab" || key == "|"):
 		// The session's own: back to it, which runs the command (the

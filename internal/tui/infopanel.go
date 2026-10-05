@@ -312,7 +312,7 @@ func (c *client) infoRows() int {
 func (c *client) appendInfo(b []byte, wrote bool) ([]byte, bool) {
 	ip := c.info
 	border := styleFaint.Render("│")
-	if c.infoFocus {
+	if c.kb == areaInfo {
 		border = styleAccent.Render("│")
 	}
 	x, w := c.infoX(), c.infoW-1
@@ -373,8 +373,8 @@ func (c *client) infoToggle() {
 		return
 	}
 	l, msg := c.v.Info.Toggle(c.viewCols(), c.geo.SideW)
-	if l.Off {
-		c.infoFocus = false
+	if l.Off && c.kb == areaInfo {
+		c.kb = areaMain
 	}
 	c.flash = msg
 	c.status()
@@ -384,7 +384,8 @@ func (c *client) infoToggle() {
 
 // infoKeyboard runs a key while the panel has the keyboard: the arrows
 // scroll it, enter shows the task, esc and tab give the keyboard back to
-// the pane; any other key is dropped. c.mu held; released here.
+// the pane (tab, as prefix+tab, to the next area: the pane); any other
+// key is dropped. c.mu held; released here.
 func (c *client) infoKeyboard(k uv.Key) {
 	c.flash = ""
 	task := false
@@ -404,7 +405,7 @@ func (c *client) infoKeyboard(k uv.Key) {
 	case "enter":
 		task = true
 	case "esc", "tab":
-		c.infoFocus = false
+		c.kb = areaMain
 	}
 	c.status()
 	c.mu.Unlock()
@@ -432,7 +433,7 @@ func (c *client) infoTask() {
 		return
 	}
 	slug, id := d.slug, d.task.ID
-	c.infoFocus = false
+	c.kb = areaMain
 	c.mu.Unlock()
 	c.popupTask(slug, id)
 }
@@ -497,9 +498,8 @@ func (c *client) infoMouse(m emu.Mouse) {
 	if i := ip.top + m.Y; i >= 0 && i < len(ip.hits) {
 		h = ip.hits[i]
 	}
-	// A click in the panel gives it the keyboard (and takes it from the
-	// sidebar).
-	c.infoFocus, c.sideFocus = true, false
+	// A click in the panel gives it the keyboard.
+	c.kb = areaInfo
 	url := ""
 	if ip.data != nil {
 		url = ip.data.prURL()

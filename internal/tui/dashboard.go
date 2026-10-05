@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"slices"
 	"strings"
 	"time"
 
@@ -143,7 +142,7 @@ func Dashboard(opts DashOptions) (DashResult, error) {
 	}
 	d := final.(*dash)
 	d.result.State = DashState{Selected: d.sel, Current: d.current}
-	d.result.SideFocus = d.result.Attach != "" && d.focus == focusSide
+	d.result.SideFocus = d.result.Attach != "" && d.focus == areaSide
 	return d.result, nil
 }
 
@@ -163,7 +162,7 @@ type dash struct {
 	// keyboard row, the view's. sideSent is the last one sent; one is
 	// on its way at a time (sideBusy), so they arrive in order, and the
 	// view's own doesn't overwrite this console's meanwhile.
-	focus    int
+	focus    area
 	sideSel  string
 	sideSent string
 	sideBusy bool
@@ -230,7 +229,7 @@ func newDash(o DashOptions) *dash {
 		m.then = o.Over.Key
 	}
 	if o.State.SideFocus {
-		m.focus = focusSide
+		m.focus = areaSide
 	}
 	if vc := o.View; vc != nil {
 		v := vc.View()
@@ -585,7 +584,7 @@ func (m *dash) sideClick(mo tea.Mouse) tea.Cmd {
 	if ok && !border {
 		// A click on a row gives the sidebar the keyboard, its cursor on
 		// the row; it keeps it in the session the row attaches.
-		m.focus, m.sideSel = focusSide, r.key()
+		m.focus, m.sideSel = areaSide, r.key()
 		cmd = m.sendSideSel()
 	}
 	switch {
@@ -637,24 +636,17 @@ func (m *dash) showProject(slug string) tea.Cmd {
 // while the sidebar has the focus.
 func (m *dash) tree() []treeRow {
 	rows := buildTree(m.data.Projects, m.data.Sessions, treeIn{current: listProject(m.data, m.current)})
-	if m.focus == focusSide {
+	if m.focus == areaSide {
 		markCursor(rows, m.sideW(), m.sideSel)
 	}
 	return rows
 }
 
-// The areas of the dashboard that take the keyboard, in tab's order.
-const (
-	focusList = iota
-	focusDetails
-	focusSide
-)
-
 // area is the area with the keyboard: the list when the details panel
 // has it but doesn't show (the window got narrower).
-func (m *dash) area() int {
-	if split, _ := m.split(); m.focus == focusDetails && !split {
-		return focusList
+func (m *dash) area() area {
+	if split, _ := m.split(); m.focus == areaDetails && !split {
+		return areaMain
 	}
 	return m.focus
 }
@@ -662,17 +654,12 @@ func (m *dash) area() int {
 // cycleFocus moves the keyboard to the next area (tab), or the previous
 // (shift+tab): the list, the details panel when it shows, the sidebar.
 func (m *dash) cycleFocus(key string) tea.Cmd {
-	areas := []int{focusList, focusSide}
+	areas := []area{areaMain, areaSide}
 	if split, _ := m.split(); split {
-		areas = []int{focusList, focusDetails, focusSide}
+		areas = []area{areaMain, areaDetails, areaSide}
 	}
-	i := max(slices.Index(areas, m.area()), 0)
-	d := 1
-	if key == "shift+tab" {
-		d = len(areas) - 1
-	}
-	m.focus = areas[(i+d)%len(areas)]
-	if m.focus == focusSide {
+	m.focus = cycle(areas, m.area(), key == "shift+tab")
+	if m.focus == areaSide {
 		// The keyboard's row starts on the row you are on.
 		m.sideSel = hereKey(m.tree())
 		return m.sendSideSel()
@@ -693,7 +680,7 @@ func (m *dash) sideKeyboard(key string) (tea.Cmd, bool) {
 		m.msg = st.msg
 	}
 	if st.back {
-		m.focus = focusList
+		m.focus = areaMain
 	}
 	if st.sel != "" && st.sel != m.sideSel {
 		m.sideSel = st.sel
@@ -703,7 +690,7 @@ func (m *dash) sideKeyboard(key string) (tea.Cmd, bool) {
 		if t.Session != "" || t.Coordinator {
 			// enter, unlike a click, gives the session it attaches the
 			// keyboard, as in a session.
-			m.focus = focusList
+			m.focus = areaMain
 		}
 		cmds = append(cmds, m.openTarget(*t))
 	}
@@ -815,11 +802,11 @@ func (m *dash) key(k tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 	switch m.area() {
-	case focusSide:
+	case areaSide:
 		if cmd, ok := m.sideKeyboard(k.String()); ok {
 			return cmd
 		}
-	case focusDetails:
+	case areaDetails:
 		if cmd, ok := m.detailsKey(k.String()); ok {
 			return cmd
 		}
@@ -848,7 +835,7 @@ func (m *dash) detailsKey(key string) (tea.Cmd, bool) {
 		}
 		m.scrollDetails(d)
 	case "esc":
-		m.focus = focusList
+		m.focus = areaMain
 	default:
 		return nil, false
 	}
@@ -1010,7 +997,7 @@ func (m *dash) listBody() []string {
 	// The details panel's divider is in the accent colour while the
 	// panel has the keyboard.
 	div := styleFaint.Render("│")
-	if m.focus == focusDetails {
+	if m.focus == areaDetails {
 		div = styleAccent.Render("│")
 	}
 	body := make([]string, room)
@@ -1045,7 +1032,7 @@ func (m *dash) listLines(w int, inline bool) (lines, keys []string, sel int) {
 		case r.key != "" && r.key == m.sel:
 			sel = len(lines)
 			st := styleSel
-			if m.area() != focusList {
+			if m.area() != areaMain {
 				st = st.Faint(true) // the keyboard is elsewhere
 			}
 			add(st.Render(fit(r.text(w), w)), r.key)
@@ -1107,9 +1094,9 @@ func (m *dash) frame(title string, body []string, sel int, keys string) string {
 	switch {
 	case m.prefixed:
 		keys = prefixHint
-	case m.focus == focusSide && m.top() == nil:
+	case m.focus == areaSide && m.top() == nil:
 		keys = sideHint + " · tab next"
-	case m.area() == focusDetails && m.top() == nil:
+	case m.area() == areaDetails && m.top() == nil:
 		keys = "details: ↑ ↓ scroll · esc back · tab next"
 	}
 	m.shownKeys = keys

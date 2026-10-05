@@ -601,35 +601,42 @@ func (c *client) sideTree() []treeRow {
 		focus = c.focus.info.ID
 	}
 	rows := buildTree(c.side.projects, c.side.sessions, treeIn{current: c.sideCurrent(), focus: focus})
-	if c.sideFocus {
+	if c.kb == areaSide {
 		markCursor(rows, c.sideW, c.v.SideSel)
 	}
 	return rows
 }
 
-// sideFocusOn gives the sidebar this console's keyboard (prefix+tab), or
-// gives it back to the focused pane.
-func (c *client) sideFocusOn(on bool) {
+// areas are the session's areas that take the keyboard, in prefix+tab's
+// order: the pane, the sidebar, the info panel while it shows. c.mu held.
+func (c *client) areas() []area {
+	out := []area{areaMain}
+	if c.side != nil && c.sideW > 0 {
+		out = append(out, areaSide)
+	}
+	if c.infoW > 0 {
+		out = append(out, areaInfo)
+	}
+	return out
+}
+
+// nextArea moves the keyboard to the next area (prefix+tab, and tab in
+// the sidebar or the info panel): pane, sidebar, info panel, pane. The
+// sidebar's cursor starts on the row you are on.
+func (c *client) nextArea() {
 	if !c.lock() {
 		return
 	}
 	here := ""
-	switch {
-	case on && c.infoFocus:
-		// The last area: back to the pane.
-		c.infoFocus = false
-	case on && (c.side == nil || c.sideW == 0):
+	areas := c.areas()
+	switch next := cycle(areas, c.kb, false); {
+	case len(areas) == 1:
 		c.flash = "no sidebar here"
-	case on && c.sideFocus:
-		// On to the info panel when it shows, else back to the pane.
-		c.sideFocus, c.infoFocus = false, c.infoW > 0
-	case on:
-		// The keyboard's row starts on the row you are on.
-		c.sideFocus = true
+	case next == areaSide:
 		here = hereKey(c.sideTree())
-		c.v.SideSel = here
+		c.kb, c.v.SideSel = areaSide, here
 	default:
-		c.sideFocus = false
+		c.kb = next
 	}
 	c.status()
 	c.mu.Unlock()
@@ -640,21 +647,17 @@ func (c *client) sideFocusOn(on bool) {
 }
 
 // sideKeyboard runs a key while the sidebar has the keyboard: a sidebar
-// key (sideActions) moves its cursor or opens the row; tab, like esc, gives the keyboard back to the pane; any other
-// key is dropped, so nothing reaches the pane. c.mu held; released here.
+// key (sideActions) moves its cursor or opens the row; tab moves on to
+// the next area, as prefix+tab; any other key is dropped, so nothing
+// reaches the pane. c.mu held; released here.
 func (c *client) sideKeyboard(k uv.Key) {
 	name := keyName(k)
 	op, ok := sideOp(name)
-	if name == "tab" && c.infoW > 0 {
-		// tab goes on to the info panel, as prefix+tab does.
-		c.sideFocus, c.infoFocus, c.flash = false, true, ""
-		c.status()
-		c.mu.Unlock()
-		c.poke()
-		return
-	}
 	if name == "tab" {
-		op, ok = sideBack, true
+		c.flash = ""
+		c.mu.Unlock()
+		c.nextArea()
+		return
 	}
 	if !ok || c.side == nil {
 		c.flash = ""
@@ -666,7 +669,7 @@ func (c *client) sideKeyboard(k uv.Key) {
 	st := sideKeyStep(c.sideTree(), c.sideW, c.v.SideSel, op)
 	c.flash = st.msg
 	if st.back || st.target != nil && !st.here {
-		c.sideFocus = false
+		c.kb = areaMain
 	}
 	if st.target != nil && st.here {
 		c.flash = "you are on it"
@@ -784,7 +787,7 @@ func (c *client) sideMouse(m emu.Mouse) {
 		// A click on a row gives the sidebar the keyboard, its cursor on
 		// the row; it keeps it while the row's session shows.
 		sel = r.key()
-		c.sideFocus, c.infoFocus, c.v.SideSel = true, false, sel
+		c.kb, c.v.SideSel = areaSide, sel
 		c.flash = ""
 		c.status()
 	}

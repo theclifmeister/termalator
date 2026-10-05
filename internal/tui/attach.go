@@ -176,7 +176,9 @@ func Attach(opts Options) (res Result, err error) {
 	c.side = &sidebar{uiFile: so.UIFile, agent: cmp.Or(so.Agent, DefaultAgent), projects: loadSideProjects()}
 	c.info = &infoPanel{}
 	c.setWindow(cols, rows)
-	c.sideFocus = so.Focus && c.sideW > 0
+	if so.Focus && c.sideW > 0 {
+		c.kb = areaSide
+	}
 	watch, stopWatch := vc.Watch()
 	defer stopWatch()
 	if err := c.sync(v); err != nil {
@@ -303,15 +305,14 @@ type client struct {
 	dashboard bool     // there is a dashboard to go back to
 	side      *sidebar // the projects sidebar, nil for none
 	sideW     int      // its width, 0 without one
-	// sideFocus: the sidebar has this console's keyboard (prefix+tab);
-	// the panes get no keys, paste or prefix meanwhile.
-	sideFocus bool
+	// kb is the area with this console's keyboard (focus.go): the pane,
+	// the sidebar or the info panel. While another area has it the pane
+	// gets no keys, paste or prefix-twice.
+	kb area
 	// The info panel right of a thread's pane (infopanel.go), nil for
-	// none; infoW is its width, 0 while it doesn't show; infoFocus: it
-	// has the keyboard, as sideFocus.
+	// none; infoW is its width, 0 while it doesn't show.
 	info        *infoPanel
 	infoW       int
-	infoFocus   bool
 	cols, rows  int // the window
 	paneCols    int // the columns between the sidebar and the info panel
 	paneRows    int // the rows above the status bar and the empty row over it
@@ -589,7 +590,7 @@ func (c *client) finish(res Result) {
 		} else if res.Session == "" {
 			res.Session = c.v.Focus
 		}
-		res.SideFocus = c.sideFocus && !res.Quit
+		res.SideFocus = c.kb == areaSide && !res.Quit
 		c.mu.Unlock()
 		c.result = res
 		c.log.Printf("end: %s", res.Reason)
@@ -760,7 +761,9 @@ func (c *client) relayout() {
 		c.infoW = min(c.geo.InfoW, max(c.cols-c.sideW-1, 0))
 	}
 	if c.infoW == 0 {
-		c.infoFocus = false
+		if c.kb == areaInfo {
+			c.kb = areaMain
+		}
 	} else {
 		c.infoLayout()
 	}
@@ -967,7 +970,7 @@ func (c *client) handle(ev uv.Event) {
 			return
 		}
 		p := c.focus
-		if p == nil || c.sideFocus || c.infoFocus {
+		if p == nil || c.kb != areaMain {
 			c.mu.Unlock()
 			return
 		}
@@ -1020,11 +1023,11 @@ func (c *client) key(k uv.Key) {
 		return
 	}
 	pending := c.pending
-	if c.sideFocus && !pending && !c.prefix.match(k) {
+	if c.kb == areaSide && !pending && !c.prefix.match(k) {
 		c.sideKeyboard(k)
 		return
 	}
-	if c.infoFocus && !pending && !c.prefix.match(k) {
+	if c.kb == areaInfo && !pending && !c.prefix.match(k) {
 		c.infoKeyboard(k)
 		return
 	}
@@ -1040,7 +1043,7 @@ func (c *client) key(k uv.Key) {
 		c.poke()
 	}
 	if do.input {
-		if !c.sideFocus && !c.infoFocus { // the sidebar or the panel has the keyboard: nothing leaks
+		if c.kb == areaMain { // another area has the keyboard: nothing leaks
 			c.input(k)
 		}
 		return
@@ -1235,7 +1238,7 @@ func (c *client) paneCommand(cmd string) {
 	case "{", "}", "b":
 		c.sideKey(cmd)
 	case "tab":
-		c.sideFocusOn(true)
+		c.nextArea()
 	case "|":
 		c.infoToggle()
 	}
@@ -1283,9 +1286,9 @@ func (c *client) status() {
 	}
 	where := ""
 	switch {
-	case c.sideFocus:
+	case c.kb == areaSide:
 		where = sideHint
-	case c.infoFocus:
+	case c.kb == areaInfo:
 		where = infoHint
 	}
 	if c.flash != "" {
@@ -1396,10 +1399,9 @@ func (c *client) mouse(ev uv.Event) {
 		return
 	}
 	_, click := ev.(uv.MouseClickEvent)
-	if click && (c.sideFocus || c.infoFocus) {
-		// A click on a pane takes the keyboard back from the sidebar or
-		// the info panel.
-		c.sideFocus, c.infoFocus = false, false
+	if click && c.kb != areaMain {
+		// A click on the pane gives it the keyboard.
+		c.kb = areaMain
 		c.status()
 		c.poke()
 	}
