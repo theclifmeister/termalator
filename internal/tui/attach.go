@@ -753,6 +753,8 @@ func (c *client) relayout() {
 	}
 	if c.infoW == 0 {
 		c.infoFocus = false
+	} else {
+		c.infoLayout()
 	}
 	c.statusBar = c.geo.Status > 0
 	c.paneCols = max(c.cols-c.sideW-c.infoW, 1)

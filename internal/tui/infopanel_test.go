@@ -145,6 +145,7 @@ func TestInfoPanelLayout(t *testing.T) {
 		if tc.info == 0 {
 			continue
 		}
+		c.infoLayout()
 		b, _ := c.appendInfo(nil, false)
 		if !strings.Contains(string(b), "\x1b[1;"+strconv.Itoa(tc.cols-tc.info+1)+"H") || !strings.Contains(ansi.Strip(string(b)), "T26") {
 			t.Errorf("%d columns: the panel isn't drawn at the right edge: %q", tc.cols, ansi.Strip(string(b)))

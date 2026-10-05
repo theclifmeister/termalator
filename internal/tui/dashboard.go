@@ -229,6 +229,7 @@ func newDash(o DashOptions) *dash {
 		m.current = v.Current
 		m.sideSel, m.sideSent = v.SideSel, v.SideSel
 		m.layout.Sidebar, m.viewSide = v.Sidebar, v.Sidebar
+		m.layout.Info = v.Info
 		m.watch, m.stopWatch = vc.Watch()
 	}
 	m.setWidth(w)
@@ -423,6 +424,9 @@ func (m *dash) fromView() tea.Cmd {
 		m.layout.Sidebar, m.viewSide = v.Sidebar, v.Sidebar
 		m.setWidth(m.winW)
 	}
+	// The info panel is the attach screen's; keep it so that saving the
+	// layout here keeps it too.
+	m.layout.Info = v.Info
 	return m.waitView()
 }
 

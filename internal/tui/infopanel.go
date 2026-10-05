@@ -284,7 +284,8 @@ type infoPanel struct {
 // infoX is the panel's first column (its border). c.mu held.
 func (c *client) infoX() int { return c.cols - c.infoW }
 
-// infoLayout lays the panel's content out at its width. c.mu held.
+// infoLayout lays the panel's content out at its width: when its data
+// or its width changes, not with every frame. c.mu held.
 func (c *client) infoLayout() {
 	ip := c.info
 	ip.lines, ip.hits = infoLines(ip.data, max(c.infoW-1, 1), time.Now())
@@ -301,7 +302,6 @@ func (c *client) infoScroll(d int) {
 // content from top. c.mu held.
 func (c *client) appendInfo(b []byte, wrote bool) ([]byte, bool) {
 	ip := c.info
-	c.infoLayout()
 	border := styleFaint.Render("│")
 	if c.infoFocus {
 		border = styleAccent.Render("│")
@@ -529,6 +529,7 @@ func (c *client) pollInfo(sessions []proto.SessionInfo) {
 	}
 	if c.lock() {
 		c.info.data = d
+		c.infoLayout()
 		c.mu.Unlock()
 	}
 }
