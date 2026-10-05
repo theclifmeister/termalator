@@ -206,9 +206,12 @@ func runGH(dir string, args ...string) ([]byte, error) {
 }
 
 // unsaved checks a thread's worktree; a thread without a repo has only
-// a folder, which resolve keeps unless it is empty.
+// a folder, which resolve keeps unless it is empty (an adopted one
+// always), and resolve keeps an adopted thread's checkout.
 func unsaved(r *thread.Record, pushed string) (string, error) {
-	if r.Repo == "" {
+	// An adopted thread's own checkout stays where it is: closing it
+	// loses nothing there.
+	if r.Repo == "" || r.Checkout {
 		return "", nil
 	}
 	return worktree.Unsaved(r.Worktree, pushed)

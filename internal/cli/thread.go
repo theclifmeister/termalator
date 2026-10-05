@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -31,6 +32,8 @@ import (
 const threadUsage = `usage: tm thread <command> [--project <slug>] [--json]
 
   start [--task T12] [--agent A] [--repo PATH] [--base B] [--approved-by-user] [--over-cap] "title"
+  adopt <session> [--task T12] [--title "…"] [--approved-by-user]
+                                 make a running agent session outside the projects a thread
   list
   show <id>
   read <id> [--lines N]          the thread's screen as text
@@ -120,6 +123,14 @@ func runThread(e *Env, args []string) error {
 				o.title = pos[0]
 			}
 			return e.threadStart(p, o, *asJSON)
+		}
+	case "adopt":
+		o := adoptOpts{task: f.String("task"), title: f.String("title"), approved: f.Bool("approved-by-user")}
+		run = func(p *project.Project, pos []string) error {
+			if len(pos) != 1 {
+				return usagef("usage: tm thread adopt <session> [--task T12] [--title \"…\"] [--approved-by-user]")
+			}
+			return e.threadAdopt(p, pos[0], o, *asJSON)
 		}
 	case "list", "ls":
 		run = func(p *project.Project, pos []string) error {
@@ -250,26 +261,12 @@ func (e *Env) threadStart(p *project.Project, o startOpts, asJSON bool) error {
 			return err
 		}
 	}
-	var task *tasks.Task
-	if *o.task != "" {
-		id, err := ref(*o.task)
-		if err != nil {
-			return err
-		}
-		if task, err = p.Tasks().Get(id); err != nil {
-			return err
-		}
-		if task.Thread != "" {
-			if prev, err := thread.Load(p, task.Thread); err == nil && prev.State != thread.Resolved {
-				return &tasks.Error{Code: "task-has-thread", Msg: fmt.Sprintf("%s already has thread %s; resolve it first", task.Ref(), prev.ID)}
-			}
-		}
-		if task.Status == tasks.Done {
-			return &tasks.Error{Code: "task-done", Msg: task.Ref() + " is done"}
-		}
-		if o.title == "" {
-			o.title = task.Title
-		}
+	task, err := threadTask(p, *o.task)
+	if err != nil {
+		return err
+	}
+	if task != nil && o.title == "" {
+		o.title = task.Title
 	}
 	o.title = strings.Join(strings.Fields(o.title), " ")
 	if o.title == "" {
@@ -323,26 +320,8 @@ func (e *Env) threadStart(p *project.Project, o startOpts, asJSON bool) error {
 	}); err != nil {
 		return fail(err)
 	}
-	if task != nil {
-		s := p.Tasks()
-		if _, err := s.SetThread(e.Caller, task.ID, r.ID); err != nil {
-			return fail(err)
-		}
-		if task.Status == tasks.Open || task.Status == tasks.Ready {
-			if _, err := s.SetStatus(e.Caller, task.ID, tasks.Started, ""); err != nil {
-				return fail(err)
-			}
-		}
-		task, _ = s.Get(task.ID)
-	}
-	if err := thread.WriteTaskText(p, r.ID, thread.TaskText(r, task)); err != nil {
-		return fail(err)
-	}
-	brief, err := thread.WriteBrief(p, r, false)
+	brief, err := e.threadFiles(p, r, task)
 	if err != nil {
-		return fail(err)
-	}
-	if _, err := thread.UpdateStatus(p, r.ID, nil); err != nil {
 		return fail(err)
 	}
 	detail := strings.TrimSpace(r.Task + " " + r.Title)
@@ -367,6 +346,171 @@ func (e *Env) threadStart(p *project.Project, o startOpts, asJSON bool) error {
 		fmt.Fprintf(e.Stdout, " on %s from %s", r.Branch, r.Base)
 	}
 	fmt.Fprintf(e.Stdout, " (session %s)\n", info.ID)
+	return nil
+}
+
+// threadTask is the task a new thread is for (ref "" for none): it
+// must exist, not be done, and have no live thread.
+func threadTask(p *project.Project, taskRef string) (*tasks.Task, error) {
+	if taskRef == "" {
+		return nil, nil
+	}
+	id, err := ref(taskRef)
+	if err != nil {
+		return nil, err
+	}
+	task, err := p.Tasks().Get(id)
+	if err != nil {
+		return nil, err
+	}
+	if task.Thread != "" {
+		if prev, err := thread.Load(p, task.Thread); err == nil && prev.State != thread.Resolved {
+			return nil, &tasks.Error{Code: "task-has-thread", Msg: fmt.Sprintf("%s already has thread %s; resolve it first", task.Ref(), prev.ID)}
+		}
+	}
+	if task.Status == tasks.Done {
+		return nil, &tasks.Error{Code: "task-done", Msg: task.Ref() + " is done"}
+	}
+	return task, nil
+}
+
+// threadFiles links a new thread's task (started, if it was open or
+// ready) and writes its task.md, brief.md and STATUS.md. It returns the
+// brief's path.
+func (e *Env) threadFiles(p *project.Project, r *thread.Record, task *tasks.Task) (string, error) {
+	if task != nil {
+		s := p.Tasks()
+		if _, err := s.SetThread(e.Caller, task.ID, r.ID); err != nil {
+			return "", err
+		}
+		if task.Status == tasks.Open || task.Status == tasks.Ready {
+			if _, err := s.SetStatus(e.Caller, task.ID, tasks.Started, ""); err != nil {
+				return "", err
+			}
+		}
+		task, _ = s.Get(task.ID)
+	}
+	if err := thread.WriteTaskText(p, r.ID, thread.TaskText(r, task)); err != nil {
+		return "", err
+	}
+	brief, err := thread.WriteBrief(p, r, false)
+	if err != nil {
+		return "", err
+	}
+	if _, err := thread.UpdateStatus(p, r.ID, nil); err != nil {
+		return "", err
+	}
+	return brief, nil
+}
+
+type adoptOpts struct {
+	task, title *string
+	approved    *bool
+}
+
+// threadAdopt makes a running agent session outside the projects a
+// thread (docs/SPEC.md §9, Adopt): a thread record for where it works,
+// the session given the thread's role, and a prompt that tells it so.
+func (e *Env) threadAdopt(p *project.Project, sid string, o adoptOpts, asJSON bool) error {
+	if err := e.coordinatorOnly(p, "adopting sessions"); err != nil {
+		return err
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	safety, err := cfg.Safety(p.Slug)
+	if err != nil {
+		return err
+	}
+	if safety.StartThreads == config.StartPropose && e.Caller.IsAgent() && !*o.approved {
+		return &tasks.Error{Code: "needs-approval", Msg: "start_threads = propose: ask the user, and once they agree adopt it with --approved-by-user"}
+	}
+	var res proto.SessionListResult
+	if err := e.call(proto.MethodSessionList, nil, &res); err != nil {
+		return err
+	}
+	var info proto.SessionInfo
+	for _, s := range res.Sessions {
+		if s.ID == sid {
+			info = s
+		}
+	}
+	switch {
+	case info.ID == "":
+		return &tasks.Error{Code: proto.ErrUnknownSession, Msg: fmt.Sprintf("no session %s (tm session list)", sid)}
+	case info.Role != proto.RoleShell || info.Project != "":
+		what := "the coordinator"
+		if info.Thread != "" {
+			what = "thread " + info.Thread
+		}
+		return &tasks.Error{Code: "in-project", Msg: fmt.Sprintf("session %s is %s of project %s already", sid, what, info.Project)}
+	case info.Agent == "" || info.State == "exited":
+		return &tasks.Error{Code: "no-agent", Msg: fmt.Sprintf("no agent runs in session %s; only an agent session becomes a thread", sid)}
+	}
+	task, err := threadTask(p, *o.task)
+	if err != nil {
+		return err
+	}
+	rec := thread.Record{Agent: info.Agent, Worktree: info.Cwd, State: thread.Running, Adopted: true, Session: info.ID, AgentSID: info.AgentSID}
+	if pl, ok := worktree.Locate(info.Cwd); ok {
+		rec.Repo, rec.Branch, rec.Worktree, rec.Checkout = pl.Repo, pl.Branch, pl.Top, !pl.Linked
+	}
+	rec.Title = strings.Join(strings.Fields(*o.title), " ")
+	switch {
+	case rec.Title != "":
+	case task != nil:
+		rec.Title = task.Title
+	default:
+		rec.Title = filepath.Base(rec.Worktree)
+	}
+	if task != nil {
+		rec.Task = task.Ref()
+	}
+	now := time.Now().UTC()
+	rec.Created, rec.LastPrompt = now, now
+	r, err := thread.Create(p, rec)
+	if err != nil {
+		return err
+	}
+	fail := func(err error) error {
+		thread.Update(p, r.ID, func(x *thread.Record) error { x.State, x.Session = thread.Stopped, ""; return nil })
+		return fmt.Errorf("thread %s: %w", r.ID, err)
+	}
+	brief, err := e.threadFiles(p, r, task)
+	if err != nil {
+		return fail(err)
+	}
+	var adopted proto.SessionStartResult
+	if err := e.call(proto.MethodSessionAdopt, proto.SessionAdoptParams{ID: sid, Project: p.Slug, Thread: r.ID, Brief: brief}, &adopted); err != nil {
+		var perr *proto.Error
+		if errors.As(err, &perr) && perr.Code == proto.ErrUnknownMethod {
+			err = &tasks.Error{Code: "old-server", Msg: "the running server can't adopt sessions; restart it (tm server restart)"}
+		}
+		return fail(err)
+	}
+	if adopted.Session.AgentSID != "" && adopted.Session.AgentSID != r.AgentSID {
+		r, _ = thread.Update(p, r.ID, func(x *thread.Record) error { x.AgentSID = adopted.Session.AgentSID; return nil })
+	}
+	detail := strings.TrimSpace(r.Task+" "+r.Title) + " (session " + sid + ")"
+	if *o.approved {
+		detail += " (approved by the user)"
+	}
+	if err := p.Journal(e.Caller, "thread.adopt", r.ID, detail); err != nil {
+		return err
+	}
+	var pr proto.SessionPromptResult
+	if err := e.call(proto.MethodSessionPrompt, proto.SessionPromptParams{ID: sid, Text: thread.AdoptKickoff(p.Slug, r.ID, brief)}, &pr); err != nil {
+		return fmt.Errorf("thread %s adopted, but its prompt failed (tm thread prompt %s): %w", r.ID, r.ID, err)
+	}
+	if asJSON {
+		return e.printJSON(map[string]any{"id": r.ID, "worktree": r.Worktree, "branch": r.Branch, "repo": r.Repo, "checkout": r.Checkout, "session": sid, "task": r.Task})
+	}
+	fmt.Fprintf(e.Stdout, "adopted session %s as %s in %s", sid, r.ID, r.Worktree)
+	if r.Branch != "" {
+		fmt.Fprintf(e.Stdout, " on %s", r.Branch)
+	}
+	fmt.Fprintf(e.Stdout, " (prompt %s)\n", pr.Via)
 	return nil
 }
 
@@ -568,7 +712,14 @@ func (e *Env) threadShow(p *project.Project, id string, asJSON bool) error {
 	}
 	w := tabwriter.NewWriter(e.Stdout, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(w, row.Line())
-	for _, kv := range [][2]string{{"worktree", r.Worktree}, {"branch", r.Branch}, {"base", r.Base}, {"repo", r.Repo},
+	adopted := ""
+	switch {
+	case r.Checkout:
+		adopted = "yes, in the repository's own checkout (resolve keeps it)"
+	case r.Adopted:
+		adopted = "yes"
+	}
+	for _, kv := range [][2]string{{"worktree", r.Worktree}, {"branch", r.Branch}, {"base", r.Base}, {"repo", r.Repo}, {"adopted", adopted},
 		{"agent", r.Agent}, {"session", r.Session}, {"state", r.State}, {"folder", thread.Dir(p, id)},
 		{"attached", strings.Join(thread.Attachments(p, id), ", ")}} {
 		if kv[1] != "" {
@@ -917,6 +1068,9 @@ func (e *Env) threadRestart(p *project.Project, id string) error {
 	// A worktree removed by hand comes back on its branch: nothing of the
 	// thread's lived in it.
 	if _, err := os.Stat(r.Worktree); errors.Is(err, os.ErrNotExist) {
+		if r.Checkout {
+			return &tasks.Error{Code: "no-worktree", Msg: fmt.Sprintf("thread %s's checkout %s is gone; resolve it", id, r.Worktree)}
+		}
 		if r.Repo != "" && r.Branch != "" {
 			if err := worktree.Restore(r.Repo, r.Worktree, r.Branch); err != nil {
 				return err
@@ -967,6 +1121,17 @@ func (e *Env) threadResolve(p *project.Project, id string) error {
 	}
 	var did []string
 	switch {
+	case r.Checkout:
+		// Adopted in the repository's own checkout: not tm's to remove,
+		// and its branch is the checkout's (docs/SPEC.md §9, Adopt).
+		did = append(did, "kept checkout "+r.Worktree+" (adopted; tm removes only worktrees)")
+		more, gone := otherBranches(p, r)
+		did = append(did, more...)
+		for _, d := range gone {
+			if err := p.Journal(e.Caller, "branch.delete", id, d); err != nil {
+				return err
+			}
+		}
 	case r.Repo != "":
 		_, statErr := os.Stat(r.Worktree)
 		err := worktree.Remove(r.Repo, r.Worktree)
@@ -1015,6 +1180,8 @@ func (e *Env) threadResolve(p *project.Project, id string) error {
 				return err
 			}
 		}
+	case r.Adopted:
+		did = append(did, "kept folder "+r.Worktree+" (adopted)")
 	default:
 		if err := os.Remove(r.Worktree); err == nil || errors.Is(err, os.ErrNotExist) {
 			did = append(did, "removed folder "+r.Worktree)

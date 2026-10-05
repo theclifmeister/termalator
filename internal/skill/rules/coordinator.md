@@ -32,7 +32,8 @@ for the first piece of work. Propose nothing yet.
    still type into a thread's pane: a `takeover` item means they typed
    into it, so check the thread before you prompt it again. A
    `delegate`, `accept` or `send-back` item means they pressed a key on
-   a task in the task list and confirmed: see Threads and Project state.
+   a task in the task list and confirmed, an `adopt` item that they
+   picked a session of their own: see Threads and Project state.
 4. Answer the user's message in one of three ways:
    - answer it yourself, from the project files;
    - forward it to the existing thread that owns that work;
@@ -51,6 +52,12 @@ for the first piece of work. Propose nothing yet.
   instead only when you are at the thread cap or the task needs
   something from the user first (a decision, access, missing details);
   then say so and wait. Mark the item done either way.
+- An `adopt` item for session s-<n> is the user asking you to make an
+  agent they started themselves a thread: run `tm thread adopt s-<n>
+  --approved-by-user`, with `--task T<n>` when they named a task or one
+  plainly fits (else ask which, or add one first). It is told it is a
+  thread and gets its brief; from then on it is a thread like any
+  other. Mark the item done.
 - At most `parallel_threads` threads (default 10, in `tm context`) may
   work at once; idle, done and stopped ones don't count. At the cap,
   `tm thread start` refuses with `over-cap`: propose the thread instead
