@@ -105,7 +105,7 @@ func TestProjectPopup(t *testing.T) {
 	}
 	keyPress(m, "tab")
 	out = screen(m)
-	for _, want := range []string{"IN MOTION", "T1    Write the README", "started · 1/2 · t-0002", "✓ Draft", "Review", "ON DECK", "T2    Ship it", "read-only"} {
+	for _, want := range []string{"IN MOTION", "T1    Write the README", "started · 1/2 · t-0002", "✓ Draft", "Review", "ON DECK", "T2    Ship it", "d asks it to delegate one", "d delegate"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("tasks tab lacks %q:\n%s", want, out)
 		}
@@ -264,6 +264,74 @@ func TestProjectRepos(t *testing.T) {
 	act(m, src, "y")
 	if len(src.repos) != 2 || src.repos[1] != "-/src/alpha" {
 		t.Fatalf("repos %v", src.repos)
+	}
+}
+
+// TestDelegateTask: d on a ready task in the Tasks tab asks, then drops
+// a delegate item; the row shows it waits on the coordinator. A started
+// task, or one already asked, only gets a footer message.
+func TestDelegateTask(t *testing.T) {
+	src, m := popupData(t)
+	m.Update(keyPress(m, "a")())
+	keyPress(m, "3")
+	// T1 is started: d says why it does nothing.
+	keyPress(m, "d")
+	if m.top() != m.projectPopupView() || !strings.Contains(m.msg, "T1 is started") || len(src.delegated) != 0 {
+		t.Fatalf("d on a started task: %T, %q, %v", m.top(), m.msg, src.delegated)
+	}
+	keyPress(m, "down")
+	keyPress(m, "d")
+	cv, ok := m.top().(*confirmView)
+	if !ok || !strings.HasPrefix(cv.question, "Delegate T2 to the coordinator?") {
+		t.Fatalf("d on T2 opened %T", m.top())
+	}
+	keyPress(m, "n")
+	if m.msg != "T2 not delegated" || len(src.delegated) != 0 {
+		t.Fatalf("n: %q, %v", m.msg, src.delegated)
+	}
+	keyPress(m, "d")
+	act(m, src, "y")
+	if len(src.delegated) != 1 || src.delegated[0] != "alpha T2" {
+		t.Fatalf("delegated %v", src.delegated)
+	}
+	out := screen(m)
+	if !strings.Contains(out, "ready · waiting on the coordinator") || !strings.Contains(out, "asked the coordinator to delegate T2") {
+		t.Fatalf("after y:\n%s", out)
+	}
+	keyPress(m, "d")
+	if m.top() != m.projectPopupView() || m.msg != "T2 is already waiting on the coordinator" {
+		t.Fatalf("d again: %T, %q", m.top(), m.msg)
+	}
+}
+
+// TestDelegateFromBoard: the t list takes d too, on a row and on a
+// shown task; a task in review isn't delegated.
+func TestDelegateFromBoard(t *testing.T) {
+	src, m := popupData(t)
+	src.board.Tasks = append(src.board.Tasks, &tasks.Task{ID: 3, Title: "Check it", Status: tasks.Review})
+	m.Update(keyPress(m, "t")())
+	// Needs you first: T3 (review).
+	keyPress(m, "d")
+	if _, ok := m.top().(*boardView); !ok || !strings.Contains(m.msg, "T3 is in review") {
+		t.Fatalf("d on review: %T, %q", m.top(), m.msg)
+	}
+	keyPress(m, "down")
+	keyPress(m, "down")
+	keyPress(m, "enter") // T2, shown
+	if out := screen(m); !strings.Contains(out, "d delegate") {
+		t.Fatalf("shown task lacks d:\n%s", out)
+	}
+	keyPress(m, "d")
+	act(m, src, "y")
+	if len(src.delegated) != 1 || src.delegated[0] != "alpha T2" {
+		t.Fatalf("delegated %v", src.delegated)
+	}
+	if out := screen(m); !strings.Contains(out, "waiting on the coordinator") {
+		t.Fatalf("shown task:\n%s", out)
+	}
+	keyPress(m, "esc")
+	if out := screen(m); !strings.Contains(out, "waiting on the coordinator") || !strings.Contains(out, "d delegate") {
+		t.Fatalf("board:\n%s", out)
 	}
 }
 

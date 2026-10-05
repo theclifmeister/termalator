@@ -62,8 +62,9 @@ type ThreadRow struct {
 }
 
 // Source is the dashboard's view of the world; tests use a fake. It
-// only reads, starts shells and opens projects: what happens to threads
-// and tasks is the coordinator's (docs/SPEC.md §4).
+// only reads, starts shells, opens projects and asks the coordinator to
+// delegate a task: what happens to threads and tasks is the
+// coordinator's (docs/SPEC.md §4).
 type Source interface {
 	Load() Data
 	Board(slug string) (*tasks.Board, error)
@@ -81,6 +82,10 @@ type Source interface {
 	SetRepo(slug, path string, add bool) error
 	// Agents lists the agents tm can run.
 	Agents() []string
+	// Delegate asks the project's coordinator to delegate task id: an
+	// inbox item that is the user's go-ahead (docs/SPEC.md §4). It
+	// reports false when one already asks it.
+	Delegate(slug string, id int) (bool, error)
 }
 
 // ServerSource is the real Source: the control socket plus the project
@@ -251,6 +256,24 @@ func (s *ServerSource) SetRepo(slug, path string, add bool) error {
 	}
 	verb := map[bool]string{true: "add", false: "remove"}[add]
 	return p.Journal(s.Caller, "project.repo."+verb, slug, path)
+}
+
+func (s *ServerSource) Delegate(slug string, id int) (bool, error) {
+	if s.Caller.IsAgent() {
+		return false, errors.New("human-only: only the human asks to delegate a task")
+	}
+	p, err := project.Open(slug)
+	if err != nil {
+		return false, err
+	}
+	t, err := p.Tasks().Get(id)
+	if err != nil {
+		return false, err
+	}
+	if why := notDelegable(t); why != "" {
+		return false, errors.New(why)
+	}
+	return p.AskDelegate(s.Caller, t.Ref())
 }
 
 func (s *ServerSource) Agents() []string {

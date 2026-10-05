@@ -531,6 +531,7 @@ var verbs = map[string]string{
 	KindBlocked: "blocked", KindIdle: "idle with a report", KindExited: "exited", KindServerRestart: "server restarted",
 	KindPROpened: "opened a PR", KindPRChecks: "PR checks failed", KindPRReview: "PR reviewed",
 	KindPRMerged: "PR merged", KindPRClosed: "PR closed", KindCloseHeld: "not auto-closed", project.KindTakeover: "taken over by the user",
+	project.KindDelegate: "to delegate (the user's go-ahead)",
 }
 
 // NudgeText is the one line an idle coordinator gets (§7.5). It holds
@@ -607,7 +608,12 @@ func (t *Ticker) nudge(p *project.Project, sessions []proto.SessionInfo, now tim
 	if coord == nil || coord.State != "idle" || coord.Queued > 0 || now.Sub(pm.LastNudge) < t.o.Nudge {
 		return
 	}
-	if err := t.o.Host.Prompt(coord.ID, NudgeText(fresh, func(id string) string { return thread.Label(p, id) })); err != nil {
+	if err := t.o.Host.Prompt(coord.ID, NudgeText(fresh, func(id string) string {
+		if thread.ValidID(id) {
+			return thread.Label(p, id)
+		}
+		return thread.TaskLabel(p, id)
+	})); err != nil {
 		t.o.Log.Printf("ticker: %s: nudge: %v", p.Slug, err)
 		return
 	}

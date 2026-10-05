@@ -309,3 +309,51 @@ func (e *Env) scriptsDir() string {
 	}
 	return ""
 }
+
+// TestSmokeDelegateFromList: d on a task in the t list asks first; y
+// drops a delegate item, the row waits on the coordinator, the footer
+// says so, and the idle coordinator's nudge names the task as the
+// user's go-ahead. A started task isn't delegated.
+func TestSmokeDelegateFromList(t *testing.T) {
+	env, projDir, _ := tickerEnv(t)
+	coord := env.StartAgent("claude", projDir, "--role", "coordinator", "--project", "demo")
+	env.WaitState(coord, "idle", agentWait)
+	env.MustCLI("task", "add", "Ship it", "--project", "demo")
+	env.MustCLI("task", "add", "Write the README", "--project", "demo")
+	env.MustCLI("task", "status", "T2", "started", "--project", "demo")
+
+	w := env.Window(110, 30)
+	w.WaitFor("1 in motion · 1 on deck", wait)
+	w.Type("t")
+	w.WaitFor("demo tasks", wait)
+	w.WaitFor("d delegate", wait)
+	// T2 (in motion) first: d only says why.
+	w.Type("d")
+	w.WaitFor("T2 is started: a thread already works on it", wait)
+	w.Type("j")
+	w.Type("d")
+	w.WaitFor("Delegate T1 to the coordinator?", wait)
+	w.Type("y")
+	w.WaitFor("asked the coordinator to delegate T1", wait)
+	w.WaitFor("waiting on the coordinator", wait)
+	items := waitInbox(t, env, "delegate: the user asks to delegate T1")
+	if strings.Contains(items, "T2") {
+		t.Fatalf("inbox:\n%s", items)
+	}
+	nudge := env.WaitFake("prompt", agentWait, func(r FakeRecord) bool { return strings.HasPrefix(r.Str("text"), "[tm] ") })
+	if text := nudge.Str("text"); !strings.Contains(text, "T1 Ship it to delegate (the user's go-ahead)") {
+		t.Fatalf("nudge %q", text)
+	}
+	// Asked once: d again adds nothing.
+	w.Type("d")
+	w.WaitFor("T1 is already waiting on the coordinator", wait)
+	if items := env.MustCLI("inbox", "list", "--project", "demo"); strings.Count(items, "delegate:") != 1 {
+		t.Fatalf("inbox:\n%s", items)
+	}
+	if out := env.MustCLI("task", "show", "T1", "--project", "demo", "--json"); !strings.Contains(out, `"status": "open"`) {
+		t.Fatalf("T1 changed:\n%s", out)
+	}
+	w.Key(keyEsc)
+	w.Type("q")
+	w.WaitExit(wait)
+}

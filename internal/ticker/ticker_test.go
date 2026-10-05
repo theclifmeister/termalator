@@ -462,6 +462,15 @@ func FuzzParsePR(f *testing.F) {
 	})
 }
 
+func TestNudgeTextDelegate(t *testing.T) {
+	items := []project.Item{{Kind: project.KindDelegate, Subject: "T15", Summary: "the user asks to delegate T15"}}
+	got := NudgeText(items, func(id string) string { return id + " Delegate from the list" })
+	want := "[tm] 1 new inbox item: T15 Delegate from the list to delegate (the user's go-ahead)."
+	if !strings.HasPrefix(got, want) {
+		t.Fatalf("got  %q\nwant %q…", got, want)
+	}
+}
+
 // FuzzNudgeText: whatever an item holds, the nudge carries only fixed
 // words and well-formed ids, never a summary.
 func FuzzNudgeText(f *testing.F) {

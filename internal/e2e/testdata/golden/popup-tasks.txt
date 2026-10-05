@@ -11,7 +11,7 @@
                        │     │ ON DECK                                                                            │
                        │     │ T2    Ship it  open                                                                │
                        │     │                                                                                    │
-                       │     │ done: 0 · read-only: the coordinator changes tasks                                 │
+                       │     │ done: 0 · the coordinator changes tasks; d asks it to delegate one                 │
                        │     │                                                                                    │
                        │     │                                                                                    │
                        │     │                                                                                    │
@@ -36,5 +36,5 @@
                        │     ╰────────────────────────────────────────────────────────────────────────────────────╯
                        │
                        │────────────────────────────────────────────────────────────────────────────────────────────────
-                       │ tab next tab · 1-5 pick one · esc close
+                       │ d delegate · tab next tab · 1-5 pick one · esc close
                        │

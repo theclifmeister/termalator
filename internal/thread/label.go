@@ -37,6 +37,20 @@ func Label(p *project.Project, id string) string {
 	return id + " (" + desc + ")"
 }
 
+// TaskLabel names task ref ("T12") with its title, "T12 Title", as
+// Label does; it falls back to the bare ref.
+func TaskLabel(p *project.Project, ref string) string {
+	n, ok := tasks.ParseRef(ref)
+	if !ok {
+		return ref
+	}
+	t, err := p.Tasks().Get(n)
+	if err != nil {
+		return ref
+	}
+	return strings.TrimSpace(t.Ref() + " " + cleanTitle(t.Title))
+}
+
 // Labelled replaces the first mention of thread id in text with its
 // Label.
 func Labelled(p *project.Project, id, text string) string {
