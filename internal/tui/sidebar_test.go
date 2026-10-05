@@ -397,6 +397,7 @@ func TestTreeHighlightRunsToBorder(t *testing.T) {
 		{kind: treeProject, slug: "termilator", state: "idle", hint: true, threads: 1, current: true},
 		{kind: treeProject, slug: "todo", state: "", threads: 0},
 		{kind: treeCoordinator, slug: "termilator", state: "idle", last: true},
+		{kind: treeCoordinator, slug: "termilator", state: "working", remote: true, last: true},
 		{kind: treeThread, slug: "termilator", thread: "t-0008", title: "Small follow-ups", state: "working", pct: 65, last: true},
 	}
 	reverse := func(line string, w int) []bool {
@@ -437,6 +438,13 @@ func TestTreeHighlightRunsToBorder(t *testing.T) {
 					hl := mode != "plain"
 					if rev[cw-1] != hl || rev[cw-2] != hl {
 						t.Errorf("%s: last two cells reverse %v %v, want %v", name, rev[cw-2], rev[cw-1], hl)
+					}
+					if r.remote {
+						// "⌁ ●  ": the remote glyph and the cell its Nerd
+						// Font icon draws into are highlighted too (T16).
+						if string(plain[cw-4]) != ic().remote || rev[cw-4] != hl || rev[cw-3] != hl {
+							t.Errorf("%s: remote glyph %q reverse %v %v, want %v", name, string(plain[cw-4]), rev[cw-4], rev[cw-3], hl)
+						}
 					}
 				}
 			}

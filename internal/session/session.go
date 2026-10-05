@@ -41,6 +41,9 @@ type Config struct {
 	// RemoteControl: the agent started reachable from another device
 	// (docs/SPEC.md §8.2); SetRemoteControl tracks later changes.
 	RemoteControl bool
+	// RemoteHeld: the user turned remote control off; SetRemoteHeld
+	// tracks later changes.
+	RemoteHeld bool
 
 	// Agent, when set, makes this an agent session (docs/SPEC.md §8).
 	Agent *AgentConfig
@@ -75,6 +78,7 @@ type Session struct {
 	// then on, showing the pane never resizes it (docs/SPEC.md §3.3).
 	sized  atomic.Bool
 	remote atomic.Bool // remote control is on
+	held   atomic.Bool // the user turned it off (RemoteHeld)
 	// closeNote, when set, replaces "session exited: …" as the reason
 	// subscribers are given when the process ends.
 	closeNote string
@@ -111,6 +115,7 @@ func Start(cfg Config) (*Session, error) {
 		stateCh: make(chan struct{}),
 	}
 	s.remote.Store(cfg.RemoteControl)
+	s.held.Store(cfg.RemoteHeld)
 	term, err := emu.NewWith(emu.Options{
 		Cols: cfg.Cols, Rows: cfg.Rows,
 		// Answers to terminal queries go back to the program. Only this
@@ -179,6 +184,9 @@ func (s *Session) Done() <-chan struct{} { return s.done }
 // SetRemoteControl records whether remote control is on.
 func (s *Session) SetRemoteControl(on bool) { s.remote.Store(on) }
 
+// SetRemoteHeld records whether the user turned remote control off.
+func (s *Session) SetRemoteHeld(held bool) { s.held.Store(held) }
+
 // SetCloseNote sets the reason attached clients are given when the
 // process ends, e.g. proto.ClosedRestarting.
 func (s *Session) SetCloseNote(note string) {
@@ -214,6 +222,7 @@ func (s *Session) Info() proto.SessionInfo {
 		Clients: len(s.subs),
 
 		RemoteControl: s.remote.Load(),
+		RemoteHeld:    s.held.Load(),
 	}
 	if s.term != nil {
 		info.Title = s.term.Title()
