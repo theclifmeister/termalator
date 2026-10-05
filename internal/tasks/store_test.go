@@ -306,18 +306,18 @@ func TestCompleteBySetting(t *testing.T) {
 	mustAdd(t, s, human, NewTask{Title: "Ship it", Status: "review"}, NewTask{Title: "Not yet", Status: "started"})
 	ticker := caller.Caller{Kind: caller.Ticker}
 	for _, c := range []caller.Caller{coord, thread} {
-		if _, err := s.CompleteBySetting(c, 1, "released in v1.0.0 (PR #7)"); code(err) != "human-only" {
+		if _, err := s.CompleteBySetting(c, 1, "merged (PR #7)"); code(err) != "human-only" {
 			t.Fatalf("%v: %v", c, err)
 		}
 	}
-	res, err := s.CompleteBySetting(ticker, 1, "released in v1.0.0 (PR #7)")
+	res, err := s.CompleteBySetting(ticker, 1, "merged (PR #7)")
 	if err != nil || !res.Changed || res.Task.Status != Done {
 		t.Fatalf("%+v %v", res, err)
 	}
-	if !strings.Contains(res.Task.Notes, "done (2026-10-04): released in v1.0.0 (PR #7), by the project's setting") {
+	if !strings.Contains(res.Task.Notes, "done (2026-10-04): merged (PR #7), by the project's setting") {
 		t.Fatalf("notes %q", res.Task.Notes)
 	}
-	if j := ev.journal[len(ev.journal)-1]; j != "ticker task.done T1 released in v1.0.0 (PR #7)" {
+	if j := ev.journal[len(ev.journal)-1]; j != "ticker task.done T1 merged (PR #7)" {
 		t.Fatalf("journal %q", j)
 	}
 	n := len(ev.journal)

@@ -38,8 +38,8 @@ func SetProject(slug, key string, value any) error {
 	if key == "auto_close" && value != CloseOff && value != CloseMerged && value != CloseDays {
 		return fmt.Errorf("auto-close must be %q, %q or %q", CloseOff, CloseMerged, CloseDays)
 	}
-	if key == "complete_tasks" && value != CompleteUser && value != CompleteReleased && value != CompleteMerged {
-		return fmt.Errorf("complete tasks must be %q, %q or %q", CompleteUser, CompleteReleased, CompleteMerged)
+	if key == "complete_tasks" && value != CompleteUser && value != CompleteMerged {
+		return fmt.Errorf("complete tasks must be %q or %q", CompleteUser, CompleteMerged)
 	}
 	if n, ok := value.(int); key == "parallel_threads" && (!ok || n < 1 || n > MaxParallelThreads) {
 		return fmt.Errorf("parallel threads must be 1 to %d", MaxParallelThreads)

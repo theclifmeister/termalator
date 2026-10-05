@@ -42,7 +42,7 @@ var popupKeys = []keyHelp{
 	{"↑ ↓", "move in the tab"},
 	{"enter space", "on a setting: change it (yolo mode asks first)"},
 	{"+ x", "on the overview: add a repository / remove the selected one (asks first)"},
-	{"enter", "on a task (Tasks tab): show it, with what it is blocked on, or how to check it and whether its change is released"},
+	{"enter", "on a task (Tasks tab): show it, with what it is blocked on, or how to check it and whether its pull request merged"},
 	{"D", "on an open, ready or blocked task (Tasks tab, or the t list): delegate it; the coordinator starts a thread for it (asks first)"},
 	{"A", "on a task in review (Tasks tab, or the t list): accept it; the coordinator marks it done (asks first)"},
 	{"x", "on a task in review: send it back with a note on what to change; the coordinator passes it on"},

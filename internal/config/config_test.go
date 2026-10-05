@@ -36,7 +36,7 @@ detach_key = "ctrl-\\"   # another package's setting: ignored here
 [projects.demo]
 start_threads = "auto"
 yolo = true
-complete_tasks = "released"
+complete_tasks = "merged"
 
 [projects.other]
 coordinator_approves = false
@@ -49,11 +49,31 @@ fast_forward_checkout = false
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s, _ := c.Safety("demo"); s != (Safety{StartThreads: "auto", Yolo: true, CoordinatorApproves: true, ParallelThreads: 10, AutoClose: "merged", AutoCloseDays: 7, PRFollowup: true, CompleteTasks: "released", FastForwardCheckout: true}) {
+	if s, _ := c.Safety("demo"); s != (Safety{StartThreads: "auto", Yolo: true, CoordinatorApproves: true, ParallelThreads: 10, AutoClose: "merged", AutoCloseDays: 7, PRFollowup: true, CompleteTasks: "merged", FastForwardCheckout: true}) {
 		t.Fatalf("demo %+v", s)
 	}
 	if s, _ := c.Safety("other"); s != (Safety{StartThreads: "propose", ParallelThreads: 10, AutoClose: "off", AutoCloseDays: 7, CompleteTasks: "user", CoordinatorRemoteControl: true}) {
 		t.Fatalf("other %+v", s)
+	}
+}
+
+// TestCompleteReleasedRemoved: the removed complete_tasks "released" is
+// read as "user", so nothing completes silently, and Removed names the
+// project for tm doctor.
+func TestCompleteReleasedRemoved(t *testing.T) {
+	write(t, "[projects.b]\ncomplete_tasks = \"released\"\n\n[projects.a]\ncomplete_tasks = \"released\"\n\n[projects.c]\ncomplete_tasks = \"merged\"\n")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := c.Safety("a"); s.CompleteTasks != CompleteUser {
+		t.Fatalf("a %+v", s)
+	}
+	if got := strings.Join(c.Removed(), " "); got != "a b" {
+		t.Fatalf("Removed = %q", got)
+	}
+	if err := SetProject("a", "complete_tasks", CompleteRemoved); err == nil {
+		t.Fatal("wrote the removed value")
 	}
 }
 

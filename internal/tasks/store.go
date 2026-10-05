@@ -316,8 +316,7 @@ func (s *Store) SetDoneApproved(c caller.Caller, id int, note string) (Result, e
 
 // CompleteBySetting marks a task in review done on the ticker's call,
 // as the project's complete_tasks setting says (the user's standing
-// acceptance, §6.4): why says what shipped it, e.g. "released in v0.5.0
-// (PR #65)". A task no longer in review is left alone (Changed false).
+// acceptance, §6.4): why says what shipped it, e.g. "merged (PR #65)". A task no longer in review is left alone (Changed false).
 // It is journaled as "ticker task.done T12 <why>" and noted on the task.
 func (s *Store) CompleteBySetting(c caller.Caller, id int, why string) (Result, error) {
 	if c.IsAgent() {

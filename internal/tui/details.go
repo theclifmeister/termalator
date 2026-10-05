@@ -278,10 +278,6 @@ func shipLine(rv Review) string {
 	}
 	pr := fmt.Sprintf("PR #%d", rv.PR)
 	switch rv.Ship {
-	case ShipUnreleased:
-		return styleWarn.Render(pr+" merged, not released") + ": wait for the next release to test it"
-	case ShipReleased:
-		return styleGood.Render(pr + " released in " + oneLine(rv.Tag))
 	case ShipMerged:
 		return pr + " merged"
 	case ShipOpen:

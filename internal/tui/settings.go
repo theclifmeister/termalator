@@ -420,11 +420,11 @@ func projectSettings(slug string) []setting {
 				}
 				return set(m, "auto_close_days", n, msg, func(x *config.Safety) { x.AutoCloseDays = n })
 			}},
-		{label: "Complete tasks", help: "By you, or on your standing acceptance: a task in review is done once a release contains its pull request, or once it merges. x sends it back.",
+		{label: "Complete tasks", help: "By you, or on your standing acceptance: a task in review is done once its pull request merges. x sends it back.",
 			value: func(m *dash) string { return completeWords(safety(m).CompleteTasks) },
 			change: func(m *dash) tea.Cmd {
-				next := map[string]string{config.CompleteUser: config.CompleteReleased, config.CompleteReleased: config.CompleteMerged}[safety(m).CompleteTasks]
-				if next == "" {
+				next := config.CompleteMerged
+				if safety(m).CompleteTasks == config.CompleteMerged {
 					next = config.CompleteUser
 				}
 				msg := "tasks of " + slug + " are done " + completeWords(next)
@@ -474,10 +474,7 @@ func closeWords(s config.Safety) string {
 
 // completeWords is the complete-tasks setting as the popup shows it.
 func completeWords(v string) string {
-	switch v {
-	case config.CompleteReleased:
-		return "when released"
-	case config.CompleteMerged:
+	if v == config.CompleteMerged {
 		return "when merged"
 	}
 	return "by you"

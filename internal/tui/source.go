@@ -105,20 +105,16 @@ type Source interface {
 type Review struct {
 	Check []string
 	// PR is the pull request's number, 0 when none is known; Ship is
-	// where it stands: ShipOpen, ShipClosed, ShipMerged (released or
-	// not unknown), ShipUnreleased or ShipReleased (in Tag), "" unknown.
+	// where it stands: ShipOpen, ShipClosed, ShipMerged, "" unknown.
 	PR   int
 	Ship string
-	Tag  string
 }
 
 // Where a task's change stands (Review.Ship).
 const (
-	ShipOpen       = "open"
-	ShipClosed     = "closed"
-	ShipMerged     = "merged"
-	ShipUnreleased = "unreleased"
-	ShipReleased   = "released"
+	ShipOpen   = "open"
+	ShipClosed = "closed"
+	ShipMerged = "merged"
 )
 
 // ServerSource is the real Source: the control socket plus the project
@@ -341,37 +337,24 @@ func (s *ServerSource) Review(slug string, t *tasks.Task) Review {
 	if rv.PR == 0 {
 		rv.PR = ticker.PRNumber(reportPR)
 	}
-	rv.Ship, rv.Tag = shipped(repo, rv.PR, pr)
+	rv.Ship = shipped(repo, rv.PR, pr)
 	return rv
 }
 
 // shipped is where pull request n stands (Review.Ship), from repo's
 // history as last fetched, else the ticker's last look at it (pr).
-func shipped(repo string, n int, pr ticker.PR) (ship, tag string) {
-	if n == 0 {
-		return "", ""
-	}
-	merge := pr.Merge
-	if merge == "" && repo != "" {
-		merge = worktree.MergeCommit(repo, n)
-	}
-	if merge != "" && repo != "" {
-		if tag, ok := worktree.ReleasedIn(repo, merge); ok {
-			if tag == "" {
-				return ShipUnreleased, ""
-			}
-			return ShipReleased, tag
-		}
-	}
+func shipped(repo string, n int, pr ticker.PR) string {
 	switch {
-	case merge != "" || pr.State == "MERGED":
-		return ShipMerged, ""
+	case n == 0:
+		return ""
+	case pr.State == "MERGED" || pr.Merge != "" || repo != "" && worktree.MergeCommit(repo, n) != "":
+		return ShipMerged
 	case pr.State == "OPEN":
-		return ShipOpen, ""
+		return ShipOpen
 	case pr.State == "CLOSED":
-		return ShipClosed, ""
+		return ShipClosed
 	}
-	return "", ""
+	return ""
 }
 
 func (s *ServerSource) SetRemote(slug string, on bool) (string, error) {

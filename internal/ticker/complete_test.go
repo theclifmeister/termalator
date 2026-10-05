@@ -54,39 +54,25 @@ func mergedPR(n int, merge string) string {
 	return fmt.Sprintf(`{"number":%d,"url":"https://github.com/o/r/pull/%d","state":"MERGED","mergedAt":"2026-10-04T12:00:00Z","mergeCommit":{"oid":%q},"statusCheckRollup":[]}`, n, n, merge)
 }
 
-// TestCompleteTasksReleased: with complete_tasks "released", a task in
-// review is done once a tag contains its thread's PR merge commit, not
-// before; journaled as the ticker, and the coordinator gets an item. Sent
-// back and in review again, it isn't completed again for that merge.
-func TestCompleteTasksReleased(t *testing.T) {
+// TestCompleteTasksMergedItem: with complete_tasks "merged", a task in
+// review is done once its thread's PR merged; journaled as the ticker,
+// and the coordinator gets an item. Sent back and in review again, it
+// isn't completed again for that merge.
+func TestCompleteTasksMergedItem(t *testing.T) {
 	repo, other := gitFixture(t)
 	merge := push(t, other, "g", "two\n", "Merge pull request #7 from a/b")
 	r := newRigIn(t, repo, []string{repo})
-	r.setConfig("[projects.demo]\ncomplete_tasks = \"released\"\n")
+	r.setConfig("[projects.demo]\ncomplete_tasks = \"merged\"\n")
 	r.addTask("Ship it", "review", "t-0001", "")
 	r.gh = []string{mergedPR(7, merge)}
 	r.sweep(0)
-	if st := r.status(1); st != tasks.Review {
-		t.Fatalf("done before a release: %s", st)
-	}
-	if !strings.Contains(r.kinds(), "pr-merged") || strings.Contains(r.kinds(), KindTaskDone) {
-		t.Fatalf("kinds %s", r.kinds())
-	}
-
-	gitT(t, other, "tag", "v0.5.0")
-	gitT(t, other, "push", "-q", "origin", "v0.5.0")
-	r.sweep(time.Minute) // no sync yet
-	if st := r.status(1); st != tasks.Review {
-		t.Fatalf("done before the repo was fetched: %s", st)
-	}
-	r.sweep(2 * time.Minute)
 	if st := r.status(1); st != tasks.Done {
-		t.Fatalf("released, still %s", st)
+		t.Fatalf("merged, still %s", st)
 	}
-	if j := r.journal(); !strings.Contains(j, "ticker task.done T1 released in v0.5.0 (PR #7)") {
+	if j := r.journal(); !strings.Contains(j, "ticker task.done T1 merged (PR #7)") {
 		t.Fatalf("journal:\n%s", j)
 	}
-	if s := r.summaries(); !strings.Contains(s, "T1 Ship it is done: released in v0.5.0 (PR #7), as the user's setting says (complete tasks when released)") {
+	if s := r.summaries(); !strings.Contains(s, "T1 Ship it is done: merged (PR #7), as the user's setting says (complete tasks when merged)") {
 		t.Fatalf("items:\n%s", s)
 	}
 	if n := NudgeText(r.items()[len(r.items())-1:], nil); !strings.Contains(n, "T1 done by the user's setting") {
@@ -101,6 +87,25 @@ func TestCompleteTasksReleased(t *testing.T) {
 	r.sweep(2 * time.Minute)
 	if st := r.status(1); st != tasks.Review {
 		t.Fatalf("completed again for the same merge: %s", st)
+	}
+}
+
+// TestCompleteTasksReleasedRemoved: the removed complete_tasks
+// "released" reads as "user": a merged, tagged PR leaves its task in
+// review.
+func TestCompleteTasksReleasedRemoved(t *testing.T) {
+	repo, other := gitFixture(t)
+	merge := push(t, other, "g", "two\n", "Merge pull request #7 from a/b")
+	gitT(t, other, "tag", "v0.5.0")
+	gitT(t, other, "push", "-q", "origin", "v0.5.0")
+	r := newRigIn(t, repo, []string{repo})
+	r.setConfig("[projects.demo]\ncomplete_tasks = \"released\"\n")
+	r.addTask("Ship it", "review", "t-0001", "")
+	r.gh = []string{mergedPR(7, merge)}
+	r.sweep(0)
+	r.sweep(2 * time.Minute)
+	if st := r.status(1); st != tasks.Review || strings.Contains(r.kinds(), KindTaskDone) {
+		t.Fatalf("completed by the removed setting: %s, %s", st, r.kinds())
 	}
 }
 

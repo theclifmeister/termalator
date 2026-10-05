@@ -109,7 +109,8 @@ Any `tm` command starts the server when needed, so you don't need a service. If 
 - the server: running and answering, the same build as this `tm` (a server of an older protocol is a warning; `tm doctor --fix` restarts it, agents are resumed), on macOS whether its sessions can reach the keychain (not when it was started over SSH; see [Over SSH](#over-ssh-macos)), a previous crash, stale `tm.sock`, `server.pid` and session runtime dirs (it never starts a server);
 - each agent's installed version against its manifest's `tested_versions`. An untested Claude still works, but termilator stops trusting its undocumented status file and messaging socket;
 - the sandbox tools Claude needs for threads: `sandbox-exec` on macOS, `bwrap` and `socat` on Linux;
-- leftovers: worktrees under `~/.termilator/worktrees` whose thread is resolved or gone, and `tm/<project>/…` branches already merged into the default branch.
+- leftovers: worktrees under `~/.termilator/worktrees` whose thread is resolved or gone, and `tm/<project>/…` branches already merged into the default branch;
+- settings in `config.toml` that tm no longer has: a project's Complete tasks still set to the removed "when released" (it now means by you; pick again in Settings).
 
 It exits 1 only when a check fails; warnings don't count. `--json` prints the results for scripts.
 

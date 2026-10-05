@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
+	"sort"
 
 	"github.com/BurntSushi/toml"
 	"github.com/theclifmeister/termilator/internal/home"
@@ -34,14 +35,18 @@ const (
 	CloseDays   = "days"   // auto_close_days after it finished
 )
 
-// Values of complete_tasks: when a task is done (§6.4, §7.5). Only
-// CompleteUser leaves it to the user; the others are the user's standing
-// acceptance, applied by the ticker to a task in review once its thread's
-// pull request merged or was released.
+// Values of complete_tasks: when a task is done (§6.4, §7.5).
+// CompleteUser leaves it to the user; CompleteMerged is the user's
+// standing acceptance, applied by the ticker to a task in review once
+// its thread's pull request merged.
 const (
-	CompleteUser     = "user"
-	CompleteReleased = "released" // a tag contains its PR's merge commit
-	CompleteMerged   = "merged"   // its PR merged
+	CompleteUser   = "user"
+	CompleteMerged = "merged" // its PR merged
+	// CompleteRemoved is the former "when released" (a tag contains the
+	// PR's merge commit), dropped as too specific to one release flow.
+	// It is read as CompleteUser, so nothing completes silently, and tm
+	// doctor warns until the user picks again (Removed).
+	CompleteRemoved = "released"
 )
 
 // Limits of the number settings.
@@ -68,8 +73,8 @@ type Safety struct {
 	// asks for changes (§7.5).
 	PRFollowup bool `json:"pr_followup"`
 	// CompleteTasks is when a task is done: CompleteUser (only on the
-	// user's word), CompleteReleased or CompleteMerged (the ticker marks
-	// a task in review done once its thread's PR was released or merged).
+	// user's word) or CompleteMerged (the ticker marks a task in review
+	// done once its thread's PR merged).
 	CompleteTasks string `json:"complete_tasks"`
 	// CoordinatorRemoteControl starts the coordinator with the agent's
 	// remote control on (e.g. Claude Code's Remote Control), named after
@@ -201,10 +206,12 @@ func (c *Config) Safety(slug string) (Safety, error) {
 	}
 	if r.CompleteTasks != nil {
 		switch *r.CompleteTasks {
-		case CompleteUser, CompleteReleased, CompleteMerged:
+		case CompleteUser, CompleteMerged:
 			s.CompleteTasks = *r.CompleteTasks
+		case CompleteRemoved:
+			s.CompleteTasks = CompleteUser
 		default:
-			return s, fmt.Errorf("%s: projects.%s.complete_tasks must be %q, %q or %q, not %q", c.Path, slug, CompleteUser, CompleteReleased, CompleteMerged, *r.CompleteTasks)
+			return s, fmt.Errorf("%s: projects.%s.complete_tasks must be %q or %q, not %q", c.Path, slug, CompleteUser, CompleteMerged, *r.CompleteTasks)
 		}
 	}
 	if r.CoordinatorRC != nil {
@@ -214,6 +221,19 @@ func (c *Config) Safety(slug string) (Safety, error) {
 		s.FastForwardCheckout = *r.FastForward
 	}
 	return s, nil
+}
+
+// Removed lists, sorted, the projects whose complete_tasks still names
+// the removed "released" (CompleteRemoved), read as CompleteUser.
+func (c *Config) Removed() []string {
+	var out []string
+	for slug, r := range c.projects {
+		if r.CompleteTasks != nil && *r.CompleteTasks == CompleteRemoved {
+			out = append(out, slug)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // DefaultAgent is the agent new coordinators run (default_agent), or

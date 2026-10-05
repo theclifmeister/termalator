@@ -109,15 +109,14 @@ cmd = 'printf "## Report\nDone.\n\n## Next\nMerge the PR\n" | "$TERMILATOR_BIN" 
 	}
 }
 
-// TestSmokeTickerCompleteOnRelease: with Complete tasks "when released",
-// a task in review whose thread's PR merged stays in review (the thread
-// closes on the merge) until a tag on origin contains the merge commit;
-// then the ticker marks it done, journals it and tells the coordinator.
-// The t list shows it under DONE, and x still sends it back.
-func TestSmokeTickerCompleteOnRelease(t *testing.T) {
+// TestSmokeTickerCompleteOnMerge: with Complete tasks "when merged", a
+// task in review is done once its thread's PR merged on origin: the
+// ticker marks it done, journals it and tells the coordinator. The t
+// list shows it under DONE, and x still sends it back.
+func TestSmokeTickerCompleteOnMerge(t *testing.T) {
 	env, projDir, _ := tickerEnv(t)
 	state := fakeGH(t, env)
-	writeConfig(t, env, "[projects.demo]\ncomplete_tasks = \"released\"\n")
+	writeConfig(t, env, "[projects.demo]\ncomplete_tasks = \"merged\"\n")
 	env.MustCLI("task", "add", "Small fix", "--status", "ready", "--project", "demo")
 	env.MustCLI("thread", "start", "--task", "T1", "--project", "demo")
 	var rec struct{ Session, Repo string }
@@ -144,19 +143,11 @@ func TestSmokeTickerCompleteOnRelease(t *testing.T) {
 	merge := git(other, "rev-parse", "HEAD")
 	git(other, "push", "-q", "origin", "HEAD:main")
 	setPR(t, state, `{"number":7,"url":"https://github.com/o/r/pull/7","state":"MERGED","mergeCommit":{"oid":"`+merge+`"},"statusCheckRollup":[]}`)
-	waitInbox(t, env, "thread-resolved: t-0001 (T1 Small fix) resolved")
-	time.Sleep(2 * time.Second) // a few syncs: merged, not released
-	if out := env.MustCLI("task", "show", "T1", "--project", "demo", "--json"); !strings.Contains(out, `"status": "review"`) {
-		t.Fatalf("done before a release:\n%s", out)
-	}
-
-	git(other, "tag", "v0.5.0")
-	git(other, "push", "-q", "origin", "v0.5.0")
-	waitInbox(t, env, "task-done: T1 Small fix is done: released in v0.5.0 (PR #7), as the user's setting says (complete tasks when released)")
+	waitInbox(t, env, "task-done: T1 Small fix is done: merged (PR #7), as the user's setting says (complete tasks when merged)")
 	if out := env.MustCLI("task", "show", "T1", "--project", "demo", "--json"); !strings.Contains(out, `"status": "done"`) {
 		t.Fatalf("not done:\n%s", out)
 	}
-	if j, _ := os.ReadFile(filepath.Join(projDir, "JOURNAL.md")); !strings.Contains(string(j), "ticker task.done T1 released in v0.5.0 (PR #7)") {
+	if j, _ := os.ReadFile(filepath.Join(projDir, "JOURNAL.md")); !strings.Contains(string(j), "ticker task.done T1 merged (PR #7)") {
 		t.Fatalf("journal:\n%s", j)
 	}
 
