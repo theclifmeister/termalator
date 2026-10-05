@@ -44,8 +44,8 @@ func TestSmokeProjectOpenAndSwitch(t *testing.T) {
 	w.WaitUntil("the tree", wait, func(sc string) bool {
 		a, b := projectRow(sc, alpha), projectRow(sc, beta)
 		lines := strings.Split(sc, "\n")
-		return a >= 0 && b == a+2 && strings.HasPrefix(lines[a+1], " └─ coordinator       ○") &&
-			strings.HasPrefix(lines[b+1], " └─ coordinator       ·")
+		return a >= 0 && b == a+2 && strings.HasPrefix(lines[a+1], " └─ coordinator      ○ ") &&
+			strings.HasPrefix(lines[b+1], " └─ coordinator      · ")
 	})
 
 	// p, down, enter: beta's coordinator starts and is attached.
@@ -109,8 +109,8 @@ func TestSmokeSidebar(t *testing.T) {
 	// runs yet); demo is expanded too, with its coordinator and, nested
 	// under that, its one thread.
 	w.WaitFor(" ■ "+beta, wait)
-	w.WaitFor(" └─ coordinator       ·", wait)
-	w.WaitFor(" ■ "+demo+"             1", wait)
+	w.WaitFor(" └─ coordinator      · ", wait)
+	w.WaitFor(" ■ "+demo+"            1", wait)
 	w.WaitUntil("demo's thread", wait, func(sc string) bool {
 		return treeRow(sc, demo, "coordinator") >= 0 && strings.Contains(sc, "    └─ t-0001 ")
 	})
@@ -174,8 +174,8 @@ func TestSmokeSidebar(t *testing.T) {
 	// nothing; beta, the focused pane's, is marked.
 	w.Resize(70, 30)
 	waitPaneSize(t, env, b, 63, 28)
-	w.WaitFor("▸○beta│", wait)
-	w.WaitFor(" ·demo│", wait)
+	w.WaitFor("▸○bet │", wait)
+	w.WaitFor(" ·dem │", wait)
 	w.Resize(120, 30)
 	w.Detach()
 	for _, x := range both {

@@ -27,13 +27,13 @@ func TestDashboardSidebar(t *testing.T) {
 	m := newDash(DashOptions{Source: src, Width: 120, Height: 30, UIFile: ui, State: DashState{Current: "beta"}})
 	m.setData(src.data)
 	want := []string{
-		" PROJECTS             2│ tm dashboard",
-		" ■ alpha            0  │",
-		" └─ coordinator       ▲│",
-		" ■ beta             2 ◆│", // t-0005 waits on a question
-		" └─ coordinator       ·│",
-		"    ├─ t-0005 W…  60% ●│", // threads hang under the coordinator
-		"    └─ t-0006 O…      ·│",
+		" PROJECTS            2 │ tm dashboard",
+		" ■ alpha           0   │",
+		" └─ coordinator      ▲ │", // a blank column before the border
+		" ■ beta            2 ◆ │", // t-0005 waits on a question
+		" └─ coordinator      · │",
+		"    ├─ t-0005    60% ● │", // threads hang under the coordinator
+		"    └─ t-0006        · │",
 	}
 	lines := strings.Split(whole(m), "\n")
 	for i, w := range want {
@@ -94,7 +94,7 @@ func TestDashboardSidebar(t *testing.T) {
 	// A narrow window: the slim strip of projects, never nothing. alpha
 	// is current; beta's glyph is the hint.
 	m.Update(tea.WindowSizeMsg{Width: 70, Height: 30})
-	if out := whole(m); m.sideW() != sideSlim || !strings.Contains(out, "▸▲alph│") || !strings.Contains(out, " ◆beta│") || !strings.HasPrefix(strings.Split(out, "\n")[3], "      │") {
+	if out := whole(m); m.sideW() != sideSlim || !strings.Contains(out, "▸▲alp │") || !strings.Contains(out, " ◆bet │") || !strings.HasPrefix(strings.Split(out, "\n")[3], "      │") {
 		t.Fatalf("narrow window, sidebar %d:\n%s", m.sideW(), out)
 	}
 	// A click on a project in the strip shows its dashboard.
@@ -138,16 +138,17 @@ func TestTreeThreadRows(t *testing.T) {
 		{kind: treeThread, thread: "t-0002", title: "Rewrite the README", state: "done", pct: 100},
 		{kind: treeThread, thread: "t-0001", title: "Fix the login session expiry", state: "working", pct: -1},
 	} {
-		l := ansi.Strip(treeLine(r, 23, false, false))
+		l := ansi.Strip(treeLine(r, 24, false, false))
 		if strings.Contains(l, " …") {
 			t.Errorf("row %q", l)
 		}
-		if w := ansi.StringWidth(l); w != 23 {
+		if w := ansi.StringWidth(l); w != 24 {
 			t.Errorf("row %q is %d cells", l, w)
 		}
 		// The label column is the same on every row: 7 cells in (a level
 		// under the coordinator), 9 wide, the id, a space and what fits
-		// of the title; then the percent's 5 and the state glyph.
+		// of the title; then the percent's 5, the state glyph and the
+		// blank column before the border.
 		label := string([]rune(l)[7:16])
 		if !strings.HasPrefix(label, r.thread+" ") || strings.TrimSpace(label[len(r.thread):]) == "" {
 			t.Errorf("row %q: label %q", l, label)
@@ -156,9 +157,10 @@ func TestTreeThreadRows(t *testing.T) {
 }
 
 // TestTreeThreadIDNeverCut: at every sidebar width and in every icon set
-// a thread row is as wide as the sidebar and shows its whole id or none
-// of it: none only at the narrowest widths, where it doesn't fit beside
-// the state glyph. At the default width and wider the title shows too.
+// a thread row is as wide as the sidebar, ends in its state glyph and a
+// blank column, and shows its whole id or none of it: none only at the
+// narrowest widths, where it doesn't fit beside the state glyph. Wider
+// than the default the title shows too.
 func TestTreeThreadIDNeverCut(t *testing.T) {
 	defer setIcons(IconsUnicode)
 	r := treeRow{kind: treeThread, thread: "t-0042", title: "Prefix each thread row with its id", state: "working", pct: 40}
@@ -169,11 +171,14 @@ func TestTreeThreadIDNeverCut(t *testing.T) {
 			if got := ansi.StringWidth(l); got != w-1 {
 				t.Errorf("%s width %d: row %q is %d cells", set, w, l, got)
 			}
+			if r := []rune(l); r[len(r)-1] != ' ' || r[len(r)-2] == ' ' {
+				t.Errorf("%s width %d: row %q: no glyph and gap at its end", set, w, l)
+			}
 			whole := strings.Contains(l, "t-0042")
 			if !whole && (w >= view.SideMin+2 || strings.Contains(l, "t-")) {
 				t.Errorf("%s width %d: row %q lacks the whole id", set, w, l)
 			}
-			if w >= sideDefault && !strings.Contains(l, "t-0042 P") {
+			if w > sideDefault && !strings.Contains(l, "t-0042 P") {
 				t.Errorf("%s width %d: row %q lacks the title", set, w, l)
 			}
 		}
@@ -218,7 +223,7 @@ func TestDashboardSidebarKeys(t *testing.T) {
 		}
 	}
 	// The cursor's row is highlighted, not the one you are on.
-	if l := strings.Split(whole(m), "\n")[5]; !strings.Contains(l, "t-0005 W…") {
+	if l := strings.Split(whole(m), "\n")[5]; !strings.Contains(l, "t-0005 ") {
 		t.Fatalf("row 5 %q", l)
 	}
 	// Not a sidebar key: the list's ? opens the help.

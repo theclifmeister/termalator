@@ -1,9 +1,9 @@
- PROJECTS             2│
- + beta             0  │
- `- coordinator       .│
- + demo             1  │
- `- coordinator       .│
-    `- t-0001 S…      o│
+ PROJECTS            2 │
+ + beta            0   │
+ `- coordinator      . │
+ + demo            1   │
+ `- coordinator      . │
+    `- t-0001        o │
                        │
                        │
                        │

@@ -15,7 +15,7 @@ const (
 	SideDefault = 24 // a full sidebar's width
 	SideMin     = 14 //
 	SideMax     = 48 //
-	SideSlim    = 7  // the slim strip: a marker, a glyph, 4 letters, the border
+	SideSlim    = 7  // the slim strip: a marker, a glyph, 3 letters, a blank, the border
 	SideRoom    = 60 // a full sidebar leaves the panes at least this many columns
 	SideStep    = 2  // { and } change the width this much
 )

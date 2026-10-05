@@ -1,6 +1,6 @@
- PROJECTS             1│ tm dashboard                                                           ● server ok · 0 sessions
- ■ demo             0  │ demo ──────────────────────────────────────────────────────────────────────────────────────────
- └─ coordinator       ·│  coo╭─ demo ─────────────────────────────────────────────────────────────────────────────╮
+ PROJECTS            1 │ tm dashboard                                                           ● server ok · 0 sessions
+ ■ demo            0   │ demo ──────────────────────────────────────────────────────────────────────────────────────────
+ └─ coordinator      · │  coo╭─ demo ─────────────────────────────────────────────────────────────────────────────╮
                        │  tas│  1 Overview   2 Inbox   3 Tasks   4 Settings   5 Keys                              │
                        │ OTHE│                                                                                    │─────
                        │  no │ Project       Demo  demo                                                           │

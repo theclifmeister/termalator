@@ -252,7 +252,8 @@ func sidebarLines(all []treeRow, w, h int) []string {
 			n++
 		}
 	}
-	out = append(out, sideHead(n, cw, slim)+reset+border)
+	// Every row leaves a column before the border (sideGap).
+	out = append(out, sideHead(n, cw-sideGap, slim)+strings.Repeat(" ", sideGap)+reset+border)
 	if n == 0 {
 		note := " no projects"
 		if slim {
@@ -273,11 +274,11 @@ func sidebarLines(all []treeRow, w, h int) []string {
 }
 
 // sideHead is the sidebar's header, cw cells wide: " PROJECTS", its
-// count of projects in the state column on the right; " PRJ 3" in the
+// count of projects in the state column on the right; "PRJ 3" in the
 // slim strip.
 func sideHead(n, cw int, slim bool) string {
 	if slim {
-		return styleTitle.Render(fit(countLabel(" PRJ", n), cw))
+		return styleTitle.Render(fit(countLabel("PRJ", n), cw))
 	}
 	count := ""
 	if n > 0 {
@@ -298,8 +299,19 @@ func coordLook(state string) (string, lipgloss.Style) {
 	return stateLook(state)
 }
 
-// treeLine is one tree row cw cells wide, in this console's icon set
-// (icons.go). At the default width, in the unicode set:
+// sideGap is the blank column between the sidebar's rows and its border,
+// so the state glyphs don't touch it.
+const sideGap = 1
+
+// treeLine is one tree row cw cells wide, its last sideGap blank: the
+// glyphs keep off the border, and the title (the slug in the slim strip)
+// gives up the room.
+func treeLine(r treeRow, cw int, slim, focused bool) string {
+	return treeCells(r, max(cw-sideGap, 0), slim, focused) + strings.Repeat(" ", min(sideGap, cw))
+}
+
+// treeCells is one tree row cw cells wide, in this console's icon set
+// (icons.go). In a sidebar 25 columns wide, in the unicode set:
 //
 //	" ■ termilator       2 ◆"  a project: its name, its open threads,
 //	                           the hint that one of them is blocked or
@@ -317,14 +329,14 @@ func coordLook(state string) (string, lipgloss.Style) {
 // bold, the current one in the accent colour; the
 // connectors are faint.
 //
-// The slim strip shows projects alone, "▸●term", the current one marked
+// The slim strip shows projects alone, "▸●ter", the current one marked
 // and its coordinator's glyph (or the hint) after it.
 // A coordinator with remote control on gets "⌁" after the project's name,
 // in either width, and after "coordinator".
 // The row you are on is in reverse video (and, in the slim strip, marked),
 // so colour is never the only signal. While the sidebar has the keyboard
 // focus, the keyboard's row is instead, in the accent colour.
-func treeLine(r treeRow, cw int, slim, focused bool) string {
+func treeCells(r treeRow, cw int, slim, focused bool) string {
 	i := ic()
 	sel := styleSel.Bold(true)
 	if focused {
@@ -426,16 +438,23 @@ func treeLine(r treeRow, cw int, slim, focused bool) string {
 	// The percent has a column of its own, the same width on every row,
 	// so titles are cut at the same place. The id leads and is never
 	// cut: the title gives way; where even the id doesn't fit the label
-	// column it takes the percent's too, and where it still doesn't fit
-	// it is left out.
+	// column it takes the percent's too, then the space before the
+	// glyph, and where it still doesn't fit it is left out.
 	pct := strings.Repeat(" ", pctCol)
 	if r.pct >= 0 {
 		pct = fmt.Sprintf("%*d%%", pctCol-1, r.pct)
 	}
 	label := threadLabel(r.thread, r.title, lw)
-	if ansi.StringWidth(r.thread) > cw-ld-rw {
+	if iw := ansi.StringWidth(r.thread); iw > cw-ld-rw {
 		pct = ""
 		label = threadLabel(r.thread, "", max(cw-ld-2, 0))
+		if iw == cw-ld-1 {
+			// The id fits only right up against the glyph.
+			if r.here {
+				return lead + sel.Render(r.thread+g)
+			}
+			return lead + r.thread + st.Render(g)
+		}
 	}
 	if r.here {
 		return lead + sel.Render(fit(label+right(pct, g, st, true), cw-ld))
