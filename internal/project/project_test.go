@@ -332,3 +332,39 @@ func TestAskAcceptSendBack(t *testing.T) {
 		}
 	}
 }
+
+// TestReadMemory: a project's memory is its CONTEXT.md, its MEMORY.md
+// and its memory notes' titles (the first heading, else the file name),
+// sorted; other files in memory/ are left out.
+func TestReadMemory(t *testing.T) {
+	setup(t)
+	p, err := New(Options{Name: "Demo App"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, text := range map[string]string{
+		"CONTEXT.md":          "# Context\n\nThe plan.\n",
+		"MEMORY.md":           "# Memory\n\n- [Decisions](memory/decisions.md): host\n",
+		"memory/decisions.md": "intro\n\n## Design decisions\n\n- one\n",
+		"memory/lessons.md":   "no heading\n",
+		"memory/notes.txt":    "# Not a note\n",
+	} {
+		if err := os.WriteFile(p.Path(name), []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m, err := p.ReadMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Context != "# Context\n\nThe plan.\n" || !strings.Contains(m.Index, "[Decisions]") {
+		t.Fatalf("memory %+v", m)
+	}
+	if strings.Join(m.Notes, "|") != "Design decisions|lessons" {
+		t.Fatalf("notes %q", m.Notes)
+	}
+	os.Remove(p.Path("CONTEXT.md"))
+	if m, err := p.ReadMemory(); err != nil || m.Context != "" {
+		t.Fatalf("without CONTEXT.md: %+v, %v", m, err)
+	}
+}

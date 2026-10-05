@@ -38,10 +38,9 @@ var sessionKeys = []keyHelp{
 // popupKeys are the project popup's own keys (projectView). None is a
 // prefix command (TestNoPlainKeyIsAPrefixCommand).
 var popupKeys = []keyHelp{
-	{"← → 1-5", "previous / next tab, or pick one"},
-	{"↑ ↓", "move in the tab"},
-	{"enter space", "on a setting: change it (yolo mode asks first); it is the project's own from then on"},
-	{"x", "on a setting the project sets itself: follow all projects again (the , settings' All projects tab)"},
+	{"← → 1-6", "previous / next tab, or pick one"},
+	{"↑ ↓ pgup pgdown", "move in the tab, or scroll it (Keys, Memory)"},
+	{"enter space + - x", "on the Settings tab: as in the settings, below"},
 	{"+ x", "on the overview: add a repository / remove the selected one (asks first)"},
 	{"enter", "on a task (Tasks tab): show it, with what it is blocked on, or how to check it and whether its pull request merged"},
 	{"D", "on an open, ready or blocked task (Tasks tab, or the t list): delegate it; the coordinator starts a thread for it (asks first)"},
@@ -49,6 +48,17 @@ var popupKeys = []keyHelp{
 	{"x", "on a task in review: send it back with a note on what to change; the coordinator passes it on"},
 	{"c", "on a task: open the project's coordinator, to answer what a blocked task waits on"},
 	{"esc", "close; esc is the only key that closes a popup"},
+}
+
+// settingsKeys are the settings' keys (settings.go): the , popup and
+// the project popup's Settings tab. None is a prefix command.
+var settingsKeys = []keyHelp{
+	{"↑ ↓ pgup pgdown", "move through the settings"},
+	{"enter space", "change the selected setting (yolo mode asks first); on the prefix key, the next ctrl+<key> is the new prefix"},
+	{"+ -", "on a number: one step up / down"},
+	{"← → 1 2", "the , settings: General, or All projects (the settings every project follows unless it sets its own)"},
+	{"x", "on a project's setting it sets itself (its Settings tab): follow all projects again"},
+	{"esc", "close"},
 }
 
 // mouseKeys are the mouse's ways, in the help beside the keys: every
@@ -86,6 +96,7 @@ func keyGroups() []keyGroup {
 		{"Prefix commands: the same everywhere", sessionKeys},
 		{"In the sidebar (tab, or prefix+tab in a session)", side},
 		{"In the project popup", popupKeys},
+		{"In the settings (, or the project popup's Settings tab)", settingsKeys},
 	}
 }
 

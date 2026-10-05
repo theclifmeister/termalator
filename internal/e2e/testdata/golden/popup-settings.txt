@@ -1,7 +1,7 @@
  PROJECTS                    1 │ tm dashboard                                                   ● server ok · 0 sessions
  ■ demo                    0   │ demo ──────────────────────────────────────────────────────────────────────────────────
  └─ coordinator              · │  co╭─ demo ──────────────────────────────────────────────────────────────────────╮
-                               │  ta│  1 Overview   2 Inbox   3 Tasks   4 Settings   5 Keys                       │
+                               │  ta│  1 Overview   2 Inbox   3 Tasks   4 Settings   5 Keys   6 Memory            │
                                │ OTH│                                                                             │─────
                                │  no│ Start threads                ask first · all projects                       │
                                │    │ Ask first: the coordinator proposes threads and starts them after your go-  │
