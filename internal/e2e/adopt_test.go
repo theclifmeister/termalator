@@ -70,7 +70,7 @@ func TestThreadAdopt(t *testing.T) {
 	tdir := filepath.Join(projDir, "threads", "t-0001")
 	var rec struct {
 		Title, Task, Repo, Branch, Worktree, Session, State string
-		Adopted, Checkout                                  bool
+		Adopted, Checkout                                   bool
 	}
 	readTOML(t, filepath.Join(tdir, "thread.toml"), &rec)
 	if rec.Title != "Fix the login" || rec.Task != "T1" || rec.Repo != repo || rec.Branch != "fix-login" || rec.Worktree != wt ||
