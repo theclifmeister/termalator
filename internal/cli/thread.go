@@ -888,7 +888,7 @@ func (e *Env) threadResolve(p *project.Project, id string) error {
 	if _, err := thread.Update(p, id, func(x *thread.Record) error { x.State = thread.Resolved; return nil }); err != nil {
 		return err
 	}
-	summary := id + " resolved: " + strings.Join(did, "; ")
+	summary := thread.Label(p, id) + " resolved: " + strings.Join(did, "; ")
 	if _, err := p.AddItem("thread-resolved", id, summary, false); err != nil {
 		return err
 	}
@@ -990,10 +990,7 @@ func runReport(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
-	summary := fmt.Sprintf("%s handed in report %d", r.ID, n)
-	if r.Task != "" {
-		summary += " (" + r.Task + ")"
-	}
+	summary := fmt.Sprintf("%s handed in report %d", thread.Label(p, r.ID), n)
 	if _, err := p.AddItem("report", r.ID, summary, false); err != nil {
 		return err
 	}
@@ -1054,7 +1051,7 @@ func runStatus(e *Env, args []string) error {
 	if st.NeedsYou != "" && !wasWaiting {
 		// The question itself is the thread's text: data, kept out of
 		// the item's summary.
-		if _, err := p.AddItem("needs-you", r.ID, r.ID+" is waiting for the user (tm thread show "+r.ID+")", true); err != nil {
+		if _, err := p.AddItem("needs-you", r.ID, thread.Label(p, r.ID)+" is waiting for the user (tm thread show "+r.ID+")", true); err != nil {
 			return err
 		}
 	}
@@ -1103,11 +1100,7 @@ func runDone(e *Env, args []string) error {
 	if _, err := thread.UpdateStatus(p, r.ID, func(st *thread.Status) error { st.Done = true; return nil }); err != nil {
 		return err
 	}
-	summary := r.ID + " is done"
-	if r.Task != "" {
-		summary += " with " + r.Task
-	}
-	summary += fmt.Sprintf("; review report %d and move the task", r.Reports)
+	summary := thread.Label(p, r.ID) + fmt.Sprintf(" is done; review report %d and move the task", r.Reports)
 	if _, err := p.AddItem("thread-done", r.ID, summary, false); err != nil {
 		return err
 	}

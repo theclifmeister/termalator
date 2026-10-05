@@ -66,7 +66,7 @@ func TestSmokeTickerAutoCloseKeepsUnsavedWork(t *testing.T) {
 		t.Fatal(err)
 	}
 	setPR(t, state, `{"number":7,"url":"https://github.com/o/r/pull/7","state":"MERGED","statusCheckRollup":[]}`)
-	waitInbox(t, env, "close-held: t-0001 finished but was not auto-closed: uncommitted changes in its worktree")
+	waitInbox(t, env, "close-held: t-0001 (Small fix) finished but was not auto-closed: uncommitted changes in its worktree")
 	time.Sleep(time.Second) // a few sweeps
 	if st := threadState(t, projDir, "t-0001"); st != "running" {
 		t.Fatalf("thread %s with uncommitted changes", st)
@@ -75,7 +75,7 @@ func TestSmokeTickerAutoCloseKeepsUnsavedWork(t *testing.T) {
 		t.Fatalf("inbox:\n%s", items)
 	}
 	os.Remove(scratch)
-	waitInbox(t, env, "thread-resolved: t-0001 resolved: removed worktree")
+	waitInbox(t, env, "thread-resolved: t-0001 (Small fix) resolved: removed worktree")
 }
 
 // TestTickerAutoCloseDays: auto-close N days after the thread finished
@@ -101,7 +101,7 @@ cmd = 'printf "## Report\nDone.\n\n## Next\nMerge the PR\n" | "$TERMILATOR_BIN" 
 	}
 	done := time.Now()
 	env.WaitState(th, "idle", agentWait)
-	waitInbox(t, env, "thread-resolved: t-0001 resolved")
+	waitInbox(t, env, "thread-resolved: t-0001 (Small fix) resolved")
 	if d := time.Since(done); d < 2*time.Second-200*time.Millisecond {
 		t.Fatalf("closed %v after tm done, before 2 days of a second", d)
 	}
