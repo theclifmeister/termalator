@@ -143,13 +143,19 @@ func (w *Window) Screen() string {
 // slim strip below 84 columns.
 func SideCols(cols int) int { return view.Sidebar{}.Cols(cols) }
 
+// statusRows are the status bar and the empty row above it, under every
+// attached pane.
+const statusRows = 2
+
 // PaneScreen is what the window shows right of the sidebar (at the
-// default layout): a lone pane's screen.
+// default layout) and above the empty row and the status bar: a lone
+// pane's screen.
 func (w *Window) PaneScreen() string {
 	w.mu.Lock()
 	n := SideCols(w.cols)
 	w.mu.Unlock()
 	lines := strings.Split(w.Screen(), "\n")
+	lines = lines[:max(len(lines)-statusRows, 0)]
 	for i, l := range lines {
 		r := []rune(l)
 		lines[i] = string(r[min(n, len(r)):])
