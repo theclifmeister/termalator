@@ -25,15 +25,15 @@
                                │    │ uncommitted or unpushed work stays open, and the coordinator is told.       │
                                │    │                                                                             │
                                │    │ Pull request follow-up       on                                             │
-                               │    │ Prompt a thread when its pull request's checks fail or a reviewer asks for  │
-                               │    │ changes.                                                                    │
+                               │    │ Prompt a thread when its pull request's checks fail, a reviewer asks for    │
+                               │    │ changes, or main moves past it.                                             │
                                │    │                                                                             │
                                │    │ Remote control               off                                            │
                                │    │ New coordinators start so you can continue them from another device.        │
                                │    │ prefix+r changes the running one.                                           │
                                │    │                                                                             │
-                               │    │                                                                             │
-                               │    ╰─────────────────────────────────────────────────────────────────────────────╯
+                               │    │ Keep my checkout current     on                                             │
+                               │    ╰───────────────────────────────────────────────────────────────────── more ↓ ╯
                                │
                                │────────────────────────────────────────────────────────────────────────────────────────
                                │ enter change · + - number · ↑ ↓ move · tab next tab · 1-5 pick one · esc close

@@ -42,12 +42,13 @@ coordinator_approves = false
 auto_resolve = false
 pr_followup = false
 coordinator_remote_control = true
+fast_forward_checkout = false
 `)
 	c, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s, _ := c.Safety("demo"); s != (Safety{StartThreads: "auto", Yolo: true, CoordinatorApproves: true, ParallelThreads: 10, AutoClose: "merged", AutoCloseDays: 7, PRFollowup: true}) {
+	if s, _ := c.Safety("demo"); s != (Safety{StartThreads: "auto", Yolo: true, CoordinatorApproves: true, ParallelThreads: 10, AutoClose: "merged", AutoCloseDays: 7, PRFollowup: true, FastForwardCheckout: true}) {
 		t.Fatalf("demo %+v", s)
 	}
 	if s, _ := c.Safety("other"); s != (Safety{StartThreads: "propose", ParallelThreads: 10, AutoClose: "off", AutoCloseDays: 7, CoordinatorRemoteControl: true}) {
