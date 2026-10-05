@@ -57,8 +57,9 @@ func TestIconsTree(t *testing.T) {
 			if w := ansi.StringWidth(l); w != sideDefault {
 				t.Errorf("%s row %d %q is %d cells", set, i, l, w)
 			}
-			// The state column is the last before the border.
-			if r := []rune(l); i > 0 && i < 7 && r[len(r)-2] == ' ' && !strings.Contains(l, "alpha") {
+			// The state column is the last but one before the border, which
+			// a blank column keeps it off.
+			if r := []rune(l); i > 0 && i < 7 && (r[len(r)-3] == ' ' || r[len(r)-2] != ' ') && !strings.Contains(l, "alpha") {
 				t.Errorf("%s row %d %q: no state glyph", set, i, l)
 			}
 		}

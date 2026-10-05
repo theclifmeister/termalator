@@ -32,6 +32,9 @@ func notDelegable(t *tasks.Task) string {
 // waits for the coordinator.
 const delegateWaiting = "waiting on the coordinator"
 
+// delegateWaitingRow is delegateWaiting for the t list's narrow row.
+const delegateWaitingRow = "waiting on coordinator"
+
 // delegating tells whether slug's task t waits on the coordinator: an
 // unhandled delegate item asks for it.
 func (m *dash) delegating(slug string, t *tasks.Task) bool {

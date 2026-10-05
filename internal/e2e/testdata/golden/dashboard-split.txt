@@ -1,30 +1,30 @@
- PROJECTS             1│ tm dashboard                                                                                                        ● server ok · 1 session
- ■ demo             1  │ demo ─────────────────────────────────────────────────────────────────────────────────────│ t-0001 Fix the login
- ├─ coordinator       ·│  coordinator                         —          enter starts the coordinator  1 inbox     │ ○ idle
- └─ Fix the log…  50% ○│  t-0001 Fix the login                ○ idle     report new  T1  50% 1/2 ▸ Fix  <duration>  PR #7  │ ──────────────────────────────────────────────
-                       │  tasks: 0 needs you · 1 in motion · 0 on deck                                             │ project   demo
-                       │ OTHER SESSIONS ───────────────────────────────────────────────────────────────────────────│ task      T1
-                       │  none outside the projects (1 in them); s starts a shell                                  │ session   <session>
-                       │                                                                                           │ progress  ▰▰▰▱▱ 50% 1/2
-                       │                                                                                           │ now       ▸ Fix
-                       │                                                                                           │ updated   <duration> ago
-                       │                                                                                           │ PR        https://github.com/o/r/pull/7
-                       │                                                                                           │ report    1, new · for the coordinator
-                       │                                                                                           │
-                       │                                                                                           │ T1 steps:
-                       │                                                                                           │   ✓ 1 Reproduce
-                       │                                                                                           │   ○ 2 Fix
-                       │                                                                                           │
-                       │                                                                                           │ enter attaches it; the coordinator acts on it
-                       │                                                                                           │
-                       │                                                                                           │
-                       │                                                                                           │
-                       │                                                                                           │
-                       │                                                                                           │
-                       │                                                                                           │
-                       │                                                                                           │
-                       │                                                                                           │
-                       │                                                                                           │
-                       │────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-                       │ ≡ menu · enter attach · a project · t tasks · i inbox · , settings · ? help · q quit
-                       │
+ PROJECTS                    1 │ tm dashboard                                                                                                        ● server ok · 1 session
+ ■ demo                    1   │ demo ─────────────────────────────────────────────────────────────────────────────────────│ t-0001 Fix the login
+ └─ coordinator              · │  coordinator                         —          enter starts the coordinator  1 inbox     │ ○ idle
+    └─ t-0001 Fix the…   50% ○ │  t-0001 Fix the login                ○ idle     report new  T1  50% 1/2 ▸ Fix  <duration>  PR #7  │ ──────────────────────────────────────────────
+                               │  tasks: 0 needs you · 1 in motion · 0 on deck                                             │ project   demo
+                               │ OTHER SESSIONS ───────────────────────────────────────────────────────────────────────────│ task      T1
+                               │  none outside the projects (1 in them); s starts a shell                                  │ session   <session>
+                               │                                                                                           │ progress  ▰▰▰▱▱ 50% 1/2
+                               │                                                                                           │ now       ▸ Fix
+                               │                                                                                           │ updated   <duration> ago
+                               │                                                                                           │ PR        https://github.com/o/r/pull/7
+                               │                                                                                           │ report    1, new · for the coordinator
+                               │                                                                                           │
+                               │                                                                                           │ T1 steps:
+                               │                                                                                           │   ✓ 1 Reproduce
+                               │                                                                                           │   ○ 2 Fix
+                               │                                                                                           │
+                               │                                                                                           │ enter attaches it; the coordinator acts on it
+                               │                                                                                           │
+                               │                                                                                           │
+                               │                                                                                           │
+                               │                                                                                           │
+                               │                                                                                           │
+                               │                                                                                           │
+                               │                                                                                           │
+                               │                                                                                           │
+                               │                                                                                           │
+                               │────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                               │ ≡ menu · enter attach · a project · t tasks · i inbox · , settings · ? help · q quit
+                               │

@@ -83,6 +83,9 @@ type Options struct {
 	// Sidebar configures the projects sidebar, which every view shows
 	// (docs/SPEC.md §4); nil is the defaults.
 	Sidebar *SidebarOptions
+	// Flash is a note for the status bar until the first key: what a
+	// popup over the session last said.
+	Flash string
 }
 
 // SidebarOptions configure the attach view's projects sidebar.
@@ -155,6 +158,7 @@ func Attach(opts Options) (res Result, err error) {
 	c.vc, c.me = vc, vc.Client()
 	c.prefix, c.takeover, c.told = prefix, opts.Takeover, map[string]bool{}
 	c.bare, c.dashboard = v.Bare, !v.Bare
+	c.flash = opts.Flash
 	so := opts.Sidebar
 	if so == nil {
 		so = &SidebarOptions{}
@@ -1106,7 +1110,8 @@ func (c *client) popupOver(project, key string) {
 	if !c.lock() {
 		return
 	}
-	o := &Over{Key: key, Project: project, Screen: c.paneLines()}
+	o := &Over{Key: key, Project: project}
+	o.Screen = c.paneLines(o)
 	if p := c.focus; p != nil {
 		o.Session, o.Title = p.info.ID, p.info.ID+" · "+strings.TrimPrefix(p.info.Project+" "+sessionName(p.info), " ")
 		if o.Project == "" {
@@ -1124,29 +1129,22 @@ func (c *client) popupOver(project, key string) {
 }
 
 // paneLines are the pane area's rows as shown, as plain text: what a
-// popup over the session dims. c.mu held.
-func (c *client) paneLines() []string {
-	lines := make([]string, c.paneRows)
+// popup over the session dims. It also places o's pane in that area, so
+// that the popup can follow the pane's output the same way. c.mu held.
+func (c *client) paneLines(o *Over) []string {
 	p := c.focus
 	if p == nil || p.mirror == nil {
-		return lines
+		return make([]string, c.paneRows)
+	}
+	o.X, o.Y, o.H = p.rect.X-c.sideW, p.rect.Y, p.rect.H
+	if p.r != nil {
+		o.Top = p.r.Top()
 	}
 	s, err := p.mirror.Screen()
 	if err != nil {
-		return lines
+		return make([]string, c.paneRows)
 	}
-	rows := strings.Split(s, "\n")
-	top := 0
-	if p.r != nil {
-		top = p.r.Top()
-	}
-	pad := strings.Repeat(" ", max(p.rect.X-c.sideW, 0))
-	for i := range lines {
-		if y := i - p.rect.Y + top; i >= p.rect.Y && i < p.rect.Y+p.rect.H && y >= 0 && y < len(rows) {
-			lines[i] = pad + rows[y]
-		}
-	}
-	return lines
+	return o.place(strings.Split(s, "\n"), c.paneRows)
 }
 
 // paneCommand runs a command on the window: the sidebar's width, its

@@ -66,7 +66,7 @@ func TestSmokeDashboard(t *testing.T) {
 	w.Type("k")
 	w.WaitFor("enter show", wait)
 	w.Key(keyEnter)
-	w.WaitFor("d asks it to delegate one", wait)
+	w.WaitFor("d asks the coordinator to delegate a task", wait)
 	w.Key(keyEsc)
 	w.WaitFor("NEEDS YOU 1", wait)
 

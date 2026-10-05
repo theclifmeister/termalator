@@ -74,7 +74,7 @@ func popupData(t *testing.T) (*fakeSource, *dash) {
 			Steps: []tasks.Step{{N: 1, Text: "Draft", Done: true}, {N: 2, Text: "Review"}}},
 		{ID: 2, Title: "Ship it", Status: tasks.Ready},
 	}}
-	m := newDash(DashOptions{Source: src, Width: 110, Height: 40, Cwd: "/work"})
+	m := newDash(DashOptions{Source: src, Width: 86 + sideDefault, Height: 40, Cwd: "/work"})
 	m.setData(src.Load())
 	m.sel = "p:alpha"
 	return src, m
@@ -105,7 +105,7 @@ func TestProjectPopup(t *testing.T) {
 	}
 	keyPress(m, "tab")
 	out = screen(m)
-	for _, want := range []string{"IN MOTION", "T1    Write the README", "started · 1/2 · t-0002", "✓ Draft", "Review", "ON DECK", "T2    Ship it", "d asks it to delegate one", "d delegate"} {
+	for _, want := range []string{"IN MOTION", "T1    Write the README", "started · 1/2 · t-0002", "✓ Draft", "Review", "ON DECK", "T2    Ship it", "d asks the coordinator to delegate a task", "d delegate"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("tasks tab lacks %q:\n%s", want, out)
 		}
@@ -330,7 +330,7 @@ func TestDelegateFromBoard(t *testing.T) {
 		t.Fatalf("shown task:\n%s", out)
 	}
 	keyPress(m, "esc")
-	if out := screen(m); !strings.Contains(out, "waiting on the coordinator") || !strings.Contains(out, "d delegate") {
+	if out := screen(m); !strings.Contains(out, "waiting on coordinator") || !strings.Contains(out, "d delegate") {
 		t.Fatalf("board:\n%s", out)
 	}
 }

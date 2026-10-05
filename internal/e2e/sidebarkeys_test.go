@@ -3,6 +3,7 @@ package e2e
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -32,7 +33,7 @@ func TestSmokeSidebarKeys(t *testing.T) {
 	// beta is current; every project is expanded. The cursor starts on
 	// beta.
 	w.WaitFor(" ■ "+beta, wait)
-	w.WaitUntil("demo's thread", wait, func(sc string) bool { return treeRow(sc, demo, "Small fix") >= 0 })
+	w.WaitUntil("demo's thread", wait, func(sc string) bool { return treeRow(sc, demo, "t-0001 ") >= 0 })
 	w.Key(keyTab)
 	w.WaitFor("sidebar: ↑ ↓ move", wait)
 
@@ -81,6 +82,10 @@ func TestSmokeSidebarKeys(t *testing.T) {
 	w.WaitExit(wait)
 }
 
+// sideThread is demo's thread row in the sidebar: its id, then its
+// state glyph and a blank column before the border.
+var sideThread = regexp.MustCompile(`t-0001 [^│]*\S │`)
+
 // TestSmokeSidebarIcons: the sidebar's tree in the unicode, ascii and nerd
 // icon sets (docs/SPEC.md §4), as the settings file picks them; every
 // project expanded, its rows on tree connectors, columns aligned.
@@ -95,7 +100,7 @@ func TestSmokeSidebarIcons(t *testing.T) {
 			w := env.Window(100, 12)
 			w.WaitFor(beta, wait)
 			w.WaitUntil("demo's thread", wait, func(sc string) bool {
-				return strings.Contains(sc, "Small fix") && strings.Contains(sc, "PROJECTS")
+				return sideThread.MatchString(sc) && strings.Contains(sc, "PROJECTS")
 			})
 			env.WaitState(th, "idle", agentWait) // its glyph: idle, not caught working
 			side := SideCols(100)

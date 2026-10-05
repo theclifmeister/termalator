@@ -169,7 +169,7 @@ func wrapInput(label, text string, w int) []string {
 
 // boardView is a project's task board: its live tasks in board order
 // (needs you, in motion, on deck), or one of them when open. The
-// coordinator changes tasks (tm task); d asks it to delegate one.
+// coordinator changes tasks (tm task); d asks it to delegate a task.
 type boardView struct {
 	slug  string
 	board *tasks.Board
@@ -281,7 +281,7 @@ func (b *boardView) render(m *dash) string {
 			r.rest = joinSp(fmt.Sprintf("%d/%d", t.StepsDone(), len(t.Steps)), t.Thread)
 		}
 		if m.delegating(b.slug, t) {
-			r.rest = joinSp(r.rest, delegateWaiting)
+			r.rest = joinSp(r.rest, delegateWaitingRow)
 		}
 		if i == b.sel {
 			sel = len(lines)

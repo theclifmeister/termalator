@@ -520,7 +520,7 @@ func (pv *projectView) taskLines(m *dash, w int) ([]string, int, []int) {
 	if len(out) == 0 {
 		out = append(out, styleFaint.Render("no open tasks"))
 	}
-	out = append(out, "", styleFaint.Render(fmt.Sprintf("done: %d · the coordinator changes tasks; d asks it to delegate one", done)))
+	out = append(out, "", styleFaint.Render(fmt.Sprintf("done: %d · d asks the coordinator to delegate a task", done)))
 	return out, sel, lineHits(len(out), taskAt)
 }
 

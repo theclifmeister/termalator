@@ -5,6 +5,7 @@ package e2e
 // keeps a view of its own; the view outlives a server restart.
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -33,18 +34,19 @@ func TestSmokeViewsShared(t *testing.T) {
 	}
 	a := coordinatorOf(t, env, alpha)
 	// Started at w1's size, the window less the sidebar and status bar.
-	waitPaneSize(t, env, a, 96, 28)
+	waitPaneSize(t, env, a, paneCols(120), 28)
 	// Watching from w2 resized nothing.
-	assertPaneSize(t, env, a, 96, 28)
+	assertPaneSize(t, env, a, paneCols(120), 28)
 
 	// Typing in w2 claims the view's size: the pane takes w2's
 	// rectangle, and w1 shows the same frame, padded on the right.
 	w2.Type("x")
-	waitPaneSize(t, env, a, 76, 24)
+	waitPaneSize(t, env, a, paneCols(100), 24)
+	edge := SideCols(120) + int(paneCols(100))
 	w1.WaitUntil("w1 padded", wait, func(sc string) bool {
 		lines := strings.Split(sc, "\n")
 		for _, l := range lines[:24] {
-			if r := []rune(l); len(r) > 100 && strings.TrimSpace(string(r[100:])) != "" {
+			if r := []rune(l); len(r) > edge && strings.TrimSpace(string(r[edge:])) != "" {
 				return false
 			}
 		}
@@ -52,13 +54,14 @@ func TestSmokeViewsShared(t *testing.T) {
 	})
 	// And typing in w1 claims it back.
 	w1.Type("y")
-	waitPaneSize(t, env, a, 96, 28)
+	waitPaneSize(t, env, a, paneCols(120), 28)
 
-	// The sidebar: prefix } in w2 widens it in w1 too (24 → 26 columns).
+	// The sidebar: prefix } in w2 widens it in w1 too, by 2 columns.
 	w2.Prefix("}")
+	wider := SideCols(120) + 1 // the widened border's column
 	w1.WaitUntil("a wider sidebar", wait, func(sc string) bool {
 		r := []rune(strings.Split(sc, "\n")[0])
-		return len(r) > 25 && r[25] == '│' && r[23] != '│'
+		return len(r) > wider && r[wider] == '│' && r[wider-2] != '│'
 	})
 
 	// A console of its own: it starts on its dashboard, and what it does
@@ -111,11 +114,14 @@ func TestSmokeViewSurvivesRestart(t *testing.T) {
 	a := coordinatorOf(t, env, alpha)
 	env.WaitState(a, "idle", agentWait)
 	w.Prefix("}")
+	wider := SideCols(120) + 1 // the widened border's column
 	w.WaitUntil("a wider sidebar", wait, func(sc string) bool {
 		r := []rune(strings.Split(sc, "\n")[0])
-		return len(r) > 25 && r[25] == '│'
+		return len(r) > wider && r[wider] == '│'
 	})
-	if !Poll(wait, func() bool { return strings.Contains(readFile(env.Home, "state/views.json"), `"width": 26`) }) {
+	if !Poll(wait, func() bool {
+		return strings.Contains(readFile(env.Home, "state/views.json"), fmt.Sprintf(`"width": %d`, wider+1))
+	}) {
 		t.Fatalf("views.json: %s", readFile(env.Home, "state/views.json"))
 	}
 	w.CloseWindow()
@@ -125,7 +131,7 @@ func TestSmokeViewSurvivesRestart(t *testing.T) {
 	w2 := env.Window(120, 30)
 	w2.WaitUntil("the coordinator again", agentWait, func(sc string) bool {
 		r := []rune(strings.Split(sc, "\n")[0])
-		return lastLine(sc, alpha+" coordinator") && len(r) > 25 && r[25] == '│'
+		return lastLine(sc, alpha+" coordinator") && len(r) > wider && r[wider] == '│'
 	})
 	w2.Detach()
 	w2.WaitFor("SESSIONS", wait)
@@ -155,29 +161,29 @@ func TestSmokeFirstViewFills(t *testing.T) {
 	w1.WaitFor(" ■ "+alpha, wait)
 	clickCoordinator(t, w1, alpha)
 	w1.WaitUntil("attached to alpha", agentWait, func(sc string) bool { return lastLine(sc, alpha+" coordinator") })
-	waitPaneSize(t, env, co, 112, 38)
+	waitPaneSize(t, env, co, paneCols(136), 38)
 
 	// A second console showing it later resizes nothing.
 	w2 := env.Attach(100, 26, co.ID)
 	w2.WaitFor("Fake Claude Code", agentWait)
 	time.Sleep(time.Second) // longer than the server's resize quiet time
-	assertPaneSize(t, env, co, 112, 38)
+	assertPaneSize(t, env, co, paneCols(136), 38)
 
 	// Typing claims as before: w2's rectangle, then w1's again.
 	w2.Type("x")
-	waitPaneSize(t, env, co, 76, 24) // less the status bar and the row above it
+	waitPaneSize(t, env, co, paneCols(100), 24) // less the status bar and the row above it
 	w1.Type("y")
-	waitPaneSize(t, env, co, 112, 38)
+	waitPaneSize(t, env, co, paneCols(136), 38)
 
 	// The thread fills its first console too, and the next one to show
 	// it leaves it alone.
 	w3 := env.Attach(120, 30, th.ID)
 	w3.WaitFor("Fake Claude Code", agentWait)
-	waitPaneSize(t, env, th, 96, 28) // the status bar and the row above it
+	waitPaneSize(t, env, th, paneCols(120), 28) // the status bar and the row above it
 	w4 := env.Attach(90, 24, th.ID)
 	w4.WaitFor("Fake Claude Code", agentWait)
 	time.Sleep(time.Second)
-	assertPaneSize(t, env, th, 96, 28)
+	assertPaneSize(t, env, th, paneCols(120), 28)
 	for _, w := range []*Window{w2, w3, w4} {
 		w.Detach()
 		w.WaitExit(wait)

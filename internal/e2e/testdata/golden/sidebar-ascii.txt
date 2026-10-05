@@ -1,12 +1,12 @@
- PROJECTS             2│
- + beta             0  │
- `- coordinator       .│
- + demo             1  │
- |- coordinator       .│
- `- Small fix         o│
-                       │
-                       │
-                       │
-                       │
-                       │
-                       │
+ PROJECTS                    2 │
+ + beta                    0   │
+ `- coordinator              . │
+ + demo                    1   │
+ `- coordinator              . │
+    `- t-0001 Small fix      o │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │

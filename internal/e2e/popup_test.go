@@ -156,6 +156,14 @@ func TestSmokeProjectPopup(t *testing.T) {
 		t.Fatalf("the other console left the session:\n%s", sc)
 	}
 	screens = append(screens, w.Screen())
+	// The session keeps drawing under the popup: the other console types
+	// into it, and this one shows the output with the popup still open.
+	// Only the pane's left edge shows beside the box: with the default
+	// sidebar, its first four columns ("live").
+	w2.Type("for i in $(seq 30); do echo live-$i; done\r")
+	w.WaitUntil("output under the popup", wait, func(sc string) bool {
+		return strings.Count(sc, "│live") >= 10 && strings.Contains(sc, "1 Overview")
+	})
 	w.Key(keyEsc)
 	w.WaitUntil("back on the session", wait, func(sc string) bool {
 		return lastLine(sc, "prefix+d dashboard") && !strings.Contains(sc, "1 Overview")

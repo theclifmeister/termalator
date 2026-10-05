@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -10,6 +11,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/theclifmeister/termilator/internal/view"
 )
 
 // TestDashboardSidebar: the project tree. Every project, always
@@ -25,13 +28,13 @@ func TestDashboardSidebar(t *testing.T) {
 	m := newDash(DashOptions{Source: src, Width: 120, Height: 30, UIFile: ui, State: DashState{Current: "beta"}})
 	m.setData(src.data)
 	want := []string{
-		" PROJECTS             2│ tm dashboard",
-		" ■ alpha            0 ◆│", // a task needs you
-		" └─ coordinator       ▲│",
-		" ■ beta             2 ◆│", // t-0005 waits on a question
-		" ├─ coordinator       ·│",
-		" ├─ Write docs    60% ●│",
-		" └─ Old work          ·│",
+		" PROJECTS                    2 │ tm dashboard",
+		" ■ alpha                   0 ◆ │", // a task needs you; a blank column before the border
+		" └─ coordinator              ▲ │",
+		" ■ beta                    2 ◆ │", // t-0005 waits on a question
+		" └─ coordinator              · │",
+		"    ├─ t-0005 Write do…  60% ● │", // threads hang under the coordinator, id and title
+		"    └─ t-0006 Old work       · │",
 	}
 	lines := strings.Split(whole(m), "\n")
 	for i, w := range want {
@@ -92,7 +95,7 @@ func TestDashboardSidebar(t *testing.T) {
 	// A narrow window: the slim strip of projects, never nothing. alpha
 	// is current; beta's glyph is the hint.
 	m.Update(tea.WindowSizeMsg{Width: 70, Height: 30})
-	if out := whole(m); m.sideW() != sideSlim || !strings.Contains(out, "▸▲alph│") || !strings.Contains(out, " ◆beta│") || !strings.HasPrefix(strings.Split(out, "\n")[3], "      │") {
+	if out := whole(m); m.sideW() != sideSlim || !strings.Contains(out, "▸▲alp │") || !strings.Contains(out, " ◆bet │") || !strings.HasPrefix(strings.Split(out, "\n")[3], "      │") {
 		t.Fatalf("narrow window, sidebar %d:\n%s", m.sideW(), out)
 	}
 	// A click on a project in the strip shows its dashboard.
@@ -127,25 +130,62 @@ func hereRow(rows []treeRow) treeRow {
 }
 
 // TestTreeThreadRows: every row is the same width with the percent in a
-// column of its own, so titles are cut alike whatever the percent, and never leave a space before the "…".
+// column of its own, so titles are cut alike whatever the percent, and
+// never leave a space before the "…". Each row leads with the thread's
+// id, which is never cut: the title gives way.
 func TestTreeThreadRows(t *testing.T) {
 	for _, r := range []treeRow{
 		{kind: treeThread, thread: "t-0003", title: "Key the CI cache on the Zig version", state: "blocked", pct: 0},
 		{kind: treeThread, thread: "t-0002", title: "Rewrite the README", state: "done", pct: 100},
 		{kind: treeThread, thread: "t-0001", title: "Fix the login session expiry", state: "working", pct: -1},
 	} {
-		l := ansi.Strip(treeLine(r, 23, false, false))
-		if strings.Contains(l, " …") || strings.Contains(l, "t-000") {
+		l := ansi.Strip(treeLine(r, 24, false, false))
+		if strings.Contains(l, " …") {
 			t.Errorf("row %q", l)
 		}
-		if w := ansi.StringWidth(l); w != 23 {
+		if w := ansi.StringWidth(l); w != 24 {
 			t.Errorf("row %q is %d cells", l, w)
 		}
-		// The title column is the same on every row: 4 cells in, 12 wide,
-		// then the percent's 5 and the state glyph.
-		if title := []rune(l)[4:16]; strings.TrimSpace(string(title)) == "" {
-			t.Errorf("row %q: no title", l)
+		// The label column is the same on every row: 7 cells in (a level
+		// under the coordinator), 9 wide, the id, a space and what fits
+		// of the title; then the percent's 5, the state glyph and the
+		// blank column before the border.
+		label := string([]rune(l)[7:16])
+		if !strings.HasPrefix(label, r.thread+" ") || strings.TrimSpace(label[len(r.thread):]) == "" {
+			t.Errorf("row %q: label %q", l, label)
 		}
+	}
+}
+
+// TestTreeThreadIDNeverCut: at every sidebar width and in every icon set
+// a thread row is as wide as the sidebar, ends in its state glyph and a
+// blank column, and shows its whole id or none of it: none only at the
+// narrowest widths, where it doesn't fit beside the state glyph. From
+// 25 columns the title shows too.
+func TestTreeThreadIDNeverCut(t *testing.T) {
+	defer setIcons(IconsUnicode)
+	r := treeRow{kind: treeThread, thread: "t-0042", title: "Prefix each thread row with its id", state: "working", pct: 40}
+	for _, set := range IconChoices[1:] {
+		setIcons(set)
+		for w := view.SideMin; w <= view.SideMax; w++ {
+			l := ansi.Strip(treeLine(r, w-1, false, false))
+			if got := ansi.StringWidth(l); got != w-1 {
+				t.Errorf("%s width %d: row %q is %d cells", set, w, l, got)
+			}
+			if r := []rune(l); r[len(r)-1] != ' ' || r[len(r)-2] == ' ' {
+				t.Errorf("%s width %d: row %q: no glyph and gap at its end", set, w, l)
+			}
+			whole := strings.Contains(l, "t-0042")
+			if !whole && (w >= view.SideMin+2 || strings.Contains(l, "t-")) {
+				t.Errorf("%s width %d: row %q lacks the whole id", set, w, l)
+			}
+			if w >= 25 && !strings.Contains(l, "t-0042 P") {
+				t.Errorf("%s width %d: row %q lacks the title", set, w, l)
+			}
+		}
+	}
+	if got := threadLabel("t-0042", "Title", 4); got != "    " {
+		t.Errorf("an id wider than its room: %q", got)
 	}
 }
 
@@ -184,7 +224,7 @@ func TestDashboardSidebarKeys(t *testing.T) {
 		}
 	}
 	// The cursor's row is highlighted, not the one you are on.
-	if l := strings.Split(whole(m), "\n")[5]; !strings.Contains(l, "Write docs") {
+	if l := strings.Split(whole(m), "\n")[5]; !strings.Contains(l, "t-0005 ") {
 		t.Fatalf("row 5 %q", l)
 	}
 	// Not a sidebar key: the list's ? opens the help.
@@ -298,5 +338,34 @@ func TestEverySidebarClickHasKey(t *testing.T) {
 				t.Errorf("sidebar menu item %q has no key path", it.label)
 			}
 		}
+	}
+}
+
+// TestSidebarDefaultKeepsSavedWidth: the default width is 32, room for a
+// thread's id and a few words of its title; a width ui.json already
+// keeps stays, and one without a width starts at the default.
+func TestSidebarDefaultKeepsSavedWidth(t *testing.T) {
+	if sideDefault != 32 {
+		t.Fatalf("default width %d", sideDefault)
+	}
+	dir := t.TempDir()
+	for name, c := range map[string]struct {
+		json string
+		want int
+	}{
+		"saved":    {`{"sidebar":{"width":24}}`, 24},
+		"no width": {`{"details":true}`, sideDefault},
+		"zero":     {`{"sidebar":{"width":0}}`, sideDefault},
+	} {
+		path := filepath.Join(dir, name+".json")
+		if err := os.WriteFile(path, []byte(c.json), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got := LoadLayout(path).Sidebar.Width; got != c.want {
+			t.Errorf("%s: width %d, want %d", name, got, c.want)
+		}
+	}
+	if got := LoadLayout(filepath.Join(dir, "none.json")).Sidebar.Width; got != sideDefault {
+		t.Errorf("no ui.json: width %d", got)
 	}
 }
