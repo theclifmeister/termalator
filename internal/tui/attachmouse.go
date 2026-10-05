@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -11,16 +10,14 @@ import (
 
 	"github.com/theclifmeister/termalator/internal/emu"
 	"github.com/theclifmeister/termalator/internal/proto"
-	"github.com/theclifmeister/termalator/internal/view"
 )
 
 // The mouse in a session (docs/SPEC.md §4). Inside a pane the program
 // gets the mouse whenever it tracks it (Claude Code does); everything
-// else is tm's: the sidebar, the status bar's buttons (split beside,
-// split below, zoom, close, the ≡ menu, prefix+d dashboard, prefix+u
-// takes over, a question's y yes), the dividers, which drag, and a pane
-// whose program doesn't take the mouse, where a double-click zooms and a
-// right-click opens the menu. The ≡ menu has every prefix command
+// else is tm's: the sidebar, the status bar's buttons (the ≡ menu,
+// prefix+d dashboard, prefix+u takes over, a question's y yes) and a pane
+// whose program doesn't take the mouse, where a right-click opens the
+// menu. The ≡ menu has every prefix command
 // (sessionMenu), so none lacks a mouse path; a right-click on a sidebar
 // row opens that row's menu. Menus are this console's own; what they do
 // are the same view actions the keys run.
@@ -37,12 +34,6 @@ var sessionMenu = []struct{ label, key string }{
 	{"tasks", "t"},
 	{"settings", ","},
 	{"help: keys and mouse", "?"},
-	{"split: a shell beside", "%"},
-	{"split: a shell below", `"`},
-	{"focus the next pane", "o"},
-	{"zoom the pane / unzoom", "z"},
-	{"close the pane", "x"},
-	{"switch the layout", "space"},
 	{"narrower sidebar", "{"},
 	{"wider sidebar", "}"},
 	{"slim sidebar on / off", "b"},
@@ -53,15 +44,12 @@ var sessionMenu = []struct{ label, key string }{
 }
 
 // sessionMouse are the prefix commands whose mouse path isn't the menu.
-var sessionMouse = map[string]string{
-	"left": "click a pane", "right": "click a pane", "up": "click a pane", "down": "click a pane",
-	"ctrl+left": "drag a divider", "ctrl+right": "drag a divider", "ctrl+up": "drag a divider", "ctrl+down": "drag a divider",
-}
+var sessionMouse = map[string]string{}
 
 // cmdKey is the key a prefix command's name stands for.
 func cmdKey(name string) uv.Key {
-	if name == "space" {
-		return uv.Key{Code: uv.KeySpace, Text: " "}
+	if name == "tab" {
+		return uv.Key{Code: uv.KeyTab}
 	}
 	r, _ := utf8.DecodeRuneInString(name)
 	return uv.Key{Code: r, Text: name}
@@ -83,7 +71,7 @@ func (c *client) command(name string) {
 		}
 		return
 	}
-	c.run(prefixStep(c.prefix, true, false, cmdKey(name), c.dashboard))
+	c.run(prefixStep(c.prefix, true, cmdKey(name), c.dashboard))
 }
 
 // amenu is a menu drawn over the window.
@@ -334,8 +322,7 @@ func (c *client) sideItems(r treeRow, t Target) []aitem {
 	return out
 }
 
-// watch shows a thread's session: the pane gets the focus when the
-// window has it, else the window shows it. ask then asks whether to take
+// watch shows a thread's session in the view. ask then asks whether to take
 // it over, as prefix+u does.
 func (c *client) watch(t Target, ask bool) {
 	if !c.lock() {
@@ -344,7 +331,7 @@ func (c *client) watch(t Target, ask bool) {
 	p := c.panes[t.Session]
 	if p == nil {
 		if ask {
-			c.askFor = t.Session // asked once its pane has the focus
+			c.askFor = t.Session // asked once its pane shows
 		}
 		c.mu.Unlock()
 		c.sideGo(t)
@@ -355,14 +342,11 @@ func (c *client) watch(t Target, ask bool) {
 		c.confirm = p
 	case ask:
 		c.flash = "this pane takes your keys already"
-	case p == c.focus:
+	default:
 		c.flash = "you are on it"
 	}
 	c.status()
 	c.mu.Unlock()
-	if p != c.focus {
-		c.act(proto.MethodViewFocus, proto.ViewParams{Session: t.Session})
-	}
 	c.poke()
 }
 
@@ -388,85 +372,6 @@ func (c *client) statusMouse(m emu.Mouse) {
 	c.poke()
 }
 
-// dragMouse moves the divider being dragged to the mouse, through the
-// view (every console follows), and lets go of it on release. c.mu
-// held; released here.
-func (c *client) dragMouse(m emu.Mouse) {
-	d := *c.divDrag
-	to, at := m.X, d.At.X
-	if !d.Side {
-		to, at = m.Y, d.At.Y
-	}
-	switch {
-	case m.Action == emu.MouseRelease:
-		c.divDrag = nil
-		c.mu.Unlock()
-		return
-	case m.Action != emu.MouseMotion || to == at:
-		c.mu.Unlock()
-		return
-	}
-	c.mu.Unlock()
-	c.act(proto.MethodViewDrag, proto.ViewParams{X: d.At.X, Y: d.At.Y, To: to})
-	if c.lock() {
-		if c.divDrag != nil {
-			c.divDrag = c.nearDivider(d, to)
-		}
-		c.mu.Unlock()
-	}
-	c.poke()
-}
-
-// nearDivider is the divider d became after moving towards to: the one
-// on its axis, across the same row (or column), nearest to. c.mu held.
-func (c *client) nearDivider(d view.Divider, to int) *view.Divider {
-	var best *view.Divider
-	dist := 1 << 30
-	for i := range c.dividers {
-		e := c.dividers[i]
-		if e.Side != d.Side {
-			continue
-		}
-		var on bool
-		var pos int
-		if d.Side {
-			on, pos = d.At.Y >= e.At.Y && d.At.Y < e.At.Y+e.At.H, e.At.X
-		} else {
-			on, pos = d.At.X >= e.At.X && d.At.X < e.At.X+e.At.W, e.At.Y
-		}
-		if on && max(pos-to, to-pos) < dist {
-			best, dist = &c.dividers[i], max(pos-to, to-pos)
-		}
-	}
-	if best == nil {
-		return nil
-	}
-	out := *best
-	if d.Side {
-		out.At.Y, out.At.H = d.At.Y, 1
-	} else {
-		out.At.X, out.At.W = d.At.X, 1
-	}
-	return &out
-}
-
-// dividerAt is the divider through window cell (x, y), if any. c.mu
-// held.
-func (c *client) dividerAt(x, y int) *view.Divider {
-	for _, d := range c.dividers {
-		if r := d.At; x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H {
-			// Remember the cell grabbed: across the divider it moves.
-			if d.Side {
-				d.At.Y, d.At.H = y, 1
-			} else {
-				d.At.X, d.At.W = x, 1
-			}
-			return &d
-		}
-	}
-	return nil
-}
-
 // questionHits are the buttons of a question in the status bar: y yes,
 // and any other key no.
 func questionHits(line string) []hint {
@@ -477,7 +382,3 @@ func questionHits(line string) []hint {
 	}
 	return hints(plain[i:], ansi.StringWidth(plain[:i]))
 }
-
-// doubleAt reports a double-click at (x, y), as on the dashboard. c.mu
-// held.
-func (c *client) doubleAt(x, y int) bool { return c.lastClick.double(x, y, time.Now()) }

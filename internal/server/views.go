@@ -32,12 +32,11 @@ import (
 type viewHost interface {
 	pane(id string) (paneInfo, bool)
 	resizePane(id string, cols, rows uint16)
-	startShell(cwd string, cols, rows uint16) (string, error)
 }
 
 // paneInfo is what views know about a session.
 type paneInfo struct {
-	cwd, role string
+	role string
 	// follows is false for an agent whose manifest says screen.resize =
 	// "explicit": typing doesn't resize it.
 	follows bool
@@ -386,67 +385,6 @@ func (vs *views) do(method string, p proto.ViewParams) (view.View, *proto.Error)
 			return before, proto.Errorf(proto.ErrBadParams, "key too long")
 		}
 		v.SideSel = p.Key
-	case proto.MethodViewSplit:
-		if v.Mode != view.ModeLayout || v.Root == nil {
-			return before, proto.Errorf(proto.ErrRefused, "nothing to split")
-		}
-		layout()
-		// The new shell starts at the size its pane will have.
-		const placeholder = "\x00new"
-		probe := v.Clone()
-		probe.Split(v.Focus, placeholder, p.Side)
-		r := probe.Lay(int(v.Cols), int(v.Rows)).Panes[placeholder]
-		if r.W < 1 || r.H < 1 || (p.Side && r.W < 2) {
-			return before, proto.Errorf(proto.ErrRefused, "no room to split")
-		}
-		info, _ := vs.host.pane(v.Focus)
-		id, err := vs.host.startShell(info.cwd, uint16(r.W), uint16(r.H))
-		if err != nil {
-			return before, proto.Errorf(proto.ErrRefused, "split: %v", err)
-		}
-		v.Split(v.Focus, id, p.Side)
-		resize = true
-	case proto.MethodViewClose:
-		id := p.Session
-		if id == "" {
-			id = v.Focus
-		}
-		if v.Remove(id) {
-			layout()
-			resize = true
-		}
-	case proto.MethodViewFocus:
-		switch {
-		case p.Session != "":
-			v.FocusOn(p.Session)
-		case p.Next:
-			v.FocusNext()
-		default:
-			v.FocusDir(p.DX, p.DY, int(v.Cols), int(v.Rows))
-		}
-		if before.Zoom || v.Zoom != before.Zoom {
-			layout() // another pane shows
-			resize = true
-		}
-	case proto.MethodViewZoom:
-		if v.ToggleZoom() {
-			layout()
-			resize = true
-		}
-	case proto.MethodViewEven:
-		if v.Even() {
-			layout()
-			resize = true
-		}
-	case proto.MethodViewResize:
-		layout()
-		v.ResizeTowards(p.Side, p.Cells, int(v.Cols), int(v.Rows))
-		resize = true
-	case proto.MethodViewDrag:
-		if v.DragDivider(p.X, p.Y, p.To, int(v.Cols), int(v.Rows)) {
-			layout()
-			resize = true
-		}
 	case proto.MethodViewSidebar:
 		if p.Sidebar == nil {
 			return before, proto.Errorf(proto.ErrBadParams, "no sidebar")
@@ -496,7 +434,7 @@ func (s *Server) pane(id string) (paneInfo, bool) {
 		return paneInfo{}, false
 	}
 	cfg := sess.Config()
-	return paneInfo{cwd: cfg.Cwd, role: cfg.Role, follows: agent.FollowsTyping(sess.Agent()), sized: sess.Sized()}, true
+	return paneInfo{role: cfg.Role, follows: agent.FollowsTyping(sess.Agent()), sized: sess.Sized()}, true
 }
 
 func (s *Server) resizePane(id string, cols, rows uint16) {
@@ -507,14 +445,6 @@ func (s *Server) resizePane(id string, cols, rows uint16) {
 	if err := sess.RequestResize(cols, rows); err != nil && !errors.Is(err, session.ErrExited) {
 		s.log.Printf("session %s: resize: %v", id, err)
 	}
-}
-
-func (s *Server) startShell(cwd string, cols, rows uint16) (string, error) {
-	res, perr := s.startSession(proto.SessionStartParams{Cwd: cwd, Cols: cols, Rows: rows})
-	if perr != nil {
-		return "", perr
-	}
-	return res.(proto.SessionStartResult).Session.ID, nil
 }
 
 // serveViewStream answers view.subscribe and then streams the view: a

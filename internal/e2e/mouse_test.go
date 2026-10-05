@@ -1,13 +1,14 @@
 package e2e
 
 // The mouse (docs/SPEC.md §4): every key has a mouse path. These drive
-// the dashboard, its popups and menus, a session's status bar, its menu,
-// split panes and their dividers, and taking over a thread, with clicks,
-// double-clicks, right-clicks, the wheel and drags only.
+// the dashboard, its popups and menus, a session's status bar and its
+// menu, and taking over a thread, with clicks, double-clicks,
+// right-clicks, the wheel and drags only.
 
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestSmokeMouseDashboard: the footer's hints are buttons; ? help opens
@@ -53,95 +54,56 @@ func TestSmokeMouseDashboard(t *testing.T) {
 	w.WaitUntil("attached by a double-click", wait, func(sc string) bool { return lastLine(sc, "prefix+d dashboard") })
 
 	w.ClickText("≡  prefix+d", 29)
-	w.WaitFor("split: a shell beside", wait)
+	w.WaitFor("keyboard to the sidebar", wait)
 	w.ClickText("dashboard", 1) // the menu's first item, above the status bar
 	w.WaitFor("OTHER SESSIONS", wait)
 	w.ClickText("q quit", 28)
 	w.WaitExit(wait)
 }
 
-// TestSmokeMousePanes: the status bar's │ splits beside; dragging the
-// divider resizes both panes; a double-click on a shell's pane (which
-// doesn't take the mouse) zooms it, and back; a right-click there opens
-// the session's menu, esc closes it; × closes the focused pane, leaving
-// its session running; ─ splits below, and that divider drags too; ⤢
-// zooms.
-func TestSmokeMousePanes(t *testing.T) {
+// TestSmokeMouseStatusBar: the status bar has the ≡ menu and prefix+d
+// dashboard, no window buttons; a double-click on a shell's pane (which
+// doesn't take the mouse) does nothing (zoom is gone); a right-click
+// there opens the session's menu, esc closes it; the menu's "keyboard to
+// the sidebar" gives the sidebar the keyboard, and a click on the pane
+// takes it back.
+func TestSmokeMouseStatusBar(t *testing.T) {
 	env := New(t)
 	s1 := env.StartSize(120, 29, "shell")
 	w := env.Window(120, 30)
 	w.WaitFor(s1.ID+" ", wait)
 	w.Key(Enter)
-	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, `prefix+d dashboard`) })
+	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, "≡  prefix+d dashboard") })
+	waitPaneSize(t, env, s1, 96, 28)
 
-	w.ClickText("│ ─ ⤢ × ≡", 29)
-	w.WaitUntil("two panes", wait, func(sc string) bool { return lastLine(sc, "pane 2/2") })
-	s2 := otherSession(t, env, s1)
-	waitPaneSize(t, env, s1, 48, 29)
-	waitPaneSize(t, env, s2, 47, 29)
-
-	// The divider at column 72, dragged to 60: the left pane gets the 36
-	// columns right of the sidebar.
-	w.DragTo(72, 10, 60, 10)
-	waitPaneSize(t, env, s1, 36, 29)
-	waitPaneSize(t, env, s2, 59, 29)
-
-	// A double-click on the left pane focuses and zooms it; again, back.
 	w.DoubleClick(30, 5)
-	w.WaitUntil("zoomed", wait, func(sc string) bool { return lastLine(sc, "pane 1/2 zoomed") })
-	waitPaneSize(t, env, s1, 96, 29)
-	w.DoubleClick(30, 5)
-	w.WaitUntil("unzoomed", wait, func(sc string) bool { return lastLine(sc, "pane 1/2") && !lastLine(sc, "zoomed") })
-	waitPaneSize(t, env, s1, 36, 29)
+	w.Quiet(300 * time.Millisecond)
+	if sc := w.Screen(); lastLine(sc, "zoom") || len(env.Sessions()) != 1 {
+		t.Fatalf("a double-click did something:\n%s", sc)
+	}
+	assertPaneSize(t, env, s1, 96, 28)
 
-	// A right-click on it: the session's menu; esc closes it.
+	// A right-click on the pane: the session's menu; esc closes it.
 	w.RightClick(30, 5)
-	w.WaitFor("focus the next pane", wait)
+	w.WaitFor("narrower sidebar", wait)
+	if sc := w.Screen(); strings.Contains(sc, "split:") || strings.Contains(sc, "zoom") || strings.Contains(sc, "close the pane") {
+		t.Fatalf("the menu has split pane items:\n%s", sc)
+	}
 	w.Key(keyEsc)
-	w.WaitUntil("the menu closed", wait, func(sc string) bool { return !strings.Contains(sc, "focus the next pane") })
+	w.WaitUntil("the menu closed", wait, func(sc string) bool { return !strings.Contains(sc, "narrower sidebar") })
 
-	// × closes the focused (left) pane; its session keeps running.
-	w.ClickText("× ≡", 29)
-	w.WaitUntil("one pane", wait, func(sc string) bool { return lastLine(sc, s2.ID+" ") && !lastLine(sc, "pane ") })
-	waitPaneSize(t, env, s2, 96, 29)
-	env.AssertAlive(s1)
-
-	// ─ splits below; the divider under the top pane drags up.
-	w.ClickText("─ ⤢ × ≡", 29)
-	w.WaitUntil("two panes", wait, func(sc string) bool { return lastLine(sc, "pane 2/2") })
-	waitPaneSize(t, env, s2, 96, 14)
-	w.DragTo(50, 14, 50, 9)
-	waitPaneSize(t, env, s2, 96, 9)
-
-	// ⤢ zooms the focused pane, and back.
-	w.ClickText("⤢ × ≡", 29)
-	w.WaitUntil("zoomed", wait, func(sc string) bool { return lastLine(sc, "zoomed") })
-	w.ClickText("⤢ × ≡", 29)
-	w.WaitUntil("unzoomed", wait, func(sc string) bool { return lastLine(sc, "pane 2/2") && !lastLine(sc, "zoomed") })
+	// ≡, then "keyboard to the sidebar"; a click on the pane takes it back.
+	w.ClickText("≡  prefix+d", 29)
+	w.WaitFor("keyboard to the sidebar", wait)
+	w.ClickText("keyboard to the sidebar", 1)
+	w.WaitUntil("sidebar focused", wait, func(sc string) bool { return lastLine(sc, "sidebar: ↑ ↓ move") })
+	w.Click(60, 5)
+	w.WaitUntil("pane focused", wait, func(sc string) bool { return !lastLine(sc, "sidebar:") })
 
 	w.ClickText("prefix+d dashboard", 29)
-	w.WaitFor("SESSIONS 3", wait)
+	w.WaitFor("SESSIONS 1", wait)
 	w.Type("q")
 	w.WaitExit(wait)
-}
-
-// otherSession is the one session besides s.
-func otherSession(t *testing.T, env *Env, s *Session) *Session {
-	t.Helper()
-	var o *Session
-	Poll(wait, func() bool {
-		for _, info := range env.Sessions() {
-			if info.ID != s.ID {
-				o = &Session{ID: info.ID, PID: info.PID}
-			}
-		}
-		return o != nil
-	})
-	if o == nil {
-		t.Fatal("no other session")
-	}
-	env.track(o.PID, "session "+o.ID)
-	return o
 }
 
 // TestSmokeMousePopupsAndTakeOver: a right-click on a project in the

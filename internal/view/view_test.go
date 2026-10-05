@@ -10,42 +10,28 @@ func layout(t *testing.T) *View {
 	t.Helper()
 	v := &View{Name: Main, Bare: true, Sidebar: Sidebar{Slim: true}}
 	v.Attach("a", "proj")
-	// a | b, then b split below: a | (b / c).
-	if !v.Split("a", "b", true) || !v.Split("b", "c", false) {
-		t.Fatal("split")
-	}
 	return v
 }
 
+// TestLay: the one pane gets the window less the sidebar, the status bar
+// and the empty row above it.
 func TestLay(t *testing.T) {
 	v := layout(t)
-	if v.Focus != "c" || v.Current != "proj" || v.Mode != ModeLayout {
+	if v.Focus != "a" || v.Current != "proj" || v.Mode != ModeLayout {
 		t.Fatalf("view %+v", v)
 	}
-	// Every view has the sidebar: here the 7-column slim strip.
+	// Every view has the sidebar: here the 7-column slim strip; a bare
+	// view has no status bar.
 	g := v.Lay(88, 24)
-	if g.Panes["a"] != (Rect{7, 0, 40, 24}) || g.Panes["b"] != (Rect{48, 0, 40, 12}) || g.Panes["c"] != (Rect{48, 13, 40, 11}) {
+	if len(g.Panes) != 1 || g.Panes["a"] != (Rect{7, 0, 81, 24}) {
 		t.Fatalf("rects %+v", g.Panes)
 	}
-	if len(g.Dividers) != 2 || g.Dividers[0].At != (Rect{47, 0, 1, 24}) || !g.Dividers[0].Side || g.Dividers[1].At != (Rect{48, 12, 40, 1}) {
-		t.Fatalf("dividers %+v", g.Dividers)
-	}
-	if !g.Dividers[0].Focused || !g.Dividers[1].Focused {
-		t.Fatal("c's splits aren't focused")
-	}
-	if got := strings.Join(v.Root.Leaves(), ""); got != "abc" {
-		t.Fatalf("leaves %s", got)
-	}
-	if g.Neighbour("a", 1, 0) != "b" || g.Neighbour("c", -1, 0) != "a" || g.Neighbour("b", 0, 1) != "c" ||
-		g.Neighbour("c", 0, -1) != "b" || g.Neighbour("a", -1, 0) != "" {
-		t.Fatal("neighbours")
-	}
 
-	// The chrome: a shared view has the sidebar and the status bar; a
-	// bare one the sidebar, and the status bar when asked for.
+	// A shared view has the sidebar and the status bar, with an empty
+	// row between the pane and it.
 	v.Bare, v.Sidebar.Slim = false, false
 	g = v.Lay(120, 30)
-	if g.SideW != SideDefault || g.Status != 1 || g.Area != (Rect{SideDefault, 0, 120 - SideDefault, 29}) {
+	if g.SideW != SideDefault || g.Status != 2 || g.Area != (Rect{SideDefault, 0, 120 - SideDefault, 28}) || g.Panes["a"] != g.Area {
 		t.Fatalf("chrome %+v", g)
 	}
 	// Narrow: the slim strip.
@@ -57,8 +43,13 @@ func TestLay(t *testing.T) {
 		t.Fatalf("bare chrome %+v", g)
 	}
 	v.StatusBar = true
-	if g = v.Lay(120, 30); g.SideW != SideDefault || g.Status != 1 {
+	if g = v.Lay(120, 30); g.SideW != SideDefault || g.Status != 2 {
 		t.Fatalf("bare chrome with a status bar %+v", g)
+	}
+	// On the dashboard nothing is laid out.
+	v.Dashboard()
+	if g = v.Lay(120, 30); len(g.Panes) != 0 {
+		t.Fatalf("dashboard panes %+v", g.Panes)
 	}
 }
 
@@ -116,88 +107,36 @@ func TestTree(t *testing.T) {
 	}
 }
 
+// TestActions: attach shows a session, replacing the one shown; a
+// session that ends, or is gone after a restart, takes the view back to
+// the dashboard.
 func TestActions(t *testing.T) {
 	v := layout(t)
-	// ctrl+→ on c moves the side divider right; ctrl+↓ on a finds no
-	// stacked split around a.
-	if !v.ResizeTowards(true, 8, 88, 24) {
-		t.Fatal("no side split to resize")
-	}
-	if g := v.Lay(88, 24); g.Panes["a"].W != 48 || g.Panes["b"].X != 56 {
-		t.Fatalf("after resize %+v", g.Panes)
-	}
-	v.FocusOn("a")
-	if v.ResizeTowards(false, 1, 88, 24) {
-		t.Fatal("resized a stacked split a isn't in")
-	}
-
-	// Focus: next, and by direction; a zoomed view unzooms first.
-	if !v.FocusNext() || v.Focus != "b" {
-		t.Fatalf("next: %s", v.Focus)
-	}
-	if !v.ToggleZoom() || len(v.Visible()) != 1 || v.Visible()[0] != "b" {
-		t.Fatalf("zoom: %v", v.Visible())
-	}
-	if !v.FocusDir(0, 1, 88, 24) || v.Zoom || v.Focus != "c" {
-		t.Fatalf("down from b: %s zoom %v", v.Focus, v.Zoom)
-	}
-
-	// Removing b: c takes its place beside a and keeps the focus.
-	if !v.Remove("b") || v.Focus != "c" {
-		t.Fatalf("remove: focus %s", v.Focus)
-	}
-	if g := v.Lay(88, 24); len(g.Panes) != 2 || g.Panes["c"].H != 24 || g.Panes["c"].X != 56 {
-		t.Fatalf("after remove: %+v", g.Panes)
-	}
-	// Removing the focused pane moves the focus.
-	v.Remove("c")
-	if v.Focus != "a" || v.Mode != ModeLayout {
-		t.Fatalf("after removing c: %+v", v)
-	}
-	if !v.Remove("a") || v.Root != nil || v.Mode != ModeDashboard || v.Focus != "" {
-		t.Fatalf("removing the last pane: %+v", v)
-	}
-
-	// Even: three panes stacked, equal.
-	v = layout(t)
-	v.Even()
-	if g := v.Lay(80, 26); g.Panes["a"].H != 8 || g.Panes["b"].H != 8 || g.Panes["c"].H != 8 || g.Panes["c"].Y != 18 {
-		t.Fatalf("even: %+v", g.Panes)
-	}
-
-	// Attach: a session in the layout gets the focus, the layout stays;
-	// another one replaces it.
 	v.Dashboard()
-	if !v.Attach("a", "") || v.Mode != ModeLayout || v.Focus != "a" || len(v.Root.Leaves()) != 3 {
+	if !v.Attach("a", "") || v.Mode != ModeLayout || v.Focus != "a" {
 		t.Fatalf("attach a: %+v", v)
 	}
 	if v.Attach("a", "") {
 		t.Fatal("attaching again changed the view")
 	}
 	v.Attach("d", "other")
-	if got := v.Root.Leaves(); len(got) != 1 || got[0] != "d" || v.Current != "other" {
+	if got := v.Visible(); len(got) != 1 || got[0] != "d" || v.Current != "other" {
 		t.Fatalf("attach d: %v %+v", got, v)
 	}
-
-	// Prune drops the sessions that are gone.
+	if v.Remove("a") {
+		t.Fatal("removed a session it doesn't show")
+	}
+	if !v.Remove("d") || v.Mode != ModeDashboard || v.Focus != "" {
+		t.Fatalf("removing the pane: %+v", v)
+	}
 	v = layout(t)
-	if !v.Prune(func(id string) bool { return id == "b" }) || strings.Join(v.Root.Leaves(), "") != "b" || v.Focus != "b" {
+	if v.Prune(func(id string) bool { return id == "a" }) || !v.Prune(func(string) bool { return false }) || v.Mode != ModeDashboard {
 		t.Fatalf("prune: %+v", v)
 	}
 }
 
-func TestSplitSizes(t *testing.T) {
-	for _, c := range []struct {
-		total int
-		ratio float64
-		a, b  int
-	}{{81, 0.5, 40, 40}, {80, 0.5, 40, 39}, {3, 0.5, 1, 1}, {3, 0.99, 1, 1}, {2, 0.5, 1, 0}, {10, 0.01, 1, 8}} {
-		if a, b := SplitSizes(c.total, c.ratio); a != c.a || b != c.b {
-			t.Errorf("SplitSizes(%d, %v) = %d, %d; want %d, %d", c.total, c.ratio, a, b, c.a, c.b)
-		}
-	}
-}
-
+// TestValidNormalize: a view round-trips; one saved with a split tree
+// (before panes were single) keeps the session it had in front.
 func TestValidNormalize(t *testing.T) {
 	v := layout(t)
 	b, err := json.Marshal(v)
@@ -208,29 +147,30 @@ func TestValidNormalize(t *testing.T) {
 	if err := json.Unmarshal(b, &back); err != nil || !Equal(*v, back) || back.Valid() != nil {
 		t.Fatalf("round trip: %v %v\n%s", err, back.Valid(), b)
 	}
-	for _, bad := range []string{
-		`{"root":{"session":"a","a":{"session":"b"}}}`,
-		`{"root":{"side":true,"a":{"session":"a"}}}`,
-		`{"root":{"a":{"session":"a"},"b":{"session":"a"}}}`,
-		`{"root":{"session":"a"},"focus":"b"}`,
-	} {
-		var v View
-		if err := json.Unmarshal([]byte(bad), &v); err != nil {
-			t.Fatal(err)
-		}
-		if v.Valid() == nil {
-			t.Errorf("%s is valid", bad)
-		}
+	if strings.Contains(string(b), "root") || strings.Contains(string(b), "zoom") {
+		t.Fatalf("split fields on the wire: %s", b)
 	}
-	v = &View{Mode: "odd", Root: &Node{A: &Node{Session: "a"}, B: &Node{Session: "b"}, Ratio: 7}}
+	old := `{"name":"main","mode":"layout","root":{"side":true,"ratio":0.5,"a":{"session":"s-1"},"b":{"session":"s-2"}},"focus":"s-2","zoom":true}`
+	var o View
+	if err := json.Unmarshal([]byte(old), &o); err != nil || o.Valid() != nil {
+		t.Fatal(err)
+	}
+	o.Normalize()
+	if o.Mode != ModeLayout || o.Focus != "s-2" || len(o.Visible()) != 1 {
+		t.Fatalf("an old split view: %+v", o)
+	}
+	if err := (&View{Focus: strings.Repeat("x", MaxKey+1)}).Valid(); err == nil {
+		t.Error("an overlong session id is valid")
+	}
+	v = &View{Mode: "odd"}
 	v.Normalize()
-	if v.Mode != ModeDashboard || v.Root.Ratio != 0.5 || v.Focus != "a" || v.Sidebar.Width != SideDefault {
+	if v.Mode != ModeDashboard || v.Sidebar.Width != SideDefault {
 		t.Fatalf("normalize: %+v", v)
 	}
 	v = &View{Mode: ModeLayout}
 	v.Normalize()
 	if v.Mode != ModeDashboard {
-		t.Fatal("a layout without panes")
+		t.Fatal("a layout without a pane")
 	}
 }
 
@@ -280,38 +220,5 @@ func TestSidebar(t *testing.T) {
 	}
 	if l = def.DragTo(30, 120); l.Slim || l.Width != 31 {
 		t.Fatalf("drag to 30: %+v", l)
-	}
-}
-
-// TestDragDivider: dragging the side divider at column 47 to 60 moves it
-// there; dragging b/c's divider moves only that one; a cell that is no
-// divider, and a zoomed view, move nothing.
-func TestDragDivider(t *testing.T) {
-	v := layout(t)
-	if !v.DragDivider(47, 5, 60, 88, 24) {
-		t.Fatal("side divider didn't move")
-	}
-	g := v.Lay(88, 24)
-	if g.Dividers[0].At.X != 60 || g.Panes["a"].W != 53 || g.Panes["b"].X != 61 {
-		t.Fatalf("after drag %+v %+v", g.Dividers, g.Panes)
-	}
-	if !v.DragDivider(70, 12, 5, 88, 24) {
-		t.Fatal("stacked divider didn't move")
-	}
-	g = v.Lay(88, 24)
-	if g.Dividers[1].At.Y != 5 || g.Panes["b"].H != 5 || g.Dividers[0].At.X != 60 {
-		t.Fatalf("after second drag %+v", g.Dividers)
-	}
-	if v.DragDivider(20, 5, 30, 88, 24) {
-		t.Fatal("a pane's cell moved a divider")
-	}
-	// Past the edge: the pane keeps a sliver.
-	v.DragDivider(60, 0, 0, 88, 24)
-	if g := v.Lay(88, 24); g.Panes["a"].W < 1 {
-		t.Fatalf("a vanished: %+v", g.Panes)
-	}
-	v.ToggleZoom()
-	if v.DragDivider(60, 0, 70, 88, 24) {
-		t.Fatal("dragged in a zoomed view")
 	}
 }

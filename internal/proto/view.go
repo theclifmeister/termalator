@@ -27,26 +27,6 @@ const (
 	MethodViewSelect = "view.select"
 	// MethodViewSideSel moves the sidebar's keyboard row to Key.
 	MethodViewSideSel = "view.sidesel"
-	// MethodViewSplit starts a shell in the focused pane's directory and
-	// shows it beside (Side) or below the focused pane.
-	MethodViewSplit = "view.split"
-	// MethodViewClose closes the pane of Session (the focused one when
-	// empty); its session keeps running.
-	MethodViewClose = "view.close"
-	// MethodViewFocus focuses Session, the next pane (Next) or the pane
-	// in direction (DX, DY).
-	MethodViewFocus = "view.focus"
-	// MethodViewZoom zooms the focused pane, and back.
-	MethodViewZoom = "view.zoom"
-	// MethodViewEven switches between all panes side by side and all
-	// stacked.
-	MethodViewEven = "view.even"
-	// MethodViewResize moves the divider nearest the focused pane by
-	// Cells, on the side-by-side axis when Side.
-	MethodViewResize = "view.resize"
-	// MethodViewDrag moves the divider through cell (X, Y) of the view's
-	// layout to column or row To: the mouse dragging it.
-	MethodViewDrag = "view.drag"
 	// MethodViewSidebar sets the projects sidebar (Sidebar).
 	MethodViewSidebar = "view.sidebar"
 	// MethodViewSize reports the client's window (Cols, Rows). With
@@ -102,17 +82,9 @@ type ViewParams struct {
 	Session string        `json:"session,omitempty"`
 	Project string        `json:"project,omitempty"`
 	Key     string        `json:"key,omitempty"`
-	Side    bool          `json:"side,omitempty"`
-	Next    bool          `json:"next,omitempty"`
-	DX      int           `json:"dx,omitempty"`
-	DY      int           `json:"dy,omitempty"`
-	Cells   int           `json:"cells,omitempty"`
 	Sidebar *view.Sidebar `json:"sidebar,omitempty"`
 	Cols    uint16        `json:"cols,omitempty"`
 	Rows    uint16        `json:"rows,omitempty"`
 	Resize  bool          `json:"resize,omitempty"`
 	Expand  bool          `json:"expand,omitempty"`
-	X       int           `json:"x,omitempty"`
-	Y       int           `json:"y,omitempty"`
-	To      int           `json:"to,omitempty"`
 }
