@@ -168,6 +168,7 @@ func Attach(opts Options) (res Result, err error) {
 		so = &SidebarOptions{}
 	}
 	c.side = &sidebar{uiFile: so.UIFile, agent: cmp.Or(so.Agent, DefaultAgent), projects: loadSideProjects()}
+	c.info = &infoPanel{}
 	c.setWindow(cols, rows)
 	watch, stopWatch := vc.Watch()
 	defer stopWatch()
@@ -218,8 +219,8 @@ func Attach(opts Options) (res Result, err error) {
 	switch opts.Command {
 	case "r":
 		go c.askRemote()
-	case "tab":
-		go c.paneCommand("tab")
+	case "tab", "|":
+		go c.paneCommand(opts.Command)
 	}
 	res = c.renderLoop(opts.Out)
 	cancel()
@@ -297,7 +298,13 @@ type client struct {
 	sideW     int      // its width, 0 without one
 	// sideFocus: the sidebar has this console's keyboard (prefix+tab);
 	// the panes get no keys, paste or prefix meanwhile.
-	sideFocus   bool
+	sideFocus bool
+	// The info panel right of a thread's pane (infopanel.go), nil for
+	// none; infoW is its width, 0 while it doesn't show; infoFocus: it
+	// has the keyboard, as sideFocus.
+	info        *infoPanel
+	infoW       int
+	infoFocus   bool
 	cols, rows  int // the window
 	paneCols    int // the columns right of the sidebar
 	paneRows    int // the rows above the status bar and the empty row over it
@@ -339,7 +346,7 @@ func newClient(p server.Paths, l *log.Logger) (*client, error) {
 // running.
 func (c *client) setWindow(cols, rows int) {
 	c.cols, c.rows = cols, rows
-	c.paneCols = max(cols-c.sideW, 1)
+	c.paneCols = max(cols-c.sideW-c.infoW, 1)
 	c.paneRows = rows
 	if c.statusBar {
 		c.paneRows = max(rows-2, 1)
@@ -740,15 +747,22 @@ func (c *client) relayout() {
 	if c.side != nil {
 		c.sideW = min(c.geo.SideW, max(c.cols-1, 1))
 	}
+	c.infoW = 0
+	if c.info != nil {
+		c.infoW = min(c.geo.InfoW, max(c.cols-c.sideW-1, 0))
+	}
+	if c.infoW == 0 {
+		c.infoFocus = false
+	}
 	c.statusBar = c.geo.Status > 0
-	c.paneCols = max(c.cols-c.sideW, 1)
+	c.paneCols = max(c.cols-c.sideW-c.infoW, 1)
 	c.paneRows = max(c.rows-c.geo.Status, 1)
 	own := view.Rect{X: c.sideW, Y: 0, W: c.paneCols, H: c.paneRows}
 	c.focus = c.panes[c.v.Focus]
 	vis := c.visible()
-	// The pane draws alone, unless it shares the window with the sidebar
-	// or the status bar (which has an empty row above it).
-	c.single = len(vis) == 1 && c.side == nil && !c.statusBar
+	// The pane draws alone, unless it shares the window with the sidebar,
+	// the info panel or the status bar (which has an empty row above it).
+	c.single = len(vis) == 1 && c.side == nil && c.infoW == 0 && !c.statusBar
 	for _, p := range vis {
 		if c.single {
 			p.rect = own
@@ -943,7 +957,7 @@ func (c *client) handle(ev uv.Event) {
 			return
 		}
 		p := c.focus
-		if p == nil || c.sideFocus {
+		if p == nil || c.sideFocus || c.infoFocus {
 			c.mu.Unlock()
 			return
 		}
@@ -1000,6 +1014,10 @@ func (c *client) key(k uv.Key) {
 		c.sideKeyboard(k)
 		return
 	}
+	if c.infoFocus && !pending && !c.prefix.match(k) {
+		c.infoKeyboard(k)
+		return
+	}
 	do := prefixStep(c.prefix, pending, k, c.dashboard)
 	c.pending = do.arm
 	redraw := pending || do.arm || c.flash != ""
@@ -1012,7 +1030,7 @@ func (c *client) key(k uv.Key) {
 		c.poke()
 	}
 	if do.input {
-		if !c.sideFocus { // the sidebar has the keyboard: nothing leaks
+		if !c.sideFocus && !c.infoFocus { // the sidebar or the panel has the keyboard: nothing leaks
 			c.input(k)
 		}
 		return
@@ -1051,9 +1069,9 @@ type prefixDo struct {
 }
 
 // paneCommands are the keys that, after the prefix, act on the window
-// itself: the sidebar's width ({ }), its slim strip (b) and its keyboard
-// (tab).
-var paneCommands = map[string]bool{"{": true, "}": true, "b": true, "tab": true}
+// itself: the sidebar's width ({ }), its slim strip (b), the keyboard
+// (tab) and the info panel (|).
+var paneCommands = map[string]bool{"{": true, "}": true, "b": true, "tab": true, "|": true}
 
 // keyName names k as paneCommands does.
 func keyName(k uv.Key) string {
@@ -1151,11 +1169,19 @@ func (c *client) detachResult() Result {
 // this pane, about project ("" for the focused pane's): the view stays
 // as it is, on every console, and closing the popup attaches again
 // (docs/SPEC.md §4).
-func (c *client) popupOver(project, key string) {
+func (c *client) popupOver(project, key string) { c.popupOverTask(project, key, 0) }
+
+// popupTask leaves the attach for the task view on task id of project,
+// over this pane (a click on the info panel's task).
+func (c *client) popupTask(project string, id int) { c.popupOverTask(project, "t", id) }
+
+// popupOverTask is popupOver, the task view showing task id when it is
+// not 0.
+func (c *client) popupOverTask(project, key string, id int) {
 	if !c.lock() {
 		return
 	}
-	o := &Over{Key: key, Project: project}
+	o := &Over{Key: key, Project: project, Task: id}
 	o.Screen = c.paneLines(o)
 	if p := c.focus; p != nil {
 		o.Session, o.Title = p.info.ID, p.info.ID+" · "+strings.TrimPrefix(p.info.Project+" "+sessionName(p.info), " ")
@@ -1200,6 +1226,8 @@ func (c *client) paneCommand(cmd string) {
 		c.sideKey(cmd)
 	case "tab":
 		c.sideFocusOn(true)
+	case "|":
+		c.infoToggle()
 	}
 	c.poke()
 }
@@ -1244,8 +1272,11 @@ func (c *client) status() {
 		return
 	}
 	where := ""
-	if c.sideFocus {
+	switch {
+	case c.sideFocus:
 		where = sideHint
+	case c.infoFocus:
+		where = infoHint
 	}
 	if c.flash != "" {
 		where = strings.TrimPrefix(where+" · "+c.flash, " · ")
@@ -1319,7 +1350,7 @@ func (c *client) mouse(ev uv.Event) {
 		return
 	}
 	press := m.Action == emu.MousePress && (m.Button == emu.MouseLeft || m.Button == emu.MouseRight || m.Button == emu.MouseMiddle)
-	status := c.statusBar && m.Y >= c.paneRows && m.X >= c.sideW
+	status := c.statusBar && m.Y >= c.paneRows && m.X >= c.sideW && m.X < c.cols-c.infoW
 	switch {
 	case c.menu != nil:
 		c.menuMouse(m)
@@ -1336,6 +1367,9 @@ func (c *client) mouse(ev uv.Event) {
 		}
 		c.sideMouse(m)
 		return
+	case c.infoW > 0 && (m.X >= c.infoX() || c.info.drag):
+		c.infoMouse(m)
+		return
 	case status:
 		c.statusMouse(m)
 		return
@@ -1351,9 +1385,10 @@ func (c *client) mouse(ev uv.Event) {
 		return
 	}
 	_, click := ev.(uv.MouseClickEvent)
-	if click && c.sideFocus {
-		// A click on a pane takes the keyboard back from the sidebar.
-		c.sideFocus = false
+	if click && (c.sideFocus || c.infoFocus) {
+		// A click on a pane takes the keyboard back from the sidebar or
+		// the info panel.
+		c.sideFocus, c.infoFocus = false, false
 		c.status()
 		c.poke()
 	}
@@ -1547,9 +1582,15 @@ func (c *client) frameSplit(vis []*pane) ([]byte, error) {
 		if c.side != nil {
 			c.side.drawn = nil
 		}
+		if c.info != nil {
+			c.info.drawn = nil
+		}
 	}
 	if c.side != nil {
 		b, wrote = c.appendSidebar(b, wrote)
+	}
+	if c.infoW > 0 {
+		b, wrote = c.appendInfo(b, wrote)
 	}
 	for _, p := range vis {
 		part, err := p.r.Frame(p.mirror, p.held)
@@ -1652,6 +1693,7 @@ func (c *client) pollState(ctx context.Context) {
 			projects = loadSideProjects()
 		}
 		statuses := threadStatuses(res.Sessions)
+		c.pollInfo(res.Sessions)
 		if c.lock() {
 			if c.side != nil {
 				c.side.projects, c.side.sessions = projects, res.Sessions

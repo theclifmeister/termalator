@@ -65,8 +65,9 @@ func (e *Env) fullConsole(own bool, goTo *tui.Target, agentName string) int {
 	if !ok {
 		cols, rows = 80, 24
 	}
-	side := tui.LoadLayout(uiFile).Sidebar
-	vc, err := tui.JoinView(p, proto.ViewSubscribeParams{Own: own, Cols: cols, Rows: rows, Sidebar: &side})
+	lay := tui.LoadLayout(uiFile)
+	side, info := lay.Sidebar, lay.Info
+	vc, err := tui.JoinView(p, proto.ViewSubscribeParams{Own: own, Cols: cols, Rows: rows, Sidebar: &side, Info: &info})
 	if err != nil {
 		return e.srvFail("dashboard", err)
 	}
@@ -134,7 +135,8 @@ func (e *Env) openCmd(slug, agentName string) error {
 	}
 	// The pane gets the window less the sidebar and the status bar.
 	uiFile := uiFile()
-	side := tui.LoadLayout(uiFile).Sidebar
+	lay := tui.LoadLayout(uiFile)
+	side, info := lay.Sidebar, lay.Info
 	id, err := tui.OpenCoordinator(c.Call, slug, agentName, max(int(cols)-side.Cols(int(cols)), 1), int(max(rows, 2)-1))
 	c.Close()
 	if err != nil {
@@ -145,7 +147,7 @@ func (e *Env) openCmd(slug, agentName string) error {
 		return nil
 	}
 	vc, err := tui.JoinView(p, proto.ViewSubscribeParams{Own: true, Bare: true, StatusBar: true, Session: id,
-		Cols: cols, Rows: rows, Sidebar: &side})
+		Cols: cols, Rows: rows, Sidebar: &side, Info: &info})
 	if err != nil {
 		return err
 	}

@@ -83,6 +83,7 @@ type DashOptions struct {
 // as the dashboard.
 type Over struct {
 	Key     string   // the dashboard key that opens the popup
+	Task    int      // with Key t: the task the task view shows, 0 for the list
 	Project string   // the project it is about: the session's, or a sidebar row's
 	Session string   // the session it is drawn over
 	Title   string   // how the header names the session
@@ -698,7 +699,12 @@ func (m *dash) setData(d Data) tea.Cmd {
 	if ring {
 		cmds = append(cmds, tea.Raw("\a"))
 	}
-	if first && m.then != "" {
+	switch {
+	case first && m.then == "t" && m.over != nil && m.over.Task > 0:
+		// The info panel's task, over its session.
+		cmds = append(cmds, m.openBoard(m.over.Project, m.over.Task))
+		m.then = ""
+	case first && m.then != "":
 		// The key typed after the prefix in a session, now that the
 		// projects are known.
 		cmds = append(cmds, m.listKey(m.then))

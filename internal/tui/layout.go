@@ -5,10 +5,13 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+
+	"github.com/theclifmeister/termilator/internal/view"
 )
 
 // The layout: whether the dashboard's details panel shows beside the
-// list, how wide the list is, and the projects sidebar (sidebar.go). It
+// list, how wide the list is, the projects sidebar (sidebar.go) and the
+// info panel beside a thread's pane (infopanel.go). It
 // is this console's view preference, so it lives in ui.json next to
 // config.toml, which holds the human's settings (docs/SPEC.md §5.1).
 
@@ -23,6 +26,8 @@ type Layout struct {
 	// Sidebar is the projects sidebar's width, on the dashboard and while
 	// attached alike.
 	Sidebar SidebarLayout `json:"sidebar"`
+	// Info is the info panel's beside a thread's pane, while attached.
+	Info view.Info `json:"info"`
 }
 
 const (
@@ -34,7 +39,7 @@ const (
 )
 
 // DefaultLayout is the layout without a ui.json.
-var DefaultLayout = Layout{Details: true, Split: defaultSplit, Sidebar: SidebarLayout{Width: sideDefault}}
+var DefaultLayout = Layout{Details: true, Split: defaultSplit, Sidebar: SidebarLayout{Width: sideDefault}, Info: view.Info{Width: view.InfoDefault}}
 
 // LoadLayout reads path; a missing or unreadable file gives the default.
 func LoadLayout(path string) Layout {
@@ -48,6 +53,7 @@ func LoadLayout(path string) Layout {
 	}
 	l.Split = clampSplit(l.Split)
 	l.Sidebar = l.Sidebar.Clamp()
+	l.Info = l.Info.Clamp()
 	return l
 }
 
@@ -119,5 +125,13 @@ func (m *dash) saveLayout() {
 func SaveSidebar(path string, s SidebarLayout) error {
 	l := LoadLayout(path)
 	l.Sidebar = s.Clamp()
+	return SaveLayout(path, l)
+}
+
+// SaveInfo writes the info panel's layout to path and keeps the rest of
+// the file, as SaveSidebar.
+func SaveInfo(path string, p view.Info) error {
+	l := LoadLayout(path)
+	l.Info = p.Clamp()
 	return SaveLayout(path, l)
 }

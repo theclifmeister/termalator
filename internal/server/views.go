@@ -42,6 +42,9 @@ type paneInfo struct {
 	// sized is set once a console has sized the session; until then the
 	// first view showing it gives it its rectangle (fill).
 	sized bool
+	// thread: the session is a thread's, so a view showing it has the
+	// info panel (view.View.Thread).
+	thread bool
 }
 
 type views struct {
@@ -215,6 +218,9 @@ func (vs *views) subscribe(p proto.ViewSubscribeParams) (*member, string, view.V
 		if p.Sidebar != nil {
 			lv.v.Sidebar = *p.Sidebar
 		}
+		if p.Info != nil {
+			lv.v.Info = p.Info.Clamp()
+		}
 		vs.byName[name] = lv
 	}
 	vs.nextClient++
@@ -226,6 +232,7 @@ func (vs *views) subscribe(p proto.ViewSubscribeParams) (*member, string, view.V
 	if p.Session != "" {
 		lv.v.Attach(p.Session, "")
 	}
+	vs.tag(&lv.v)
 	vs.fill(lv)
 	vs.changedLocked(lv)
 	vs.logf("view %s: client %s joined at %d×%d", name, m.id, cols, rows)
@@ -290,6 +297,13 @@ func (vs *views) sessionGone(id string) {
 			vs.changedLocked(lv)
 		}
 	}
+}
+
+// tag marks whether v shows a thread's session, which has the info
+// panel beside it. vs.mu held.
+func (vs *views) tag(v *view.View) {
+	info, ok := vs.host.pane(v.Focus)
+	v.Thread = v.Focus != "" && ok && info.thread
 }
 
 // resize sizes the sessions lv shows to their rectangles at its size.
@@ -385,6 +399,13 @@ func (vs *views) do(method string, p proto.ViewParams) (view.View, *proto.Error)
 		v.Sidebar = p.Sidebar.Clamp()
 		layout()
 		resize = true
+	case proto.MethodViewInfo:
+		if p.Info == nil {
+			return before, proto.Errorf(proto.ErrBadParams, "no info panel")
+		}
+		v.Info = p.Info.Clamp()
+		layout()
+		resize = true
 	case proto.MethodViewSize:
 		if p.Cols == 0 || p.Rows == 0 {
 			return before, proto.Errorf(proto.ErrBadParams, "invalid size %d×%d", p.Cols, p.Rows)
@@ -409,6 +430,7 @@ func (vs *views) do(method string, p proto.ViewParams) (view.View, *proto.Error)
 		return before, proto.Errorf(proto.ErrUnknownMethod, "unknown method %q", method)
 	}
 	v.Normalize()
+	vs.tag(v)
 	if resize {
 		vs.resize(lv, claim)
 	}
@@ -426,7 +448,7 @@ func (s *Server) pane(id string) (paneInfo, bool) {
 	if perr != nil {
 		return paneInfo{}, false
 	}
-	return paneInfo{follows: agent.FollowsTyping(sess.Agent()), sized: sess.Sized()}, true
+	return paneInfo{follows: agent.FollowsTyping(sess.Agent()), sized: sess.Sized(), thread: sess.Config().Role == proto.RoleThread}, true
 }
 
 func (s *Server) resizePane(id string, cols, rows uint16) {

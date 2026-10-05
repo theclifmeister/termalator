@@ -10,11 +10,12 @@ type Rect struct{ X, Y, W, H int }
 
 // Geometry is a view laid out in a window.
 type Geometry struct {
-	// SideW is the projects sidebar's width, 0 for none; Status is the
-	// status bar's height with the empty row above it (0 or 2). Area is
-	// the pane's: the window less those.
-	SideW, Status int
-	Area          Rect
+	// SideW is the projects sidebar's width, 0 for none; InfoW the info
+	// panel's on the right, 0 for none; Status is the status bar's height
+	// with the empty row above it (0 or 2). Area is the pane's: the
+	// window less those.
+	SideW, InfoW, Status int
+	Area                 Rect
 	// Panes is the shown session's rectangle, by its id.
 	Panes map[string]Rect
 }
@@ -34,8 +35,12 @@ func (v *View) Chrome(cols int) (sideW, status int) {
 // Lay lays v out in a window of cols×rows.
 func (v *View) Lay(cols, rows int) Geometry {
 	sideW, status := v.Chrome(cols)
-	g := Geometry{SideW: sideW, Status: status, Panes: map[string]Rect{},
-		Area: Rect{sideW, 0, max(cols-sideW, 1), max(rows-status, 1)}}
+	infoW := 0
+	if v.Thread && v.Mode == ModeLayout {
+		infoW = v.Info.Cols(cols, sideW)
+	}
+	g := Geometry{SideW: sideW, InfoW: infoW, Status: status, Panes: map[string]Rect{},
+		Area: Rect{sideW, 0, max(cols-sideW-infoW, 1), max(rows-status, 1)}}
 	for _, id := range v.Visible() {
 		g.Panes[id] = g.Area
 	}
