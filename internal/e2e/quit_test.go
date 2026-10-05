@@ -33,7 +33,7 @@ func TestSmokePrefixQuit(t *testing.T) {
 		{"the project popup", "a", "1 Overview"},
 		{"the keys tab", "a5", "On the dashboard"},
 		{"the inbox", "i", alpha + " inbox"},
-		{"the tasks", "t", "enter show"},
+		{"the tasks", "t", alpha + " tasks"},
 		{"the settings", ",", "enter change"},
 		{"the help", "?", "↑ ↓ scroll · esc back"},
 		{"the switcher", "p", "enter open its coordinator"},

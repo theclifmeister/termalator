@@ -350,7 +350,8 @@ func TestSmokeDelegateFromList(t *testing.T) {
 	w.WaitFor("asked the coordinator to delegate T1", wait)
 	w.WaitFor("waiting on coordinator", wait)
 	items := waitInbox(t, env, "delegate: the user asks to delegate T1")
-	if strings.Contains(items, "T2") {
+	// Not "T2" alone: an item's id holds the time (20261005T2…).
+	if strings.Contains(items, "delegate T2") {
 		t.Fatalf("inbox:\n%s", items)
 	}
 	nudge := env.WaitFake("prompt", agentWait, func(r FakeRecord) bool { return strings.HasPrefix(r.Str("text"), "[tm] ") })

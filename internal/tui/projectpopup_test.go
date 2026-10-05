@@ -84,7 +84,7 @@ func popupData(t *testing.T) (*fakeSource, *dash) {
 }
 
 // TestProjectPopup: a opens the selected project's popup, its tabs
-// switch with tab, shift+tab and 1-5, and esc closes it.
+// switch with ← →, and 1-6, and esc closes it.
 func TestProjectPopup(t *testing.T) {
 	src, m := popupData(t)
 	cmd := keyPress(m, "a")
@@ -819,5 +819,123 @@ func TestNeedsYouNarrow(t *testing.T) {
 	}
 	if out := screen(m); !strings.Contains(out, "review · waiting on the coordinator ") {
 		t.Fatalf("Tasks tab row:\n%s", out)
+	}
+}
+
+// TestMemoryTab: tab 6 shows the project's CONTEXT.md, MEMORY.md and
+// memory notes' titles, read-only, as text: a link shows its text only,
+// the files' own titles are left out, and no file path shows.
+func TestMemoryTab(t *testing.T) {
+	src, m := popupData(t)
+	src.memory = project.Memory{
+		Context: "# Context\n\nThe plan, see [the doc](docs/plan.md).\n\n## Where things stand\n\n- " + strings.Repeat("a long item ", 12) + "end\n",
+		Index:   "# Memory\n\n- [Decisions](memory/decisions.md): host choices\n",
+		Notes:   []string{"Design decisions"},
+	}
+	m.Update(keyPress(m, "a")())
+	pv := m.top().(*projectView)
+	keyPress(m, "6")
+	if pv.tab != tabMemory {
+		t.Fatalf("6: tab %d", pv.tab)
+	}
+	out := screen(m)
+	for _, want := range []string{"6 Memory", "CONTEXT", "The plan, see the doc.", "Where things stand", "- a long item",
+		"  a long item", "MEMORY", "- Decisions: host choices", "NOTES", "- Design decisions", "Read-only", "↑ ↓ scroll"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("memory tab lacks %q:\n%s", want, out)
+		}
+	}
+	for _, not := range []string{"docs/plan.md", "memory/decisions.md", "# Context", ".md"} {
+		if strings.Contains(out, not) {
+			t.Errorf("memory tab shows %q:\n%s", not, out)
+		}
+	}
+	keyPress(m, "right")
+	if pv.tab != tabOverview {
+		t.Fatalf("right from the last tab: %d", pv.tab)
+	}
+	src.memory = project.Memory{}
+	m.Update(m.loadPopup("alpha")())
+	keyPress(m, "6")
+	if out := screen(m); !strings.Contains(out, "no context yet") || !strings.Contains(out, "no notes yet") {
+		t.Fatalf("empty memory:\n%s", out)
+	}
+}
+
+// TestNoKeyAliases: each key means one thing (docs/SPEC.md §4): h and l
+// don't switch the project popup's tabs, n, delete and backspace don't
+// add or remove a repository, and = doesn't step a number.
+func TestNoKeyAliases(t *testing.T) {
+	src, m := popupData(t)
+	m.Update(keyPress(m, "a")())
+	pv := m.top().(*projectView)
+	for _, k := range []string{"l", "h", "n", "delete", "backspace"} {
+		keyPress(m, k)
+		if m.top() != pv || pv.tab != tabOverview {
+			t.Errorf("%s on the overview: %T, tab %d", k, m.top(), pv.tab)
+		}
+	}
+	keyPress(m, "4")
+	keyPress(m, "down")
+	keyPress(m, "down")
+	keyPress(m, "down") // Parallel threads
+	run(m, keyPress(m, "="))
+	if len(src.settings) != 0 {
+		t.Errorf("= stepped a number: %v", src.settings)
+	}
+	run(m, keyPress(m, "+"))
+	if len(src.settings) != 1 {
+		t.Errorf("+ didn't step the number: %v", src.settings)
+	}
+}
+
+// TestListsPage: pgup and pgdown move through every list: the inbox,
+// the switcher, the task view and the settings.
+func TestListsPage(t *testing.T) {
+	src, m := popupData(t)
+	src.data.Projects[0].Items = nil
+	for i := range 12 {
+		src.data.Projects[0].Items = append(src.data.Projects[0].Items, project.Item{ID: fmt.Sprint(i), Kind: "report", Summary: "item"})
+	}
+	m.setData(src.Load())
+	keyPress(m, "i")
+	in := m.top().(*inboxView)
+	keyPress(m, "pgdown")
+	if in.sel != 10 {
+		t.Errorf("inbox pgdown: %d", in.sel)
+	}
+	keyPress(m, "pgup")
+	if in.sel != 0 {
+		t.Errorf("inbox pgup: %d", in.sel)
+	}
+	keyPress(m, "esc")
+	keyPress(m, "p")
+	sw := m.top().(*switchView)
+	keyPress(m, "pgdown")
+	if sw.sel != len(m.data.Projects)-1 {
+		t.Errorf("switcher pgdown: %d", sw.sel)
+	}
+	keyPress(m, "esc")
+	m.Update(keyPress(m, "t")())
+	b := m.top().(*boardView)
+	keyPress(m, "pgdown")
+	if b.sel != len(b.list)-1 {
+		t.Errorf("task view pgdown: %d of %d", b.sel, len(b.list))
+	}
+	keyPress(m, "esc")
+	keyPress(m, ",")
+	sv := m.top().(*settingsView)
+	keyPress(m, "pgdown")
+	if sv.list.sel == 0 {
+		t.Errorf("settings pgdown: %d", sv.list.sel)
+	}
+}
+
+// TestHelpNamesPrefix: the help's header names the prefix key.
+func TestHelpNamesPrefix(t *testing.T) {
+	_, m := popupData(t)
+	keyPress(m, "?")
+	if out := screen(m); !strings.Contains(out, "keys · prefix = ctrl+b") {
+		t.Fatalf("help header:\n%s", out)
 	}
 }
