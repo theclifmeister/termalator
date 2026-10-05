@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -64,7 +65,10 @@ func newProc(t *testing.T) *tmProc {
 	if tmBin == "" {
 		t.Fatal("tm binary was not built (see the TestMain output)")
 	}
-	return &tmProc{t: t, home: t.TempDir(), cwd: t.TempDir()}
+	p := &tmProc{t: t, home: t.TempDir(), cwd: t.TempDir()}
+	// A command may have started a server: it must not outlive the test.
+	t.Cleanup(func() { p.run("", "server", "stop", "--yes") })
+	return p
 }
 
 // as returns a copy that runs as a hosted agent session.
@@ -81,7 +85,9 @@ func (p *tmProc) run(stdin string, args ...string) (int, string, string) {
 	p.t.Helper()
 	cmd := exec.Command(tmBin, args...)
 	cmd.Dir = p.cwd
-	cmd.Env = append([]string{"PATH=" + os.Getenv("PATH"), "HOME=" + p.home, "TERMALATOR_HOME=" + filepath.Join(p.home, "tm")}, p.env...)
+	cmd.Env = append([]string{"PATH=" + os.Getenv("PATH"), "HOME=" + p.home, "TERMALATOR_HOME=" + filepath.Join(p.home, "tm"),
+		// A server started here stops itself when the test process is gone.
+		"TERMALATOR_TEST_OWNER=" + strconv.Itoa(os.Getpid())}, p.env...)
 	cmd.Stdin = strings.NewReader(stdin)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb

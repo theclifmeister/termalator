@@ -100,7 +100,12 @@ func Server(d Deps) ([]Check, Live) {
 	if err != nil {
 		var verr *proto.MismatchError
 		if errors.As(err, &verr) {
-			return append(out, Check{Group: g, Name: "server", Status: Warn, Detail: fmt.Sprintf("pid %d: %s", pid, verr.Reason)}), live
+			c := Check{Group: g, Name: "server", Status: Warn, Detail: fmt.Sprintf("pid %d: %s", pid, verr.Reason)}
+			if d.Restart != nil {
+				c.Fix = &Fix{Desc: fmt.Sprintf("restart the server (pid %d, protocol %d) with this tm; agents are resumed", pid, verr.Server.Protocol),
+					Apply: d.Restart}
+			}
+			return append(out, c), live
 		}
 		return append(out, Check{Group: g, Name: "server", Status: Fail,
 			Detail: fmt.Sprintf("holds the lock (pid %d) but doesn't answer (%v); see %s or run tm server stop --force", pid, err, p.Log)}), live

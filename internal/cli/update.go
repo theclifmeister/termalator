@@ -38,6 +38,8 @@ type updater struct {
 	// Brew runs brew with args, on the user's terminal.
 	Brew func(args ...string) error
 	// Server describes the running server; ok is false when none runs.
+	// Sessions is -1 for a server of an older protocol, which only says
+	// hello.
 	Server func() (st proto.ServerStatus, ok bool)
 	// Restart runs `<bin> server restart [--yes]` on the user's terminal.
 	Restart func(bin string, yes bool) int
@@ -63,6 +65,13 @@ func defaultUpdater(e *Env) *updater {
 		Brew: func(args ...string) error { return interactive("brew", args...).Run() },
 		Server: func() (proto.ServerStatus, bool) {
 			c, _, err := connect(false)
+			var verr *proto.MismatchError
+			if errors.As(err, &verr) {
+				// An older server: the hello says enough to offer the
+				// restart, which works whatever its protocol.
+				h := verr.Server
+				return proto.ServerStatus{PID: h.PID, Version: h.Version, Build: h.Build, Protocol: h.Protocol, Sessions: -1}, true
+			}
 			if err != nil {
 				return proto.ServerStatus{}, false
 			}
@@ -234,8 +243,12 @@ func (u *updater) afterUpdate(e *Env, bin, newVersion string, restart bool) int 
 	if !ok || newVersion != "" && st.Version == newVersion {
 		return ExitOK
 	}
+	sessions := plural(st.Sessions, "session")
+	if st.Sessions < 0 {
+		sessions = "its sessions"
+	}
 	fmt.Fprintf(e.Stdout, "\nThe server (pid %d) still runs %s with %s; it keeps the old binary until it restarts.\n",
-		st.PID, st.Version, plural(st.Sessions, "session"))
+		st.PID, st.Version, sessions)
 	fmt.Fprintln(e.Stdout, "Restarting stops every session: agents are resumed but lose the turn they are in, shells are lost.")
 	switch {
 	case restart:

@@ -101,6 +101,8 @@ The dependency rule: `server`, `session`, `ticker`, `tui`, `project`, `thread` a
   - `tm server stop` stops it gracefully. Every session gets `SIGHUP`, then `SIGKILL` after 5 s. `sessions.json` is saved, then the socket is removed.
   - `SIGTERM` (for example at system shutdown) does the same.
   - `tm server stop` refuses while agent sessions are running unless you pass `--yes`, or confirm on a TTY.
+  - `tm server stop` and `tm server restart` work whatever protocol the running server speaks, older or newer (§3.3, Stopping across protocols). Restart is how a server of another version is replaced, so it never refuses on version.
+  - `tm server stop --force` SIGKILLs a hung server (the pid that holds the lock).
 - **Other commands.** `tm server status` prints the pid, uptime, version, protocol and session count. `tm server restart` is stop, then start, then resume (§3.6).
 - **Foreground mode.** `tm server run` without `--detached` stays in the foreground and logs to stderr. Tests and service managers use this mode.
 - **Start at login (optional).** `tm server service install|uninstall` writes and loads a service file:
@@ -147,9 +149,17 @@ The types are in `internal/proto`.
 `build` is `version.BuildID()`: the version, the Ghostty commit, and a hash of the executable.
 
 **Versioning** (`proto.Check`):
-- **Control and hook** connections accept a client whose `protocol` is lower than or equal to the server's. Methods and fields are only ever added, and unknown fields are ignored. A newer client gets `tm server speaks protocol N…; run 'tm server restart' (agents are resumed)` and exits with code 3.
+- **Control and hook** connections accept a client whose `protocol` is lower than or equal to the server's. Methods and fields are only ever added, and unknown fields are ignored. A newer client gets `the running tm server is older than this tm (protocol N, …); run 'tm server restart' to switch it to this tm (agents are resumed)` and exits with code 3. That command works (below).
 - **Attach** connections require the **identical build**. The client mirrors the server's emulator from a libghostty snapshot, and libghostty says outright that its snapshot format "does not yet carry a binary-compatibility guarantee". On a mismatch the client **re-execs the server's binary** (`bin` from the server's hello) with the same arguments. Attaching keeps working after an upgrade until the server is restarted.
 - The protocol number goes up when the attach framing or a method's meaning changes. Protocol 2 added the views (below), which every console needs.
+
+**Stopping across protocols.** `tm server stop` and `tm server restart` (and `tm update`'s and `tm doctor --fix`'s restarts, which run them) stop a server of any protocol (`server.Stop`):
+
+1. A server this tm can talk to gets `server.stop`.
+2. An older server refuses this tm's hello but sends its own first. tm redials claiming the server's protocol, which any server accepts for control, and calls `server.stop`. The server's refusal of a stop while agents run comes back as usual, so `--yes` and the TTY question work the same.
+3. A server that can't be asked at all (no usable hello, an unknown method, no answer) gets `SIGTERM`, which shuts it down exactly as `server.stop` does, so the next server resumes its agents. tm signals only this home's server: the lock in its run dir must be held, `server.pid` must name a live process whose argv is `<tm> server run …`, and that pid must match the one in the server's hello when there was one. It never signals anything else. Without `--yes` it refuses (on a TTY it asks), since it can't learn whether agents are working.
+
+So that this keeps working, every server of every future protocol keeps three promises: its hello carries `protocol` and `pid`; a control hello at its own protocol may call `server.stop` with `{"yes": bool}`; and `SIGTERM` stops it cleanly. Servers of protocols 1–3 keep them already.
 
 **Control connections** use NDJSON request and response pairs, `{"id":1,"method":"…","params":{…}}` → `{"id":1,"result":…}` or `{"id":1,"error":{"code":"…","message":"…"}}`. The method set is flat and small. Most CLI commands are thin wrappers:
 
@@ -265,7 +275,7 @@ The processes die with the server, because the PTY master closes and the childre
 - **Upgrade.**
   - Installing a new `tm` doesn't touch a running server. Attach keeps working, because the client re-execs the server's binary (§3.3).
   - The server pins that binary: on start it hard-links its executable to `~/.termalator/server-bin/tm-<build>` (copies it across file systems) and removes the other pins. That path, not the installed one, is what the hello advertises for re-exec and what sessions get as `TERMALATOR_BIN` for their hooks, so both keep working after `tm update` renames a new binary over the old one or `brew upgrade` deletes the old keg.
-  - A control client with a newer protocol asks the human to run `tm server restart`. Restart warns about how many agents are mid-turn and asks for confirmation on a TTY.
+  - A control client with a newer protocol asks the human to run `tm server restart`, which works whatever the server speaks (§3.3, Stopping across protocols). Restart warns about how many agents are mid-turn and asks for confirmation on a TTY.
   - **Later, not v0.1:** a live handoff. The old server passes each PTY master to the new one over `SCM_RIGHTS`, with a snapshot of each emulator, so no agent has to restart. Snapshots make this feasible; it needs its own small spike.
 - **Views.** The server-owned views come back from `views.json` (§3.3, Views), with the panes whose sessions were resumed.
 - **Scrollback after a restart.** The server MAY save each pane's snapshot at shutdown and show it above the resumed process's output. This is nice to have, not required for v0.1.
@@ -1056,7 +1066,7 @@ These commands are used by the human, the coordinator and threads alike. Exit co
 | `tm session list \| start [--agent A] [--cwd D] [-- CMD…] \| read <id> [--scrollback] \| keys <id> [--enter] "…" \| prompt <id> "…" \| stop <id>` | human | sessions outside projects (shells, or an agent such as Claude); `keys` types raw text |
 | `tm agent list \| check <file> \| reload \| explain <session>` | human | §8 |
 | `tm hook --agent <name>` | harness hooks | §8.2 |
-| `tm doctor [--fix]` | human | toolchain, install method and newer release, server, sockets, manifests, hooks, leftovers |
+| `tm doctor [--fix]` | human | toolchain, install method and newer release, server (a server of an older protocol is a warning whose fix is `tm server restart`), sockets, manifests, hooks, leftovers |
 | `tm update [--check [--json]] [--yes] [--restart]` | human | §10.1 |
 | `tm version`, `tm selftest` | anyone | the skeleton's current commands |
 
@@ -1072,7 +1082,7 @@ Every agent-facing command prints short, stable, plain text. It never prints unt
   - Source build: refuses (exit 1) and says `git pull && make`.
   - Homebrew: never touches Homebrew's files; prints `brew upgrade termalator` and runs it after a `y` on a terminal or with `--yes`.
   - Direct: asks on a terminal (`--yes` skips; without a terminal it needs `--yes`), downloads the platform's archive and `checksums.txt`, checks the sha256, extracts `tm` next to the installed one, checks it on macOS with `codesign` (a valid Developer ID signature with the hardened runtime, of the same team as this build's `version.TeamID`), runs `version` on it, and renames it over the installed file.
-  - The server: it keeps running the old binary (pinned, §3.6). `tm update` says so and how many sessions it has, and that a restart ends running turns (agents resume, shells are lost). It restarts the server only with `--restart`, or after a `y` on a terminal, and then `tm server restart` still asks when agents are mid-turn. Otherwise it prints `tm server restart` for later.
+  - The server: it keeps running the old binary (pinned, §3.6). `tm update` says so and how many sessions it has, and that a restart ends running turns (agents resume, shells are lost). It restarts the server only with `--restart`, or after a `y` on a terminal, and then `tm server restart` still asks when agents are mid-turn. Otherwise it prints `tm server restart` for later. The restart runs the new binary's `tm server restart`, which stops a server of any protocol (§3.3), so it works even when the old server is older than the `tm` that runs the update.
   - `--check` only reports the install method, path, and latest release (`--json` for scripts). `tm doctor` shows the same as its `install` group; `TERMALATOR_UPDATE_URL=off` turns the network check off (the e2e harness does).
 
 ---
@@ -1427,6 +1437,8 @@ What the harness provides (M1 built `Env`, `Window` without `Key`/`Paste`/`Wheel
   - `Start(app, args…)` (`"shell"`, a deterministic app by name, or any command), `CLI` (runs `tm …` and returns stdout, stderr and the exit code), `Screen`, `WaitFor`, `Keys`, `AssertAlive`;
   - `KillServer`, `RestartServer`;
   - cleanup that **fails the test if any process outlives it**, so orphaned agents can't go unnoticed.
+- **No test server outlives its test.** Every server a test starts is stopped in its cleanup: `Env`'s cleanup runs `tm server stop --yes` (which works whatever the server speaks, §3.3) and SIGKILLs the server if it is still there; `internal/cli`'s binary tests stop any server they started the same way (`t.Cleanup`). For what a cleanup never gets to run (a `go test` timeout, ^C, SIGKILL), every test `tm` gets `TERMALATOR_TEST_OWNER=<pid of the test process>`: a server with it stops itself within a second of that process exiting. New harnesses that start servers must do both.
+- **Test hooks in the server.** `TERMALATOR_TEST_HELLO=protocol=N` makes a server claim protocol N at the handshake, `=deaf` makes it hang up on every hello; `TestSmokeReplaceOldServer` uses them to play a server of an older version that `tm server restart`, `stop` and `tm doctor --fix` must replace, with the agents resumed.
 - **`Window`**: a PTY running `tm` or `tm attach` (`env.Window`), or a shell the test types `"$TM" …` into (`env.Shell`), whose output feeds a libghostty terminal (the "outer screen"). It offers:
   - `Type`, `Key` (libghostty's key encoder, honouring the kitty flags the client pushed), `Paste`, `Wheel`, `Resize`;
   - `CloseWindow` (close the PTY master), `KillClient` (`SIGKILL`);

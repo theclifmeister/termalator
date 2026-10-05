@@ -49,6 +49,14 @@ func doctorCmd(e *Env, args []string) int {
 		r, err := update.NewClient(e.Getenv).Latest(ctx)
 		return r.Tag, err
 	}
+	d.Restart = func() error {
+		// The same path as tm server restart, which never refuses on
+		// version (docs/SPEC.md §3.3).
+		if code := serverCmd(e, []string{"restart", "--yes"}); code != ExitOK {
+			return fmt.Errorf("tm server restart exited %d", code)
+		}
+		return nil
+	}
 	checks := doctor.Run(d)
 	fixes := doctor.Fixes(checks)
 	code := ExitOK
@@ -66,7 +74,7 @@ func doctorCmd(e *Env, args []string) int {
 		return code
 	}
 	if !*fix {
-		fmt.Fprintf(e.Stdout, "\n%d thing(s) can be removed: tm doctor --fix\n", len(fixes))
+		fmt.Fprintf(e.Stdout, "\n%d thing(s) can be fixed: tm doctor --fix\n", len(fixes))
 		return code
 	}
 	fmt.Fprintln(e.Stdout, "\ntm doctor --fix will:")
@@ -75,13 +83,13 @@ func doctorCmd(e *Env, args []string) int {
 	}
 	if !*yes {
 		if !isTTY(os.Stdin) {
-			fmt.Fprintln(e.Stderr, "tm doctor: not a terminal; pass --yes to remove these")
+			fmt.Fprintln(e.Stderr, "tm doctor: not a terminal; pass --yes to do these")
 			return ExitRefused
 		}
-		fmt.Fprint(e.Stderr, "Remove them? [y/N] ")
+		fmt.Fprint(e.Stderr, "Do them? [y/N] ")
 		line, _ := bufio.NewReader(e.Stdin).ReadString('\n')
 		if a := strings.ToLower(strings.TrimSpace(line)); a != "y" && a != "yes" {
-			fmt.Fprintln(e.Stdout, "nothing removed")
+			fmt.Fprintln(e.Stdout, "nothing done")
 			return ExitRefused
 		}
 	}
