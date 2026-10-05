@@ -435,7 +435,7 @@ func TestSmokeAcceptSendBack(t *testing.T) {
 	w.WaitUntil("attached to the coordinator", agentWait, func(sc string) bool { return lastLine(sc, "demo coordinator") })
 	w.Prefix("d")
 	w.WaitFor("NEEDS YOU", wait)
-	w.Type("q")
+	w.Quit()
 	w.WaitExit(wait)
 }
 
