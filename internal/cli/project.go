@@ -7,13 +7,13 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/theclifmeister/termalator/internal/caller"
-	"github.com/theclifmeister/termalator/internal/config"
-	"github.com/theclifmeister/termalator/internal/project"
-	"github.com/theclifmeister/termalator/internal/proto"
-	"github.com/theclifmeister/termalator/internal/skill"
-	"github.com/theclifmeister/termalator/internal/tui"
-	"github.com/theclifmeister/termalator/internal/version"
+	"github.com/theclifmeister/termilator/internal/caller"
+	"github.com/theclifmeister/termilator/internal/config"
+	"github.com/theclifmeister/termilator/internal/project"
+	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/skill"
+	"github.com/theclifmeister/termilator/internal/tui"
+	"github.com/theclifmeister/termilator/internal/version"
 )
 
 const projectUsage = `usage: tm project new <name> [--goal "…"] [--repo PATH]... [--json]

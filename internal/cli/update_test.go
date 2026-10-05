@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theclifmeister/termalator/internal/proto"
-	"github.com/theclifmeister/termalator/internal/update"
+	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/update"
 )
 
 type updateRig struct {
@@ -163,18 +163,18 @@ func TestUpdateRefusesBadDownloads(t *testing.T) {
 }
 
 func TestUpdateHomebrew(t *testing.T) {
-	r := newUpdateRig(t, "v0.2.0", "v0.2.0", "Cellar/termalator/0.1.0/bin", false)
+	r := newUpdateRig(t, "v0.2.0", "v0.2.0", "Cellar/termilator/0.1.0/bin", false)
 	code, out, _ := r.run(t, "")
-	if code != ExitOK || !strings.Contains(out, "brew upgrade termalator") || len(r.brews) != 0 {
+	if code != ExitOK || !strings.Contains(out, "brew upgrade termilator") || len(r.brews) != 0 {
 		t.Fatalf("brew, not asked: %d %v %q", code, r.brews, out)
 	}
-	if code, _, _ := r.run(t, "", "--yes"); code != ExitOK || len(r.brews) != 1 || strings.Join(r.brews[0], " ") != "upgrade termalator" {
+	if code, _, _ := r.run(t, "", "--yes"); code != ExitOK || len(r.brews) != 1 || strings.Join(r.brews[0], " ") != "upgrade termilator" {
 		t.Fatalf("brew --yes: %d %v", code, r.brews)
 	}
 	if b, _ := os.ReadFile(r.exe); string(b) != "old" {
 		t.Fatal("tm update wrote into the Homebrew keg")
 	}
-	if got := brewBin("/opt/homebrew/Cellar/termalator/0.1.0/bin/tm"); got != "/opt/homebrew/bin/tm" {
+	if got := brewBin("/opt/homebrew/Cellar/termilator/0.1.0/bin/tm"); got != "/opt/homebrew/bin/tm" {
 		t.Errorf("brewBin = %s", got)
 	}
 }

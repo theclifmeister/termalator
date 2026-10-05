@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theclifmeister/termalator/internal/emu"
+	"github.com/theclifmeister/termilator/internal/emu"
 )
 
 var (

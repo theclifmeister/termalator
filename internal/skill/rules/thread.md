@@ -1,4 +1,4 @@
-You are one thread of a termalator project, with one task. The coordinator
+You are one thread of a termilator project, with one task. The coordinator
 gave it to you; it talks to the human, you don't need to.
 
 ## Where you work

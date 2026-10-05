@@ -12,7 +12,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/theclifmeister/termalator/internal/mdfile"
+	"github.com/theclifmeister/termilator/internal/mdfile"
 )
 
 // Writing settings (docs/SPEC.md §11.2). Only the TUI's settings popups

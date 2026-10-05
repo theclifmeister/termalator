@@ -1,4 +1,4 @@
-// Package config reads and writes ~/.termalator/config.toml, the human's
+// Package config reads and writes ~/.termilator/config.toml, the human's
 // settings (docs/SPEC.md §5.1, §11.2): the per-project safety settings
 // under [projects.<slug>] and the default agent; the prefix key ([keys])
 // belongs to the TUI, which reads it itself.
@@ -16,7 +16,7 @@ import (
 	"path/filepath"
 
 	"github.com/BurntSushi/toml"
-	"github.com/theclifmeister/termalator/internal/home"
+	"github.com/theclifmeister/termilator/internal/home"
 )
 
 // Values of start_threads.

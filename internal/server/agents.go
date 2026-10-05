@@ -14,17 +14,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/theclifmeister/termalator/internal/agent"
-	"github.com/theclifmeister/termalator/internal/project"
-	"github.com/theclifmeister/termalator/internal/proto"
-	"github.com/theclifmeister/termalator/internal/session"
-	"github.com/theclifmeister/termalator/internal/skill"
-	"github.com/theclifmeister/termalator/internal/thread"
-	"github.com/theclifmeister/termalator/internal/version"
-	"github.com/theclifmeister/termalator/internal/worktree"
+	"github.com/theclifmeister/termilator/internal/agent"
+	"github.com/theclifmeister/termilator/internal/project"
+	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/session"
+	"github.com/theclifmeister/termilator/internal/skill"
+	"github.com/theclifmeister/termilator/internal/thread"
+	"github.com/theclifmeister/termilator/internal/version"
+	"github.com/theclifmeister/termilator/internal/worktree"
 )
 
-// AgentsDir is where user manifests live, under TERMALATOR_HOME.
+// AgentsDir is where user manifests live, under TERMILATOR_HOME.
 func (p Paths) AgentsDir() string { return filepath.Join(p.Home, "agents") }
 
 // loadAgents (re)reads the registry. Broken user manifests are logged
@@ -218,7 +218,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 			return nil, proto.Errorf(proto.ErrInternal, "%v", err)
 		}
 	}
-	set := s.termalatorEnv(r)
+	set := s.termilatorEnv(r)
 	for _, kv := range launch.Env {
 		k, v, _ := strings.Cut(kv, "=")
 		set[k] = v
@@ -230,7 +230,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 	sess, err := session.Start(session.Config{
 		ID: r.ID, Role: r.Role, Project: r.Project, Thread: r.Thread, Argv: launch.Argv, Cwd: r.Cwd, Env: env,
 		Cols: l.cols, Rows: l.rows, Created: r.Created,
-		Xtversion: "termalator " + version.Version,
+		Xtversion: "termilator " + version.Version,
 		Scheme:    s.scheme,
 		Logf:      s.log.Printf,
 		OnExit:    s.sessionExited,
@@ -259,25 +259,25 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 	return sess, nil
 }
 
-// termalatorEnv is the session environment of docs/SPEC.md §3.4.
-func (s *Server) termalatorEnv(r SessionRecord) map[string]string {
+// termilatorEnv is the session environment of docs/SPEC.md §3.4.
+func (s *Server) termilatorEnv(r SessionRecord) map[string]string {
 	set := map[string]string{
 		"TERM":                 "xterm-256color",
 		"COLORTERM":            "truecolor",
-		"TERM_PROGRAM":         "termalator",
+		"TERM_PROGRAM":         "termilator",
 		"TERM_PROGRAM_VERSION": version.Version,
-		"TERMALATOR":           "1",
-		"TERMALATOR_SESSION":   r.ID,
-		"TERMALATOR_SOCKET":    s.opts.Paths.Socket,
-		"TERMALATOR_HOME":      s.opts.Paths.Home,
-		"TERMALATOR_BIN":       s.opts.Bin,
-		"TERMALATOR_ROLE":      r.Role,
+		"TERMILATOR":           "1",
+		"TERMILATOR_SESSION":   r.ID,
+		"TERMILATOR_SOCKET":    s.opts.Paths.Socket,
+		"TERMILATOR_HOME":      s.opts.Paths.Home,
+		"TERMILATOR_BIN":       s.opts.Bin,
+		"TERMILATOR_ROLE":      r.Role,
 	}
 	if r.Project != "" {
-		set["TERMALATOR_PROJECT"] = r.Project
+		set["TERMILATOR_PROJECT"] = r.Project
 	}
 	if r.Thread != "" {
-		set["TERMALATOR_THREAD"] = r.Thread
+		set["TERMILATOR_THREAD"] = r.Thread
 	}
 	return set
 }

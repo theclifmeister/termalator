@@ -8,7 +8,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/theclifmeister/termalator/internal/agent"
+	"github.com/theclifmeister/termilator/internal/agent"
 )
 
 func init() {

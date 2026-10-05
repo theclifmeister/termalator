@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termalator/internal/caller"
-	"github.com/theclifmeister/termalator/internal/home"
-	"github.com/theclifmeister/termalator/internal/tasks"
+	"github.com/theclifmeister/termilator/internal/caller"
+	"github.com/theclifmeister/termilator/internal/home"
+	"github.com/theclifmeister/termilator/internal/tasks"
 )
 
 var (
@@ -17,7 +17,7 @@ var (
 	coord = caller.Caller{Kind: caller.Coordinator, Project: "demo-app"}
 )
 
-// setup points TERMALATOR_HOME at a temp dir and fixes the clock.
+// setup points TERMILATOR_HOME at a temp dir and fixes the clock.
 func setup(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -63,7 +63,7 @@ func TestNewLayout(t *testing.T) {
 		t.Fatalf("CLAUDE.md link: %q %v", target, err)
 	}
 	role, _ := os.ReadFile(p.Path("AGENTS.md"))
-	if !strings.Contains(string(role), "tm skill coordinator") || !strings.Contains(string(role), "coordinator of the termalator project \"Demo App\"") {
+	if !strings.Contains(string(role), "tm skill coordinator") || !strings.Contains(string(role), "coordinator of the termilator project \"Demo App\"") {
 		t.Fatalf("role file:\n%s", role)
 	}
 
@@ -232,7 +232,7 @@ func FuzzParseItem(f *testing.F) {
 }
 
 func TestPruneDone(t *testing.T) {
-	t.Setenv("TERMALATOR_HOME", t.TempDir())
+	t.Setenv("TERMILATOR_HOME", t.TempDir())
 	p, err := New(Options{Name: "Prune"})
 	if err != nil {
 		t.Fatal(err)

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/theclifmeister/termalator/internal/home"
+	"github.com/theclifmeister/termilator/internal/home"
 )
 
 const homeEnv = home.Env
@@ -14,7 +14,7 @@ const homeEnv = home.Env
 // Paths are the files the server and its clients agree on (docs/SPEC.md
 // §3.2, §5.1).
 type Paths struct {
-	Home     string // TERMALATOR_HOME, default ~/.termalator
+	Home     string // TERMILATOR_HOME, default ~/.termilator
 	RunDir   string // the socket's directory; also holds the lock and pid file
 	Socket   string
 	Lock     string // RunDir/server.lock
@@ -25,11 +25,11 @@ type Paths struct {
 
 // ResolvePaths computes the paths from the process environment. The state
 // directory comes from internal/home, the single source of truth for
-// TERMALATOR_HOME.
+// TERMILATOR_HOME.
 //
-// The lock and pid file sit next to the socket, so a TERMALATOR_SOCKET
+// The lock and pid file sit next to the socket, so a TERMILATOR_SOCKET
 // override (how tests isolate a server) also isolates its lock. A custom
-// TERMALATOR_HOME ignores XDG_RUNTIME_DIR for the same reason: a test home
+// TERMILATOR_HOME ignores XDG_RUNTIME_DIR for the same reason: a test home
 // must never share a run directory with the user's real server.
 func ResolvePaths() (Paths, error) {
 	stateDir, err := home.Dir()
@@ -37,12 +37,12 @@ func ResolvePaths() (Paths, error) {
 		return Paths{}, fmt.Errorf("server: %w", err)
 	}
 	custom := os.Getenv(homeEnv) != ""
-	env := Env{TermalatorSocket: os.Getenv("TERMALATOR_SOCKET"), TermalatorHome: stateDir, UID: os.Getuid()}
+	env := Env{TermilatorSocket: os.Getenv("TERMILATOR_SOCKET"), TermilatorHome: stateDir, UID: os.Getuid()}
 	if runtime.GOOS == "linux" && !custom {
 		env.XDGRuntimeDir = os.Getenv("XDG_RUNTIME_DIR")
 	}
-	if env.TermalatorSocket != "" {
-		if env.TermalatorSocket, err = filepath.Abs(env.TermalatorSocket); err != nil {
+	if env.TermilatorSocket != "" {
+		if env.TermilatorSocket, err = filepath.Abs(env.TermilatorSocket); err != nil {
 			return Paths{}, err
 		}
 	}

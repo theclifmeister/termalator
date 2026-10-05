@@ -1,7 +1,7 @@
 package cli
 
 // Integration tests: they build the real tm binary and run it as a
-// subprocess against an isolated TERMALATOR_HOME, checking output, --json
+// subprocess against an isolated TERMILATOR_HOME, checking output, --json
 // and exit codes, and the caller checks as the session environment sets
 // them. Nothing here needs the server. When project calls move to the
 // server, these tests plug into the shared end-to-end harness (M1's
@@ -49,7 +49,7 @@ func TestMain(m *testing.M) {
 }
 
 // tmProc runs the binary with a clean environment: only PATH, HOME, the
-// isolated TERMALATOR_HOME and whatever the test adds.
+// isolated TERMILATOR_HOME and whatever the test adds.
 type tmProc struct {
 	t    *testing.T
 	home string
@@ -74,9 +74,9 @@ func newProc(t *testing.T) *tmProc {
 // as returns a copy that runs as a hosted agent session.
 func (p *tmProc) as(role, project, thread string) *tmProc {
 	q := *p
-	q.env = []string{"TERMALATOR_SESSION=s-1", "TERMALATOR_ROLE=" + role, "TERMALATOR_PROJECT=" + project}
+	q.env = []string{"TERMILATOR_SESSION=s-1", "TERMILATOR_ROLE=" + role, "TERMILATOR_PROJECT=" + project}
 	if thread != "" {
-		q.env = append(q.env, "TERMALATOR_THREAD="+thread)
+		q.env = append(q.env, "TERMILATOR_THREAD="+thread)
 	}
 	return &q
 }
@@ -85,9 +85,9 @@ func (p *tmProc) run(stdin string, args ...string) (int, string, string) {
 	p.t.Helper()
 	cmd := exec.Command(tmBin, args...)
 	cmd.Dir = p.cwd
-	cmd.Env = append([]string{"PATH=" + os.Getenv("PATH"), "HOME=" + p.home, "TERMALATOR_HOME=" + filepath.Join(p.home, "tm"),
+	cmd.Env = append([]string{"PATH=" + os.Getenv("PATH"), "HOME=" + p.home, "TERMILATOR_HOME=" + filepath.Join(p.home, "tm"),
 		// A server started here stops itself when the test process is gone.
-		"TERMALATOR_TEST_OWNER=" + strconv.Itoa(os.Getpid())}, p.env...)
+		"TERMILATOR_TEST_OWNER=" + strconv.Itoa(os.Getpid())}, p.env...)
 	cmd.Stdin = strings.NewReader(stdin)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
@@ -120,13 +120,13 @@ func (p *tmProc) want(code int, stderr string, args ...string) {
 
 func TestBinaryProjectAndTasks(t *testing.T) {
 	tm := newProc(t)
-	if _, err := os.Stat(filepath.Join(tm.home, ".termalator")); err == nil {
+	if _, err := os.Stat(filepath.Join(tm.home, ".termilator")); err == nil {
 		t.Fatal("touched the real-home default")
 	}
 	tm.want(2, "usage: tm project", "project")
 	tm.ok("project", "new", "Demo", "--goal", "Try tm")
-	if _, err := os.Stat(filepath.Join(tm.home, ".termalator")); err == nil {
-		t.Fatal("ignored TERMALATOR_HOME")
+	if _, err := os.Stat(filepath.Join(tm.home, ".termilator")); err == nil {
+		t.Fatal("ignored TERMILATOR_HOME")
 	}
 	var proj []map[string]any
 	if err := json.Unmarshal([]byte(tm.ok("project", "list", "--json")), &proj); err != nil || len(proj) != 1 || proj[0]["goal"] != "Try tm" {
@@ -193,7 +193,7 @@ func TestBinaryCallerChecks(t *testing.T) {
 	coord.want(1, "human-only", "task", "status", "T1", "done")
 	thread.want(1, "coordinator-only", "task", "status", "T1", "done", "--approved-by-user")
 	coord.ok("task", "status", "T1", "done", "--approved-by-user")
-	// A shell session inside termalator counts as the human.
+	// A shell session inside termilator counts as the human.
 	shell := tm.as("shell", "demo", "")
 	shell.ok("task", "status", "T2", "done")
 	journal, _ := os.ReadFile(filepath.Join(tm.home, "tm", "projects", "demo", "JOURNAL.md"))

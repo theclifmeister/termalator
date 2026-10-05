@@ -13,9 +13,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/theclifmeister/termalator/internal/proto"
-	"github.com/theclifmeister/termalator/internal/server"
-	"github.com/theclifmeister/termalator/internal/version"
+	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/server"
+	"github.com/theclifmeister/termilator/internal/version"
 )
 
 const serverUsage = `usage: tm server run [--detached] | start | stop [--yes] [--force] | restart [--yes] | status [--json]
@@ -123,7 +123,11 @@ func serverStart(e *Env, args []string) int {
 	return ExitOK
 }
 
-func serverStop(e *Env, args []string) int {
+func serverStop(e *Env, args []string) int { return serverStopAt(e, args, server.ResolvePaths) }
+
+// serverStopAt stops the server of the paths resolve gives: this home's,
+// or a Termalator one's (cli/legacy.go).
+func serverStopAt(e *Env, args []string, resolve func() (server.Paths, error)) int {
 	fs := flag.NewFlagSet("server stop", flag.ContinueOnError)
 	fs.SetOutput(e.Stderr)
 	yes := fs.Bool("yes", false, "stop even while agent sessions run")
@@ -132,7 +136,7 @@ func serverStop(e *Env, args []string) int {
 		return ExitUsage
 	}
 	if *force {
-		p, err := server.ResolvePaths()
+		p, err := resolve()
 		if err != nil {
 			return e.srvFail("server stop", err)
 		}
@@ -150,7 +154,7 @@ func serverStop(e *Env, args []string) int {
 		fmt.Fprintf(e.Stdout, "killed (pid %d)\n", pid)
 		return ExitOK
 	}
-	p, err := server.ResolvePaths()
+	p, err := resolve()
 	if err != nil {
 		return e.srvFail("server stop", err)
 	}

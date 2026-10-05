@@ -42,7 +42,7 @@ const hookScript = `#!/bin/sh
 p=$(cat)
 printf '%s\n' "$p" >> "$HOOKLOG"
 case "$p" in *'"hook_event_name":"SessionStart"'*)
-  printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"CTX-%s"}}' "$TERMALATOR_SESSION";;
+  printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"CTX-%s"}}' "$TERMILATOR_SESSION";;
 esac
 `
 
@@ -125,7 +125,7 @@ func startIn(t *testing.T, home, cwd, plugin string, o agentOpts) *agent {
 	a.cmd = exec.Command(binPath, args...)
 	a.cmd.Dir = cwd
 	a.cmd.Env = append(os.Environ(), "HOME="+home, "HOOKLOG="+a.hookLog, "FAKEAGENT_LOG="+a.log,
-		"FAKEAGENT_TRUST_DEBOUNCE_MS=300", "TERMALATOR_SESSION=s1")
+		"FAKEAGENT_TRUST_DEBOUNCE_MS=300", "TERMILATOR_SESSION=s1")
 	a.cmd.Env = append(a.cmd.Env, o.env...)
 	f, err := pty.StartWithSize(a.cmd, &pty.Winsize{Rows: 40, Cols: 120})
 	if err != nil {

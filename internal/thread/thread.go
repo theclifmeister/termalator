@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/theclifmeister/termalator/internal/home"
-	"github.com/theclifmeister/termalator/internal/mdfile"
-	"github.com/theclifmeister/termalator/internal/project"
-	"github.com/theclifmeister/termalator/internal/tasks"
+	"github.com/theclifmeister/termilator/internal/home"
+	"github.com/theclifmeister/termilator/internal/mdfile"
+	"github.com/theclifmeister/termilator/internal/project"
+	"github.com/theclifmeister/termilator/internal/tasks"
 )
 
 // States of a thread record. The live agent state (working, blocked, …)
@@ -40,7 +40,7 @@ type Record struct {
 	Branch   string `toml:"branch,omitempty" json:"branch,omitempty"`
 	Worktree string `toml:"worktree" json:"worktree"`
 	State    string `toml:"state" json:"state"`
-	// Session is the termalator session running the thread, if any.
+	// Session is the termilator session running the thread, if any.
 	Session string `toml:"session,omitempty" json:"session,omitempty"`
 	// AgentSID is the agent's latest own session id, for resume (§8.5);
 	// Prompted says whether it ever worked on a prompt (Claude can't
@@ -213,7 +213,7 @@ func Create(p *project.Project, rec Record) (*Record, error) {
 	return &rec, nil
 }
 
-// WorktreeDir is ~/.termalator/worktrees/<slug>/<id>-<title-slug> and
+// WorktreeDir is ~/.termilator/worktrees/<slug>/<id>-<title-slug> and
 // BranchName tm/<slug>/<id>-<title-slug> (docs/SPEC.md §9).
 func WorktreeDir(slug, id, title string) (string, error) {
 	root, err := home.WorktreesDir()

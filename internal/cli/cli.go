@@ -9,8 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/theclifmeister/termalator/internal/caller"
-	"github.com/theclifmeister/termalator/internal/tasks"
+	"github.com/theclifmeister/termilator/internal/caller"
+	"github.com/theclifmeister/termilator/internal/legacy"
+	"github.com/theclifmeister/termilator/internal/tasks"
 )
 
 // Exit codes (docs/SPEC.md §6.3), shared by every command.
@@ -53,7 +54,11 @@ func OSEnv() *Env {
 // tells the caller from the process tree and writes the project folder
 // that a sandboxed thread can't. Without a server it runs here.
 func Run(args []string) (code int, handled bool) {
+	legacy.Env()
 	e := OSEnv()
+	if code, done := e.legacyGate(args); done {
+		return code, true
+	}
 	if len(args) > 0 && forwarded[args[0]] && e.Getenv(caller.EnvSession) != "" {
 		if code, ok := e.forward(args); ok {
 			return code, true

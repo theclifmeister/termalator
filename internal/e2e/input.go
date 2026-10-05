@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/theclifmeister/termalator/internal/emu"
+	"github.com/theclifmeister/termilator/internal/emu"
 )
 
 // Keys a scenario presses with Window.Key. They are encoded the way the

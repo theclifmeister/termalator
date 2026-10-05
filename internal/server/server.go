@@ -17,13 +17,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/theclifmeister/termalator/internal/agent"
-	"github.com/theclifmeister/termalator/internal/caller"
-	"github.com/theclifmeister/termalator/internal/emu"
-	"github.com/theclifmeister/termalator/internal/proto"
-	"github.com/theclifmeister/termalator/internal/session"
-	"github.com/theclifmeister/termalator/internal/ticker"
-	"github.com/theclifmeister/termalator/internal/version"
+	"github.com/theclifmeister/termilator/internal/agent"
+	"github.com/theclifmeister/termilator/internal/caller"
+	"github.com/theclifmeister/termilator/internal/emu"
+	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/session"
+	"github.com/theclifmeister/termilator/internal/ticker"
+	"github.com/theclifmeister/termilator/internal/version"
 )
 
 // StopGrace is how long sessions get between SIGHUP and SIGKILL.
@@ -46,7 +46,7 @@ func (e *AlreadyRunningError) Error() string {
 type Options struct {
 	Paths Paths
 	Log   *log.Logger
-	// Bin is the absolute path of tm, exported to sessions as TERMALATOR_BIN.
+	// Bin is the absolute path of tm, exported to sessions as TERMILATOR_BIN.
 	Bin string
 	// Env is the base environment for sessions; nil means os.Environ().
 	Env []string
@@ -672,13 +672,13 @@ func (s *Server) startSession(p proto.SessionStartParams) (any, *proto.Error) {
 		}
 		return proto.SessionStartResult{Session: sess.Info()}, nil
 	}
-	env := sessionEnv(s.baseEnv(), s.termalatorEnv(rec))
+	env := sessionEnv(s.baseEnv(), s.termilatorEnv(rec))
 	home, _ := os.UserHomeDir()
 	reg := s.agents
 	cfg := session.Config{
 		ID: id, Role: role, Argv: argv, Cwd: cwd, Env: env,
 		Cols: cols, Rows: rows, Created: created,
-		Xtversion: "termalator " + version.Version,
+		Xtversion: "termilator " + version.Version,
 		Scheme:    s.scheme,
 		Logf:      s.log.Printf,
 		OnExit:    s.sessionExited,

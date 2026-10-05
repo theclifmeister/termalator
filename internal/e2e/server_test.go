@@ -20,7 +20,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/theclifmeister/termalator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/proto"
 )
 
 const wait = 10 * time.Second
@@ -332,18 +332,18 @@ func TestRestartServer(t *testing.T) {
 	}
 }
 
-// longHome moves env to a TERMALATOR_HOME too long for a socket under it,
-// without the harness's TERMALATOR_SOCKET override, so the server's run
+// longHome moves env to a TERMILATOR_HOME too long for a socket under it,
+// without the harness's TERMILATOR_SOCKET override, so the server's run
 // directory falls back to /tmp. It returns the home.
 func longHome(env *Env) string {
-	h := filepath.Join(env.T.TempDir(), strings.Repeat("h", 100), "termalator")
+	h := filepath.Join(env.T.TempDir(), strings.Repeat("h", 100), "termilator")
 	var vars []string
 	for _, kv := range env.Vars {
-		if !strings.HasPrefix(kv, "TERMALATOR_SOCKET=") && !strings.HasPrefix(kv, "TERMALATOR_HOME=") {
+		if !strings.HasPrefix(kv, "TERMILATOR_SOCKET=") && !strings.HasPrefix(kv, "TERMILATOR_HOME=") {
 			vars = append(vars, kv)
 		}
 	}
-	env.Vars = append(vars, "TERMALATOR_HOME="+h)
+	env.Vars = append(vars, "TERMILATOR_HOME="+h)
 	env.Home = h
 	return h
 }
@@ -360,7 +360,7 @@ func serverSocket(env *Env) string {
 	return ""
 }
 
-// TestSmokeLongHomesSeparateServers: two TERMALATOR_HOMEs too long for a
+// TestSmokeLongHomesSeparateServers: two TERMILATOR_HOMEs too long for a
 // socket under them each get their own fallback run directory under /tmp,
 // and so their own server and sessions (docs/SPEC.md §3.2).
 func TestSmokeLongHomesSeparateServers(t *testing.T) {
@@ -380,7 +380,7 @@ func TestSmokeLongHomesSeparateServers(t *testing.T) {
 		t.Fatalf("both homes use the socket %s", a.Socket)
 	}
 	for _, s := range []string{a.Socket, b.Socket} {
-		if !strings.HasPrefix(s, "/tmp/termalator-") || len(s) > 100 {
+		if !strings.HasPrefix(s, "/tmp/termilator-") || len(s) > 100 {
 			t.Fatalf("fallback socket %s", s)
 		}
 	}

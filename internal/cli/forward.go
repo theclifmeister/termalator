@@ -5,9 +5,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/theclifmeister/termalator/internal/caller"
-	"github.com/theclifmeister/termalator/internal/proto"
-	"github.com/theclifmeister/termalator/internal/server"
+	"github.com/theclifmeister/termilator/internal/caller"
+	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/server"
 )
 
 // forwarded are the project commands an agent runs through the server
@@ -80,7 +80,7 @@ func (e *Env) forward(args []string) (code int, ok bool) {
 }
 
 // RunInServer runs a forwarded command for server.Options.RunCLI. The
-// caller comes from the server; the TERMALATOR_* variables a command
+// caller comes from the server; the TERMILATOR_* variables a command
 // reads are derived from it, never from the server's own environment.
 func RunInServer(p proto.CLIRunParams, c caller.Caller) proto.CLIRunResult {
 	var out, errb bytes.Buffer

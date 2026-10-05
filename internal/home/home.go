@@ -1,5 +1,5 @@
-// Package home locates termalator's state directory, ~/.termalator by
-// default (docs/SPEC.md §5.1). TERMALATOR_HOME moves all of it, which is
+// Package home locates termilator's state directory, ~/.termilator by
+// default (docs/SPEC.md §5.1). TERMILATOR_HOME moves all of it, which is
 // how tests run without touching the real home.
 package home
 
@@ -10,10 +10,10 @@ import (
 )
 
 // Env is the variable that overrides the state directory.
-const Env = "TERMALATOR_HOME"
+const Env = "TERMILATOR_HOME"
 
-// Dir returns the absolute state directory: $TERMALATOR_HOME, or
-// ~/.termalator. It does not create it.
+// Dir returns the absolute state directory: $TERMILATOR_HOME, or
+// ~/.termilator. It does not create it.
 func Dir() (string, error) {
 	if d := os.Getenv(Env); d != "" {
 		return filepath.Abs(d)
@@ -25,7 +25,7 @@ func Dir() (string, error) {
 	if h == "" {
 		return "", errors.New("no home directory; set " + Env)
 	}
-	return filepath.Join(h, ".termalator"), nil
+	return filepath.Join(h, ".termilator"), nil
 }
 
 // ProjectsDir is <home>/projects.

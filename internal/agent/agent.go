@@ -28,7 +28,7 @@ const (
 // LaunchSpec is what the core asks an agent to start. All paths are absolute.
 type LaunchSpec struct {
 	Role       Role
-	SessionID  string // termalator session id, exported as TERMALATOR_SESSION
+	SessionID  string // termilator session id, exported as TERMILATOR_SESSION
 	AgentSID   string // agent's own session id, pre-assigned when the agent allows it
 	Cwd        string
 	RuntimeDir string // per-session scratch dir owned by the server; generated files go here

@@ -14,11 +14,11 @@ const (
 	// handshake: "protocol=N" claims protocol N (an older server), "deaf"
 	// reads each hello and hangs up without answering (a server tm can't
 	// talk to at all).
-	testHelloEnv = "TERMALATOR_TEST_HELLO"
+	testHelloEnv = "TERMILATOR_TEST_HELLO"
 	// testOwnerEnv names the test process that owns the server: when that
 	// pid is gone, the server stops itself, so a test killed before its
 	// cleanup (a timeout, ^C, SIGKILL) leaves no server behind.
-	testOwnerEnv = "TERMALATOR_TEST_OWNER"
+	testOwnerEnv = "TERMILATOR_TEST_OWNER"
 )
 
 // testHello parses testHelloEnv: the protocol to claim (0: the real one)

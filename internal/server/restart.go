@@ -3,7 +3,7 @@ package server
 import (
 	"strings"
 
-	"github.com/theclifmeister/termalator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/proto"
 )
 
 // restartOutcome is what became of one session of the previous server.

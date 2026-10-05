@@ -10,17 +10,17 @@ import (
 	"os"
 	"time"
 
-	"github.com/theclifmeister/termalator/internal/caller"
-	"github.com/theclifmeister/termalator/internal/proto"
-	"github.com/theclifmeister/termalator/internal/ticker"
+	"github.com/theclifmeister/termilator/internal/caller"
+	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/ticker"
 )
 
 // Variables that shorten the ticker's intervals (tests).
 const (
-	envTickSweep = "TERMALATOR_TICK_SWEEP"
-	envTickPR    = "TERMALATOR_TICK_PR"
-	envTickNudge = "TERMALATOR_TICK_NUDGE"
-	envTickDay   = "TERMALATOR_TICK_DAY" // the length of an auto-close day
+	envTickSweep = "TERMILATOR_TICK_SWEEP"
+	envTickPR    = "TERMILATOR_TICK_PR"
+	envTickNudge = "TERMILATOR_TICK_NUDGE"
+	envTickDay   = "TERMILATOR_TICK_DAY" // the length of an auto-close day
 )
 
 func envDuration(k string) time.Duration {

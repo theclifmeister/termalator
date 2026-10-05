@@ -8,9 +8,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/theclifmeister/termalator/internal/emu"
-	"github.com/theclifmeister/termalator/internal/pty"
-	"github.com/theclifmeister/termalator/internal/view"
+	"github.com/theclifmeister/termilator/internal/emu"
+	"github.com/theclifmeister/termilator/internal/pty"
+	"github.com/theclifmeister/termilator/internal/view"
 )
 
 // Window is a virtual terminal window: a PTY running a command (`tm …`, or
@@ -53,7 +53,7 @@ func (e *Env) WindowCmd(cols, rows uint16, argv ...string) *Window {
 	term, err := emu.NewWith(emu.Options{
 		Cols: cols, Rows: rows, Scrollback: 1000,
 		WritePty:  func(b []byte) { w.ptmx.Write(b) },
-		Xtversion: "termalator-e2e",
+		Xtversion: "termilator-e2e",
 		// Like a terminal on a dark desktop, it answers CSI ? 996 n.
 		ColorScheme: func() (emu.Scheme, bool) { return emu.SchemeDark, true },
 	})

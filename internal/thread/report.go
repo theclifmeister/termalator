@@ -12,8 +12,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/theclifmeister/termalator/internal/mdfile"
-	"github.com/theclifmeister/termalator/internal/project"
+	"github.com/theclifmeister/termilator/internal/mdfile"
+	"github.com/theclifmeister/termilator/internal/project"
 )
 
 // Limits of a report (docs/SPEC.md §7.2).

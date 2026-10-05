@@ -13,10 +13,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/theclifmeister/termalator/internal/agent"
-	"github.com/theclifmeister/termalator/internal/proto"
-	"github.com/theclifmeister/termalator/internal/session"
-	"github.com/theclifmeister/termalator/internal/view"
+	"github.com/theclifmeister/termilator/internal/agent"
+	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/session"
+	"github.com/theclifmeister/termilator/internal/view"
 )
 
 // Server-owned views (docs/SPEC.md §3.3, Views). The server keeps every

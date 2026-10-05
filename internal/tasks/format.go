@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/theclifmeister/termalator/internal/mdfile"
+	"github.com/theclifmeister/termilator/internal/mdfile"
 )
 
 // The TASKS.md format (§6.2): TOML front matter with next_id, "# Tasks",

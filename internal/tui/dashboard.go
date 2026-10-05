@@ -13,9 +13,9 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theclifmeister/termalator/internal/proto"
-	"github.com/theclifmeister/termalator/internal/tasks"
-	"github.com/theclifmeister/termalator/internal/view"
+	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/tasks"
+	"github.com/theclifmeister/termilator/internal/view"
 )
 
 // The dashboard (docs/SPEC.md §4): NEEDS YOU across projects, then each
@@ -764,7 +764,7 @@ func (m *dash) View() tea.View {
 	v := tea.NewView(m.render())
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
-	v.WindowTitle = "termalator"
+	v.WindowTitle = "termilator"
 	return v
 }
 
@@ -901,7 +901,7 @@ func (m *dash) frame(title string, body []string, sel int, keys string) string {
 		right = styleGood.Render("●") + " server ok" + styleFaint.Render(fmt.Sprintf(" · %d session%s", n, map[bool]string{true: "s"}[n != 1]))
 	}
 	// The app, not a project: the project's own section is headed by its
-	// slug, which may well be "termalator".
+	// slug, which may well be "termilator".
 	left := styleTitle.Render(" tm") + styleFaint.Render(" dashboard")
 	if title != "" {
 		left += styleFaint.Render(" · ") + styleHead.Render(title)

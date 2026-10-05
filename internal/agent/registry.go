@@ -30,7 +30,7 @@ type Registry struct {
 }
 
 // Load reads the built-in manifests, then user manifests from userDir
-// (~/.termalator/agents). A user manifest with a built-in's name replaces
+// (~/.termilator/agents). A user manifest with a built-in's name replaces
 // it. Broken user manifests are reported but don't stop the others.
 func Load(userDir string) (*Registry, error) {
 	r := &Registry{agents: map[string]Agent{}, Source: map[string]string{}}

@@ -22,15 +22,15 @@ var threadScripts = map[string]string{
 	"coord-delegate": `
 [[step]]
 do = "run"
-cmd = '"$TERMALATOR_BIN" task delegate T1 > "$OUT/delegate1" 2>&1; echo "exit $?" >> "$OUT/delegate1"'
+cmd = '"$TERMILATOR_BIN" task delegate T1 > "$OUT/delegate1" 2>&1; echo "exit $?" >> "$OUT/delegate1"'
 
 [[step]]
 do = "run"
-cmd = '"$TERMALATOR_BIN" task delegate T1 --approved-by-user > "$OUT/delegate2" 2>&1; echo "exit $?" >> "$OUT/delegate2"'
+cmd = '"$TERMILATOR_BIN" task delegate T1 --approved-by-user > "$OUT/delegate2" 2>&1; echo "exit $?" >> "$OUT/delegate2"'
 
 [[step]]
 do = "run"
-cmd = '"$TERMALATOR_BIN" thread prompt t-0001 "run thread-work" > "$OUT/prompt" 2>&1; echo "exit $?" >> "$OUT/prompt"'
+cmd = '"$TERMILATOR_BIN" thread prompt t-0001 "run thread-work" > "$OUT/prompt" 2>&1; echo "exit $?" >> "$OUT/prompt"'
 
 [[step]]
 do = "stream"
@@ -40,11 +40,11 @@ text = "COORD-DONE"
 	"thread-work": `
 [[step]]
 do = "run"
-cmd = '"$TERMALATOR_BIN" done > "$OUT/done1" 2>&1; echo "exit $?" >> "$OUT/done1"'
+cmd = '"$TERMILATOR_BIN" done > "$OUT/done1" 2>&1; echo "exit $?" >> "$OUT/done1"'
 
 [[step]]
 do = "run"
-cmd = '"$TERMALATOR_BIN" task steps T1 add "Write the code" && "$TERMALATOR_BIN" task steps T1 add "Test it"'
+cmd = '"$TERMILATOR_BIN" task steps T1 add "Write the code" && "$TERMILATOR_BIN" task steps T1 add "Test it"'
 
 [[step]]
 do = "todo_create"
@@ -65,11 +65,11 @@ status = "completed"
 
 [[step]]
 do = "run"
-cmd = '"$TERMALATOR_BIN" task steps T1 check 1 && cp "$TERMALATOR_HOME/projects/demo/threads/t-0001/STATUS.md" "$OUT/status-mid"'
+cmd = '"$TERMILATOR_BIN" task steps T1 check 1 && cp "$TERMILATOR_HOME/projects/demo/threads/t-0001/STATUS.md" "$OUT/status-mid"'
 
 [[step]]
 do = "run"
-cmd = '"$TERMALATOR_BIN" task status T1 review > "$OUT/taskstatus" 2>&1; echo "exit $?" >> "$OUT/taskstatus"'
+cmd = '"$TERMILATOR_BIN" task status T1 review > "$OUT/taskstatus" 2>&1; echo "exit $?" >> "$OUT/taskstatus"'
 
 [[step]]
 do = "write"
@@ -78,15 +78,15 @@ text = "overwritten\n"
 
 [[step]]
 do = "run"
-cmd = 'printf "## Report\nSome work.\n" | "$TERMALATOR_BIN" report > "$OUT/badreport" 2>&1; echo "exit $?" >> "$OUT/badreport"'
+cmd = 'printf "## Report\nSome work.\n" | "$TERMILATOR_BIN" report > "$OUT/badreport" 2>&1; echo "exit $?" >> "$OUT/badreport"'
 
 [[step]]
 do = "run"
-cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDid it.\n\n## Next\nMerge the PR\n\n## Remember\n- a lesson\n" | "$TERMALATOR_BIN" report > "$OUT/report" 2>&1; echo "exit $?" >> "$OUT/report"'
+cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDid it.\n\n## Next\nMerge the PR\n\n## Remember\n- a lesson\n" | "$TERMILATOR_BIN" report > "$OUT/report" 2>&1; echo "exit $?" >> "$OUT/report"'
 
 [[step]]
 do = "run"
-cmd = '"$TERMALATOR_BIN" done "all good" > "$OUT/done2" 2>&1; echo "exit $?" >> "$OUT/done2"'
+cmd = '"$TERMILATOR_BIN" done "all good" > "$OUT/done2" 2>&1; echo "exit $?" >> "$OUT/done2"'
 
 [[step]]
 do = "stream"
@@ -257,7 +257,7 @@ func TestSmokeThreadLifecycle(t *testing.T) {
 		t.Errorf("task:\n%s", task)
 	}
 
-	// Nothing termalator-owned in the worktree: it is a clean checkout.
+	// Nothing termilator-owned in the worktree: it is a clean checkout.
 	if st, err := exec.Command("git", "-C", rec.Worktree, "status", "--porcelain", "--ignored").Output(); err != nil || len(st) != 0 {
 		t.Errorf("worktree not clean (%v): %q", err, st)
 	}

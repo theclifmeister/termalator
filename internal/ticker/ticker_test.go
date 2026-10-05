@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termalator/internal/config"
-	"github.com/theclifmeister/termalator/internal/project"
-	"github.com/theclifmeister/termalator/internal/proto"
-	"github.com/theclifmeister/termalator/internal/thread"
+	"github.com/theclifmeister/termilator/internal/config"
+	"github.com/theclifmeister/termilator/internal/project"
+	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/thread"
 )
 
 // fakeHost records what the ticker does.
@@ -67,7 +67,7 @@ type rig struct {
 func newRig(t *testing.T) *rig {
 	t.Helper()
 	home := t.TempDir()
-	t.Setenv("TERMALATOR_HOME", home)
+	t.Setenv("TERMILATOR_HOME", home)
 	repo := t.TempDir()
 	p, err := project.New(project.Options{Name: "Demo"})
 	if err != nil {
@@ -304,7 +304,7 @@ func TestPRPollFollowUpAndAutoResolve(t *testing.T) {
 
 func TestAutoResolveOff(t *testing.T) {
 	r := newRig(t)
-	cfg := filepath.Join(os.Getenv("TERMALATOR_HOME"), "config.toml")
+	cfg := filepath.Join(os.Getenv("TERMILATOR_HOME"), "config.toml")
 	os.WriteFile(cfg, []byte("[projects.demo]\nauto_resolve = false\npr_followup = false\n"), 0o600)
 	r.gh = []string{prFailed, prMerged}
 	r.host.set("s-2", "idle", "")
@@ -367,7 +367,7 @@ func TestCloseDue(t *testing.T) {
 // TestAutoCloseDays: a done thread closes N days after tm done.
 func TestAutoCloseDays(t *testing.T) {
 	r := newRig(t)
-	cfg := filepath.Join(os.Getenv("TERMALATOR_HOME"), "config.toml")
+	cfg := filepath.Join(os.Getenv("TERMILATOR_HOME"), "config.toml")
 	os.WriteFile(cfg, []byte("[projects.demo]\nauto_close = \"days\"\nauto_close_days = 3\n"), 0o600)
 	if _, err := thread.Update(r.p, "t-0001", func(x *thread.Record) error {
 		x.LastPrompt, x.Done, x.DoneAt = r.now.Add(-time.Hour), true, r.now

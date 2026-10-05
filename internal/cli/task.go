@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/theclifmeister/termalator/internal/project"
-	"github.com/theclifmeister/termalator/internal/tasks"
+	"github.com/theclifmeister/termilator/internal/project"
+	"github.com/theclifmeister/termilator/internal/tasks"
 )
 
 const taskUsage = `usage: tm task <command> [--project <slug>] [--json]

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Try termalator in one command (`make run`): start the background server
+# Try termilator in one command (`make run`): start the background server
 # and open the dashboard.
 #
 #   scripts/run.sh            the dashboard: c starts Claude Code in a

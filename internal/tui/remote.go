@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/theclifmeister/termalator/internal/proto"
-	"github.com/theclifmeister/termalator/internal/server"
+	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/server"
 )
 
 // SetRemote turns remote control of a project's running coordinator on
