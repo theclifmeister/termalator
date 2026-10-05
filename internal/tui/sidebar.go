@@ -68,7 +68,7 @@ type treeRow struct {
 	last    bool // a coordinator or thread: the last row under its parent
 	current bool // a project: the current one
 	hint    bool // a project: one of its threads is blocked or waiting, or a task needs you
-	remote  bool // a project or coordinator row: its coordinator's remote control is on
+	remote  bool // a coordinator row: its remote control is on
 	threads int  // a project: its open threads
 	here    bool // the row you are on
 	// cursor is the keyboard's row, set while the sidebar has this
@@ -153,9 +153,10 @@ func buildTree(ps []ProjectData, sessions []proto.SessionInfo, in treeIn) []tree
 	for _, p := range ps {
 		pr := treeRow{kind: treeProject, slug: p.Slug, pct: -1, threads: len(p.Threads), current: p.Slug == in.current,
 			hint: p.Counts["needs_you"] > 0}
+		remote := false
 		for _, s := range sessions {
 			if s.Role == proto.RoleCoordinator && s.Project == p.Slug {
-				pr.session, pr.state, pr.remote = s.ID, stateWord(s), s.RemoteControl
+				pr.session, pr.state, remote = s.ID, stateWord(s), s.RemoteControl
 				break
 			}
 		}
@@ -173,7 +174,7 @@ func buildTree(ps []ProjectData, sessions []proto.SessionInfo, in treeIn) []tree
 			kids = append(kids, tr)
 		}
 		// The threads hang under the coordinator, the project's only child.
-		coord := treeRow{kind: treeCoordinator, slug: p.Slug, session: pr.session, state: pr.state, remote: pr.remote, pct: -1, last: true}
+		coord := treeRow{kind: treeCoordinator, slug: p.Slug, session: pr.session, state: pr.state, remote: remote, pct: -1, last: true}
 		if len(kids) > 0 {
 			kids[len(kids)-1].last = true
 		}
@@ -335,7 +336,8 @@ func treeSel(r treeRow, focused bool) (bool, lipgloss.Style) {
 //	" ■ termilator       2 ◆"  a project: its name, its open threads,
 //	                           the hint that one of them is blocked or
 //	                           waiting, or that a task needs you
-//	" └─ coordinator       ○"  its coordinator
+//	" └─ coordinator     ⌁ ○"  its coordinator, ⌁ while its remote
+//	                           control is on
 //	"    ├─ t-0002 B…  40% ●"  a thread's id and title, its progress, its
 //	                           state, one level under the coordinator
 //	"    └─ t-0003 S…      ▲"  the coordinator's last thread
@@ -350,8 +352,9 @@ func treeSel(r treeRow, focused bool) (bool, lipgloss.Style) {
 //
 // The slim strip shows projects alone, "▸●ter", the current one marked
 // and its coordinator's glyph (or the hint) after it.
-// A coordinator with remote control on gets "⌁" after the project's name,
-// in either width, and after "coordinator".
+// A coordinator with remote control on gets "⌁" in its row's count
+// column, right beside its state glyph; never on the project's row, so
+// not in the slim strip either.
 // The row you are on is in reverse video (and, in the slim strip, marked),
 // so colour is never the only signal. While the sidebar has the keyboard
 // focus, the keyboard's row is instead, in the accent colour.
@@ -359,10 +362,6 @@ func treeCells(r treeRow, cw int, slim, focused bool) string {
 	i := ic()
 	var sel lipgloss.Style
 	r.here, sel = treeSel(r, focused)
-	rc := ""
-	if r.remote {
-		rc = i.remote
-	}
 	if slim {
 		mark := " "
 		if r.current {
@@ -373,11 +372,11 @@ func treeCells(r treeRow, cw int, slim, focused bool) string {
 			g, st = i.hint, styleWarn
 		}
 		name := []rune(r.slug)
-		name = name[:min(len(name), max(cw-2-len([]rune(rc)), 0))]
+		name = name[:min(len(name), max(cw-2, 0))]
 		if r.here {
-			return sel.Render(fit(mark+g+string(name)+rc, cw))
+			return sel.Render(fit(mark+g+string(name), cw))
 		}
-		return fit(mark+st.Render(g)+string(name)+rc, cw)
+		return fit(mark+st.Render(g)+string(name), cw)
 	}
 	// The right-hand columns: a count or percent, then a glyph.
 	right := func(num string, g string, st lipgloss.Style, hl bool) string {
@@ -399,7 +398,7 @@ func treeCells(r treeRow, cw int, slim, focused bool) string {
 			folder = i.folderOpen
 		}
 		nw := max(cw-3-rw, 1)
-		name := fit(ansi.Truncate(r.slug, max(nw-ansi.StringWidth(rc), 0), "…")+rc, nw)
+		name := fit(ansi.Truncate(r.slug, nw, "…"), nw)
 		if r.here {
 			return " " + sel.Render(fit(folder+" "+name+right(count, hint, hst, true), cw-1))
 		}
@@ -438,14 +437,20 @@ func treeCells(r treeRow, cw int, slim, focused bool) string {
 	lw := max(cw-ld-rw, 1)
 	if r.kind == treeCoordinator {
 		g, st := coordLook(r.state)
-		label := fit("coordinator"+rc, lw+pctCol)
+		// "⌁" sits at the right of the count column; "coordinator" may
+		// take the rest of it.
+		lw := max(cw-ld-2, 0) // the label column and the count's
+		label, rc := fit("coordinator", lw), ""
+		if r.remote {
+			label, rc = fit("coordinator", max(lw-2, 0))+" ", i.remote
+		}
 		if r.here {
-			return lead + sel.Render(fit(label+" "+g, cw-ld))
+			return lead + sel.Render(fit(label+rc+" "+g, cw-ld))
 		}
 		if r.state == "" {
 			label = styleFaint.Render(label)
 		}
-		return fit(lead+label+" "+st.Render(g), cw)
+		return fit(lead+label+styleAccent.Render(rc)+" "+st.Render(g), cw)
 	}
 	g, st := stateLook(r.state)
 	if g == "" {

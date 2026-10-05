@@ -31,7 +31,7 @@ var sessionKeys = []keyHelp{
 	{"prefix+{ } b", "narrow / widen the sidebar, or make it a slim strip"},
 	{"prefix+|", "show or hide the panel on the right: beside a thread's pane its info panel (task, steps, state, PR, last report; drag its border to resize it), on the dashboard the details panel"},
 	{"prefix+tab", "the keyboard to the next area: in a session the projects sidebar (its keys below), the info panel (↑ ↓ scroll, enter its task) and back to the pane, which gets no keys meanwhile; on the dashboard as tab"},
-	{"prefix+r", "turn remote control of a coordinator on or off, to continue it from another device (asks first): the session's, or on the dashboard the selected project's"},
+	{"prefix+r", "turn remote control of a coordinator on or off, to continue it from another device (asks first): the session's, or on the dashboard the selected project's; ⌁ beside the coordinator's state in the sidebar while it is on. With the project's setting on, tm turns it back on when it drops, but your off holds until the coordinator is started anew"},
 	{"prefix+prefix", "send the prefix key itself to the program"},
 }
 
