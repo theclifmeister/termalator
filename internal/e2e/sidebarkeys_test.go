@@ -117,3 +117,57 @@ func TestSmokeSidebarIcons(t *testing.T) {
 		})
 	}
 }
+
+// TestSmokeSidebarClickFocus: a click gives its area the keyboard
+// (docs/SPEC.md §4). A click on a project row in the dashboard's sidebar
+// puts its cursor there, so ↓ moves it at once; a click on a sidebar row
+// that attaches a session keeps the keyboard in the sidebar, where keys
+// don't reach the pane; a click on the pane gives the program the keys.
+func TestSmokeSidebarClickFocus(t *testing.T) {
+	env, projDir, _ := threadEnv(t)
+	demo := "demo"
+	beta, betaDir := newProject(env, "Beta")
+	env.Trust(betaDir)
+	startThread(t, env, projDir)
+
+	w := env.Window(120, 30)
+	w.WaitFor(" ■ "+beta, wait)
+	w.WaitUntil("demo's thread", wait, func(sc string) bool { return treeRow(sc, demo, "t-0001 ") >= 0 })
+
+	// The dashboard: a click on demo, then ↓ ↓ to its thread, enter.
+	w.Click(5, projectRow(w.Screen(), demo))
+	w.WaitFor("sidebar: ↑ ↓ move", wait)
+	w.Key(keyDown)
+	w.Key(keyDown)
+	w.Key(keyEnter)
+	w.WaitUntil("on t-0001", wait, func(sc string) bool { return lastLine(sc, demo+" t-0001") })
+
+	// In the session: a click on demo's coordinator attaches it, and the
+	// sidebar keeps the keyboard: typing doesn't reach the pane, ↓ moves
+	// to the thread and enter attaches it.
+	coordinator := func() {
+		w.Click(5, treeRow(w.Screen(), demo, "coordinator"))
+		w.WaitUntil("on demo's coordinator, the sidebar focused", agentWait, func(sc string) bool {
+			return lastLine(sc, demo+" coordinator") && lastLine(sc, "sidebar: ↑ ↓ move")
+		})
+	}
+	coordinator()
+	coordinatorOf(t, env, demo)
+	w.Type("zqzq")
+	w.Key(keyDown)
+	w.Key(keyEnter)
+	w.WaitUntil("on t-0001 again", wait, func(sc string) bool { return lastLine(sc, demo+" t-0001") })
+
+	// Back on the coordinator by a click; a click on its pane gives it
+	// the keys.
+	coordinator()
+	w.Click(80, 10)
+	w.WaitUntil("pane focused", wait, func(sc string) bool { return !lastLine(sc, "sidebar:") })
+	w.Type("hello-click")
+	w.WaitFor("hello-click", wait)
+	if sc := w.PaneScreen(); strings.Contains(sc, "zqzq") {
+		t.Fatalf("keys typed while the sidebar had the keyboard reached the pane:\n%s", sc)
+	}
+	w.Quit()
+	w.WaitExit(wait)
+}

@@ -99,6 +99,9 @@ type SidebarOptions struct {
 	UIFile string
 	// Agent runs the coordinator a click starts; empty is DefaultAgent.
 	Agent string
+	// Focus starts the attach with the keyboard in the sidebar: it had it
+	// on the dashboard, a click on one of its rows, say (docs/SPEC.md §4).
+	Focus bool
 }
 
 // DefaultAgent runs coordinators.
@@ -126,6 +129,9 @@ type Result struct {
 	// Quit is set when the console itself went away (its terminal closed,
 	// a signal): the client exits rather than show the dashboard.
 	Quit bool
+	// SideFocus: the sidebar had the keyboard when the attach ended; the
+	// dashboard starts with it there.
+	SideFocus bool
 }
 
 // ErrNotTTY is returned when stdin is not a terminal.
@@ -169,6 +175,7 @@ func Attach(opts Options) (res Result, err error) {
 	}
 	c.side = &sidebar{uiFile: so.UIFile, agent: cmp.Or(so.Agent, DefaultAgent), projects: loadSideProjects()}
 	c.setWindow(cols, rows)
+	c.sideFocus = so.Focus && c.sideW > 0
 	watch, stopWatch := vc.Watch()
 	defer stopWatch()
 	if err := c.sync(v); err != nil {
@@ -575,6 +582,7 @@ func (c *client) finish(res Result) {
 		} else if res.Session == "" {
 			res.Session = c.v.Focus
 		}
+		res.SideFocus = c.sideFocus && !res.Quit
 		c.mu.Unlock()
 		c.result = res
 		c.log.Printf("end: %s", res.Reason)
