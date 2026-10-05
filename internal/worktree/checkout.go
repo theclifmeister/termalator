@@ -159,7 +159,8 @@ func (c *Checkout) count(repo, local, remote string) error {
 
 // HeadState says how a PR head stands against base (origin's default
 // branch head, both commits): "behind" when head lacks base, "conflict"
-// when merging base into it would conflict, "" when it has base. ok is
+// when merging base into it would conflict, "" when it has base or base
+// has it (the PR merged, so there is nothing to merge in). ok is
 // false when the repo doesn't have both commits or git can't tell (git
 // before 2.38 has no merge-tree --write-tree), so the caller can ask the
 // forge instead.
@@ -173,6 +174,9 @@ func HeadState(repo, head, base string) (state string, ok bool) {
 		}
 	}
 	if _, err := git(repo, "merge-base", "--is-ancestor", base, head); err == nil {
+		return "", true
+	}
+	if _, err := git(repo, "merge-base", "--is-ancestor", head, base); err == nil {
 		return "", true
 	}
 	cmd := exec.Command("git", "merge-tree", "--write-tree", "--quiet", head, base)
