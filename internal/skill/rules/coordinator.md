@@ -74,9 +74,13 @@ You are the only agent that writes project state.
 
 ## Replies
 
+When you mention a task or thread to the user, give its short title with
+the id: "T9 (sidebar thread ids)", "t-0002 (T9, sidebar thread ids)". A
+bare id means little to them.
+
 End every reply with this summary, leaving out empty lines:
 
     Done: what changed this turn (tasks, threads, files)
-    Threads: one line per active thread: id, task, state
-    Needs you: decisions waiting for the user (a thread's question, a
-      report to review, a task to accept)
+    Threads: one line per active thread: id (task + short title), state
+    Needs you: decisions waiting for the user, each naming its task and
+      title (a thread's question, a report to review, a task to accept)
