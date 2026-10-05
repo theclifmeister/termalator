@@ -106,8 +106,12 @@ type Result struct {
 	// Session is the session that had the focus.
 	Session string
 	// Then is the dashboard key to run once back on the dashboard: the
-	// key typed after the prefix (p, ], [, i, t, , or ?), or "".
+	// key typed after the prefix (p, ] or [), or "".
 	Then string
+	// Over is a popup to open over the session (prefix then a, i, t, ,
+	// or ?): the caller runs the dashboard over it, which attaches again
+	// once the popup closes.
+	Over *Over
 	// GoTo is a sidebar row clicked in a bare view, which has no
 	// dashboard: the caller hands the console over to view main, which
 	// opens it (OpenTarget).
@@ -299,6 +303,7 @@ type client struct {
 	detaching atomic.Bool
 	then      string
 	goTo      *Target // a sidebar click in a bare view, carried like then
+	over      *Over   // a popup to open over the session, carried like then
 
 	wake    chan struct{}
 	endOnce sync.Once
@@ -997,6 +1002,8 @@ func (c *client) run(do prefixDo) {
 	switch {
 	case do.detach:
 		c.detachThen(do.then)
+	case do.popup != "":
+		c.popupOver("", do.popup)
 	case do.pane != "":
 		c.paneCommand(do.pane)
 	case do.remote:
@@ -1010,6 +1017,7 @@ type prefixDo struct {
 	input  bool   // the program gets it
 	detach bool   // detach, then run then on the dashboard
 	then   string //
+	popup  string // a dashboard key whose popup opens over the session
 	pane   string // a sidebar command (paneCommands)
 	// remote asks to turn the focused coordinator's remote control on
 	// or off.
@@ -1050,6 +1058,8 @@ func prefixStep(prefix chord, pending bool, k uv.Key, dashboard bool) prefixDo {
 		return prefixDo{detach: true}
 	case name == "r":
 		return prefixDo{remote: true}
+	case popupCommands[name] && dashboard:
+		return prefixDo{popup: name}
 	case prefixCommands[name] && dashboard:
 		return prefixDo{detach: true, then: name}
 	case paneCommands[name]:
@@ -1061,20 +1071,12 @@ func prefixStep(prefix chord, pending bool, k uv.Key, dashboard bool) prefixDo {
 // detachThen leaves the layout; then is the dashboard key to run
 // afterwards. A shared view goes back to its dashboard, on every console;
 // a bare one has none, so this console leaves it.
-func (c *client) detachThen(then string) { c.detachTo("", then) }
-
-// detachTo is detachThen to project's dashboard ("" for the dashboard as
-// it was): a sidebar menu's project popup, tasks or inbox.
-func (c *client) detachTo(project, then string) {
+func (c *client) detachThen(then string) {
 	c.then = then
 	c.detaching.Store(true) // publishes then to lost
 	if !c.bare {
-		method := proto.MethodViewDashboard
-		if project != "" {
-			method = proto.MethodViewProject
-		}
-		if _, err := c.vc.Do(method, proto.ViewParams{Project: project}); err != nil {
-			c.log.Printf("%s: %v", method, err)
+		if _, err := c.vc.Do(proto.MethodViewDashboard, proto.ViewParams{}); err != nil {
+			c.log.Printf("%s: %v", proto.MethodViewDashboard, err)
 		}
 	}
 	var ps []*pane
@@ -1092,8 +1094,59 @@ func (c *client) detachTo(project, then string) {
 // is set.
 func (c *client) detachResult() Result {
 	res := detached
-	res.Then, res.GoTo = c.then, c.goTo
+	res.Then, res.GoTo, res.Over = c.then, c.goTo, c.over
 	return res
+}
+
+// popupOver leaves the attach for the dashboard key's popup, drawn over
+// this pane, about project ("" for the focused pane's): the view stays
+// as it is, on every console, and closing the popup attaches again
+// (docs/SPEC.md §4).
+func (c *client) popupOver(project, key string) {
+	if !c.lock() {
+		return
+	}
+	o := &Over{Key: key, Project: project, Screen: c.paneLines()}
+	if p := c.focus; p != nil {
+		o.Session, o.Title = p.info.ID, p.info.ID+" · "+strings.TrimPrefix(p.info.Project+" "+sessionName(p.info), " ")
+		if o.Project == "" {
+			o.Project = p.info.Project
+		}
+	}
+	ps := c.leaves()
+	c.mu.Unlock()
+	c.over = o
+	c.detaching.Store(true) // publishes over to lost
+	for _, p := range ps {
+		c.send(p, proto.FrameDetach, nil)
+	}
+	c.finish(c.detachResult())
+}
+
+// paneLines are the pane area's rows as shown, as plain text: what a
+// popup over the session dims. c.mu held.
+func (c *client) paneLines() []string {
+	lines := make([]string, c.paneRows)
+	p := c.focus
+	if p == nil || p.mirror == nil {
+		return lines
+	}
+	s, err := p.mirror.Screen()
+	if err != nil {
+		return lines
+	}
+	rows := strings.Split(s, "\n")
+	top := 0
+	if p.r != nil {
+		top = p.r.Top()
+	}
+	pad := strings.Repeat(" ", max(p.rect.X-c.sideW, 0))
+	for i := range lines {
+		if y := i - p.rect.Y + top; i >= p.rect.Y && i < p.rect.Y+p.rect.H && y >= 0 && y < len(rows) {
+			lines[i] = pad + rows[y]
+		}
+	}
+	return lines
 }
 
 // paneCommand runs a command on the window: the sidebar's width, its

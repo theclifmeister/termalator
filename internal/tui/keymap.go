@@ -24,9 +24,9 @@ type keyGroup struct {
 // order the help lists them.
 var sessionKeys = []keyHelp{
 	{"prefix+d", "back to the dashboard, on every console of the view (the session keeps running)"},
-	{"prefix+a", "back to the dashboard with the project popup open: overview, inbox, tasks, settings, keys"},
+	{"prefix+a", "the project popup over the session: overview, inbox, tasks, settings, keys; esc back to the session"},
 	{"prefix+p ] [", "back to the dashboard and switch project"},
-	{"prefix+i t , ?", "back to the dashboard with the inbox, tasks, settings or help open"},
+	{"prefix+i t , ?", "the inbox, tasks, settings or help over the session; esc back to the session"},
 	{"prefix+{ } b", "narrow / widen the sidebar, or make it a slim strip"},
 	{"prefix+tab", "the keyboard to the projects sidebar (its keys below); esc or tab back to the pane, which gets no keys meanwhile"},
 	{"prefix+r", "turn remote control of a coordinator on or off, to continue it from another device (asks first)"},

@@ -7,7 +7,7 @@ import (
 )
 
 // Popups: an overlay draws as a bordered box over the dashboard, which
-// stays in view, dimmed. The header and footer stay as they are: the
+// stays in view, dimmed (or over a session's screen: Over). The header and footer stay as they are: the
 // footer lists the popup's keys and keeps showing messages.
 
 // box is a popup's content.
@@ -89,7 +89,7 @@ func (m *dash) boxRows(b box) int {
 // popup draws b over the list.
 func (m *dash) popup(b box) string {
 	room := m.bodyRows()
-	base := m.listBody()
+	base := m.base()
 	// A small window: the box takes the whole body.
 	bw := min(b.width, m.w-4)
 	switch {
