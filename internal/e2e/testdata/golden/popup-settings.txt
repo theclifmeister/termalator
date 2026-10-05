@@ -24,15 +24,15 @@
                                │    │ (done, or its pull request merged); + and - change the days. One with       │
                                │    │ uncommitted or unpushed work stays open, and the coordinator is told.       │
                                │    │                                                                             │
+                               │    │ Complete tasks               by you                                         │
+                               │    │ By you, or on your standing acceptance: a task in review is done once a     │
+                               │    │ release contains its pull request, or once it merges. x sends it back.      │
+                               │    │                                                                             │
                                │    │ Pull request follow-up       on                                             │
                                │    │ Prompt a thread when its pull request's checks fail, a reviewer asks for    │
                                │    │ changes, or main moves past it.                                             │
                                │    │                                                                             │
                                │    │ Remote control               off                                            │
-                               │    │ New coordinators start so you can continue them from another device.        │
-                               │    │ prefix+r changes the running one.                                           │
-                               │    │                                                                             │
-                               │    │ Keep my checkout current     on                                             │
                                │    ╰───────────────────────────────────────────────────────────────────── more ↓ ╯
                                │
                                │────────────────────────────────────────────────────────────────────────────────────────

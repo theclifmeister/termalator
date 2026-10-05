@@ -52,8 +52,8 @@ func TestShipped(t *testing.T) {
 		t.Errorf("no repo: %q", s)
 	}
 	for url, want := range map[string]int{"https://github.com/o/r/pull/61": 61, "": 0, "https://github.com/o/r/pull/x": 0} {
-		if got := prNumber(url); got != want {
-			t.Errorf("prNumber(%q) = %d", url, got)
+		if got := ticker.PRNumber(url); got != want {
+			t.Errorf("PRNumber(%q) = %d", url, got)
 		}
 	}
 }

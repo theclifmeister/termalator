@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -122,11 +123,17 @@ func TestProjectPopup(t *testing.T) {
 	}
 	out = screen(m)
 	for _, want := range []string{"Start threads", "ask first", "Yolo mode", "Coordinator approves", "Parallel threads", "10 · 1 working now",
-		"Auto-close finished threads", "when its pull request merges",
-		"Pull request follow-up", "Remote control"} {
+		"Auto-close finished threads", "when its pull request merges", "Complete tasks", "by you",
+		"Pull request follow-up"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("settings tab lacks %q:\n%s", want, out)
 		}
+	}
+	for range 7 {
+		keyPress(m, "down")
+	}
+	if out := screen(m); !strings.Contains(out, "Remote control") {
+		t.Errorf("settings tab lacks Remote control:\n%s", out)
 	}
 	keyPress(m, "esc")
 	if m.top() != nil {
@@ -173,7 +180,7 @@ func TestProjectSettingsToggle(t *testing.T) {
 
 	// Remote control: the row, and a note when the running coordinator
 	// differs.
-	for range 5 {
+	for range 6 {
 		keyPress(m, "down")
 	}
 	src.data.Sessions[0].RemoteControl = true
@@ -236,16 +243,23 @@ func TestProjectSettingsNumbers(t *testing.T) {
 	if out := screen(m); !strings.Contains(out, "Auto-close finished threads  off") {
 		t.Fatalf("auto-close off:\n%s", out)
 	}
+	keyPress(m, "down")
+	for _, want := range []string{"when released", "when merged", "by you", "when released"} {
+		act(m, src, "enter")
+		if out := screen(m); !regexp.MustCompile(`Complete tasks +` + want).MatchString(out) {
+			t.Fatalf("complete tasks, want %q:\n%s", want, out)
+		}
+	}
 	cfg, _ := config.Load()
-	if s := must(cfg.Safety("alpha")); s.ParallelThreads != 13 || s.AutoClose != config.CloseOff || s.AutoCloseDays != 9 {
+	if s := must(cfg.Safety("alpha")); s.ParallelThreads != 13 || s.AutoClose != config.CloseOff || s.AutoCloseDays != 9 || s.CompleteTasks != config.CompleteReleased {
 		t.Fatalf("saved %+v", s)
 	}
 	path, _ := config.Path()
 	data, _ := os.ReadFile(path)
-	if want := "[projects.alpha]\nparallel_threads = 13\nauto_close = \"off\"\nauto_close_days = 9\n"; string(data) != want {
+	if want := "[projects.alpha]\nparallel_threads = 13\nauto_close = \"off\"\nauto_close_days = 9\ncomplete_tasks = \"released\"\n"; string(data) != want {
 		t.Fatalf("file:\n%s", data)
 	}
-	for _, bad := range []string{"config", "toml", "auto_close", "parallel_threads"} {
+	for _, bad := range []string{"config", "toml", "auto_close", "parallel_threads", "complete_tasks"} {
 		if strings.Contains(screen(m), bad) {
 			t.Fatalf("the popup names %q:\n%s", bad, screen(m))
 		}
@@ -531,7 +545,7 @@ func TestProjectPopupFixed(t *testing.T) {
 		keyPress(m, "down")
 		m.render()
 	}
-	if out = screen(m); !strings.Contains(out, "done: 0") || strings.Contains(out, "more ↓") {
+	if out = screen(m); !strings.Contains(out, "the coordinator changes tasks") || strings.Contains(out, "more ↓") {
 		t.Fatalf("the end of the tasks:\n%s", out)
 	}
 	// Back up to the top: the first group shows again.
@@ -652,11 +666,45 @@ func TestSendBack(t *testing.T) {
 	if out := screen(m); !strings.Contains(out, "waiting on coordinator") {
 		t.Fatalf("row:\n%s", out)
 	}
-	// x on a task not in review only says why.
+	// x on a task not in review or done only says why.
 	keyPress(m, "down")
 	keyPress(m, "x")
-	if _, ok := m.top().(*boardView); !ok || m.msg != "T4 is blocked, not in review; x sends back tasks in review" {
+	if _, ok := m.top().(*boardView); !ok || m.msg != "T4 is blocked, not in review or done; x sends back tasks in review or done" {
 		t.Fatalf("x on blocked: %T, %q", m.top(), m.msg)
+	}
+}
+
+// TestSendBackDone: the t list shows done tasks last; x sends one back
+// (the coordinator reopens it), a only says it isn't in review.
+func TestSendBackDone(t *testing.T) {
+	src, m := needsYouData(t, 86+sideDefault)
+	src.board.Tasks = append(src.board.Tasks, &tasks.Task{ID: 5, Title: "Shipped", Status: tasks.Done, Thread: "t-0009",
+		Notes: "done (2026-10-05): released in v0.5.0 (PR #70), by the project's setting"})
+	m.Update(keyPress(m, "t")())
+	out := screen(m)
+	if !strings.Contains(out, "DONE") || !strings.Contains(out, "T5    Shipped") {
+		t.Fatalf("no done task:\n%s", out)
+	}
+	for range 10 {
+		keyPress(m, "down")
+	}
+	if out := screen(m); !strings.Contains(out, "enter show · x send back · esc back") {
+		t.Fatalf("done keys:\n%s", out)
+	}
+	keyPress(m, "a")
+	if m.msg != "T5 is done, not in review; a accepts tasks in review" {
+		t.Fatalf("a on done: %q", m.msg)
+	}
+	keyPress(m, "x")
+	if out := screen(m); !strings.Contains(out, "Send T5 back. What should change?") {
+		t.Fatalf("prompt:\n%s", out)
+	}
+	for _, r := range "still broken" {
+		keyPress(m, string(r))
+	}
+	run(m, keyPress(m, "enter"))
+	if len(src.asked) != 1 || src.asked[0] != "send-back alpha T5 still broken" {
+		t.Fatalf("asked %v, %q", src.asked, m.msg)
 	}
 }
 

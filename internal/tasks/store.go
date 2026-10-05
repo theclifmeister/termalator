@@ -314,6 +314,32 @@ func (s *Store) SetDoneApproved(c caller.Caller, id int, note string) (Result, e
 	return s.setStatus(c, id, Done, note, " (approved by the user)")
 }
 
+// CompleteBySetting marks a task in review done on the ticker's call,
+// as the project's complete_tasks setting says (the user's standing
+// acceptance, §6.4): why says what shipped it, e.g. "released in v0.5.0
+// (PR #65)". A task no longer in review is left alone (Changed false).
+// It is journaled as "ticker task.done T12 <why>" and noted on the task.
+func (s *Store) CompleteBySetting(c caller.Caller, id int, why string) (Result, error) {
+	if c.IsAgent() {
+		return Result{}, refuse("human-only", "only the user accepts work; the ticker does it on their setting")
+	}
+	res, err := s.edit(c, id, opWrite, func(t *Task) (bool, error) {
+		if t.Status != Review {
+			return false, nil
+		}
+		t.Status = Done
+		line := fmt.Sprintf("%s (%s): %s, by the project's setting", Done, s.today(), why)
+		if n, err := checkNotes(joinNotes(t.Notes, line)); err == nil {
+			t.Notes = n
+		}
+		return true, nil
+	})
+	if err != nil || !res.Changed {
+		return res, err
+	}
+	return res, s.journal(c, "task.done", res.Task, why)
+}
+
 func (s *Store) setStatus(c caller.Caller, id int, st Status, note, approved string) (Result, error) {
 	res, err := s.edit(c, id, opWrite, func(t *Task) (bool, error) {
 		changed := t.Status != st

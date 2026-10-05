@@ -34,6 +34,16 @@ const (
 	CloseDays   = "days"   // auto_close_days after it finished
 )
 
+// Values of complete_tasks: when a task is done (§6.4, §7.5). Only
+// CompleteUser leaves it to the user; the others are the user's standing
+// acceptance, applied by the ticker to a task in review once its thread's
+// pull request merged or was released.
+const (
+	CompleteUser     = "user"
+	CompleteReleased = "released" // a tag contains its PR's merge commit
+	CompleteMerged   = "merged"   // its PR merged
+)
+
 // Limits of the number settings.
 const (
 	MaxParallelThreads = 99
@@ -57,6 +67,10 @@ type Safety struct {
 	// PRFollowup prompts a thread when its PR's checks fail or a reviewer
 	// asks for changes (§7.5).
 	PRFollowup bool `json:"pr_followup"`
+	// CompleteTasks is when a task is done: CompleteUser (only on the
+	// user's word), CompleteReleased or CompleteMerged (the ticker marks
+	// a task in review done once its thread's PR was released or merged).
+	CompleteTasks string `json:"complete_tasks"`
 	// CoordinatorRemoteControl starts the coordinator with the agent's
 	// remote control on (e.g. Claude Code's Remote Control), named after
 	// the project (§8.2 [remote_control]). The prefix key and tm project
@@ -71,7 +85,7 @@ type Safety struct {
 // Defaults are the settings of a project that config.toml doesn't name.
 var Defaults = Safety{StartThreads: StartPropose, Yolo: false, CoordinatorApproves: true,
 	ParallelThreads: 10, AutoClose: CloseMerged, AutoCloseDays: 7, PRFollowup: true,
-	FastForwardCheckout: true}
+	CompleteTasks: CompleteUser, FastForwardCheckout: true}
 
 type rawSafety struct {
 	StartThreads        *string `toml:"start_threads"`
@@ -82,10 +96,11 @@ type rawSafety struct {
 	AutoCloseDays       *int    `toml:"auto_close_days"`
 	// AutoResolve is auto_close's older form: true is "merged", false
 	// "off"; auto_close wins when both are set.
-	AutoResolve   *bool `toml:"auto_resolve"`
-	PRFollowup    *bool `toml:"pr_followup"`
-	CoordinatorRC *bool `toml:"coordinator_remote_control"`
-	FastForward   *bool `toml:"fast_forward_checkout"`
+	AutoResolve   *bool   `toml:"auto_resolve"`
+	PRFollowup    *bool   `toml:"pr_followup"`
+	CompleteTasks *string `toml:"complete_tasks"`
+	CoordinatorRC *bool   `toml:"coordinator_remote_control"`
+	FastForward   *bool   `toml:"fast_forward_checkout"`
 }
 
 // Config is the parsed file.
@@ -183,6 +198,14 @@ func (c *Config) Safety(slug string) (Safety, error) {
 	}
 	if r.PRFollowup != nil {
 		s.PRFollowup = *r.PRFollowup
+	}
+	if r.CompleteTasks != nil {
+		switch *r.CompleteTasks {
+		case CompleteUser, CompleteReleased, CompleteMerged:
+			s.CompleteTasks = *r.CompleteTasks
+		default:
+			return s, fmt.Errorf("%s: projects.%s.complete_tasks must be %q, %q or %q, not %q", c.Path, slug, CompleteUser, CompleteReleased, CompleteMerged, *r.CompleteTasks)
+		}
 	}
 	if r.CoordinatorRC != nil {
 		s.CoordinatorRemoteControl = *r.CoordinatorRC

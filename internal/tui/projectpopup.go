@@ -246,9 +246,15 @@ func (pv *projectView) tasks() []*tasks.Task {
 	if pv.board == nil {
 		return nil
 	}
+	return listed(pv.board)
+}
+
+// listed are a board's tasks as the task lists show them, by group:
+// done ones last, so x can still send one back.
+func listed(b *tasks.Board) []*tasks.Task {
 	var out []*tasks.Task
-	for _, g := range []tasks.Group{tasks.NeedsYou, tasks.InMotion, tasks.OnDeck} {
-		for _, t := range pv.board.Tasks {
+	for _, g := range tasks.Groups {
+		for _, t := range b.Tasks {
 			if tasks.GroupOf(t.Status) == g {
 				out = append(out, t)
 			}
@@ -557,16 +563,10 @@ func (pv *projectView) taskLines(m *dash, w int) ([]string, int, []int) {
 			out = append(out, fit("      "+todoGlyph(map[bool]string{true: "done"}[s.Done])+" "+oneLine(s.Text), w))
 		}
 	}
-	done := 0
-	for _, t := range pv.board.Tasks {
-		if t.Status == tasks.Done {
-			done++
-		}
-	}
 	if len(out) == 0 {
-		out = append(out, styleFaint.Render("no open tasks"))
+		out = append(out, styleFaint.Render("no tasks"))
 	}
-	out = append(out, "", styleFaint.Render(fmt.Sprintf("done: %d · the coordinator changes tasks", done)))
+	out = append(out, "", styleFaint.Render("the coordinator changes tasks"))
 	return out, sel, lineHits(len(out), taskAt)
 }
 
