@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -185,4 +187,34 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	return out.Close()
+}
+
+// ReportPRs lists the PR URLs of every report the thread handed in
+// (REPORT.md and the older ones in reports/), oldest first, each once:
+// every PR it opened and said so, which resolve checks for branches to
+// delete (docs/SPEC.md §9).
+func ReportPRs(p *project.Project, id string) []string {
+	files, _ := filepath.Glob(Path(p, id, "reports", "*.md"))
+	num := func(f string) int {
+		n, _ := strconv.Atoi(strings.TrimSuffix(filepath.Base(f), ".md"))
+		return n
+	}
+	sort.Slice(files, func(i, j int) bool { return num(files[i]) < num(files[j]) })
+	files = append(files, Path(p, id, "REPORT.md"))
+	var out []string
+	seen := map[string]bool{}
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		first, _, _ := strings.Cut(strings.TrimSpace(strings.ReplaceAll(string(data), "\r\n", "\n")), "\n")
+		if first = strings.TrimSpace(first); prRE.MatchString(first) {
+			if u := strings.TrimSpace(strings.TrimPrefix(first, "PR:")); !seen[u] {
+				seen[u] = true
+				out = append(out, u)
+			}
+		}
+	}
+	return out
 }
