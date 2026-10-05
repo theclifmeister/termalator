@@ -1,7 +1,7 @@
 # Claude Code: the reference agent manifest (docs/SPEC.md §8.6).
 #
 # Verified against Claude Code 2.1.289 on macOS by the integration spike
-# (t-0004, spikes/claude/FINDINGS.md) and the symlink spike (t-0005).
+# (t-0004, docs/research/claude.md) and the symlink spike (t-0005).
 # Several sources below are undocumented by Anthropic (the session status
 # file, the task snapshot dir); they are trusted only for tested_versions
 # and the core falls back to hooks, transcript and screen otherwise.
