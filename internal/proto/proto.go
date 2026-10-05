@@ -90,8 +90,8 @@ const (
 	FrameOutput   FrameType = 2 // raw PTY output, in order after the snapshot
 	FrameResize   FrameType = 3 // u16 cols, u16 rows: the pane was resized at this point in the stream
 	FrameDigest   FrameType = 4 // emulator state digest at this point (consistency check)
-	FrameState    FrameType = 5 // JSON: agent state, progress, for the status line
-	FrameClosed   FrameType = 6 // UTF-8 reason: the session exited or the server is stopping
+	// 5 was FrameState, never sent.
+	FrameClosed FrameType = 6 // UTF-8 reason: the session exited or the server is stopping
 
 	// client → server
 	FrameInput     FrameType = 10 // bytes for the PTY, already encoded for the pane's modes

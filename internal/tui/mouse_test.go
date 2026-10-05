@@ -123,9 +123,6 @@ func TestEveryKeyHasMousePath(t *testing.T) {
 	var prefix chord
 	prefix, _ = parseChord(DefaultPrefixKey)
 	for k := range session {
-		if sessionMouse[k] != "" {
-			continue
-		}
 		if !slices.ContainsFunc(sessionMenu, func(e struct{ label, key string }) bool { return e.key == k }) {
 			t.Errorf("the session's ≡ menu lacks prefix+%s", k)
 			continue

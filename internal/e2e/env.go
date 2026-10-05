@@ -12,7 +12,7 @@
 //		w.WaitFor("line 3", 5*time.Second)
 //		w.CloseWindow()                        // the PTY master goes away
 //		env.AssertAlive(s)
-//		e2e.Golden(t, env.Screen(s), "printer.txt")
+//		e2e.WaitGolden(t, 0, func() string { return env.Screen(s) }, "printer.txt")
 //	}
 //
 // Scenarios named TestSmoke* form the smoke set that runs on every PR

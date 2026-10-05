@@ -43,9 +43,7 @@ func (s *Server) loadAgents() {
 	var errs []string
 	if err != nil {
 		s.log.Printf("agents: %v", err)
-		for _, e := range strings.Split(err.Error(), "\n") {
-			errs = append(errs, e)
-		}
+		errs = strings.Split(err.Error(), "\n")
 	}
 	s.mu.Lock()
 	s.agents, s.agentErrs = reg, errs

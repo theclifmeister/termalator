@@ -240,7 +240,7 @@ func (a *app) picker() {
 func (a *app) startup() {
 	if !isTrusted(a.home, a.cwd, a.logicalWD) {
 		d := &dialog{kind: "trust", subject: a.cwd, options: []string{"No, exit", "Yes, I trust this folder"}, debounce: a.trustDebounce}
-		if n, _ := a.waitDialog(nil, d); n != 2 {
+		if n, _ := a.waitDialog(context.Background(), d); n != 2 {
 			a.exit(1, "")
 		}
 		_ = acceptTrust(a.home, a.cwd)
@@ -251,7 +251,7 @@ func (a *app) startup() {
 	a.mu.Unlock()
 	if a.opts.yolo && !bypassAccepted(a.home) {
 		d := &dialog{kind: "bypass", options: []string{"No, exit", "Yes, I accept"}, debounce: a.trustDebounce}
-		if n, _ := a.waitDialog(nil, d); n != 2 {
+		if n, _ := a.waitDialog(context.Background(), d); n != 2 {
 			a.exit(1, "")
 		}
 		_ = acceptBypass(a.home)
@@ -296,7 +296,7 @@ func (a *app) signals() {
 func (a *app) exit(code int, reason string) {
 	a.exitOnce.Do(func() {
 		if reason != "" {
-			_, _ = a.fireHook(nil, "SessionEnd", map[string]any{"reason": reason})
+			_, _ = a.fireHook(context.Background(), "SessionEnd", map[string]any{"reason": reason})
 		}
 		a.log("exit", map[string]any{"code": code, "reason": reason})
 		os.Remove(a.sessionFile())

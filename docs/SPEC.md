@@ -199,7 +199,6 @@ After the hello the client sends `{"attach":{"session":"s-…","cols":C,"rows":R
 | server → client | `OUTPUT` | Raw PTY output after the snapshot point, in order. The mirror feeds it to its emulator. These are the "diffs" |
 | server → client | `RESIZE` | The pane was resized at exactly this point in the byte stream, so the mirror resizes at the same offset as the server |
 | server → client | `DIGEST` | Full-state digest of the server's emulator at this point (debugging and `tm doctor --attach`) |
-| server → client | `STATE` | JSON: agent state, progress and the current item, for the client's status line |
 | server → client | `CLOSED` | The session exited, or the server is stopping; carries a reason |
 | client → server | `INPUT` | Bytes for the PTY, already encoded for the pane's modes |
 | client → server | `SET_SIZE` | Resize the pane to this size. tm's consoles size panes through their view (`view.size`, `view.input`) and no longer send it |
