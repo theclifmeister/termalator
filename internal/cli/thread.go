@@ -861,10 +861,21 @@ func (e *Env) threadResolve(p *project.Project, id string) error {
 				} else {
 					did = append(did, "deleted branch "+r.Branch+" (PR merged)")
 				}
-			case "":
-				did = append(did, "kept branch "+r.Branch+" (no merged PR found)")
 			default:
-				did = append(did, "kept branch "+r.Branch+" (PR "+strings.ToLower(st)+")")
+				// No merged PR (a repo without remote or gh, or one merged
+				// by hand): a branch whose commits are all on the default
+				// branch loses nothing.
+				if base := worktree.MergedBase(r.Repo, r.Branch); base != "" {
+					if err := worktree.DeleteBranch(r.Repo, r.Branch); err != nil {
+						did = append(did, "kept branch "+r.Branch+" ("+oneLine(err.Error(), 120)+")")
+					} else {
+						did = append(did, "deleted branch "+r.Branch+" (merged into "+base+")")
+					}
+				} else if st == "" {
+					did = append(did, "kept branch "+r.Branch+" (no merged PR found)")
+				} else {
+					did = append(did, "kept branch "+r.Branch+" (PR "+strings.ToLower(st)+")")
+				}
 			}
 		}
 	default:

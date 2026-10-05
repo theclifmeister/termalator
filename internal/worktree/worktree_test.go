@@ -121,3 +121,63 @@ func revParse(t *testing.T, dir string) string {
 	}
 	return string(out[:40])
 }
+
+// TestMergedBase: a branch whose commits are all on origin's default
+// branch, or on the checked-out branch of a repo without origin, is
+// merged; a squash-merged or unmerged one is not.
+func TestMergedBase(t *testing.T) {
+	commit := func(dir, name string) {
+		t.Helper()
+		os.WriteFile(filepath.Join(dir, name), []byte(name), 0o644)
+		run(t, dir, "add", ".")
+		run(t, dir, "commit", "-q", "-m", name)
+	}
+	check := func(repo, branch, want string) {
+		t.Helper()
+		if got := MergedBase(repo, branch); got != want {
+			t.Fatalf("MergedBase(%s) = %q, want %q", branch, got, want)
+		}
+	}
+
+	// No remote: fast-forward, merge commit, squash, unmerged.
+	repo := t.TempDir()
+	run(t, repo, "init", "-q")
+	commit(repo, "a")
+	for _, b := range []string{"ff", "merge", "squash", "open"} {
+		run(t, repo, "checkout", "-q", "-b", "tm/x/"+b, "main")
+		commit(repo, b)
+	}
+	run(t, repo, "checkout", "-q", "main")
+	run(t, repo, "merge", "-q", "--ff-only", "tm/x/ff")
+	run(t, repo, "merge", "-q", "--no-ff", "-m", "m", "tm/x/merge")
+	run(t, repo, "merge", "-q", "--squash", "tm/x/squash")
+	run(t, repo, "commit", "-q", "-m", "squash")
+	check(repo, "tm/x/ff", "main")
+	check(repo, "tm/x/merge", "main")
+	check(repo, "tm/x/squash", "")
+	check(repo, "tm/x/open", "")
+	// The base is the checked-out branch, which isn't its own base.
+	run(t, repo, "checkout", "-q", "tm/x/open")
+	check(repo, "tm/x/open", "")
+	check(repo, "tm/x/ff", "")
+
+	// With origin: merged on the remote (as last fetched) while the local
+	// main is stale; a merge nobody fetched yet is not seen.
+	root := t.TempDir()
+	origin, clone, other := filepath.Join(root, "origin.git"), filepath.Join(root, "repo"), filepath.Join(root, "other")
+	run(t, root, "init", "--bare", "-q", origin)
+	run(t, root, "clone", "-q", origin, clone)
+	commit(clone, "a")
+	run(t, clone, "push", "-q", "origin", "HEAD:main")
+	run(t, clone, "remote", "set-head", "origin", "main")
+	run(t, clone, "checkout", "-q", "-b", "tm/x/pr")
+	commit(clone, "pr")
+	run(t, clone, "push", "-q", "origin", "tm/x/pr")
+	run(t, clone, "checkout", "-q", "main")
+	run(t, root, "clone", "-q", origin, other)
+	run(t, other, "merge", "-q", "--no-ff", "-m", "Merge PR", "origin/tm/x/pr")
+	run(t, other, "push", "-q", "origin", "main")
+	check(clone, "tm/x/pr", "")
+	run(t, clone, "fetch", "-q", "origin")
+	check(clone, "tm/x/pr", "origin/main")
+}

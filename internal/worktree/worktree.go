@@ -121,10 +121,31 @@ func PRState(repo, branch string) string {
 }
 
 // DeleteBranch deletes a local branch. Callers check first that its PR
-// is merged; a squash merge leaves it unmerged in git's eyes, hence -D.
+// is merged or MergedBase found it; a squash merge leaves it unmerged in
+// git's eyes, hence -D.
 func DeleteBranch(repo, branch string) error {
 	_, err := git(repo, "branch", "-D", branch)
 	return err
+}
+
+// MergedBase is the branch that branch is merged into, for resolve:
+// origin's default branch as last fetched, else the repo's checked-out
+// branch. "" when it is merged into neither. No fetch: a merge that
+// only the remote knows about is left to the PR check.
+func MergedBase(repo, branch string) string {
+	var bases []string
+	if ref, err := git(repo, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil && ref != "" {
+		bases = append(bases, ref)
+	}
+	if ref, err := git(repo, "symbolic-ref", "--quiet", "--short", "HEAD"); err == nil && ref != "" && ref != branch {
+		bases = append(bases, ref)
+	}
+	for _, b := range bases {
+		if _, err := git(repo, "merge-base", "--is-ancestor", "refs/heads/"+branch, b); err == nil {
+			return b
+		}
+	}
+	return ""
 }
 
 // BranchExists reports whether the local branch exists.
