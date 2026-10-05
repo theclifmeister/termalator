@@ -1,6 +1,8 @@
 package e2e
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -15,8 +17,8 @@ var (
 )
 
 // TestSmokeSidebarKeys: the sidebar from the keyboard (docs/SPEC.md §4).
-// On the dashboard tab gives it the keyboard; ↓ moves, → ← open and close
-// a project, enter on a thread watches it. In the session prefix+tab
+// On the dashboard tab gives it the keyboard; ↓ moves, → goes into a
+// project and ← back up to it, enter on a thread watches it. In the session prefix+tab
 // gives it the keyboard, esc gives it back, enter on a coordinator
 // attaches it. Meanwhile no key reaches the pane.
 func TestSmokeSidebarKeys(t *testing.T) {
@@ -27,25 +29,18 @@ func TestSmokeSidebarKeys(t *testing.T) {
 	startThread(t, env, projDir)
 
 	w := env.Window(120, 30)
-	// beta is current and open; the cursor starts on it.
-	w.WaitFor("▾· "+beta, wait)
-	w.WaitFor("▸· "+demo, wait)
+	// beta is current; every project is expanded. The cursor starts on
+	// beta.
+	w.WaitFor(" ■ "+beta, wait)
+	w.WaitUntil("demo's thread", wait, func(sc string) bool { return treeRow(sc, demo, "Small fix") >= 0 })
 	w.Key(keyTab)
 	w.WaitFor("sidebar: ↑ ↓ move", wait)
 
-	// ↓ ↓ to demo, → opens it, ← closes it, → again.
-	w.Key(keyDown)
-	w.Key(keyDown)
-	w.Key(keyRight)
-	w.WaitUntil("demo open", wait, func(sc string) bool { return treeRow(sc, demo, "Small fix") >= 0 })
-	w.Key(keyLeft)
-	w.WaitUntil("demo closed", wait, func(sc string) bool { return treeRow(sc, demo, "coordinator") < 0 })
-	w.Key(keyRight)
-	w.WaitUntil("demo open", wait, func(sc string) bool { return treeRow(sc, demo, "Small fix") >= 0 })
-
-	// ↓ ↓ to its thread; enter watches it.
-	w.Key(keyDown)
-	w.Key(keyDown)
+	// ↓ ↓ past beta's coordinator to demo, → into it (its coordinator),
+	// ← back up to demo, → again, ↓ to its thread; enter watches it.
+	for _, k := range []emu.Key{keyDown, keyDown, keyRight, keyLeft, keyRight, keyDown} {
+		w.Key(k)
+	}
 	w.Key(keyEnter)
 	w.WaitUntil("watching t-0001", wait, func(sc string) bool { return lastLine(sc, "watch-only") })
 
@@ -84,4 +79,36 @@ func TestSmokeSidebarKeys(t *testing.T) {
 	w.WaitFor("SESSIONS", wait)
 	w.Type("q")
 	w.WaitExit(wait)
+}
+
+// TestSmokeSidebarIcons: the sidebar's tree in the unicode, ascii and nerd
+// icon sets (docs/SPEC.md §4), as the settings file picks them; every
+// project expanded, its rows on tree connectors, columns aligned.
+func TestSmokeSidebarIcons(t *testing.T) {
+	env, projDir, _ := threadEnv(t)
+	beta, betaDir := newProject(env, "Beta")
+	env.Trust(betaDir)
+	th := startThread(t, env, projDir)
+	for _, set := range []string{"unicode", "ascii", "nerd"} {
+		t.Run(set, func(t *testing.T) {
+			os.WriteFile(filepath.Join(env.Home, "config.toml"), []byte("[ui]\nicons = \""+set+"\"\n"), 0o600)
+			w := env.Window(100, 12)
+			w.WaitFor(beta, wait)
+			w.WaitUntil("demo's thread", wait, func(sc string) bool {
+				return strings.Contains(sc, "Small fix") && strings.Contains(sc, "PROJECTS")
+			})
+			env.WaitState(th, "idle", agentWait) // its glyph: idle, not caught working
+			side := SideCols(100)
+			WaitGolden(t, DefaultTimeout, func() string {
+				lines := strings.Split(w.Screen(), "\n")
+				for i, l := range lines {
+					r := []rune(l)
+					lines[i] = string(r[:min(side, len(r))])
+				}
+				return strings.Join(lines, "\n")
+			}, "sidebar-"+set+".txt")
+			w.Type("q")
+			w.WaitExit(wait)
+		})
+	}
 }

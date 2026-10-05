@@ -13,8 +13,9 @@ import (
 // tree (view.project, view.expand). 4: view.drag, a divider dragged
 // with the mouse. 5: view.sidesel, the sidebar's keyboard row. 6: one
 // pane per view (no split tree, zoom or view.split/close/focus/zoom/
-// even/resize/drag).
-const Protocol = 6
+// even/resize/drag). 7: every project always expanded in the tree (no
+// view.expand, no expanded projects in the view).
+const Protocol = 7
 
 // Kind is what a connection is for.
 type Kind string

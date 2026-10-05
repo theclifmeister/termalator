@@ -220,6 +220,20 @@ func globalSettings() []setting {
 				return "full"
 			},
 			change: func(m *dash) tea.Cmd { return m.sideKey("b") }},
+		{label: "Icons", help: "The glyphs of the sidebar's tree, states and progress: Nerd Font icons, Unicode shapes, or ASCII for any font. Auto picks Nerd Font icons in Ghostty, Unicode elsewhere. Each console decides auto for itself.",
+			value: func(m *dash) string {
+				v := iconsSetting()
+				if v == IconsAuto {
+					return v + " (" + ic().name + ")"
+				}
+				return v
+			},
+			change: func(m *dash) tea.Cmd {
+				cur := iconsSetting()
+				next := IconChoices[(slices.Index(IconChoices, cur)+1)%len(IconChoices)]
+				setIcons(next)
+				return m.setSetting("ui", "icons", next, "icons: "+next+"; consoles started earlier pick them up when they next open")
+			}},
 	}
 }
 

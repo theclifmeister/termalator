@@ -373,11 +373,6 @@ func (vs *views) do(method string, p proto.ViewParams) (view.View, *proto.Error)
 			return before, proto.Errorf(proto.ErrBadParams, "no project")
 		}
 		v.ShowProject(p.Project)
-	case proto.MethodViewExpand:
-		if p.Project == "" {
-			return before, proto.Errorf(proto.ErrBadParams, "no project")
-		}
-		v.Expand(p.Project, p.Expand)
 	case proto.MethodViewSelect:
 		v.Selected = p.Key
 	case proto.MethodViewSideSel:

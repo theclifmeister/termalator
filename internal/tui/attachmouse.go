@@ -258,11 +258,11 @@ func (c *client) sessionItems() []aitem {
 }
 
 // sideMenu opens the menu of the sidebar row at (m.X, m.Y): show the
-// project's dashboard, open its coordinator, open or close it in the
-// tree, its popup, tasks and inbox; watch a thread or take it over
+// project's dashboard, open its coordinator,
+// its popup, tasks and inbox; watch a thread or take it over
 // (asking first). c.mu held; released here.
 func (c *client) sideMenu(m emu.Mouse) {
-	r, ok, _, _ := sideHitAt(c.sideTree(), c.sideW, c.rows, m.X, m.Y)
+	r, ok, _ := sideHitAt(c.sideTree(), c.sideW, c.rows, m.X, m.Y)
 	t, can, why := r.target()
 	switch {
 	case !ok:
@@ -305,10 +305,6 @@ func (c *client) sideItems(r treeRow, t Target) []aitem {
 	case treeProject:
 		add("show its dashboard", "", func() { c.sideGo(Target{Project: r.slug}) })
 		add("open its coordinator", "", func() { c.sideGo(Target{Project: r.slug, Coordinator: true}) })
-		if !r.current {
-			label := map[bool]string{true: "close in the tree", false: "open in the tree"}[r.open]
-			add(label, "", func() { c.act(proto.MethodViewExpand, proto.ViewParams{Project: r.slug, Expand: !r.open}) })
-		}
 		popups()
 	case treeCoordinator:
 		add("open the coordinator", "", func() { c.sideGo(t) })

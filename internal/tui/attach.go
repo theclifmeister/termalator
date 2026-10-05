@@ -135,6 +135,7 @@ func Attach(opts Options) (res Result, err error) {
 	if !term.IsTerminal(fd) {
 		return res, ErrNotTTY
 	}
+	loadIcons()
 	prefix, kerr := prefixKey()
 	if kerr != nil {
 		fmt.Fprintf(os.Stderr, "tm attach: %v; using %s\n", kerr, DefaultPrefixKey)

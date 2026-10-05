@@ -25,28 +25,30 @@ var (
 	stylePlain  = lipgloss.NewStyle()
 )
 
-// stateLook is how a state word is drawn: its glyph and colour.
+// stateLook is how a state word is drawn: its glyph, in this console's
+// icon set, and colour.
 func stateLook(state string) (string, lipgloss.Style) {
 	word, _, _ := strings.Cut(state, " ")
+	i := ic()
 	switch word {
 	case "working", "started":
-		return "●", styleGood
+		return i.working, styleGood
 	case "blocked":
-		return "▲", styleBad.Bold(true)
+		return i.blocked, styleBad.Bold(true)
 	case "idle", "open", "ready":
-		return "○", stylePlain
+		return i.idle, stylePlain
 	case "starting":
-		return "◌", styleInfo
+		return i.starting, styleInfo
 	case "running":
-		return "●", stylePlain
+		return i.running, stylePlain
 	case "review":
-		return "◆", styleWarn
+		return i.review, styleWarn
 	case "done":
-		return "✓", styleGood
+		return i.done, styleGood
 	case "—", "":
 		return "", styleFaint
 	}
-	return "·", styleFaint // stopped, exited, resolved and the like
+	return i.other, styleFaint // stopped, exited, resolved and the like
 }
 
 // stateText is a state with its glyph, as a column shows it.
@@ -68,10 +70,10 @@ func markStyle(mark string) lipgloss.Style {
 	return stylePlain
 }
 
-// bar is a five-cell progress bar: "▰▰▱▱▱".
+// bar is a five-cell progress bar: "▰▰▱▱▱" ("##---" in ascii).
 func bar(pct int) string {
 	n := min(max((pct+10)/20, 0), 5)
-	return strings.Repeat("▰", n) + strings.Repeat("▱", 5-n)
+	return strings.Repeat(ic().barOn, n) + strings.Repeat(ic().barOff, 5-n)
 }
 
 // pctOf is done out of total as a percent, -1 without a total.
@@ -101,11 +103,11 @@ func keysLine(keys string) string {
 func todoGlyph(status string) string {
 	switch status {
 	case "completed", "done":
-		return styleGood.Render("✓")
+		return styleGood.Render(ic().todoDone)
 	case "in_progress":
-		return styleWarn.Render("◐")
+		return styleWarn.Render(ic().todoNow)
 	}
-	return styleFaint.Render("○")
+	return styleFaint.Render(ic().todoOpen)
 }
 
 // countLabel is a section header with its count: "NEEDS YOU 2".

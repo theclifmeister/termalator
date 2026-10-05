@@ -78,6 +78,7 @@ type DashResult struct {
 
 // Dashboard runs the dashboard until the user quits or picks a session.
 func Dashboard(opts DashOptions) (DashResult, error) {
+	loadIcons()
 	m := newDash(opts)
 	defer close(m.done)
 	if m.stopWatch != nil {
@@ -107,9 +108,6 @@ type dash struct {
 	rows    []row
 	sel     string // key of the selected row
 	current string // the current project: the one listed (listProject)
-	// expanded are the projects the sidebar's tree shows open besides
-	// the current one: the view's.
-	expanded []string
 	// focus is the area with this console's keyboard: the list, the
 	// sidebar or the details panel (tab). sideSel is the sidebar's
 	// keyboard row, the view's. sideSent is the last one sent; one is
@@ -173,7 +171,7 @@ func newDash(o DashOptions) *dash {
 		v := vc.View()
 		m.view, m.viewSeq = vc, v.Seq
 		m.sel = cmp.Or(v.Selected, m.sel)
-		m.current, m.expanded = v.Current, v.Expanded
+		m.current = v.Current
 		m.sideSel, m.sideSent = v.SideSel, v.SideSel
 		m.layout.Sidebar, m.viewSide = v.Sidebar, v.Sidebar
 		m.watch, m.stopWatch = vc.Watch()
@@ -281,7 +279,6 @@ func (m *dash) fromView() tea.Cmd {
 		m.current = v.Current
 		m.rebuild()
 	}
-	m.expanded = v.Expanded
 	if !m.sideBusy && m.sideSel == m.sideSent {
 		m.sideSel, m.sideSent = v.SideSel, v.SideSel
 	}
@@ -404,23 +401,19 @@ func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // sideClick handles a click on the sidebar, from under any popup: its
-// border starts a drag, ▸ ▾ open or close a project, a project row shows
+// border starts a drag, a project row shows
 // its dashboard, the coordinator row opens the coordinator, a thread row
 // watches its session.
 func (m *dash) sideClick(mo tea.Mouse) tea.Cmd {
 	if mo.Button != tea.MouseLeft {
 		return nil
 	}
-	r, ok, toggle, border := sideHitAt(m.tree(), m.sideW(), m.h, mo.X, mo.Y)
+	r, ok, border := sideHitAt(m.tree(), m.sideW(), m.h, mo.X, mo.Y)
 	t, can, why := r.target()
 	switch {
 	case border:
 		m.sideDrag = true
 	case !ok || m.busy:
-	case toggle && r.current:
-		m.msg = r.slug + " is the current project: it stays open"
-	case toggle:
-		return m.expand(r.slug, !r.open)
 	case !can:
 		m.msg = why
 	default:
@@ -461,25 +454,11 @@ func (m *dash) showProject(slug string) tea.Cmd {
 	}
 }
 
-// expand opens or closes a project in the sidebar's tree.
-func (m *dash) expand(slug string, open bool) tea.Cmd {
-	if open {
-		m.expanded = append(slices.DeleteFunc(m.expanded, func(p string) bool { return p == slug }), slug)
-	} else {
-		m.expanded = slices.DeleteFunc(m.expanded, func(p string) bool { return p == slug })
-	}
-	if m.view == nil {
-		return nil
-	}
-	return m.call(proto.MethodViewExpand, proto.ViewParams{Project: slug, Expand: open})
-}
-
 // tree is the sidebar's tree, from the last poll: the listed project is
 // current, and its row the one you are on; the keyboard's row is marked
 // while the sidebar has the focus.
 func (m *dash) tree() []treeRow {
-	rows := buildTree(m.data.Projects, m.data.Sessions, treeIn{current: listProject(m.data, m.current),
-		expanded: func(slug string) bool { return slices.Contains(m.expanded, slug) }})
+	rows := buildTree(m.data.Projects, m.data.Sessions, treeIn{current: listProject(m.data, m.current)})
 	if m.focus == focusSide {
 		markCursor(rows, m.sideW(), m.sideSel)
 	}
@@ -541,9 +520,6 @@ func (m *dash) sideKeyboard(key string) (tea.Cmd, bool) {
 	if st.sel != "" && st.sel != m.sideSel {
 		m.sideSel = st.sel
 		cmds = append(cmds, m.sendSideSel())
-	}
-	if st.project != "" {
-		cmds = append(cmds, m.expand(st.project, st.open))
 	}
 	if t := st.target; t != nil {
 		cmds = append(cmds, m.openTarget(*t))
@@ -898,7 +874,7 @@ func (m *dash) frame(title string, body []string, sel int, keys string) string {
 		right = styleBad.Render("▲ server down: " + oneLine(m.data.Err))
 	default:
 		n := len(m.data.Sessions)
-		right = styleGood.Render("●") + " server ok" + styleFaint.Render(fmt.Sprintf(" · %d session%s", n, map[bool]string{true: "s"}[n != 1]))
+		right = styleGood.Render(ic().working) + " server ok" + styleFaint.Render(fmt.Sprintf(" · %d session%s", n, map[bool]string{true: "s"}[n != 1]))
 	}
 	// The app, not a project: the project's own section is headed by its
 	// slug, which may well be "termilator".

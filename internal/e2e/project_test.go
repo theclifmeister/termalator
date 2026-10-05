@@ -39,11 +39,14 @@ func TestSmokeProjectOpenAndSwitch(t *testing.T) {
 	env.WaitState(coord, "idle", agentWait)
 
 	w := env.Window(100, 30)
-	// The sidebar's tree: alpha (the first, listed) open with its idle
-	// coordinator, beta closed without one.
-	w.WaitFor("▾○ alpha", wait)
-	w.WaitFor("  ○ coordinator", wait)
-	w.WaitFor("▸· beta", wait)
+	// The sidebar's tree: alpha (the first, listed) with its idle
+	// coordinator, beta with none running.
+	w.WaitUntil("the tree", wait, func(sc string) bool {
+		a, b := projectRow(sc, alpha), projectRow(sc, beta)
+		lines := strings.Split(sc, "\n")
+		return a >= 0 && b == a+2 && strings.HasPrefix(lines[a+1], " └─ coordinator       ○") &&
+			strings.HasPrefix(lines[b+1], " └─ coordinator       ·")
+	})
 
 	// p, down, enter: beta's coordinator starts and is attached.
 	w.Type("p")
@@ -86,8 +89,8 @@ func TestSmokeProjectOpenAndSwitch(t *testing.T) {
 }
 
 // TestSmokeSidebar: the project tree in the sidebar (docs/SPEC.md §4)
-// on every screen, shared by the consoles of view main. ▸ ▾ open and
-// close a project in both consoles; a project row shows its dashboard, a
+// on every screen, shared by the consoles of view main. Every project is
+// always expanded, its rows on tree connectors; a project row shows its dashboard, a
 // coordinator row attaches the coordinator, a thread row watches the
 // thread, from the dashboard and from a session; the sidebar stays left
 // of the pane; prefix } widens it and a drag on its border moves
@@ -102,24 +105,17 @@ func TestSmokeSidebar(t *testing.T) {
 	th := startThread(t, env, projDir)
 
 	w := env.Window(120, 30)
-	// beta, the first project, is current: open, with its coordinator
-	// (none runs yet); demo is closed, with its one thread.
-	w.WaitFor("▾· "+beta, wait)
-	w.WaitFor("  · coordinator", wait)
-	w.WaitFor("▸· "+demo+"              1", wait)
+	// beta, the first project, is current, with its coordinator (none
+	// runs yet); demo is expanded too, with its coordinator and its one
+	// thread, the last row under it.
+	w.WaitFor(" ■ "+beta, wait)
+	w.WaitFor(" └─ coordinator       ·", wait)
+	w.WaitFor(" ■ "+demo+"             1", wait)
+	w.WaitFor(" ├─ coordinator       ·", wait)
+	w.WaitUntil("demo's thread", wait, func(sc string) bool { return treeRow(sc, demo, "Small fix") >= 0 })
 	w2 := env.Window(100, 26)
-	w2.WaitFor("▸· "+demo, wait)
-
-	// ▸ opens demo in both consoles of the view; ▾ in the other closes it.
+	w2.WaitUntil("demo's thread", wait, func(sc string) bool { return treeRow(sc, demo, "Small fix") >= 0 })
 	both := []*Window{w, w2}
-	w.Click(0, sideRow(t, w.Screen(), demo))
-	for _, x := range both {
-		x.WaitUntil("demo open", wait, func(sc string) bool { return treeRow(sc, demo, "Small fix") >= 0 })
-	}
-	w2.Click(0, sideRow(t, w2.Screen(), demo))
-	for _, x := range both {
-		x.WaitUntil("demo closed", wait, func(sc string) bool { return treeRow(sc, demo, "coordinator") < 0 })
-	}
 
 	// A project row shows that project's dashboard, in both consoles.
 	w.Click(4, sideRow(t, w.Screen(), demo))
@@ -141,10 +137,9 @@ func TestSmokeSidebar(t *testing.T) {
 		}
 	}
 
-	// From the session: ▸ opens demo in place, and its thread's row
-	// watches the thread, still in the attach view.
-	w.Click(0, sideRow(t, w.Screen(), demo))
-	w.WaitUntil("demo open", wait, func(sc string) bool { return treeRow(sc, demo, "Small fix") >= 0 && lastLine(sc, beta+" coordinator") })
+	// From the session: demo's thread's row watches the thread, still in
+	// the attach view.
+	w.WaitUntil("demo's thread", wait, func(sc string) bool { return treeRow(sc, demo, "Small fix") >= 0 && lastLine(sc, beta+" coordinator") })
 	w.Click(5, treeRow(w.Screen(), demo, "Small fix"))
 	for _, x := range both {
 		x.WaitUntil("watching t-0001", wait, func(sc string) bool { return lastLine(sc, "watch-only") })
@@ -191,7 +186,7 @@ func TestSmokeSidebar(t *testing.T) {
 	// starts and shows the coordinator, on every console of the view.
 	w3 := env.Attach(120, 30, th.ID)
 	w3.WaitUntil("tm attach watching", wait, func(sc string) bool { return lastLine(sc, "watch-only") })
-	w3.WaitFor(" PROJECTS 2", wait)
+	w3.WaitUntil("the sidebar", wait, func(sc string) bool { return treeRow(sc, demo, "coordinator") >= 0 })
 	w3.Click(4, treeRow(w3.Screen(), demo, "coordinator"))
 	for _, x := range []*Window{w3, w, w2} {
 		x.WaitUntil("on demo's coordinator", agentWait, func(sc string) bool { return lastLine(sc, demo+" coordinator") })
@@ -219,7 +214,11 @@ func sideRow(t *testing.T, screen, slug string) int {
 // for none.
 func projectRow(screen, slug string) int {
 	for i, l := range strings.Split(screen, "\n") {
-		if r := []rune(l); len(r) > 3 && strings.HasPrefix(strings.TrimSpace(string(r[2:min(len(r), 23)])), slug) {
+		r := []rune(l)
+		if len(r) < 4 || r[1] != '■' {
+			continue
+		}
+		if f := strings.Fields(string(r[3:min(len(r), 23)])); len(f) > 0 && strings.TrimSuffix(f[0], "⌁") == slug {
 			return i
 		}
 	}
@@ -228,12 +227,12 @@ func projectRow(screen, slug string) int {
 
 // treeRow is the screen row of the row under slug's project in the
 // sidebar's tree whose text starts with label ("coordinator", a thread
-// id); -1 when slug is closed or has none.
+// title); -1 when slug has none.
 func treeRow(screen, slug, label string) int {
 	lines := strings.Split(screen, "\n")
 	for i := projectRow(screen, slug) + 1; i > 0 && i < len(lines); i++ {
 		r := []rune(lines[i])
-		if len(r) < 4 || r[0] != ' ' || r[1] != ' ' {
+		if len(r) < 4 || r[0] != ' ' || r[1] != '├' && r[1] != '└' {
 			return -1
 		}
 		if strings.HasPrefix(string(r[4:min(len(r), 23)]), label) {

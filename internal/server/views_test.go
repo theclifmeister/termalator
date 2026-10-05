@@ -264,8 +264,9 @@ func TestViewsLayoutActions(t *testing.T) {
 }
 
 // TestViewsTree: view.project shows a project's dashboard, on every
-// console of the view, leaving the layout; view.expand opens and closes
-// projects in the tree; an own view keeps its tree to itself.
+// console of the view, leaving the layout; view.sidesel moves the
+// sidebar's row; an own view keeps its tree to itself; view.expand is
+// gone (protocol 7).
 func TestViewsTree(t *testing.T) {
 	h := newFakeHost("s-1")
 	vs := newViews(h, "", nil)
@@ -278,13 +279,6 @@ func TestViewsTree(t *testing.T) {
 	if v.Mode != view.ModeDashboard || v.Current != "q" || v.Selected != "p:q" || !woken(b) || len(h.takeResizes()) != 0 {
 		t.Fatalf("project: %+v", v)
 	}
-	v = mustDo(t, vs, proto.MethodViewExpand, proto.ViewParams{Client: b.id, Project: "p", Expand: true})
-	if !slices.Equal(v.Expanded, []string{"p"}) || !woken(a) {
-		t.Fatalf("expand: %+v", v)
-	}
-	if v = mustDo(t, vs, proto.MethodViewExpand, proto.ViewParams{Client: a.id, Project: "p"}); len(v.Expanded) != 0 {
-		t.Fatalf("collapse: %+v", v)
-	}
 	// view.sidesel moves the sidebar's keyboard row, on every console.
 	if v = mustDo(t, vs, proto.MethodViewSideSel, proto.ViewParams{Client: b.id, Key: "c:p"}); v.SideSel != "c:p" || !woken(a) {
 		t.Fatalf("sidesel: %+v", v)
@@ -292,17 +286,18 @@ func TestViewsTree(t *testing.T) {
 	if _, err := vs.do(proto.MethodViewSideSel, proto.ViewParams{Client: a.id, Key: strings.Repeat("x", view.MaxKey+1)}); err == nil {
 		t.Fatal("sidesel took an overlong key")
 	}
-	for _, m := range []string{proto.MethodViewProject, proto.MethodViewExpand} {
-		if _, err := vs.do(m, proto.ViewParams{Client: a.id}); err == nil {
-			t.Fatalf("%s without a project", m)
-		}
+	if _, err := vs.do(proto.MethodViewProject, proto.ViewParams{Client: a.id}); err == nil {
+		t.Fatal("view.project without a project")
+	}
+	if _, err := vs.do("view.expand", proto.ViewParams{Client: a.id, Project: "p"}); err == nil {
+		t.Fatal("view.expand is gone, yet answered")
 	}
 	own, name := join(t, vs, proto.ViewSubscribeParams{Own: true, Cols: 120, Rows: 30})
-	mustDo(t, vs, proto.MethodViewExpand, proto.ViewParams{Client: own.id, Project: "z", Expand: true})
-	if v, _ := vs.get(view.Main); len(v.Expanded) != 0 {
+	mustDo(t, vs, proto.MethodViewSideSel, proto.ViewParams{Client: own.id, Key: "p:z"})
+	if v, _ := vs.get(view.Main); v.SideSel == "p:z" {
 		t.Fatalf("main took an own view's tree: %+v", v)
 	}
-	if v, _ := vs.get(name); !slices.Equal(v.Expanded, []string{"z"}) {
+	if v, _ := vs.get(name); v.SideSel != "p:z" {
 		t.Fatalf("own view's tree: %+v", v)
 	}
 }
@@ -484,9 +479,6 @@ func FuzzViewActions(f *testing.F) {
 			v, _ := vs.do(req.Method, req.Params)
 			if err := v.Valid(); err != nil {
 				t.Fatalf("%s left %v", line, err)
-			}
-			if len(v.Expanded) > view.MaxExpanded || !slices.IsSorted(v.Expanded) {
-				t.Fatalf("%s left the tree %v", line, v.Expanded)
 			}
 			v.Lay(int(v.Cols), int(v.Rows))
 		}

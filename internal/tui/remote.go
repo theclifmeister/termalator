@@ -175,7 +175,3 @@ func (c *client) reattach(p *pane) {
 		time.Sleep(200 * time.Millisecond)
 	}
 }
-
-// remoteMark follows a project's name in the sidebar while its
-// coordinator's remote control is on.
-const remoteMark = "⌁"
