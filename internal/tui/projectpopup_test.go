@@ -93,7 +93,7 @@ func TestProjectPopup(t *testing.T) {
 	out := screen(m)
 	for _, want := range []string{"─ alpha ─", "1 Overview", "2 Inbox 1", "5 Keys",
 		"Project", "Alpha", "Goal", "Ship the alpha", "Repositories", "/src/alpha", "Machines", "this one",
-		"Coordinator", "claude · s-1 blocked", "1 needs you · 1 in motion"} {
+		"Coordinator", "claude · s-1 blocked", "1 needs you (3 → Tasks) · 1 in motion"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("overview lacks %q:\n%s", want, out)
 		}

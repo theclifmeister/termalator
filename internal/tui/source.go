@@ -44,7 +44,10 @@ type ProjectData struct {
 	Items  []project.Item
 	// Threads are the project's unresolved threads (M6).
 	Threads []ThreadRow
-	Err     string
+	// NeedsYou are the tasks in the board's Needs you group (review or
+	// blocked), in board order, for NEEDS YOU.
+	NeedsYou []*tasks.Task
+	Err      string
 }
 
 // ThreadRow is one thread: its record (thread.toml) and its STATUS.md,
@@ -144,6 +147,13 @@ func (s *ServerSource) Load() Data {
 			b, err := p.Tasks().Load()
 			if err != nil {
 				b = nil
+			}
+			if b != nil {
+				for _, t := range b.Tasks {
+					if tasks.GroupOf(t.Status) == tasks.NeedsYou {
+						pd.NeedsYou = append(pd.NeedsYou, t)
+					}
+				}
 			}
 			recs, _ := thread.List(p)
 			for _, r := range recs {

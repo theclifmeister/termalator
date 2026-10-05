@@ -49,6 +49,8 @@ type projectView struct {
 	top, shown, nudge [tabCount]int
 	board             *tasks.Board
 	settings          settingsList
+	// pick is the task to select once the board loads, 0 for none.
+	pick int
 }
 
 func (m *dash) projectPopup(string) tea.Cmd {
@@ -59,6 +61,29 @@ func (m *dash) projectPopup(string) tea.Cmd {
 	pv := &projectView{slug: slug, settings: settingsList{rows: projectSettings(slug)}}
 	m.push(pv)
 	return m.loadBoard(slug)
+}
+
+// showTask opens slug's project popup on the Tasks tab with task id
+// selected: enter on a NEEDS YOU task. It only shows the task; the
+// coordinator acts on it.
+func (m *dash) showTask(slug string, id int) tea.Cmd {
+	pv := &projectView{slug: slug, tab: tabTasks, pick: id, settings: settingsList{rows: projectSettings(slug)}}
+	m.push(pv)
+	return m.loadBoard(slug)
+}
+
+// setBoard takes a loaded board, selecting the task to pick.
+func (pv *projectView) setBoard(b *tasks.Board) {
+	pv.board = b
+	if pv.pick == 0 {
+		return
+	}
+	for i, t := range pv.tasks() {
+		if t.ID == pv.pick {
+			pv.sel[tabTasks] = i
+		}
+	}
+	pv.pick = 0
 }
 
 // projectPopupView is the open project popup, if any.
@@ -396,7 +421,11 @@ func (pv *projectView) overview(m *dash, p ProjectData, w int) ([]string, int, [
 	}
 	out = append(out, field("")+styleFaint.Render(strings.Join(modes, " · ")+" (Settings tab)"))
 	c := p.Counts
-	out = append(out, "", field("Tasks")+fmt.Sprintf("%d needs you · %d in motion · %d on deck · %d done", c["needs_you"], c["in_motion"], c["on_deck"], c["done"]))
+	needs := fmt.Sprintf("%d needs you", c["needs_you"])
+	if c["needs_you"] > 0 {
+		needs += " (3 → Tasks)"
+	}
+	out = append(out, "", field("Tasks")+fmt.Sprintf("%s · %d in motion · %d on deck · %d done", needs, c["in_motion"], c["on_deck"], c["done"]))
 	if p.Err != "" {
 		out = append(out, "", styleBad.Render("error: "+oneLine(p.Err)))
 	}

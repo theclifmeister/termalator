@@ -35,8 +35,9 @@ func newProject(env *Env, name string) (slug, dir string) {
 }
 
 // TestSmokeDashboard: the dashboard's screens, empty, and with a project
-// and sessions; t shows the tasks, read-only: a task in review waits for
-// the coordinator, not in NEEDS YOU, and d does nothing.
+// and sessions; a task in review shows in NEEDS YOU, and enter shows it
+// in the project popup's Tasks tab; t shows the tasks, read-only, and d
+// does nothing.
 func TestSmokeDashboard(t *testing.T) {
 	env := New(t)
 	w := env.Window(100, 24)
@@ -54,10 +55,21 @@ func TestSmokeDashboard(t *testing.T) {
 	w.Golden("dashboard-sessions.txt", dashMasks...)
 
 	env.MustCLI("task", "status", "T1", "review", "--project", slug)
-	w.WaitFor("1 needs you", wait)
-	if strings.Contains(w.Screen(), "NEEDS YOU") {
-		t.Fatalf("a task in review is in NEEDS YOU:\n%s", w.Screen())
+	w.WaitFor("1 needs you (a → Tasks)", wait)
+	w.WaitFor("T1 Write the README", wait)
+	if !strings.Contains(w.Screen(), "NEEDS YOU 1") {
+		t.Fatalf("a task in review is not in NEEDS YOU:\n%s", w.Screen())
 	}
+	w.Golden("dashboard-needs-you.txt", dashMasks...)
+
+	// enter on it (the row above the project's): the project popup's
+	// Tasks tab, T1 selected.
+	w.Type("k")
+	w.WaitFor("enter show", wait)
+	w.Key(keyEnter)
+	w.WaitFor("read-only: the coordinator changes tasks", wait)
+	w.Key(keyEsc)
+	w.WaitFor("NEEDS YOU 1", wait)
 
 	// The task view: T1 first (needs you); it only shows.
 	w.Type("t")

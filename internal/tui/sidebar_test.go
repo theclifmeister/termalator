@@ -26,7 +26,7 @@ func TestDashboardSidebar(t *testing.T) {
 	m.setData(src.data)
 	want := []string{
 		" PROJECTS             2│ tm dashboard",
-		" ■ alpha            0  │",
+		" ■ alpha            0 ◆│", // a task needs you
 		" └─ coordinator       ▲│",
 		" ■ beta             2 ◆│", // t-0005 waits on a question
 		" ├─ coordinator       ·│",
