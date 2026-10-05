@@ -45,8 +45,9 @@ type iconSet struct {
 	// hint marks a project one of whose threads is blocked or waiting, or
 	// one of whose tasks needs you;
 	// current marks the current project in the slim strip; remote follows
-	// a coordinator with remote control on.
-	hint, current, remote string
+	// a coordinator with remote control on; paused follows a paused
+	// project's name.
+	hint, current, remote, paused string
 	// The states (stateLook): none is a coordinator that doesn't run,
 	// other a stopped, exited or resolved one.
 	working, blocked, idle, starting, running, review, done, other, none string
@@ -59,7 +60,7 @@ var unicodeIcons = iconSet{
 	name:   IconsUnicode,
 	folder: "■", folderOpen: "■",
 	mid: "├─", end: "└─",
-	hint: "◆", current: "▸", remote: "⌁",
+	hint: "◆", current: "▸", remote: "⌁", paused: "∥",
 	working: "●", blocked: "▲", idle: "○", starting: "◌", running: "●", review: "◆", done: "✓", other: "·", none: "·",
 	todoDone: "✓", todoNow: "◐", todoOpen: "○",
 	barOn: "▰", barOff: "▱",
@@ -72,7 +73,7 @@ var nerdIcons = iconSet{
 	folder: "", folderOpen: "", // nf-fa-folder, folder_open
 	mid: "├╴", end: "└╴",
 	coord: "\U000f06a9", thread: "", // nf-md-robot, nf-oct-git_branch
-	hint: "", current: "", remote: "", // bell, chevron_right, wifi
+	hint: "", current: "", remote: "", paused: "\uf04c", // bell, chevron_right, wifi, pause
 	working: "", blocked: "", idle: "", starting: "", running: "",
 	review: "", done: "", other: "", none: "·", // circle, warning, circle_o, spinner, eye, check, stop_circle
 	todoDone: "", todoNow: "", todoOpen: "", // check, dot_circle_o, circle_o
@@ -83,7 +84,7 @@ var asciiIcons = iconSet{
 	name:   IconsASCII,
 	folder: "+", folderOpen: "+",
 	mid: "|-", end: "`-",
-	hint: "?", current: ">", remote: "@",
+	hint: "?", current: ">", remote: "@", paused: "=",
 	working: "*", blocked: "!", idle: "o", starting: "~", running: "*", review: "#", done: "v", other: "-", none: ".",
 	todoDone: "x", todoNow: "~", todoOpen: "o",
 	barOn: "#", barOff: "-",

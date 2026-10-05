@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"bufio"
 	"errors"
+	"os"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -21,7 +23,10 @@ const projectUsage = `usage: tm project new <name> [--goal "…"] [--repo PATH].
        tm project list [--json]
        tm project repo add|remove PATH [--project <slug>]
        tm project open <slug> [--agent NAME]   (start or attach its coordinator)
-       tm project remote on|off [<slug>]   (remote control of its running coordinator)`
+       tm project remote on|off [<slug>]   (remote control of its running coordinator)
+       tm project pause|resume [<slug>]    (no nudges, PR follow-up or new threads while paused)
+       tm project archive|unarchive <slug> (hidden from the sidebar; the ticker leaves it alone)
+       tm project delete <slug> [--yes]    (moves it to the trash; asks first)`
 
 func runProject(e *Env, args []string) error {
 	if len(args) == 0 {
@@ -36,6 +41,8 @@ func runProject(e *Env, args []string) error {
 		return projectRepo(e, args[1:])
 	case "remote":
 		return projectRemote(e, args[1:])
+	case "pause", "resume", "archive", "unarchive", "delete":
+		return projectLifecycle(e, args[0], args[1:])
 	case "open":
 		f := newFlags()
 		agentName := f.String("agent")
@@ -81,6 +88,78 @@ func projectNew(e *Env, args []string) error {
 	return nil
 }
 
+// projectLifecycle pauses, resumes, archives, unarchives or deletes a
+// project: the human's (docs/SPEC.md §10).
+func projectLifecycle(e *Env, verb string, args []string) error {
+	f := newFlags()
+	yes := f.Bool("yes")
+	pos, err := f.Parse(args)
+	if err != nil {
+		return err
+	}
+	pause := verb == "pause" || verb == "resume"
+	if len(pos) > 1 || (len(pos) == 0 && !pause) || (*yes && verb != "delete") {
+		return usagef("%s", projectUsage)
+	}
+	if e.Caller.IsAgent() {
+		return &project.Error{Code: "human-only", Msg: "the user pauses, archives and deletes projects"}
+	}
+	flag := ""
+	if len(pos) == 1 {
+		flag = pos[0]
+	}
+	p, err := e.openProject(flag)
+	if err != nil {
+		return err
+	}
+	var call func(method string, params, result any) error
+	if !pause {
+		c, _, err := connect(false)
+		if err == nil {
+			defer c.Close()
+			call = c.Call
+		}
+	}
+	var msg string
+	switch verb {
+	case "pause", "resume":
+		msg, err = tui.PauseProject(e.Caller, p.Slug, verb == "pause")
+	case "archive", "unarchive":
+		msg, err = tui.ArchiveProject(call, e.Caller, p.Slug, verb == "archive")
+	case "delete":
+		if !*yes {
+			if err := e.confirmDelete(p); err != nil {
+				return err
+			}
+		}
+		msg, err = tui.DeleteProject(call, e.Caller, p.Slug)
+	}
+	if err != nil {
+		var pe *proto.Error
+		if errors.As(err, &pe) {
+			return &project.Error{Code: pe.Code, Msg: pe.Message}
+		}
+		return err
+	}
+	fmt.Fprintln(e.Stdout, msg)
+	return nil
+}
+
+// confirmDelete asks on the terminal for the slug; without one, delete
+// needs --yes.
+func (e *Env) confirmDelete(p *project.Project) error {
+	in, ok := e.Stdin.(*os.File)
+	if !ok || !isTTY(in) {
+		return usagef("tm project delete %s moves the project to the trash: confirm with --yes", p.Slug)
+	}
+	fmt.Fprintf(e.Stdout, "Delete project %s (%s)? Its folder moves to the trash; its worktrees and branches stay. Type %s to confirm: ", p.Slug, p.Dir, p.Slug)
+	line, _ := bufio.NewReader(in).ReadString('\n')
+	if strings.TrimSpace(line) != p.Slug {
+		return &project.Error{Code: "not-confirmed", Msg: "nothing deleted"}
+	}
+	return nil
+}
+
 func projectList(e *Env, args []string) error {
 	f := newFlags()
 	asJSON := f.Bool("json")
@@ -112,8 +191,14 @@ func projectList(e *Env, args []string) error {
 			continue
 		}
 		c := s.Counts
+		name := s.Name
+		if s.Safety != nil && s.Safety.Archived {
+			name += " (archived)"
+		} else if s.Safety != nil && s.Safety.Paused {
+			name += " (paused)"
+		}
 		fmt.Fprintf(w, "%s\t%s\t%d needs you · %d in motion · %d on deck\t%s\n",
-			s.Slug, s.Name, c["needs_you"], c["in_motion"], c["on_deck"], strings.TrimSpace(s.Goal))
+			s.Slug, name, c["needs_you"], c["in_motion"], c["on_deck"], strings.TrimSpace(s.Goal))
 	}
 	return w.Flush()
 }

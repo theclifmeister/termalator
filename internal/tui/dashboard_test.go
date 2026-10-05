@@ -37,6 +37,7 @@ type fakeSource struct {
 	reviews   map[int]Review
 	agents    []string
 	remote    []string // "slug on" or "slug off"
+	lifecycle []string // "slug verb"
 }
 
 func (f *fakeSource) SetRemote(slug string, on bool) (string, error) {
@@ -45,8 +46,18 @@ func (f *fakeSource) SetRemote(slug string, on bool) (string, error) {
 	return "remote control " + state + " for " + slug, nil
 }
 
+func (f *fakeSource) Lifecycle(slug, verb string) (string, error) {
+	f.lifecycle = append(f.lifecycle, slug+" "+verb)
+	if verb == "pause" || verb == "resume" {
+		if err := config.SetProject(slug, "paused", verb == "pause"); err != nil {
+			return "", err
+		}
+	}
+	return verb + " " + slug, nil
+}
+
 func (f *fakeSource) Load() Data {
-	if len(f.settings) > 0 {
+	if len(f.settings) > 0 || len(f.lifecycle) > 0 {
 		if cfg, err := config.Load(); err == nil {
 			for i := range f.data.Projects {
 				s, _ := cfg.Safety(f.data.Projects[i].Slug)

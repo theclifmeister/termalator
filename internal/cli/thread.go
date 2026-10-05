@@ -226,6 +226,9 @@ func (e *Env) threadStart(p *project.Project, o startOpts, asJSON bool) error {
 	if err != nil {
 		return err
 	}
+	if err := pausedErr(p, safety); err != nil {
+		return err
+	}
 	if safety.StartThreads == config.StartPropose && e.Caller.IsAgent() && !*o.approved && !*o.overCap {
 		return &tasks.Error{Code: "needs-approval", Msg: "start_threads = propose: propose the thread to the user, and once they agree start it with --approved-by-user"}
 	}
@@ -352,6 +355,15 @@ func (e *Env) threadStart(p *project.Project, o startOpts, asJSON bool) error {
 	}
 	fmt.Fprintf(e.Stdout, " (session %s)\n", info.ID)
 	return nil
+}
+
+// pausedErr refuses to start or restart a thread of a paused project
+// (docs/SPEC.md §11.2).
+func pausedErr(p *project.Project, safety config.Safety) error {
+	if !safety.Paused {
+		return nil
+	}
+	return &tasks.Error{Code: "project-paused", Msg: fmt.Sprintf("%s is paused: no thread starts until the user resumes it (tm project resume %s, or Paused in the project popup)", p.Slug, p.Slug)}
 }
 
 // underCap refuses a new thread while capN or more of the project's
@@ -802,6 +814,17 @@ func (e *Env) threadRestart(p *project.Project, id string) error {
 	}
 	if r.State == thread.Resolved {
 		return &tasks.Error{Code: "resolved", Msg: fmt.Sprintf("thread %s is resolved; start a new one", id)}
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	safety, err := cfg.Safety(p.Slug)
+	if err != nil {
+		return err
+	}
+	if err := pausedErr(p, safety); err != nil {
+		return err
 	}
 	if _, live := e.sessionOf(r); live {
 		if err := e.call(proto.MethodSessionStop, proto.SessionIDParams{ID: r.Session}, nil); err != nil {

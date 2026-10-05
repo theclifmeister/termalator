@@ -69,6 +69,7 @@ type treeRow struct {
 	current bool // a project: the current one
 	hint    bool // a project: one of its threads is blocked or waiting, or a task needs you
 	remote  bool // a project or coordinator row: its coordinator's remote control is on
+	paused  bool // a project: paused (no nudges, follow-up or new threads)
 	threads int  // a project: its open threads
 	here    bool // the row you are on
 	// cursor is the keyboard's row, set while the sidebar has this
@@ -152,7 +153,7 @@ func buildTree(ps []ProjectData, sessions []proto.SessionInfo, in treeIn) []tree
 	var out []treeRow
 	for _, p := range ps {
 		pr := treeRow{kind: treeProject, slug: p.Slug, pct: -1, threads: len(p.Threads), current: p.Slug == in.current,
-			hint: p.Counts["needs_you"] > 0}
+			hint: p.Counts["needs_you"] > 0, paused: p.Safety != nil && p.Safety.Paused}
 		for _, s := range sessions {
 			if s.Role == proto.RoleCoordinator && s.Project == p.Slug {
 				pr.session, pr.state, pr.remote = s.ID, stateWord(s), s.RemoteControl
@@ -351,7 +352,8 @@ func treeSel(r treeRow, focused bool) (bool, lipgloss.Style) {
 // The slim strip shows projects alone, "▸●ter", the current one marked
 // and its coordinator's glyph (or the hint) after it.
 // A coordinator with remote control on gets "⌁" after the project's name,
-// in either width, and after "coordinator".
+// in either width, and after "coordinator"; a paused project gets "∥"
+// after its name.
 // The row you are on is in reverse video (and, in the slim strip, marked),
 // so colour is never the only signal. While the sidebar has the keyboard
 // focus, the keyboard's row is instead, in the accent colour.
@@ -362,6 +364,9 @@ func treeCells(r treeRow, cw int, slim, focused bool) string {
 	rc := ""
 	if r.remote {
 		rc = i.remote
+	}
+	if r.paused && r.kind == treeProject {
+		rc += i.paused
 	}
 	if slim {
 		mark := " "
@@ -557,7 +562,10 @@ func loadSideProjects() []ProjectData {
 	list, _ := project.List()
 	out := make([]ProjectData, 0, len(list))
 	for _, sum := range list {
-		pd := ProjectData{Slug: sum.Slug, Name: sum.Name}
+		if sum.Safety != nil && sum.Safety.Archived {
+			continue
+		}
+		pd := ProjectData{Slug: sum.Slug, Name: sum.Name, Safety: sum.Safety}
 		if p, err := project.Open(sum.Slug); err == nil {
 			recs, _ := thread.List(p)
 			for _, r := range recs {

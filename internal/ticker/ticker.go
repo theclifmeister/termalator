@@ -316,13 +316,29 @@ func (t *Ticker) Sweep() {
 		if err != nil {
 			safety = config.Defaults
 		}
+		if safety.Archived {
+			// No ticker work at all (§5.1); what it knew is kept for an
+			// unarchive.
+			if recs, err := thread.List(p); err == nil {
+				for _, r := range recs {
+					seen[p.Slug+"/"+r.ID] = true
+				}
+			}
+			continue
+		}
+		if safety.Paused {
+			// State polling goes on; nothing is sent to its agents.
+			safety.PRFollowup = false
+		}
 		merged := t.sweepThreads(p, sessions, safety, now, seen)
 		if t.syncRepos(p, safety, now, merged) {
 			t.completeTasks(p, safety)
 		}
 		t.followMain(p, sessions, safety, now)
 		t.ghHealth(p)
-		t.nudge(p, sessions, now)
+		if !safety.Paused {
+			t.nudge(p, sessions, now)
+		}
 		if prune {
 			if n, err := p.PruneDone(DoneMaxAge); err != nil {
 				t.o.Log.Printf("ticker: %s: prune inbox: %v", p.Slug, err)

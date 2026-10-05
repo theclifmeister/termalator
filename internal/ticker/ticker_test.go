@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -250,6 +251,46 @@ func TestNudge(t *testing.T) {
 	tk2.Sweep()
 	if len(r.host.prompts) != 3 || !strings.Contains(r.host.prompts[2], "1 new inbox item") {
 		t.Fatalf("after restart %q", r.host.prompts)
+	}
+}
+
+// TestPausedAndArchived: a paused project gets items but no nudges or
+// follow-up prompts; an archived one gets no ticker work at all.
+func TestPausedAndArchived(t *testing.T) {
+	r := newRig(t)
+	if err := config.SetProject("demo", "paused", true); err != nil {
+		t.Fatal(err)
+	}
+	r.gh = []string{prOpen, prFailed}
+	r.host.set("s-1", "idle", "")
+	r.sweep(0)
+	r.sweep(2 * time.Minute)
+	if k := strings.Split(r.kinds(), ","); len(k) != 2 || !slices.Contains(k, KindPROpened) || !slices.Contains(k, KindPRChecks) {
+		t.Fatalf("paused: kinds %s", k)
+	}
+	if len(r.host.prompts) != 0 {
+		t.Fatalf("paused, yet prompted: %v", r.host.prompts)
+	}
+	if err := config.SetProject("demo", "paused", false); err != nil {
+		t.Fatal(err)
+	}
+	r.sweep(time.Second)
+	if len(r.host.prompts) != 1 || !strings.Contains(r.host.prompts[0], "s-1 [tm] 2 new inbox items") {
+		t.Fatalf("resumed: %v", r.host.prompts)
+	}
+
+	r.handleAll()
+	if err := config.SetProject("demo", "archived", true); err != nil {
+		t.Fatal(err)
+	}
+	r.host.set("s-2", "blocked", "question")
+	n := r.ghN
+	r.sweep(5 * time.Minute)
+	if k := r.kinds(); k != "" || r.ghN != n {
+		t.Fatalf("archived: kinds %q, %d gh calls", k, r.ghN-n)
+	}
+	if _, ok := r.tk.st.Threads["demo/t-0001"]; !ok {
+		t.Fatal("archiving forgot the thread's PR")
 	}
 }
 

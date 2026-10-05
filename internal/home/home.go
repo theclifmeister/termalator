@@ -41,3 +41,6 @@ func sub(name string) (string, error) {
 	}
 	return filepath.Join(d, name), nil
 }
+
+// TrashDir is <home>/.trash, where tm project delete moves a project.
+func TrashDir() (string, error) { return sub(".trash") }

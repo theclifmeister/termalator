@@ -85,6 +85,12 @@ type Safety struct {
 	// checkout of a project repo to origin's default branch when that
 	// branch is checked out, clean and only behind (§7.5).
 	FastForwardCheckout bool `json:"fast_forward_checkout"`
+	// Paused stops the ticker's prompts (nudges, PR follow-up) and new
+	// threads of the project; state polling goes on (§7.5, §11.2).
+	Paused bool `json:"paused"`
+	// Archived hides the project from the sidebar and the switcher and
+	// stops all ticker work for it (§5.1).
+	Archived bool `json:"archived"`
 }
 
 // Defaults are the settings of a project that config.toml doesn't name.
@@ -106,6 +112,8 @@ type rawSafety struct {
 	CompleteTasks *string `toml:"complete_tasks"`
 	CoordinatorRC *bool   `toml:"coordinator_remote_control"`
 	FastForward   *bool   `toml:"fast_forward_checkout"`
+	Paused        *bool   `toml:"paused"`
+	Archived      *bool   `toml:"archived"`
 }
 
 // Config is the parsed file.
@@ -219,6 +227,12 @@ func (c *Config) Safety(slug string) (Safety, error) {
 	}
 	if r.FastForward != nil {
 		s.FastForwardCheckout = *r.FastForward
+	}
+	if r.Paused != nil {
+		s.Paused = *r.Paused
+	}
+	if r.Archived != nil {
+		s.Archived = *r.Archived
 	}
 	return s, nil
 }
