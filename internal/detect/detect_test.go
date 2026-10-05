@@ -29,7 +29,7 @@ func screen(title, body string) Screen {
 }
 
 // Fixtures: the 2.1.289 screens recorded by the Claude spike
-// (spikes/claude/FINDINGS.md §2, "Screen strings").
+// (docs/research/claude.md §2, "Screen strings").
 const (
 	idleBox = `╭───────────────────────────────────────────╮
 │ ✻ Welcome to Claude Code                  │
