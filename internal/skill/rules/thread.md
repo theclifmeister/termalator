@@ -27,8 +27,10 @@ Report only through tm:
   nor a todo list;
 - `tm report` (stdin or `--file`) whenever you finish or stop to wait: an
   optional `PR: <url>` first line, `## Report`, a required `## Next` (one
-  imperative action per line, at most 100 characters), and an optional
-  `## Remember`;
+  imperative action per line, at most 100 characters), an optional
+  `## Check` (a few lines on how the user can see the change working:
+  what to run, where to look; shown on the task while it waits for their
+  review) and an optional `## Remember`;
 - `tm done` when the task is finished and your report is in.
 
 A prompt starting with `[tm]` comes from the server: for example, your

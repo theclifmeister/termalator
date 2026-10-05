@@ -16,6 +16,7 @@ import (
 	"github.com/theclifmeister/termilator/internal/proto"
 	"github.com/theclifmeister/termilator/internal/tasks"
 	"github.com/theclifmeister/termilator/internal/thread"
+	"github.com/theclifmeister/termilator/internal/view"
 )
 
 // keyPress sends a named key: tab, shift+tab, esc, space, enter, up,
@@ -106,7 +107,7 @@ func TestProjectPopup(t *testing.T) {
 	}
 	keyPress(m, "tab")
 	out = screen(m)
-	for _, want := range []string{"IN MOTION", "T1    Write the README", "started · 1/2 · t-0002", "✓ Draft", "Review", "ON DECK", "T2    Ship it", "d asks the coordinator to delegate a task", "d delegate"} {
+	for _, want := range []string{"IN MOTION", "T1    Write the README", "started · 1/2 · t-0002", "✓ Draft", "Review", "ON DECK", "T2    Ship it", "the coordinator changes tasks", "enter show · esc close"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("tasks tab lacks %q:\n%s", want, out)
 		}
@@ -310,7 +311,7 @@ func TestDelegateTask(t *testing.T) {
 		t.Fatalf("after y:\n%s", out)
 	}
 	keyPress(m, "d")
-	if m.top() != m.projectPopupView() || m.msg != "T2 is already waiting on the coordinator" {
+	if m.top() != m.projectPopupView() || m.msg != "T2 is already waiting on the coordinator to delegate it" {
 		t.Fatalf("d again: %T, %q", m.top(), m.msg)
 	}
 }
@@ -550,5 +551,226 @@ func TestProjectPopupFixed(t *testing.T) {
 	}
 	if out = screen(m); pv.top[tabKeys] != 9 || !strings.Contains(out, "1 Overview") {
 		t.Fatalf("wheel on the keys: top %d:\n%s", pv.top[tabKeys], out)
+	}
+}
+
+// needsYouData is popupData with a task in review (T3, its PR merged
+// but not released) and a blocked one (T4) in NEEDS YOU.
+func needsYouData(t *testing.T, width int) (*fakeSource, *dash) {
+	t.Helper()
+	src, m := popupData(t)
+	src.board.Tasks = append(src.board.Tasks,
+		&tasks.Task{ID: 3, Title: "Check it", Status: tasks.Review, Thread: "t-0008",
+			Notes: "Do the thing.\n\nreview (2026-10-05): Check: the bell shows whole"},
+		&tasks.Task{ID: 4, Title: "Pick a licence", Status: tasks.Blocked,
+			Notes: "blocked (2026-10-04): old\n\nblocked (2026-10-05): which licence, MIT or Apache?"})
+	src.reviews = map[int]Review{3: {Check: []string{"Run tm, press t"}, PR: 61, Ship: ShipUnreleased}}
+	m.Update(tea.WindowSizeMsg{Width: width, Height: 40})
+	return src, m
+}
+
+// TestAcceptTask: in the Tasks tab, a on a task in review asks, then
+// drops an accept item; the row waits on the coordinator, and a or x
+// again only say so. a on a task not in review says why and keeps the
+// popup open.
+func TestAcceptTask(t *testing.T) {
+	src, m := needsYouData(t, 86+sideDefault)
+	m.Update(keyPress(m, "a")())
+	keyPress(m, "3")
+	if out := screen(m); !strings.Contains(out, "a accept · x send back · enter show · esc close") {
+		t.Fatalf("review keys:\n%s", out)
+	}
+	keyPress(m, "a")
+	cv, ok := m.top().(*confirmView)
+	if !ok || cv.question != "Accept T3? The coordinator marks T3 Check it done." {
+		t.Fatalf("a opened %T", m.top())
+	}
+	keyPress(m, "n")
+	if m.msg != "T3 not accepted" || len(src.asked) != 0 {
+		t.Fatalf("n: %q, %v", m.msg, src.asked)
+	}
+	keyPress(m, "a")
+	act(m, src, "y")
+	if len(src.asked) != 1 || src.asked[0] != "accept alpha T3" {
+		t.Fatalf("asked %v", src.asked)
+	}
+	out := screen(m)
+	if !strings.Contains(out, "review · waiting on the coordinator · t-0008") || !strings.Contains(out, "told the coordinator you accept T3; it marks it done") {
+		t.Fatalf("after y:\n%s", out)
+	}
+	for _, k := range []string{"a", "x"} {
+		keyPress(m, k)
+		if m.top() != m.projectPopupView() || m.msg != "T3 is already waiting on the coordinator to accept it" || len(src.asked) != 1 {
+			t.Fatalf("%s again: %T, %q, %v", k, m.top(), m.msg, src.asked)
+		}
+	}
+	// T1 is started: a says why, and the popup stays.
+	keyPress(m, "down")
+	keyPress(m, "down")
+	keyPress(m, "a")
+	if m.top() != m.projectPopupView() || m.msg != "T1 is started, not in review; a accepts tasks in review" {
+		t.Fatalf("a on started: %T, %q", m.top(), m.msg)
+	}
+	// Other tabs: a still closes the popup.
+	keyPress(m, "1")
+	keyPress(m, "a")
+	if m.projectPopupView() != nil {
+		t.Fatal("a on the overview kept the popup")
+	}
+}
+
+// TestSendBack: x on a task in review in the t list asks for a note;
+// enter sends it, esc or an empty note cancel.
+func TestSendBack(t *testing.T) {
+	src, m := needsYouData(t, 86+sideDefault)
+	m.Update(keyPress(m, "t")())
+	keyPress(m, "x")
+	if _, ok := m.top().(*inputView); !ok {
+		t.Fatalf("x opened %T", m.top())
+	}
+	keyPress(m, "esc")
+	if _, ok := m.top().(*boardView); !ok || m.msg != "T3 not sent back" {
+		t.Fatalf("esc: %T, %q", m.top(), m.msg)
+	}
+	keyPress(m, "x")
+	keyPress(m, "enter")
+	if m.msg != "T3 not sent back" || len(src.asked) != 0 {
+		t.Fatalf("empty note: %q, %v", m.msg, src.asked)
+	}
+	keyPress(m, "x")
+	if out := screen(m); !strings.Contains(out, "Send T3 back. What should change?") || !strings.Contains(out, "0/200") {
+		t.Fatalf("prompt:\n%s", out)
+	}
+	for _, r := range "bell cut" {
+		keyPress(m, string(r))
+	}
+	run(m, keyPress(m, "enter"))
+	m.setData(src.Load())
+	if len(src.asked) != 1 || src.asked[0] != "send-back alpha T3 bell cut" || m.msg != "sent T3 back with your note; the coordinator passes it on" {
+		t.Fatalf("asked %v, %q", src.asked, m.msg)
+	}
+	if out := screen(m); !strings.Contains(out, "waiting on coordinator") {
+		t.Fatalf("row:\n%s", out)
+	}
+	// x on a task not in review only says why.
+	keyPress(m, "down")
+	keyPress(m, "x")
+	if _, ok := m.top().(*boardView); !ok || m.msg != "T4 is blocked, not in review; x sends back tasks in review" {
+		t.Fatalf("x on blocked: %T, %q", m.top(), m.msg)
+	}
+}
+
+// TestReviewDetail: a task in review, shown, says whether its change
+// shipped and how to check it, from the report and the task's notes;
+// enter in the Tasks tab shows it too, and esc goes back to the tab.
+func TestReviewDetail(t *testing.T) {
+	src, m := needsYouData(t, 86+sideDefault)
+	m.Update(keyPress(m, "t")())
+	keyPress(m, "enter")
+	out := screen(m)
+	for _, want := range []string{"PR #61 merged, not released: wait for the next release to test it",
+		"How to check", "• Run tm, press t", "• the bell shows whole", "a accept · x send back · esc back"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("review detail lacks %q:\n%s", want, out)
+		}
+	}
+	keyPress(m, "a")
+	act(m, src, "y")
+	if out := screen(m); !strings.Contains(out, "waiting on the coordinator to accept it") {
+		t.Fatalf("shown task after a:\n%s", out)
+	}
+	keyPress(m, "esc")
+	keyPress(m, "esc")
+
+	for ship, want := range map[string]string{ShipReleased: "PR #61 released in v0.4.0", ShipOpen: "PR #61 open, not merged yet",
+		ShipMerged: "PR #61 merged", ShipClosed: "PR #61 closed without merging"} {
+		if got := ansi.Strip(shipLine(Review{PR: 61, Ship: ship, Tag: "v0.4.0"})); got != want {
+			t.Errorf("shipLine(%s) = %q, want %q", ship, got, want)
+		}
+	}
+	if shipLine(Review{Ship: ShipMerged}) != "" {
+		t.Error("shipLine without a PR")
+	}
+
+	m.Update(keyPress(m, "a")())
+	keyPress(m, "3")
+	keyPress(m, "enter")
+	b, ok := m.top().(*boardView)
+	if !ok || !b.open || !strings.Contains(screen(m), "PR #61 merged, not released") {
+		t.Fatalf("enter in the Tasks tab: %T\n%s", m.top(), screen(m))
+	}
+	keyPress(m, "down") // stays on the task
+	keyPress(m, "esc")
+	if pv := m.projectPopupView(); m.top() != pv || pv.tab != tabTasks {
+		t.Fatalf("esc: %T", m.top())
+	}
+}
+
+// TestBlockedTask: a blocked task, shown, says what it is blocked on
+// (its latest blocked note); c opens the project's coordinator.
+func TestBlockedTask(t *testing.T) {
+	src, m := needsYouData(t, 86+sideDefault)
+	m.Update(keyPress(m, "t")())
+	keyPress(m, "down")
+	if out := screen(m); !strings.Contains(out, "enter show · c coordinator · esc back") {
+		t.Fatalf("blocked keys:\n%s", out)
+	}
+	keyPress(m, "enter")
+	out := screen(m)
+	if !strings.Contains(out, "Blocked on: which licence, MIT or Apache?") || !strings.Contains(out, "c coordinator · d delegate · esc back") {
+		t.Fatalf("blocked detail:\n%s", out)
+	}
+	run(m, keyPress(m, "c"))
+	if len(src.opened) != 1 || src.opened[0] != "alpha" {
+		t.Fatalf("c opened %v", src.opened)
+	}
+	if got := blockedOn(&tasks.Task{Status: tasks.Blocked, Notes: "just notes"}); got != "" {
+		t.Fatalf("blockedOn without a note: %q", got)
+	}
+}
+
+// TestNeedsYouNarrow: beside the default sidebar in the narrowest
+// window that shows it whole, the task keys and the waiting label show
+// whole.
+func TestNeedsYouNarrow(t *testing.T) {
+	src, m := needsYouData(t, sideDefault+view.SideRoom)
+	if m.sideW() != sideDefault {
+		t.Fatalf("sidebar %d", m.sideW())
+	}
+	m.Update(keyPress(m, "t")())
+	foot := func() string {
+		lines := strings.Split(screen(m), "\n")
+		return strings.Join(lines[len(lines)-3:], "\n")
+	}
+	if f := foot(); !strings.Contains(f, "enter show · a accept · x send back · esc back") {
+		t.Fatalf("t list keys:\n%s", f)
+	}
+	keyPress(m, "a")
+	act(m, src, "y")
+	if out := screen(m); !strings.Contains(out, "waiting on coordinator") {
+		t.Fatalf("t list row:\n%s", out)
+	}
+	keyPress(m, "enter")
+	if f := foot(); !strings.Contains(f, "a accept · x send back · esc back") {
+		t.Fatalf("shown task keys:\n%s", f)
+	}
+	keyPress(m, "esc")
+	keyPress(m, "down")
+	if f := foot(); !strings.Contains(f, "enter show · c coordinator · esc back") {
+		t.Fatalf("blocked keys:\n%s", f)
+	}
+	keyPress(m, "enter")
+	if f := foot(); !strings.Contains(f, "c coordinator · d delegate · esc back") {
+		t.Fatalf("blocked shown keys:\n%s", f)
+	}
+	keyPress(m, "esc")
+	keyPress(m, "esc")
+	m.Update(keyPress(m, "a")())
+	keyPress(m, "3")
+	if f := foot(); !strings.Contains(f, "a accept · x send back · enter show · esc close") {
+		t.Fatalf("Tasks tab keys:\n%s", f)
+	}
+	if out := screen(m); !strings.Contains(out, "review · waiting on the coordinator ") {
+		t.Fatalf("Tasks tab row:\n%s", out)
 	}
 }

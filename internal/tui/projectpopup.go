@@ -10,6 +10,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/theclifmeister/termilator/internal/config"
 	"github.com/theclifmeister/termilator/internal/project"
@@ -21,7 +22,8 @@ import (
 // docs/SPEC.md §4): everything about one project in tabs. Only the
 // repositories and the settings change here, on the human's keypress;
 // the inbox and the tasks are read-only, since the coordinator handles
-// them, save that d asks it to delegate a task (delegate.go). Which tab is open is this console's own, as every popup.
+// them, save that d, a and x ask it to act on a task (asks.go). Which
+// tab is open is this console's own, as every popup.
 
 // The tabs, in order.
 const (
@@ -48,6 +50,7 @@ type projectView struct {
 	// applied when it's drawn (after following the selection).
 	top, shown, nudge [tabCount]int
 	board             *tasks.Board
+	reviews           map[int]Review // the tasks in review, by id
 	settings          settingsList
 	// pick is the task to select once the board loads, 0 for none.
 	pick int
@@ -104,6 +107,18 @@ func (pv *projectView) data(m *dash) ProjectData {
 }
 
 func (pv *projectView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
+	if pv.tab == tabTasks {
+		// The task keys (asks.go), a among them: on this tab it accepts
+		// a task rather than closing the popup.
+		if t := pv.selTask(); t != nil {
+			switch k.String() {
+			case "enter":
+				return m.openTask(pv, t)
+			case "d", "a", "x", "c":
+				return m.taskKey(pv.slug, t, k.String())
+			}
+		}
+	}
 	switch s := k.String(); s {
 	case "esc", "q", "a":
 		m.pop()
@@ -142,11 +157,25 @@ func (pv *projectView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	switch {
 	case pv.tab == tabOverview:
 		return pv.repoKey(m, k)
-	case pv.tab == tabTasks && s == "d":
-		if ts := pv.tasks(); pv.sel[tabTasks] < len(ts) {
-			return m.delegate(pv.slug, ts[pv.sel[tabTasks]])
-		}
 	}
+	return nil
+}
+
+// selTask is the Tasks tab's selected task, nil before the board loads.
+func (pv *projectView) selTask() *tasks.Task {
+	if ts := pv.tasks(); pv.board != nil && pv.sel[tabTasks] < len(ts) {
+		return ts[pv.sel[tabTasks]]
+	}
+	return nil
+}
+
+// openTask shows task t of the popup's project over it, as the t list
+// shows one; esc comes back to the popup.
+func (m *dash) openTask(pv *projectView, t *tasks.Task) tea.Cmd {
+	b := &boardView{slug: pv.slug, reviews: pv.reviews, open: true, back: true}
+	b.setBoard(pv.board)
+	b.selectID(t.ID)
+	m.push(b)
 	return nil
 }
 
@@ -254,7 +283,8 @@ func (pv *projectView) box(m *dash) box {
 		body = append(body, "", styleFaint.Render("Read-only: the coordinator handles these."))
 	case tabTasks:
 		body, sel, hits = pv.taskLines(m, w)
-		keys = "d delegate · " + keys
+		// Short, so the task's keys fit beside a 32-column sidebar.
+		keys = joinKeys(taskKeys(pv.selTask()), "enter show · esc close")
 	case tabSettings:
 		body, sel, hits = pv.settings.lines(m, w)
 		keys = "enter change · + - number · ↑ ↓ move · " + keys
@@ -492,14 +522,27 @@ func (pv *projectView) taskLines(m *dash, w int) ([]string, int, []int) {
 		}
 		head := fmt.Sprintf("%-5s %s", t.Ref(), oneLine(t.Title))
 		tail := string(t.Status)
+		var more []string
 		if len(t.Steps) > 0 {
-			tail += fmt.Sprintf(" · %d/%d", t.StepsDone(), len(t.Steps))
+			more = append(more, fmt.Sprintf("%d/%d", t.StepsDone(), len(t.Steps)))
 		}
 		if t.Thread != "" {
-			tail += " · " + t.Thread
+			more = append(more, t.Thread)
 		}
-		if m.delegating(pv.slug, t) {
+		if m.asked(pv.slug, t) != "" {
+			// Right after the status, and the title gives way, so it
+			// shows whole; the steps and thread follow if they fit.
 			tail += " · " + delegateWaiting
+			head = ansi.Truncate(head, max(w-2-ansi.StringWidth(tail), 12), "…")
+			for _, x := range more {
+				if ansi.StringWidth(head+"  "+tail+" · "+x) <= w {
+					tail += " · " + x
+				}
+			}
+		} else {
+			for _, x := range more {
+				tail += " · " + x
+			}
 		}
 		for j := range 1 + len(t.Steps) {
 			taskAt[len(out)+j] = i
@@ -523,7 +566,7 @@ func (pv *projectView) taskLines(m *dash, w int) ([]string, int, []int) {
 	if len(out) == 0 {
 		out = append(out, styleFaint.Render("no open tasks"))
 	}
-	out = append(out, "", styleFaint.Render(fmt.Sprintf("done: %d · d asks the coordinator to delegate a task", done)))
+	out = append(out, "", styleFaint.Render(fmt.Sprintf("done: %d · the coordinator changes tasks", done)))
 	return out, sel, lineHits(len(out), taskAt)
 }
 

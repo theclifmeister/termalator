@@ -81,7 +81,7 @@ func init() {
 			run: (*dash).newProject},
 		{keys: []string{"a"}, label: "a", help: "the project popup: overview, inbox, tasks, settings and keys", menu: []string{"project popup"},
 			foot: withProject("project"), run: (*dash).projectPopup},
-		{keys: []string{"t"}, label: "t", help: "the project's tasks; enter shows one, d delegates it to the coordinator (asks first)", menu: []string{"tasks"},
+		{keys: []string{"t"}, label: "t", help: "the project's tasks; enter shows one; d delegates, a accepts, x sends back (asking the coordinator); c opens it", menu: []string{"tasks"},
 			foot: withProject("tasks"), run: (*dash).taskBoard},
 		{keys: []string{"i"}, label: "i", help: "the project's inbox, read-only: what the coordinator is told about", menu: []string{"inbox"},
 			foot: withProject("inbox"), run: (*dash).inbox},

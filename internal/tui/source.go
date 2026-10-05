@@ -3,6 +3,7 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/theclifmeister/termilator/internal/tasks"
 	"github.com/theclifmeister/termilator/internal/thread"
 	"github.com/theclifmeister/termilator/internal/ticker"
+	"github.com/theclifmeister/termilator/internal/worktree"
 )
 
 // Data is one poll of everything the dashboard shows. The dashboard holds
@@ -67,8 +69,8 @@ type ThreadRow struct {
 
 // Source is the dashboard's view of the world; tests use a fake. It
 // only reads, starts shells, opens projects and asks the coordinator to
-// delegate a task: what happens to threads and tasks is the
-// coordinator's (docs/SPEC.md §4).
+// act on a task: what happens to threads and tasks is the coordinator's
+// (docs/SPEC.md §4).
 type Source interface {
 	Load() Data
 	Board(slug string) (*tasks.Board, error)
@@ -86,11 +88,36 @@ type Source interface {
 	SetRepo(slug, path string, add bool) error
 	// Agents lists the agents tm can run.
 	Agents() []string
-	// Delegate asks the project's coordinator to delegate task id: an
-	// inbox item that is the user's go-ahead (docs/SPEC.md §4). It
-	// reports false when one already asks it.
-	Delegate(slug string, id int) (bool, error)
+	// Ask asks the project's coordinator to act on task id: an inbox
+	// item of kind (project.KindDelegate, KindAccept or KindSendBack,
+	// with the user's note) that is the user's word (docs/SPEC.md §4).
+	// It reports false when an item already asks something of the task.
+	Ask(slug string, id int, kind, note string) (bool, error)
+	// Review is how to check task t, in review, and whether its change
+	// has shipped.
+	Review(slug string, t *tasks.Task) Review
 }
+
+// Review is what the user needs to review a task: how to check it (the
+// thread report's ## Check) and where its pull request stands.
+type Review struct {
+	Check []string
+	// PR is the pull request's number, 0 when none is known; Ship is
+	// where it stands: ShipOpen, ShipClosed, ShipMerged (released or
+	// not unknown), ShipUnreleased or ShipReleased (in Tag), "" unknown.
+	PR   int
+	Ship string
+	Tag  string
+}
+
+// Where a task's change stands (Review.Ship).
+const (
+	ShipOpen       = "open"
+	ShipClosed     = "closed"
+	ShipMerged     = "merged"
+	ShipUnreleased = "unreleased"
+	ShipReleased   = "released"
+)
 
 // ServerSource is the real Source: the control socket plus the project
 // folders.
@@ -263,9 +290,9 @@ func (s *ServerSource) SetRepo(slug, path string, add bool) error {
 	return p.Journal(s.Caller, "project.repo."+verb, slug, path)
 }
 
-func (s *ServerSource) Delegate(slug string, id int) (bool, error) {
+func (s *ServerSource) Ask(slug string, id int, kind, note string) (bool, error) {
 	if s.Caller.IsAgent() {
-		return false, errors.New("human-only: only the human asks to delegate a task")
+		return false, errors.New("human-only: only the human asks the coordinator about a task")
 	}
 	p, err := project.Open(slug)
 	if err != nil {
@@ -275,10 +302,87 @@ func (s *ServerSource) Delegate(slug string, id int) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if why := notDelegable(t); why != "" {
+	if why := notAskable(t, kind); why != "" {
 		return false, errors.New(why)
 	}
+	switch kind {
+	case project.KindAccept:
+		return p.AskAccept(s.Caller, t.Ref())
+	case project.KindSendBack:
+		return p.AskSendBack(s.Caller, t.Ref(), note)
+	}
 	return p.AskDelegate(s.Caller, t.Ref())
+}
+
+func (s *ServerSource) Review(slug string, t *tasks.Task) Review {
+	var rv Review
+	p, err := project.Open(slug)
+	if err != nil {
+		return rv
+	}
+	var rec *thread.Record
+	if thread.ValidID(t.Thread) {
+		rec, _ = thread.Load(p, t.Thread)
+	}
+	reportPR, repo := "", ""
+	if rec != nil {
+		repo = rec.Repo
+		if rep, _ := thread.ReadReport(p, rec.ID); rep != nil {
+			rv.Check, reportPR = rep.Check, rep.PR
+		}
+	}
+	if repo == "" && len(p.Meta.Repos) > 0 {
+		repo = p.Meta.Repos[0]
+	}
+	pr := ticker.PRs(ticker.StatePath(s.Paths.Sessions), slug)[t.Thread]
+	rv.PR = pr.Number
+	if rv.PR == 0 {
+		rv.PR = prNumber(reportPR)
+	}
+	rv.Ship, rv.Tag = shipped(repo, rv.PR, pr)
+	return rv
+}
+
+// prNumber is the number at the end of a pull request's URL, 0 for none.
+func prNumber(url string) int {
+	_, n, ok := strings.Cut(url, "/pull/")
+	if !ok {
+		return 0
+	}
+	v, err := strconv.Atoi(n)
+	if err != nil || v < 0 {
+		return 0
+	}
+	return v
+}
+
+// shipped is where pull request n stands (Review.Ship), from repo's
+// history as last fetched, else the ticker's last look at it (pr).
+func shipped(repo string, n int, pr ticker.PR) (ship, tag string) {
+	if n == 0 {
+		return "", ""
+	}
+	merge := pr.Merge
+	if merge == "" && repo != "" {
+		merge = worktree.MergeCommit(repo, n)
+	}
+	if merge != "" && repo != "" {
+		if tag, ok := worktree.ReleasedIn(repo, merge); ok {
+			if tag == "" {
+				return ShipUnreleased, ""
+			}
+			return ShipReleased, tag
+		}
+	}
+	switch {
+	case merge != "" || pr.State == "MERGED":
+		return ShipMerged, ""
+	case pr.State == "OPEN":
+		return ShipOpen, ""
+	case pr.State == "CLOSED":
+		return ShipClosed, ""
+	}
+	return "", ""
 }
 
 func (s *ServerSource) Agents() []string {

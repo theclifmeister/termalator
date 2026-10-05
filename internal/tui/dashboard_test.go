@@ -30,8 +30,11 @@ type fakeSource struct {
 	started  []string
 	settings []string // table.key=value
 	repos    []string // +path or -path
-	// delegated are the tasks asked to be delegated: "slug T12".
+	// delegated are the tasks asked to be delegated: "slug T12"; asked
+	// the other asks: "accept slug T12", "send-back slug T12 note".
 	delegated []string
+	asked     []string
+	reviews   map[int]Review
 	agents    []string
 }
 
@@ -73,21 +76,31 @@ func (f *fakeSource) SetRepo(slug, path string, add bool) error {
 	}
 	return nil
 }
-func (f *fakeSource) Delegate(slug string, id int) (bool, error) {
+func (f *fakeSource) Ask(slug string, id int, kind, note string) (bool, error) {
 	ref := fmt.Sprintf("T%d", id)
-	f.delegated = append(f.delegated, slug+" "+ref)
+	what := slug + " " + ref
+	if note != "" {
+		what += " " + note
+	}
+	switch kind {
+	case project.KindDelegate:
+		f.delegated = append(f.delegated, what)
+	default:
+		f.asked = append(f.asked, kind+" "+what)
+	}
 	for i := range f.data.Projects {
 		if p := &f.data.Projects[i]; p.Slug == slug {
-			if project.DelegateAsked(p.Items, ref) {
+			if project.TaskAsked(p.Items, ref) != "" {
 				return false, nil
 			}
-			p.Items = append(p.Items, project.Item{ID: "x-delegate-" + ref, Kind: project.KindDelegate, Subject: ref})
+			p.Items = append(p.Items, project.Item{ID: "x-" + kind + "-" + ref, Kind: kind, Subject: ref})
 		}
 	}
 	return true, nil
 }
-func (f *fakeSource) Agents() []string                       { return f.agents }
-func (f *fakeSource) NewProject(name string) (string, error) { return name, nil }
+func (f *fakeSource) Review(slug string, t *tasks.Task) Review { return f.reviews[t.ID] }
+func (f *fakeSource) Agents() []string                         { return f.agents }
+func (f *fakeSource) NewProject(name string) (string, error)   { return name, nil }
 func (f *fakeSource) StartShell(cwd string, c, r int) (string, error) {
 	f.started = append(f.started, "shell "+cwd)
 	return "s-9", nil

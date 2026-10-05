@@ -111,21 +111,33 @@ func clampScroll(s, n int) int { return min(max(s, 0), max(n-1, 0)) }
 type inputView struct {
 	label, text string
 	submit      func(string) tea.Cmd
+	// cancel is the footer message on esc or an empty line; max is the
+	// most runes it takes, 0 for no limit.
+	cancel string
+	max    int
 }
 
 func (m *dash) prompt(label, initial string, submit func(string) tea.Cmd) {
 	m.push(&inputView{label: label, text: initial, submit: submit})
 }
 
+// promptNo is prompt with an empty start, saying cancel in the footer
+// when it is cancelled, and taking at most max runes.
+func (m *dash) promptNo(label, cancel string, max int, submit func(string) tea.Cmd) {
+	m.push(&inputView{label: label, submit: submit, cancel: cancel, max: max})
+}
+
 func (in *inputView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	switch k.String() {
 	case "esc":
 		m.pop()
+		in.cancelled(m)
 	case "enter":
 		m.pop()
 		if t := strings.TrimSpace(in.text); t != "" {
 			return in.submit(t)
 		}
+		in.cancelled(m)
 	case "backspace":
 		if r := []rune(in.text); len(r) > 0 {
 			in.text = string(r[:len(r)-1])
@@ -135,15 +147,27 @@ func (in *inputView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	default:
 		if k.Text != "" {
 			in.text += oneLine(k.Text)
+			if r := []rune(in.text); in.max > 0 && len(r) > in.max {
+				in.text = string(r[:in.max])
+			}
 		}
 	}
 	return nil
 }
 
+func (in *inputView) cancelled(m *dash) {
+	if in.cancel != "" {
+		m.msg = in.cancel
+	}
+}
+
 func (in *inputView) render(m *dash) string {
 	// A long text wraps onto more lines, so all of it shows.
-	return m.popup(box{body: wrapInput(in.label, in.text+"█", m.inner(promptWidth)), sel: -1,
-		keys: "enter ok · ctrl+u clear · esc cancel", width: promptWidth})
+	body := wrapInput(in.label, in.text+"█", m.inner(promptWidth))
+	if in.max > 0 {
+		body = append(body, styleFaint.Render(fmt.Sprintf("%d/%d", len([]rune(in.text)), in.max)))
+	}
+	return m.popup(box{body: body, sel: -1, keys: "enter ok · ctrl+u clear · esc cancel", width: promptWidth})
 }
 
 // promptWidth is the prompt popup's width when the window has room.
@@ -169,13 +193,17 @@ func wrapInput(label, text string, w int) []string {
 
 // boardView is a project's task board: its live tasks in board order
 // (needs you, in motion, on deck), or one of them when open. The
-// coordinator changes tasks (tm task); d asks it to delegate a task.
+// coordinator changes tasks (tm task); d, a and x ask it to (asks.go).
 type boardView struct {
-	slug  string
-	board *tasks.Board
-	list  []*tasks.Task
-	sel   int
-	open  bool // showing the selected task
+	slug    string
+	board   *tasks.Board
+	reviews map[int]Review // the tasks in review, by id
+	list    []*tasks.Task
+	sel     int
+	open    bool // showing the selected task
+	// back: opened on one task from the project popup's Tasks tab, esc
+	// goes back there.
+	back bool
 }
 
 // openBoard opens slug's board, showing task id when it isn't 0.
@@ -219,22 +247,26 @@ func (b *boardView) selectID(id int) {
 func (b *boardView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	switch k.String() {
 	case "esc", "q", "t":
-		if b.open {
+		if b.open && !b.back {
 			b.open = false
 		} else {
 			m.pop()
 		}
 	case "up", "k":
-		b.sel = moveSel(b.sel, -1, len(b.list))
+		if !b.back {
+			b.sel = moveSel(b.sel, -1, len(b.list))
+		}
 	case "down", "j":
-		b.sel = moveSel(b.sel, 1, len(b.list))
+		if !b.back {
+			b.sel = moveSel(b.sel, 1, len(b.list))
+		}
 	case "enter":
 		if len(b.list) > 0 {
 			b.open = true
 		}
-	case "d":
+	case "d", "a", "x", "c":
 		if b.board != nil && b.sel < len(b.list) {
-			return m.delegate(b.slug, b.list[b.sel])
+			return m.taskKey(b.slug, b.list[b.sel], k.String())
 		}
 	case "r":
 		return m.loadBoard(b.slug)
@@ -250,14 +282,19 @@ func (b *boardView) render(m *dash) string {
 	if b.open && b.sel < len(b.list) {
 		t := b.list[b.sel]
 		d := &panel{w: m.inner(88) + 1} // panel lines start with a space
-		taskPanel(d, t)
+		var rv *Review
+		if r, ok := b.reviews[t.ID]; ok {
+			rv = &r
+		}
+		taskPanelWith(d, t, rv, m.asked(b.slug, t))
 		for i, l := range d.lines {
 			d.lines[i] = strings.TrimPrefix(l, " ")
 		}
-		if m.delegating(b.slug, t) {
-			d.lines = append(d.lines, "", styleWarn.Render(delegateWaiting))
+		keys := joinKeys(taskKeys(t), "esc back")
+		if t.Status == tasks.Blocked {
+			keys = "c coordinator · d delegate · esc back"
 		}
-		return m.popup(box{title: b.slug + " " + t.Ref(), body: d.lines, sel: -1, keys: "d delegate · esc back", width: 88})
+		return m.popup(box{title: b.slug + " " + t.Ref(), body: d.lines, sel: -1, keys: keys, width: 88})
 	}
 	w := m.inner(popupWidth)
 	var lines []string
@@ -275,13 +312,13 @@ func (b *boardView) render(m *dash) string {
 			hits = append(hits, noHit)
 		}
 		hits = append(hits, i)
-		r := row{who: t.Ref(), what: oneLine(t.Title), state: string(t.Status), rest: t.Thread, pct: -1}
+		r := row{who: t.Ref(), what: oneLine(t.Title), state: string(t.Status), rest: t.Thread, pct: -1, whoW: 5, whatMin: 10}
 		if len(t.Steps) > 0 {
 			r.pct = pctOf(t.StepsDone(), len(t.Steps))
 			r.rest = joinSp(fmt.Sprintf("%d/%d", t.StepsDone(), len(t.Steps)), t.Thread)
 		}
-		if m.delegating(b.slug, t) {
-			r.rest = joinSp(r.rest, delegateWaitingRow)
+		if m.asked(b.slug, t) != "" {
+			r.lead = delegateWaitingRow // first, so it is never cut
 		}
 		if i == b.sel {
 			sel = len(lines)
@@ -298,11 +335,32 @@ func (b *boardView) render(m *dash) string {
 		lines = append(lines, styleFaint.Render("no open tasks"))
 	}
 	lines = append(lines, styleFaint.Render(fmt.Sprintf("done: %d", done)))
-	return m.popup(box{title: title, body: lines, sel: sel, hits: hits, keys: "enter show · d delegate · r refresh · esc back", width: popupWidth})
+	keys := "enter show · d delegate · r refresh · esc back"
+	if b.sel < len(b.list) {
+		switch t := b.list[b.sel]; t.Status {
+		case tasks.Review, tasks.Blocked:
+			keys = joinKeys("enter show", taskKeys(t), "esc back")
+		}
+	}
+	return m.popup(box{title: title, body: lines, sel: sel, hits: hits, keys: keys, width: popupWidth})
+}
+
+// joinKeys joins footer key lists, skipping empty ones.
+func joinKeys(keys ...string) string {
+	var out []string
+	for _, k := range keys {
+		if k != "" {
+			out = append(out, k)
+		}
+	}
+	return strings.Join(out, " · ")
 }
 
 // click selects a task; a double-click shows it.
 func (b *boardView) click(_ *dash, item, _ int, double bool) tea.Cmd {
+	if b.back {
+		return nil
+	}
 	if item < len(b.list) {
 		b.sel, b.open = item, double
 	}

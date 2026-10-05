@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -180,4 +181,44 @@ func TestMergedBase(t *testing.T) {
 	check(clone, "tm/x/pr", "")
 	run(t, clone, "fetch", "-q", "origin")
 	check(clone, "tm/x/pr", "origin/main")
+}
+
+func TestMergeCommitReleasedIn(t *testing.T) {
+	repo := t.TempDir()
+	run(t, repo, "init", "-q")
+	commit := func(name string) {
+		t.Helper()
+		os.WriteFile(filepath.Join(repo, name), []byte(name), 0o644)
+		run(t, repo, "add", ".")
+		run(t, repo, "commit", "-q", "-m", name)
+	}
+	commit("a")
+	run(t, repo, "tag", "v0.1.0")
+	for _, n := range []string{"61", "610"} {
+		run(t, repo, "checkout", "-q", "-b", "pr"+n, "main")
+		commit("f" + n)
+		run(t, repo, "checkout", "-q", "main")
+		run(t, repo, "merge", "-q", "--no-ff", "-m", "Merge pull request #"+n+" from o/pr"+n, "pr"+n)
+		if n == "61" {
+			run(t, repo, "tag", "v0.2.0")
+		}
+	}
+	m61, m610 := MergeCommit(repo, 61), MergeCommit(repo, 610)
+	if m61 == "" || m610 == "" || m61 == m610 || MergeCommit(repo, 6) != "" || MergeCommit(repo, 0) != "" {
+		t.Fatalf("MergeCommit: %q %q", m61, m610)
+	}
+	if tag, ok := ReleasedIn(repo, m61); tag != "v0.2.0" || !ok {
+		t.Fatalf("ReleasedIn(#61) = %q, %v", tag, ok)
+	}
+	if tag, ok := ReleasedIn(repo, m610); tag != "" || !ok {
+		t.Fatalf("ReleasedIn(#610) = %q, %v", tag, ok)
+	}
+	if _, ok := ReleasedIn(repo, strings.Repeat("ab", 20)); ok {
+		t.Fatal("ReleasedIn of an unknown commit")
+	}
+	run(t, repo, "tag", "v0.10.0")
+	run(t, repo, "tag", "v0.9.0")
+	if tag, _ := ReleasedIn(repo, m610); tag != "v0.9.0" {
+		t.Fatalf("version order: %q", tag)
+	}
 }

@@ -21,9 +21,11 @@ type PR struct {
 	Failed int    `json:"failed,omitempty"` // failing checks
 	Review string `json:"review,omitempty"` // APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED, ""
 	// MergedAt is when it merged (when the ticker first saw it merged,
-	// if gh doesn't say); Head is its head commit.
+	// if gh doesn't say); Head is its head commit, Merge the commit its
+	// merge made on the base branch.
 	MergedAt time.Time `json:"merged_at,omitzero"`
 	Head     string    `json:"head,omitempty"`
+	Merge    string    `json:"merge,omitempty"`
 	// Base is the branch it merges into; Mergeable (MERGEABLE,
 	// CONFLICTING, UNKNOWN) and MergeState (BEHIND, DIRTY, CLEAN, …) are
 	// GitHub's word on it against that branch.
@@ -33,7 +35,7 @@ type PR struct {
 }
 
 // prFields is what `gh pr view --json` is asked for.
-const prFields = "number,url,state,reviewDecision,statusCheckRollup,mergedAt,headRefOid,baseRefName,mergeable,mergeStateStatus"
+const prFields = "number,url,state,reviewDecision,statusCheckRollup,mergedAt,headRefOid,mergeCommit,baseRefName,mergeable,mergeStateStatus"
 
 // ghPR is gh's answer. statusCheckRollup mixes check runs (status,
 // conclusion) and commit statuses (state).
@@ -44,10 +46,13 @@ type ghPR struct {
 	ReviewDecision string `json:"reviewDecision"`
 	MergedAt       string `json:"mergedAt"`
 	HeadRefOid     string `json:"headRefOid"`
-	BaseRefName    string `json:"baseRefName"`
-	Mergeable      string `json:"mergeable"`
-	MergeState     string `json:"mergeStateStatus"`
-	Rollup         []struct {
+	MergeCommit    *struct {
+		Oid string `json:"oid"`
+	} `json:"mergeCommit"`
+	BaseRefName string `json:"baseRefName"`
+	Mergeable   string `json:"mergeable"`
+	MergeState  string `json:"mergeStateStatus"`
+	Rollup      []struct {
 		Status     string `json:"status"`
 		Conclusion string `json:"conclusion"`
 		State      string `json:"state"`
@@ -85,6 +90,9 @@ func ParsePR(data []byte) (PR, error) {
 	}
 	if oidRE.MatchString(g.HeadRefOid) {
 		pr.Head = g.HeadRefOid
+	}
+	if g.MergeCommit != nil && pr.State == "MERGED" && oidRE.MatchString(g.MergeCommit.Oid) {
+		pr.Merge = g.MergeCommit.Oid
 	}
 	if worktree.ValidBranch(g.BaseRefName) {
 		pr.Base = g.BaseRefName

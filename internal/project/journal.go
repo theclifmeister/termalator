@@ -91,37 +91,82 @@ func (p *Project) TookOver(c caller.Caller, id, name string) error {
 	return p.Journal(c, "thread.takeover", id, "")
 }
 
-// KindDelegate is the inbox item that asks the coordinator to delegate a
-// task: the user pressed d on it in the task list and confirmed (§4).
-// It is the user's go-ahead to start a thread for it.
-const KindDelegate = "delegate"
+// The task-list asks (§4): the user pressed a key on a task in the task
+// list and confirmed, and an inbox item asks the coordinator to act on
+// it. Each is the user's own word, as if said in chat.
+const (
+	// KindDelegate asks the coordinator to delegate a task (d): the
+	// user's go-ahead to start a thread for it.
+	KindDelegate = "delegate"
+	// KindAccept is the user's acceptance of a task in review (a): the
+	// coordinator marks it done with --approved-by-user.
+	KindAccept = "accept"
+	// KindSendBack sends a task in review back with the user's note (x):
+	// the coordinator forwards the note to the task's thread and moves
+	// the task back to started.
+	KindSendBack = "send-back"
+)
+
+// MaxSendBackNote is the longest note a send-back item carries, in runes.
+const MaxSendBackNote = 200
 
 // AskDelegate records that the user asks to delegate task ref ("T12"):
 // an inbox item for the coordinator and a journal line. It reports false
-// when an unhandled item already asks it.
+// when an unhandled item already asks something of task ref.
 func (p *Project) AskDelegate(c caller.Caller, ref string) (bool, error) {
+	return p.askTask(c, KindDelegate, ref, "the user asks to delegate "+ref, "")
+}
+
+// AskAccept records that the user accepts task ref, as AskDelegate.
+func (p *Project) AskAccept(c caller.Caller, ref string) (bool, error) {
+	return p.askTask(c, KindAccept, ref, "the user accepts "+ref, "")
+}
+
+// AskSendBack records that the user sends task ref back with note, as
+// AskDelegate. The note is one line of at most MaxSendBackNote runes.
+func (p *Project) AskSendBack(c caller.Caller, ref, note string) (bool, error) {
+	note = strings.Join(strings.Fields(strings.Map(func(r rune) rune {
+		if r < ' ' || r == 0x7f {
+			return ' '
+		}
+		return r
+	}, note)), " ")
+	if note == "" {
+		return false, errors.New("a send-back needs a note: what to change")
+	}
+	if n := len([]rune(note)); n > MaxSendBackNote {
+		return false, fmt.Errorf("the note is %d characters; at most %d", n, MaxSendBackNote)
+	}
+	return p.askTask(c, KindSendBack, ref, "the user sends "+ref+" back: "+note, note)
+}
+
+func (p *Project) askTask(c caller.Caller, kind, ref, summary, detail string) (bool, error) {
 	items, err := p.Inbox()
 	if err != nil {
 		return false, err
 	}
-	if DelegateAsked(items, ref) {
+	if TaskAsked(items, ref) != "" {
 		return false, nil
 	}
-	if _, err := p.AddItem(KindDelegate, ref, "the user asks to delegate "+ref, false); err != nil {
+	if _, err := p.AddItem(kind, ref, summary, false); err != nil {
 		return false, err
 	}
-	return true, p.Journal(c, "task.delegate.ask", ref, "")
+	return true, p.Journal(c, "task."+strings.ReplaceAll(kind, "-", "")+".ask", ref, detail)
 }
 
-// DelegateAsked tells whether items hold an unhandled delegate item for
-// task ref: the task waits on the coordinator.
-func DelegateAsked(items []Item, ref string) bool {
+// TaskAsked is the kind of the unhandled delegate, accept or send-back
+// item for task ref in items, "" when there is none: the task waits on
+// the coordinator.
+func TaskAsked(items []Item, ref string) string {
 	for _, it := range items {
-		if it.Kind == KindDelegate && it.Subject == ref {
-			return true
+		switch it.Kind {
+		case KindDelegate, KindAccept, KindSendBack:
+			if it.Subject == ref {
+				return it.Kind
+			}
 		}
 	}
-	return false
+	return ""
 }
 
 // Inbox lists the unhandled items, oldest first.

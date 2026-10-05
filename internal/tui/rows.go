@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"sort"
@@ -34,6 +35,10 @@ type row struct {
 	pct int
 	// count is a section header's number of items.
 	count int
+	// whoW is who's width, 0 for colWho; whatMin is how narrow what may
+	// get to leave the lead room, 0 for colWhatMin. The task list's rows
+	// set both: an id is short, and the title shows whole when opened.
+	whoW, whatMin int
 
 	session string
 	project string
@@ -49,13 +54,20 @@ func (r row) selectable() bool { return r.key != "" }
 func (r row) widths(w int) (who, what, state int) {
 	state = colState
 	if r.who != "" {
-		who = colWho
+		who = cmp.Or(r.whoW, colWho)
 	}
 	room := w - len([]rune(r.mark)) - state - 1
 	if who > 0 {
 		room -= who + 1
 	}
-	return who, min(max(room*9/20, colWhatMin), colWhatMax), state
+	what = min(max(room*9/20, colWhatMin), colWhatMax)
+	if lead := ansi.StringWidth(r.lead); lead > 0 {
+		// The lead (a block's reason, waiting on the coordinator) shows
+		// whole, and the "…" of a cut rest after it: what gives way,
+		// down to its minimum.
+		what = max(min(what, room-1-lead-2), cmp.Or(r.whatMin, colWhatMin))
+	}
+	return who, what, state
 }
 
 // text is the row laid out in columns for w cells, unstyled.

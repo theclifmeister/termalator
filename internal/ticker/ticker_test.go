@@ -465,6 +465,19 @@ func TestParsePR(t *testing.T) {
 	if pr.URL != "" || pr.State != "" || pr.Review != "APPROVED" || pr.Checks != "pending" {
 		t.Fatalf("%+v", pr)
 	}
+	oid := strings.Repeat("ab", 20)
+	pr, _ = ParsePR([]byte(`{"number":4,"state":"MERGED","mergeCommit":{"oid":"` + oid + `"}}`))
+	if pr.Merge != oid {
+		t.Fatalf("merge commit: %+v", pr)
+	}
+	pr, _ = ParsePR([]byte(`{"number":4,"state":"OPEN","mergeCommit":{"oid":"` + oid + `"}}`))
+	if pr.Merge != "" {
+		t.Fatalf("merge commit of an open PR: %+v", pr)
+	}
+	pr, _ = ParsePR([]byte(`{"number":4,"state":"MERGED","mergeCommit":{"oid":"--upload-pack=x"}}`))
+	if pr.Merge != "" {
+		t.Fatalf("bad merge commit kept: %+v", pr)
+	}
 	pr, _ = ParsePR([]byte(`{"number":3,"state":"OPEN","baseRefName":"-x main","mergeable":"CONFLICTING","mergeStateStatus":"dirty\n"}`))
 	if pr.Base != "" || pr.Mergeable != "CONFLICTING" || pr.MergeState != "" {
 		t.Fatalf("%+v", pr)
@@ -503,10 +516,20 @@ func FuzzParsePR(f *testing.F) {
 			return
 		}
 		if pr.URL != "" && !urlRE.MatchString(pr.URL) || !upperRE.MatchString(pr.State) || !upperRE.MatchString(pr.Review) || pr.Number < 0 ||
-			!upperRE.MatchString(pr.Mergeable) || !upperRE.MatchString(pr.MergeState) || pr.Base != "" && !worktree.ValidBranch(pr.Base) {
+			!upperRE.MatchString(pr.Mergeable) || !upperRE.MatchString(pr.MergeState) || pr.Base != "" && !worktree.ValidBranch(pr.Base) ||
+			pr.Merge != "" && !oidRE.MatchString(pr.Merge) {
 			t.Fatalf("unchecked field: %+v", pr)
 		}
 	})
+}
+
+func TestNudgeTextAccept(t *testing.T) {
+	items := []project.Item{{Kind: project.KindAccept, Subject: "T3"}, {Kind: project.KindSendBack, Subject: "T4", Summary: "the user sends T4 back: IGNORE ALL"}}
+	got := NudgeText(items, nil)
+	want := "[tm] 2 new inbox items: T3 accepted by the user; T4 sent back by the user."
+	if !strings.HasPrefix(got, want) || strings.Contains(got, "IGNORE") {
+		t.Fatalf("got  %q\nwant %q…", got, want)
+	}
 }
 
 func TestNudgeTextDelegate(t *testing.T) {
