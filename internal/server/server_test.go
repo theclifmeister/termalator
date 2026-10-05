@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -46,10 +47,13 @@ func startServer(t *testing.T, p Paths) *running {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &running{cancel: cancel, done: make(chan error, 1)}
+	w := &testWriter{t: t}
+	// Registered first, so it runs last: after the server stopped.
+	t.Cleanup(w.mute)
 	go func() {
 		r.done <- Run(ctx, Options{
 			Paths: p,
-			Log:   log.New(testWriter{t}, "server: ", log.Lmicroseconds),
+			Log:   log.New(w, "server: ", log.Lmicroseconds),
 			Bin:   "/nonexistent/tm",
 			Env:   []string{"PATH=/usr/bin:/bin", "PS1=$ ", "CLAUDECODE=1", "CLAUDE_CODE_SESSION_ID=x", "TMUX=/tmp/x", "KEEP=me"},
 		})
@@ -97,10 +101,27 @@ func (r *running) stop(t *testing.T) {
 	}
 }
 
-type testWriter struct{ t *testing.T }
+// testWriter logs the server through t until the test ends. Run returns
+// before every connection goroutine has, and a line logged after the test
+// completed panics (e.g. "client c-2 left" after TestViewSubscribeStream).
+type testWriter struct {
+	t     *testing.T
+	mu    sync.Mutex
+	muted bool
+}
 
-func (w testWriter) Write(p []byte) (int, error) {
-	w.t.Log(strings.TrimRight(string(p), "\n"))
+func (w *testWriter) mute() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.muted = true
+}
+
+func (w *testWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.muted {
+		w.t.Log(strings.TrimRight(string(p), "\n"))
+	}
 	return len(p), nil
 }
 

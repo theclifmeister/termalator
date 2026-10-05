@@ -69,6 +69,9 @@ type Launch struct {
 	// Env is added; a trailing * matches a prefix (see FilterEnv).
 	Unset []string
 	Files map[string][]byte
+	// Kickoff says the kickoff prompt is in Argv: the agent starts on it
+	// by itself.
+	Kickoff bool
 }
 
 // ProcessInfo describes the foreground process of a PTY, used to recognise
