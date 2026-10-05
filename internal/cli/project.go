@@ -3,8 +3,8 @@ package cli
 import (
 	"bufio"
 	"errors"
-	"os"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"text/tabwriter"
