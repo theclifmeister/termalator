@@ -17,8 +17,6 @@ var terminalEnv = []string{
 	"ZELLIJ", "ZELLIJ_SESSION_NAME", "ZELLIJ_PANE_ID",
 	"COLUMNS", "LINES",
 	"TERMILATOR_*", "HERDR_*",
-	// Termalator's names, which tm still reads (internal/legacy).
-	"TERMALATOR", "TERMALATOR_*",
 }
 
 // sessionEnv builds a session's environment from base (the server's own)

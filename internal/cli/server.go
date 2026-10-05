@@ -129,11 +129,7 @@ func serverStart(e *Env, args []string) int {
 	return ExitOK
 }
 
-func serverStop(e *Env, args []string) int { return serverStopAt(e, args, server.ResolvePaths) }
-
-// serverStopAt stops the server of the paths resolve gives: this home's,
-// or a Termalator one's (cli/legacy.go).
-func serverStopAt(e *Env, args []string, resolve func() (server.Paths, error)) int {
+func serverStop(e *Env, args []string) int {
 	fs := flag.NewFlagSet("server stop", flag.ContinueOnError)
 	fs.SetOutput(e.Stderr)
 	yes := fs.Bool("yes", false, "stop even while agent sessions run")
@@ -142,7 +138,7 @@ func serverStopAt(e *Env, args []string, resolve func() (server.Paths, error)) i
 		return ExitUsage
 	}
 	if *force {
-		p, err := resolve()
+		p, err := server.ResolvePaths()
 		if err != nil {
 			return e.srvFail("server stop", err)
 		}
@@ -160,7 +156,7 @@ func serverStopAt(e *Env, args []string, resolve func() (server.Paths, error)) i
 		fmt.Fprintf(e.Stdout, "killed (pid %d)\n", pid)
 		return ExitOK
 	}
-	p, err := resolve()
+	p, err := server.ResolvePaths()
 	if err != nil {
 		return e.srvFail("server stop", err)
 	}

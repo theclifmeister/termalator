@@ -405,32 +405,24 @@ func (c *client) open(id string) (*pane, error) {
 // A build mismatch is returned (the client re-execs); a session that
 // can't be attached is skipped with a note in the status bar.
 func (c *client) sync(v view.View) error {
+	id := v.Shown()
 	c.mu.Lock()
-	have := map[string]bool{}
-	for id := range c.panes {
-		have[id] = true
-	}
+	have := c.panes[id] != nil
 	c.mu.Unlock()
 	var opened []*pane
 	var note string
-	for _, id := range v.Visible() {
-		if have[id] {
-			continue
-		}
+	if id != "" && !have {
 		p, err := c.open(id)
 		var verr *proto.MismatchError
-		if errors.As(err, &verr) {
-			for _, p := range opened {
-				p.conn.Close()
-			}
+		switch {
+		case errors.As(err, &verr):
 			return err
-		}
-		if err != nil {
+		case err != nil:
 			c.log.Printf("view %s: %s: %v", v.Name, id, err)
 			note = id + ": " + err.Error()
-			continue
+		default:
+			opened = append(opened, p)
 		}
-		opened = append(opened, p)
 	}
 	if !c.lock() || v.Name == c.v.Name && v.Seq < c.v.Seq {
 		// Closed, or a newer version was drawn meanwhile.
@@ -782,7 +774,7 @@ func (c *client) relayout() {
 			p.r.SetSize(uint16(own.W), uint16(own.H))
 			continue
 		}
-		p.rect = clip(c.geo.Panes[p.info.ID], own)
+		p.rect = clip(c.geo.Area, own)
 		if p.rect.W > 0 && p.rect.H > 0 {
 			p.r.SetRect(p.rect.X, p.rect.Y, p.rect.W, p.rect.H)
 		}
@@ -805,10 +797,8 @@ func clip(r, area view.Rect) view.Rect {
 // c.mu held.
 func (c *client) visible() []*pane {
 	var out []*pane
-	for _, id := range c.v.Visible() {
-		if p := c.panes[id]; p != nil {
-			out = append(out, p)
-		}
+	if p := c.panes[c.v.Shown()]; p != nil {
+		out = append(out, p)
 	}
 	return out
 }
@@ -837,7 +827,7 @@ func (c *client) needClaim() bool {
 	}
 	need := c.v.Latest != c.me
 	for _, p := range c.visible() {
-		r := c.geo.Panes[p.info.ID]
+		r := c.geo.Area
 		if cols, rows := p.mirror.Size(); int(cols) != r.W || int(rows) != r.H {
 			need = true
 		}

@@ -16,14 +16,12 @@ const (
 	StateExited  State = "exited"  // the process or the agent session ended
 )
 
-// Role says why a session was started.
+// Role says why a session was started: one of proto's agent roles
+// (proto.RoleCoordinator, proto.RoleThread).
 type Role string
 
-const (
-	RoleCoordinator Role = "coordinator"
-	RoleThread      Role = "thread"
-	RoleShell       Role = "shell" // a plain shell; no agent
-)
+// RoleThread is a thread's role; tm agent check renders a sample with it.
+const RoleThread Role = "thread"
 
 // LaunchSpec is what the core asks an agent to start. All paths are absolute.
 type LaunchSpec struct {
@@ -160,8 +158,7 @@ type TodoPatch struct {
 // HookResult is what `tm hook` prints back to the harness, if anything
 // (for example Claude's SessionStart additionalContext).
 type HookResult struct {
-	Stdout   []byte
-	ExitCode int
+	Stdout []byte
 }
 
 // Injector says how follow-up prompts reach a running session.

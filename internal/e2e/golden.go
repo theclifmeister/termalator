@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// Update makes Golden rewrite golden files instead of comparing.
+// Update makes WaitGolden rewrite golden files instead of comparing.
 var Update = flag.Bool("update", false, "rewrite golden screens in testdata/golden/")
 
 // Mask replaces the volatile parts of a screen (ids, pids, times) before
@@ -27,19 +27,12 @@ var DefaultMasks = []Mask{
 	{"duration", regexp.MustCompile(`\b\d+(\.\d+)?(ns|µs|ms|s|m|h)\b`)},
 }
 
-// Golden compares screen with testdata/golden/<name>, after applying
-// DefaultMasks and any extra masks; with -update it rewrites the file.
-// A masked part reads <name> in the golden file. For a screen that is
-// still being drawn, use WaitGolden.
-func Golden(t testing.TB, screen, name string, masks ...Mask) {
-	t.Helper()
-	WaitGolden(t, 0, func() string { return screen }, name, masks...)
-}
-
-// WaitGolden is Golden for a live screen: it compares what screen returns
-// until it matches, for up to timeout, so a frame caught half drawn (the
-// wait before it saw only its first rows) doesn't fail the test. With
-// -update it lets the screen settle first.
+// WaitGolden compares what screen returns with testdata/golden/<name>,
+// after applying DefaultMasks and any extra masks (a masked part reads
+// <name> in the golden file). It retries until the screen matches, for up
+// to timeout, so a frame caught half drawn (the wait before it saw only
+// its first rows) doesn't fail the test. With -update it lets the screen
+// settle first and rewrites the file.
 func WaitGolden(t testing.TB, timeout time.Duration, screen func() string, name string, masks ...Mask) {
 	t.Helper()
 	mask := func(s string) string {

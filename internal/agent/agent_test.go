@@ -94,7 +94,7 @@ func TestClaudeLaunch(t *testing.T) {
 	}
 
 	coord := spec
-	coord.Role, coord.Access = RoleCoordinator, Access{Read: []string{"/h/.termilator/worktrees/p"}}
+	coord.Role, coord.Access = Role("coordinator"), Access{Read: []string{"/h/.termilator/worktrees/p"}}
 	l, err = a.Launch(coord)
 	if err != nil {
 		t.Fatal(err)
@@ -561,7 +561,7 @@ func TestManifestRemoteControl(t *testing.T) {
 func TestClaudeRemoteControl(t *testing.T) {
 	a := claude(t)
 	spec := threadSpec()
-	spec.Role, spec.RemoteControl, spec.RemoteName = RoleCoordinator, true, "demo"
+	spec.Role, spec.RemoteControl, spec.RemoteName = Role("coordinator"), true, "demo"
 	l, err := a.Launch(spec)
 	if err != nil {
 		t.Fatal(err)

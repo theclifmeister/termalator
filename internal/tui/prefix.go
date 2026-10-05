@@ -14,11 +14,6 @@ import (
 // (prefixStep): d, q, r, the dashboard keys (prefixCommands), the
 // sidebar's and the info panel's (paneCommands) and the prefix itself.
 
-// isPrefixCommand says whether key is a command after the prefix.
-func isPrefixCommand(key string) bool {
-	return key == "d" || key == "q" || key == "r" || prefixCommands[key] || paneCommands[key]
-}
-
 // prefixHint is the footer while the prefix waits for its command.
 const prefixHint = "prefix ▸ d dashboard · q quit · a i t , ? popups · p ] [ projects · { } b sidebar · | details · tab area · r remote · esc cancel"
 

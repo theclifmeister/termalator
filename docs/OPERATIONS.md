@@ -145,25 +145,7 @@ On macOS, upgrade and restart from a terminal on the Mac, not over SSH: a server
 
 ### Upgrading from Termalator
 
-Termilator was called Termalator up to v0.1.0 (`brew install termalator`, state in `~/.termalator`). The command is `tm` in both. To switch a Homebrew install:
-
-```sh
-brew uninstall termalator
-brew untap theclifmeister/termalator
-brew tap theclifmeister/termilator https://github.com/theclifmeister/termilator
-brew trust --formula theclifmeister/termilator/termilator
-brew install termilator
-tm server restart
-tm doctor
-```
-
-The Termalator server keeps running through this (from its copy in `~/.termalator/server-bin/`), and the new `tm` won't start a second one beside it: until it is stopped, every command but `tm server stop`, `tm server restart` and `tm doctor` says so and does nothing. `tm server restart` stops it, moves `~/.termalator` to `~/.termilator` and starts the new server, which resumes the agents. With no Termalator server running, the first `tm` command makes the move. Moving also
-
-- rewrites the absolute paths in the state and project files (`state/*.json`, `threads/*/thread.toml`, briefs, inbox items) and in the generated agent files;
-- runs `git worktree repair` in every thread worktree, so their repositories find them at the new path;
-- renames Claude Code's transcript folders of those directories (`~/.claude/projects/-…--termalator-projects-…` and `…-worktrees-…`), so coordinators and threads resume their conversations. Claude may ask once more whether to trust a moved folder.
-
-`TERMALATOR_*` variables are still read when the `TERMILATOR_*` ones aren't set, and `TERMALATOR_HOME` still names the state directory (then nothing is moved). `tm doctor` reports what is left of Termalator: a state directory a Termalator server keeps from being moved, agent files that still name the old paths or variables, and the Termalator login service (`dev.termalator.server` or `termalator.service`); `tm doctor --fix` restarts the server, rewrites the files and replaces the service. A later release drops this.
+Termilator was called Termalator up to v0.1.0 (`brew install termalator`, state in `~/.termalator`). Termilator v0.2.0 to v0.5.2 moved such an install over by themselves; later releases don't. To upgrade from Termalator by hand: stop its server (`tm server stop` with the old `tm`), `brew uninstall termalator`, install Termilator as above, `mv ~/.termalator ~/.termilator`, run `git worktree repair` in each thread worktree, and rename `TERMALATOR_*` variables to `TERMILATOR_*`. Or install the v0.5.2 release archive first, run `tm server restart` with it, then upgrade.
 
 ## Uninstalling
 

@@ -64,7 +64,7 @@ jobs:
       - name: build
         run: make build
 
-      - name: vet
+      - name: vet (go vet, staticcheck)
         run: make vet
 
       - name: test
