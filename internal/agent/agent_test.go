@@ -48,6 +48,14 @@ func TestClaudeLaunch(t *testing.T) {
 	if !reflect.DeepEqual(l.Argv, want) {
 		t.Fatalf("argv\n got %q\nwant %q", l.Argv, want)
 	}
+	if !l.Kickoff {
+		t.Fatal("Kickoff unset with the kickoff in argv")
+	}
+	spec.Resume = true
+	if l, err := a.Launch(spec); err != nil || l.Kickoff {
+		t.Fatalf("resume: Kickoff %v, err %v", l.Kickoff, err)
+	}
+	spec.Resume = false
 	if !contains(l.Unset, "CLAUDECODE") || contains(l.Unset, "CLAUDE_CODE_*") {
 		t.Fatalf("unset = %q: want the inherited session vars, not the whole CLAUDE_CODE_ prefix", l.Unset)
 	}

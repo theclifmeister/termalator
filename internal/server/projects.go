@@ -70,7 +70,7 @@ func (s *Server) syncThread(r SessionRecord, st session.AgentState) {
 	if err != nil || rec.Session != r.ID {
 		return
 	}
-	prompted := st.State == agent.StateWorking || st.State == agent.StateBlocked
+	prompted := worked(st)
 	if (st.AgentSID != "" && st.AgentSID != rec.AgentSID) || (prompted && !rec.Prompted) {
 		if _, err := thread.Update(p, r.Thread, func(x *thread.Record) error {
 			if st.AgentSID != "" {

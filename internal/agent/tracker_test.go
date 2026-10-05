@@ -210,6 +210,66 @@ func TestTrackerBackground(t *testing.T) {
 	r.want(StateWorking, "background", "")
 }
 
+// TestTrackerKickoff: an agent launched with a first prompt reports idle
+// at startup, before it takes the prompt; until a source sees it at work
+// that idle reads as working/kickoff (docs/SPEC.md §8.4), so a thread just
+// started counts against the parallel threads cap.
+func TestTrackerKickoff(t *testing.T) {
+	r := newRig(t)
+	r.tr.AwaitKickoff()
+	r.want(StateUnknown, "", "")
+	// The trust dialog is a blocker on screen, not the kickoff's turn.
+	r.screen("trust-folder", StateBlocked, "trust")
+	r.want(StateBlocked, "trust", "screen")
+	r.screen("idle-prompt-box", StateIdle, "")
+	r.hook("SessionStart", map[string]any{"source": "startup"})
+	r.status(StateIdle, "")
+	r.want(StateWorking, ReasonKickoff, "status_file+kickoff")
+	r.hook("UserPromptSubmit", nil)
+	r.want(StateWorking, "", "hooks")
+	r.status(StateWorking, "")
+	r.status(StateIdle, "")
+	r.hook("Stop", nil)
+	r.want(StateIdle, "", "hooks")
+
+	// The turn can be over before the tracker looks: the hook still ends
+	// the wait.
+	r = newRig(t)
+	r.tr.AwaitKickoff()
+	r.status(StateIdle, "")
+	r.want(StateWorking, ReasonKickoff, "")
+	r.hook("UserPromptSubmit", nil)
+	r.hook("Stop", nil)
+	r.tick(2 * time.Second)
+	r.status(StateIdle, "")
+	r.want(StateIdle, "", "status_file")
+
+	// The status file alone ends it too.
+	r = newRig(t)
+	r.tr.AwaitKickoff()
+	r.status(StateIdle, "")
+	r.status(StateWorking, "")
+	r.status(StateIdle, "")
+	r.want(StateIdle, "", "status_file")
+
+	// An agent that never starts on its kickoff is believed in the end,
+	// counted from when it first looked idle.
+	r = newRig(t)
+	r.tr.AwaitKickoff()
+	r.tick(time.Hour) // a slow startup
+	r.status(StateIdle, "")
+	r.want(StateWorking, ReasonKickoff, "")
+	r.tick(kickoffGrace - time.Second)
+	r.want(StateWorking, ReasonKickoff, "")
+	r.tick(time.Second)
+	r.want(StateIdle, "", "status_file")
+
+	// Without a kickoff, idle is idle.
+	r = newRig(t)
+	r.status(StateIdle, "")
+	r.want(StateIdle, "", "status_file")
+}
+
 func TestTrackerSessionIDAndTodos(t *testing.T) {
 	r := newRig(t)
 	r.tr.SetAgentSID("sid-1")

@@ -238,7 +238,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		// Set before Start: the first session.list must show it.
 		RemoteControl: r.RemoteControl,
 		Agent: &session.AgentConfig{
-			Agent: a, AgentSID: r.AgentSessionID, Home: home,
+			Agent: a, AgentSID: r.AgentSessionID, Kickoff: launch.Kickoff, Home: home,
 			Context:  contextFor(r.Role, r.Project, r.Thread, r.Brief, ticker.StatePath(s.opts.Paths.Sessions)),
 			OnChange: s.agentChanged,
 		},
@@ -321,7 +321,7 @@ func (s *Server) agentChanged(sess *session.Session) {
 	if !ok || st.Observed {
 		return
 	}
-	prompted := r.Prompted || st.State == agent.StateWorking || st.State == agent.StateBlocked
+	prompted := r.Prompted || worked(st)
 	// The agent's own word on remote control wins: a resume reconnects.
 	remote := r.RemoteControl
 	if _, restarting := s.relaunch[sess.ID()]; st.RemoteKnown && !restarting {
@@ -339,6 +339,12 @@ func (s *Server) agentChanged(sess *session.Session) {
 	if err := s.saveLocked(""); err != nil {
 		s.log.Printf("sessions.json: %v", err)
 	}
+}
+
+// worked reports whether the agent's state shows it worked on a prompt;
+// a kickoff it hasn't started on doesn't count.
+func worked(st session.AgentState) bool {
+	return (st.State == agent.StateWorking && st.Reason != agent.ReasonKickoff) || st.State == agent.StateBlocked
 }
 
 // resume relaunches the previous server's agent sessions with their
