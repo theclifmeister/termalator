@@ -133,10 +133,7 @@ func Run(ctx context.Context, opts Options) error {
 	if err := ensurePrivateDir(p.RunDir); err != nil {
 		return err
 	}
-	lock, err := tryLock(p.Lock)
-	if errors.Is(err, ErrLocked) {
-		return &AlreadyRunningError{PID: readPID(p.PID)}
-	}
+	lock, err := takeLock(p)
 	if err != nil {
 		return err
 	}
