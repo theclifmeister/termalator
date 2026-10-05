@@ -1,5 +1,6 @@
 // Package doctor implements `tm doctor` (docs/SPEC.md §15 M8): checks of
-// the toolchain, the server and its run dir, the agents against their
+// the toolchain, the server and its run dir (and, on macOS, whether its
+// sessions can reach the keychain), the agents against their
 // manifests' tested_versions, the sandbox prerequisites, and leftovers of
 // threads (worktrees and merged branches nobody uses any more).
 //
@@ -18,6 +19,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/theclifmeister/termilator/internal/keychain"
+	"github.com/theclifmeister/termilator/internal/proto"
 	"github.com/theclifmeister/termilator/internal/server"
 	"github.com/theclifmeister/termilator/internal/update"
 )
@@ -68,6 +71,10 @@ type Deps struct {
 	// Restart restarts the server as `tm server restart --yes` does;
 	// nil offers no restart.
 	Restart func() error
+	// Keychain probes whether this process can reach the macOS login
+	// keychain (keychain.Probe); nil offers no restart for a server that
+	// can't.
+	Keychain func() proto.KeychainStatus
 	// The Termalator → Termilator checks (Legacy). UserHome is ~ ("" skips
 	// the service check); LegacyRestart is tm server restart while a
 	// Termalator server runs; ServiceRun runs launchctl or systemctl and
@@ -81,7 +88,8 @@ type Deps struct {
 
 // DefaultDeps uses the real system.
 func DefaultDeps(p server.Paths, version, build string) Deps {
-	return Deps{Paths: p, GOOS: runtime.GOOS, LookPath: exec.LookPath, Run: run, Version: version, Build: build}
+	return Deps{Paths: p, GOOS: runtime.GOOS, LookPath: exec.LookPath, Run: run, Version: version, Build: build,
+		Keychain: func() proto.KeychainStatus { return keychain.Probe(runtime.GOOS, os.Getenv, keychain.Run) }}
 }
 
 // cmdTimeout bounds every program doctor runs (agent --version, git).

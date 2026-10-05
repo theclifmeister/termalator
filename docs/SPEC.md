@@ -110,6 +110,7 @@ The dependency rule: `server`, `session`, `ticker`, `tui`, `project`, `thread` a
   - Linux: a systemd user unit, `~/.config/systemd/user/termilator.service`.
 
   Both run `tm server run`. Nothing else depends on this, because auto-start covers normal use.
+- **Started over SSH (macOS).** A process inherits the security session of the login it was started from, and setsid doesn't change that. A server started from an SSH login (`tm server start` or `restart`, `tm update`'s restart, or any command that auto-starts it) therefore runs in that login's session, and so does every session under it: the keychain refuses them ("Interaction with the Security Server is not allowed"), so gh's keyring token reads as invalid and git's osxkeychain helper fails. tm doesn't refuse such a start; when `SSH_CONNECTION`, `SSH_TTY` or `SSH_CLIENT` is set on macOS, `tm server start`, `restart`, `run` and an auto-starting command print a warning to stderr: sessions can't use the keychain (gh, git push over https); restart the server from a terminal on the Mac itself. A server whose own probe (below) fails logs the same. `server.keychain` (§3.3) reports, without reading a secret, whether the server's sessions can reach the login keychain: launchd's name for its session (`launchctl managername`: `Aqua` for the desktop's; an SSH login's is not) and whether the login keychain's settings can be read (`security show-keychain-info login.keychain`). `tm doctor` shows it as `server keychain` (§10). On Linux all of this is a no-op.
 
 ### 3.2 Socket location, permissions, stale sockets
 
@@ -165,7 +166,7 @@ So that this keeps working, every server of every future protocol keeps three pr
 
 | Area | Methods |
 |---|---|
-| server | `ping`, `server.status`, `server.stop` |
+| server | `ping`, `server.status`, `server.stop`, `server.keychain` (macOS: can the server's sessions reach the login keychain, §3.1; a server without it answers `unknown-method`, which `tm doctor` skips) |
 | sessions | `session.list`, `session.start`, `session.stop`, `session.read` (screen text), `session.prompt`, `session.keys`, `session.wait` (until a state) |
 | agents | `agent.list`, `agent.reload`, `agent.explain` (which signals and rules produced a session's state) |
 | hooks | `hook.event` (from `tm hook`; also its own connection kind, §8.2) |
@@ -1071,7 +1072,7 @@ These commands are used by the human, the coordinator and threads alike. Exit co
 | `tm session list \| start [--agent A] [--cwd D] [-- CMD…] \| read <id> [--scrollback] \| keys <id> [--enter] "…" \| prompt <id> "…" \| stop <id>` | human | sessions outside projects (shells, or an agent such as Claude); `keys` types raw text |
 | `tm agent list \| check <file> \| reload \| explain <session>` | human | §8 |
 | `tm hook --agent <name>` | harness hooks | §8.2 |
-| `tm doctor [--fix]` | human | toolchain, install method and newer release, server (a server of an older protocol is a warning whose fix is `tm server restart`), sockets, manifests, hooks, leftovers |
+| `tm doctor [--fix]` | human | toolchain, install method and newer release, server (a server of an older protocol is a warning whose fix is `tm server restart`; on macOS, a server whose sessions can't reach the keychain is a warning whose fix is a restart from the Mac, §3.1), sockets, manifests, hooks, leftovers |
 | `tm update [--check [--json]] [--yes] [--restart]` | human | §10.1 |
 | `tm version`, `tm selftest` | anyone | the skeleton's current commands |
 
