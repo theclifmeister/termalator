@@ -135,7 +135,7 @@ func TestSmokeSessionScreen(t *testing.T) {
 	env := New(t)
 	s := env.StartSize(40, 8, "printer", "-lines", "3")
 	env.WaitFor(s, "ready", wait)
-	Golden(t, env.Screen(s), "printer-40x8.txt")
+	WaitGolden(t, wait, func() string { return env.Screen(s) }, "printer-40x8.txt")
 	env.MustCLI("session", "stop", s.ID)
 	if r := env.CLI("session", "read", s.ID); r.Code != 1 || !strings.Contains(r.Stderr, "unknown-session") {
 		t.Fatalf("read after stop: %+v", r)

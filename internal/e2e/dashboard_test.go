@@ -41,7 +41,7 @@ func TestSmokeDashboard(t *testing.T) {
 	env := New(t)
 	w := env.Window(100, 24)
 	w.WaitFor("no sessions; s starts a shell", wait)
-	Golden(t, w.Screen(), "dashboard-empty.txt")
+	w.Golden("dashboard-empty.txt")
 
 	slug, _ := newProject(env, "Demo")
 	env.MustCLI("task", "add", "Write the README", "--project", slug, "--step", "Draft", "--step", "Review")
@@ -51,7 +51,7 @@ func TestSmokeDashboard(t *testing.T) {
 	env.WaitFor(s, "$", wait)
 	w.WaitFor("0 needs you · 1 in motion · 1 on deck", wait)
 	w.WaitFor(s.ID+" ", wait)
-	Golden(t, w.Screen(), "dashboard-sessions.txt", dashMasks...)
+	w.Golden("dashboard-sessions.txt", dashMasks...)
 
 	env.MustCLI("task", "status", "T1", "review", "--project", slug)
 	w.WaitFor("1 needs you", wait)
@@ -63,7 +63,7 @@ func TestSmokeDashboard(t *testing.T) {
 	w.Type("t")
 	w.WaitFor("demo tasks", wait)
 	w.WaitFor("T1", wait)
-	Golden(t, w.Screen(), "dashboard-tasks.txt", dashMasks...)
+	w.Golden("dashboard-tasks.txt", dashMasks...)
 	w.Type("d")
 	w.Quiet(500 * time.Millisecond)
 	if out := env.MustCLI("task", "show", "T1", "--project", slug, "--json"); !strings.Contains(out, `"status": "review"`) {

@@ -81,7 +81,7 @@ func TestSmokeAttachDetachReattach(t *testing.T) {
 	if got, want := w3.PaneScreen(), env.Screen(s); got != want {
 		t.Fatalf("outer screen differs from the server's:\n--- outer\n%s\n--- server\n%s", got, want)
 	}
-	Golden(t, w3.PaneScreen(), "attach-printer-80x24.txt")
+	w3.GoldenPane("attach-printer-80x24.txt")
 
 	// Close both windows outright: the clients go, the session stays.
 	w2.CloseWindow()
@@ -170,7 +170,7 @@ func TestSmokeAttachFullscreenInput(t *testing.T) {
 	if got, want := w.PaneScreen(), env.Screen(s); got != want {
 		t.Fatalf("outer screen differs from the server's:\n--- outer\n%s\n--- server\n%s", got, want)
 	}
-	Golden(t, w.PaneScreen(), "attach-fullscreen-80x24.txt")
+	w.GoldenPane("attach-fullscreen-80x24.txt")
 
 	w.Detach()
 	w.WaitExit(wait)

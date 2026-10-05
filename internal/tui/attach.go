@@ -200,12 +200,14 @@ func Attach(opts Options) (res Result, err error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go c.viewLoop(watch)
-	go c.inputLoop(ctx, opts.In)
+	stopInput := c.inputLoop(ctx, opts.In)
 	if c.statusBar || c.side != nil {
 		go c.pollState(ctx)
 	}
 	c.poke() // paint the snapshot now, even if the pane is idle
 	res = c.renderLoop(opts.Out)
+	cancel()
+	stopInput()
 	restore()
 	return res, nil
 }
@@ -901,19 +903,46 @@ func (c *client) signals(sigs <-chan os.Signal, fd int) {
 	}
 }
 
-func (c *client) inputLoop(ctx context.Context, in *os.File) {
+// inputLoop handles the outer terminal's input until ctx ends. stop
+// cancels the terminal read and waits until it returned: a read left
+// blocked after a detach would take the next input meant for the
+// dashboard, which reads the terminal next, and lose that key or click.
+func (c *client) inputLoop(ctx context.Context, in *os.File) (stop func()) {
+	var r io.Reader = in
+	cr, err := uv.NewCancelReader(in)
+	if err == nil {
+		r = cr
+	} else {
+		c.log.Printf("input: no cancelable reader: %v", err)
+	}
 	events := make(chan uv.Event, 64)
+	done := make(chan struct{})
 	go func() {
-		err := uv.NewTerminalReader(in, os.Getenv("TERM")).StreamEvents(ctx, events)
+		defer close(done)
+		err := uv.NewTerminalReader(r, os.Getenv("TERM")).StreamEvents(ctx, events)
 		// EOF or EIO: the outer terminal is gone. That is a detach.
 		c.finish(Result{Reason: "detached (terminal closed: " + errString(err) + ")", Detached: true, Quit: true})
 	}()
-	for {
-		select {
-		case <-ctx.Done():
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case ev := <-events:
+				c.handle(ev)
+			}
+		}
+	}()
+	return func() {
+		if cr == nil {
 			return
-		case ev := <-events:
-			c.handle(ev)
+		}
+		cr.Cancel()
+		select {
+		case <-done:
+			cr.Close()
+		case <-time.After(time.Second):
+			c.log.Printf("input: the terminal read didn't stop")
 		}
 	}
 }
