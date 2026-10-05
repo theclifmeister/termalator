@@ -7,23 +7,11 @@ package skill
 import (
 	"embed"
 	"fmt"
-	"sort"
 	"strings"
 )
 
 //go:embed rules/*.md
 var rules embed.FS
-
-// Roles lists the roles that have rules.
-func Roles() []string {
-	entries, _ := rules.ReadDir("rules")
-	var out []string
-	for _, e := range entries {
-		out = append(out, strings.TrimSuffix(e.Name(), ".md"))
-	}
-	sort.Strings(out)
-	return out
-}
 
 // Text returns the rules of a role. The first line is
 // "tm skill <role> v<version>".

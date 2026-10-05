@@ -582,7 +582,7 @@ func (a *app) subagent(ctx context.Context, st step) error {
 	a.bg++
 	a.syncSessionLocked()
 	a.mu.Unlock()
-	_, _ = a.fireHook(nil, "SubagentStart", map[string]any{"agent_id": agentID, "agent_type": typ})
+	_, _ = a.fireHook(context.Background(), "SubagentStart", map[string]any{"agent_id": agentID, "agent_type": typ})
 	go a.runSubagent(agentID, typ, tools, time.Duration(st.MS)*time.Millisecond)
 	return nil
 }
@@ -602,12 +602,12 @@ func (a *app) runSubagent(agentID, typ string, tools int, total time.Duration) {
 		time.Sleep(gap)
 		input := map[string]any{"command": fmt.Sprintf("echo sub-%d", i+1), "description": "subagent step"}
 		id := randID("toolu_", 24)
-		_, _ = a.fireHook(nil, "PreToolUse", with(map[string]any{"tool_name": "Bash", "tool_input": input, "tool_use_id": id}))
-		_, _ = a.fireHook(nil, "PostToolUse", with(map[string]any{"tool_name": "Bash", "tool_input": input, "tool_use_id": id,
+		_, _ = a.fireHook(context.Background(), "PreToolUse", with(map[string]any{"tool_name": "Bash", "tool_input": input, "tool_use_id": id}))
+		_, _ = a.fireHook(context.Background(), "PostToolUse", with(map[string]any{"tool_name": "Bash", "tool_input": input, "tool_use_id": id,
 			"tool_response": map[string]any{"stdout": fmt.Sprintf("sub-%d\n", i+1), "stderr": "", "interrupted": false}}))
 	}
 	time.Sleep(total - gap*time.Duration(tools))
-	_, _ = a.fireHook(nil, "SubagentStop", with(map[string]any{"last_assistant_message": "Subagent done.", "stop_hook_active": false}))
+	_, _ = a.fireHook(context.Background(), "SubagentStop", with(map[string]any{"last_assistant_message": "Subagent done.", "stop_hook_active": false}))
 	text := fmt.Sprintf("<task-notification>\n<task-id>%s</task-id>\n<status>completed</status>\n<summary>Agent %q completed</summary>\n</task-notification>", agentID, typ)
 	a.mu.Lock()
 	a.queue = append(a.queue, job{kind: "notification", text: text, via: "notification"})

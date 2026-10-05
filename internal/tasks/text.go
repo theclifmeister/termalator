@@ -6,14 +6,11 @@ import (
 	"unicode/utf8"
 )
 
-// Line is a task's one-line form: "T12  started  Fix login redirect
-// 2/3  t-0005  owner:claude". Lines aligns several.
-func Line(t *Task) string { return Lines([]*Task{t})[0] }
-
 // maxTitle caps the title column; longer titles end in "…".
 const maxTitle = 60
 
-// Lines are the tasks' one-line forms with their columns aligned, for
+// Lines are the tasks' one-line forms ("T12  started  Fix login redirect
+// 2/3  t-0005  owner:claude") with their columns aligned, for
 // `tm task list` and `tm context`: id, status, title, steps, thread,
 // owner. A column no task has takes no room.
 func Lines(ts []*Task) []string {

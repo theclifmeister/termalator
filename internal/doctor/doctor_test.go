@@ -392,3 +392,14 @@ func TestUpkeep(t *testing.T) {
 		t.Fatalf("over budget: %+v", got)
 	}
 }
+
+// TestSettingsUnknownKeys: a key tm doesn't know under [keys] or [ui]
+// is a warning, not an error that stops tm.
+func TestSettingsUnknownKeys(t *testing.T) {
+	d := testDeps(t)
+	os.WriteFile(filepath.Join(d.Paths.Home, "config.toml"), []byte("[ui]\nicon = \"nerd\"\n"), 0o600)
+	cs := Settings(d)
+	if len(cs) != 1 || cs[0].Status != Warn || cs[0].Detail != "unknown setting ui.icon, ignored" {
+		t.Fatalf("%+v", cs)
+	}
+}

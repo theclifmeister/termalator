@@ -494,7 +494,15 @@ func TestAttachStream(t *testing.T) {
 	defer mirror.Close()
 
 	a.WriteFrame(proto.FrameInput, []byte("echo via-attach\r"))
-	a.WriteFrame(proto.FrameSetSize, proto.Size(100, 30))
+	// A console resizes the pane through its view: here a bare one of
+	// its own, showing the session, in a 140×40 window.
+	st, v, err := SubscribeView(p, proto.ViewSubscribeParams{Own: true, Bare: true, Session: id, Cols: 140, Rows: 40})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	want := v.Lay(140, 40).Area
+	call(t, c, proto.MethodViewSize, proto.ViewParams{Client: st.Client, Cols: 140, Rows: 40, Resize: true}, &v)
 	a.WriteFrame(proto.FrameInput, []byte("echo after-resize\r"))
 
 	serverScreen := func() string {
@@ -521,7 +529,7 @@ func TestAttachStream(t *testing.T) {
 					t.Fatal(err)
 				}
 				mirror.Resize(cols, rows)
-				resized = cols == 100 && rows == 30
+				resized = int(cols) == want.W && int(rows) == want.H
 			case proto.FrameDigest:
 				serverDigest = string(f.payload)
 			}

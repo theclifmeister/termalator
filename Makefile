@@ -14,7 +14,7 @@
 #   make e2e-smoke-race  the same with tm built with -race (nightly)
 #   make test-claude  the scenarios against the real claude (needs a login; costs cents)
 #   make fuzz       run every fuzz target for FUZZTIME each (nightly)
-#   make vet        go vet ./...
+#   make vet        go vet ./... and staticcheck ./...
 #   make toolchain  check Go, Zig, pkg-config and git
 #   make env        print the PKG_CONFIG_PATH export, for gopls or a plain `go build`
 #   make release-snapshot  cross-build the release archives into dist/ (no tag, no upload)
@@ -34,6 +34,8 @@ GHOSTTY_CPU  ?= baseline
 GHOSTTY_TARGET ?=
 GO           ?= go
 ZIG_MIN      := 0.16.0
+# staticcheck, pinned; `make vet` runs it after go vet.
+STATICCHECK  ?= honnef.co/go/tools/cmd/staticcheck@v0.8.1
 
 BUILD       := $(abspath .build)
 
@@ -125,6 +127,7 @@ test-claude: $(STAMP)
 
 vet: $(STAMP)
 	$(GO) vet ./...
+	$(GO) run $(STATICCHECK) ./...
 
 ghostty: $(STAMP)
 

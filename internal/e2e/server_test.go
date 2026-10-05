@@ -294,6 +294,11 @@ func TestHungServer(t *testing.T) {
 	defer ln.Close()
 	go func() {
 		var conns []net.Conn
+		defer func() {
+			for _, c := range conns {
+				c.Close()
+			}
+		}()
 		for {
 			c, err := ln.Accept()
 			if err != nil {
