@@ -15,8 +15,9 @@ import (
 // pane per view (no split tree, zoom or view.split/close/focus/zoom/
 // even/resize/drag). 7: every project always expanded in the tree (no
 // view.expand, no expanded projects in the view). 8: view.info, the info
-// panel beside a thread's pane.
-const Protocol = 8
+// panel beside a thread's pane. 9: no FrameSetSize, FrameClaimSize or
+// FrameState; a view's geometry has one pane.
+const Protocol = 9
 
 // Kind is what a connection is for.
 type Kind string
@@ -94,19 +95,15 @@ const (
 	FrameClosed FrameType = 6 // UTF-8 reason: the session exited or the server is stopping
 
 	// client → server
+	// Consoles size panes through their view (view.size, view.input);
+	// 11 and 15 were FrameSetSize and FrameClaimSize.
 	FrameInput     FrameType = 10 // bytes for the PTY, already encoded for the pane's modes
-	FrameSetSize   FrameType = 11 // u16 cols, u16 rows: the user really resized the window
 	FrameDigestReq FrameType = 12 // ask for a FrameDigest in the stream
 	FrameDetach    FrameType = 13
 	// FrameColorScheme carries one byte, 1 dark or 2 light: the client's
 	// terminal reported its colour scheme. Programs that enabled mode
 	// 2031 get a report, and CSI ? 996 n is answered with it.
 	FrameColorScheme FrameType = 14
-	// FrameClaimSize is u16 cols, u16 rows: the user typed into this pane
-	// in a console where its rectangle has that size. The console typed
-	// in sizes the pane (docs/SPEC.md §3.3), unless the agent's manifest
-	// says screen.resize = "explicit".
-	FrameClaimSize FrameType = 15
 )
 
 // MaxFrame bounds a frame's payload.
@@ -148,8 +145,7 @@ func ReadFrame(r io.Reader, buf []byte) (FrameType, []byte, error) {
 	return FrameType(hdr[0]), buf, nil
 }
 
-// Size encodes cols and rows for FrameResize, FrameSetSize and
-// FrameClaimSize.
+// Size encodes cols and rows for FrameResize.
 func Size(cols, rows uint16) []byte {
 	b := make([]byte, 4)
 	binary.BigEndian.PutUint16(b, cols)

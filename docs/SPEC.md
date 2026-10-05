@@ -152,7 +152,7 @@ The types are in `internal/proto`.
 **Versioning** (`proto.Check`):
 - **Control and hook** connections accept a client whose `protocol` is lower than or equal to the server's. Methods and fields are only ever added, and unknown fields are ignored. A newer client gets `the running tm server is older than this tm (protocol N, …); run 'tm server restart' to switch it to this tm (agents are resumed)` and exits with code 3. That command works (below).
 - **Attach** connections require the **identical build**. The client mirrors the server's emulator from a libghostty snapshot, and libghostty says outright that its snapshot format "does not yet carry a binary-compatibility guarantee". On a mismatch the client **re-execs the server's binary** (`bin` from the server's hello) with the same arguments. Attaching keeps working after an upgrade until the server is restarted.
-- The protocol number goes up when the attach framing or a method's meaning changes. Protocol 2 added the views (below), which every console needs.
+- The protocol number goes up when the attach framing or a method's meaning changes. Protocol 2 added the views (below), which every console needs. Protocol 9 dropped the unused `SET_SIZE`, `CLAIM_SIZE` and `STATE` frames: consoles size panes through their view (`view.size`, `view.input`).
 
 **Stopping across protocols.** `tm server stop` and `tm server restart` (and `tm update`'s and `tm doctor --fix`'s restarts, which run them) stop a server of any protocol (`server.Stop`):
 
@@ -201,8 +201,6 @@ After the hello the client sends `{"attach":{"session":"s-…","cols":C,"rows":R
 | server → client | `DIGEST` | Full-state digest of the server's emulator at this point (debugging and `tm doctor --attach`) |
 | server → client | `CLOSED` | The session exited, or the server is stopping; carries a reason |
 | client → server | `INPUT` | Bytes for the PTY, already encoded for the pane's modes |
-| client → server | `SET_SIZE` | Resize the pane to this size. tm's consoles size panes through their view (`view.size`, `view.input`) and no longer send it |
-| client → server | `CLAIM_SIZE` | The same, unless the agent's `resize` is `explicit`. Also no longer sent |
 | client → server | `DIGEST_REQ` | Ask for a `DIGEST` in the stream |
 | client → server | `DETACH` | Leave cleanly |
 | client → server | `COLOR_SCHEME` | One byte, 1 dark or 2 light: the scheme the client's terminal reported (§3.3, colour scheme) |
