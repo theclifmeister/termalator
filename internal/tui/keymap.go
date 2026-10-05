@@ -24,6 +24,7 @@ type keyGroup struct {
 // order the help lists them.
 var sessionKeys = []keyHelp{
 	{"prefix+d", "back to the dashboard, on every console of the view (the session keeps running)"},
+	{"prefix+q", "quit this console, from anywhere: a session, the dashboard, a popup, the sidebar, tm attach (the server, the sessions and other consoles keep running)"},
 	{"prefix+a", "the project popup over the session: overview, inbox, tasks, settings, keys; esc back to the session"},
 	{"prefix+p ] [", "back to the dashboard and switch project"},
 	{"prefix+i t , ?", "the inbox, tasks, settings or help over the session; esc back to the session"},
@@ -101,7 +102,7 @@ func keyLines(w int) []string {
 		}
 	}
 	out = append(out, "")
-	out = append(out, faintLines("On the dashboard, prefix+<key> is that key, so the same keys work in both places. The prefix is in the settings (,); inside tmux, which takes ctrl+b, pick another.", w)...)
+	out = append(out, faintLines("On the dashboard, prefix+<key> is that key, so the same keys work in both places; prefix+q quits from anywhere. The prefix is in the settings (,); inside tmux, which takes ctrl+b, pick another.", w)...)
 	return append(out, faintLines("Every tm shows the same view: what one does, the others show, sized by the one typed in. tm --own keeps to itself. You talk to coordinators; they run the threads, their reports and the tasks.", w)...)
 }
 

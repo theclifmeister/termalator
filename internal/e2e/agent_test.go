@@ -452,7 +452,7 @@ func TestSmokeMakeRun(t *testing.T) {
 	}
 	w.Detach()
 	w.WaitFor("SESSIONS", wait)
-	w.Type("q")
+	w.Quit()
 	w.WaitExit(wait)
 }
 

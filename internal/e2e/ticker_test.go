@@ -264,7 +264,7 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	wide.Type("j")
 	wide.WaitFor("enter attaches it", wait)
 	wide.Golden("dashboard-split.txt", dashMasks...)
-	wide.Type("q")
+	wide.Quit()
 	wide.WaitExit(wait)
 
 	// a opens the project popup and acks nothing; the coordinator acks.
@@ -309,7 +309,7 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	}
 	w.Detach()
 	w.WaitFor("SESSIONS", wait)
-	w.Type("q")
+	w.Quit()
 	w.WaitExit(wait)
 }
 
@@ -367,7 +367,7 @@ func TestSmokeDelegateFromList(t *testing.T) {
 		t.Fatalf("T1 changed:\n%s", out)
 	}
 	w.Key(keyEsc)
-	w.Type("q")
+	w.Quit()
 	w.WaitExit(wait)
 }
 

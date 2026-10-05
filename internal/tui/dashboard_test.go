@@ -378,7 +378,7 @@ func TestStatusLine(t *testing.T) {
 	}
 	// After the prefix: the commands.
 	got = statusLine(info, nil, true, 160, "")
-	if !strings.Contains(got, `d dashboard · a project · p ] [ projects · i t , ? · { } b sidebar · tab sidebar keys`) || !strings.Contains(got, `prefix again sends it`) {
+	if !strings.Contains(got, `d dashboard · q quit · a project · p ] [ projects · i t , ? · { } b sidebar · tab sidebar keys`) || !strings.Contains(got, `prefix again sends it`) {
 		t.Fatalf("pending status line %q", got)
 	}
 }
@@ -610,7 +610,7 @@ func TestDashboardFooter(t *testing.T) {
 	m := newDash(DashOptions{Source: src, Width: 100, Height: 30, State: DashState{Current: "beta"}})
 	m.setData(src.data)
 	for sel, want := range map[string]string{
-		"n:s-1":          "≡ menu · enter attach · a project · t tasks · i inbox · p projects · , settings · ? help · q quit",
+		"n:s-1":          "≡ menu · enter attach · a project · t tasks · i inbox · p projects · , settings · ? help · prefix+q quit",
 		"th:beta:t-0005": "≡ menu · enter attach · a project · t tasks · i inbox · p projects",
 		"th:beta:t-0006": "≡ menu · a project · t tasks · i inbox · p projects",
 		"p:beta":         "≡ menu · enter open · a project · t tasks",

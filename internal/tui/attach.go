@@ -305,6 +305,7 @@ type client struct {
 	// stream is the detach completing, not a lost server. then, set
 	// before detaching, is the dashboard key that detach carries.
 	detaching atomic.Bool
+	quitting  bool // prefix+q: this console leaves; read once detaching is set
 	then      string
 	goTo      *Target // a sidebar click in a bare view, carried like then
 	over      *Over   // a popup to open over the session, carried like then
@@ -968,6 +969,14 @@ func (c *client) key(k uv.Key) {
 	if !c.lock() {
 		return
 	}
+	if !c.pending && c.prefix.match(k) && (c.menu != nil || c.confirmRemote != nil) {
+		// The prefix works from a menu or a question too: it closes the
+		// menu, or answers no, and starts a command.
+		if c.menu != nil {
+			c.closeMenu()
+		}
+		c.confirmRemote = nil
+	}
 	if c.menu != nil {
 		c.menuKey(k)
 		return
@@ -1004,6 +1013,8 @@ func (c *client) key(k uv.Key) {
 // run does what prefixStep decided, but for input.
 func (c *client) run(do prefixDo) {
 	switch {
+	case do.quit:
+		c.quit()
 	case do.detach:
 		c.detachThen(do.then)
 	case do.popup != "":
@@ -1019,6 +1030,7 @@ func (c *client) run(do prefixDo) {
 type prefixDo struct {
 	arm    bool   // it is the prefix: the next key is a command
 	input  bool   // the program gets it
+	quit   bool   // this console leaves: the view stays as it is
 	detach bool   // detach, then run then on the dashboard
 	then   string //
 	popup  string // a dashboard key whose popup opens over the session
@@ -1046,7 +1058,8 @@ func keyName(k uv.Key) string {
 	return k.String()
 }
 
-// prefixStep decides what k does. After the prefix: d detaches, a
+// prefixStep decides what k does. After the prefix: q quits this
+// console, d detaches, a
 // dashboard key detaches and runs there (only when there is a dashboard
 // to go back to), a pane command acts on the panes, r asks to turn remote
 // control on or off, the prefix again goes to the program, and anything
@@ -1058,6 +1071,8 @@ func prefixStep(prefix chord, pending bool, k uv.Key, dashboard bool) prefixDo {
 		return prefixDo{arm: true}
 	case !pending, prefix.match(k):
 		return prefixDo{input: true}
+	case name == "q":
+		return prefixDo{quit: true}
 	case name == "d":
 		return prefixDo{detach: true}
 	case name == "r":
@@ -1094,10 +1109,30 @@ func (c *client) detachThen(then string) {
 	c.finish(c.detachResult())
 }
 
+// quit ends this console, as closing its window does: the view, its
+// sessions and the other consoles carry on.
+func (c *client) quit() {
+	c.quitting = true
+	c.detaching.Store(true) // publishes quitting to lost
+	var ps []*pane
+	if c.lock() {
+		ps = c.leaves()
+		c.mu.Unlock()
+	}
+	for _, p := range ps {
+		c.send(p, proto.FrameDetach, nil)
+	}
+	c.finish(c.detachResult())
+}
+
 // detachResult is how a detach ends. c.then is read only once detaching
 // is set.
 func (c *client) detachResult() Result {
 	res := detached
+	if c.quitting {
+		res.Quit = true
+		return res
+	}
 	res.Then, res.GoTo, res.Over = c.then, c.goTo, c.over
 	return res
 }
