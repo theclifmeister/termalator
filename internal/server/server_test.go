@@ -248,6 +248,41 @@ func TestSecondServerRefused(t *testing.T) {
 	}
 }
 
+// TestStartDuringLockProbe: a client probing the lock (Connect, WaitStopped)
+// holds it for a moment; a server starting just then must wait it out, not
+// report "already running" (T28: TestSmokeServerCommands flaked on this).
+func TestStartDuringLockProbe(t *testing.T) {
+	p := testPaths(t)
+	os.MkdirAll(p.RunDir, 0o700)
+	lk, err := tryLock(p.Lock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.AfterFunc(200*time.Millisecond, lk.unlock)
+	startServer(t, p)
+}
+
+// TestLockHeldWithoutServer: a lock held for good by something that wrote
+// no pid file is still reported, after lockWait.
+func TestLockHeldWithoutServer(t *testing.T) {
+	p := testPaths(t)
+	os.MkdirAll(p.RunDir, 0o700)
+	lk, err := tryLock(p.Lock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lk.unlock()
+	t0 := time.Now()
+	err = Run(context.Background(), Options{Paths: p, Log: log.New(io.Discard, "", 0)})
+	var running *AlreadyRunningError
+	if !errors.As(err, &running) || running.PID != 0 {
+		t.Fatalf("Run: %v", err)
+	}
+	if d := time.Since(t0); d < lockWait {
+		t.Fatalf("gave up after %v, want %v", d, lockWait)
+	}
+}
+
 func TestCrashIsDetected(t *testing.T) {
 	p := testPaths(t)
 	os.MkdirAll(filepath.Dir(p.Sessions), 0o700)
