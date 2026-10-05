@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"cmp"
 	"errors"
 	"fmt"
 	"slices"
@@ -26,9 +25,9 @@ import (
 // screen, the dashboard and the attach view alike, holding the project
 // tree. Each project row has its coordinator's state glyph, a hint when
 // one of its threads is blocked or waiting, and its count of open
-// threads. Every project is always expanded: its coordinator and open
-// threads hang under it on tree connectors (├─ └─), with their state
-// glyphs and progress in columns of their own. The current project is in
+// threads. Every project is always expanded: its coordinator hangs under
+// it and its open threads under the coordinator, on tree connectors
+// (├─ └─), with their state glyphs and progress in columns of their own. The current project is in
 // the accent colour, and the row you are on is highlighted. A click on a project shows its dashboard, on the
 // coordinator attaches to it, on a thread watches it. Its border column
 // can be dragged, and { } b change it from the keys.
@@ -65,7 +64,7 @@ type treeRow struct {
 	// thread's state word; "" when no coordinator runs.
 	state   string
 	pct     int  // a thread's percent, -1 for none
-	last    bool // a coordinator or thread: the last row under its project
+	last    bool // a coordinator or thread: the last row under its parent
 	current bool // a project: the current one
 	hint    bool // a project: one of its threads is blocked or waiting
 	remote  bool // a project or coordinator row: its coordinator's remote control is on
@@ -140,8 +139,9 @@ type treeIn struct {
 	focus   string
 }
 
-// buildTree lays out the tree: every project, and under each its
-// coordinator and open threads (ordered as the dashboard orders them). The row of the focused session is the one you are on, else the
+// buildTree lays out the tree: every project, under each its
+// coordinator, and under that its open threads (ordered as the dashboard
+// orders them). The row of the focused session is the one you are on, else the
 // current project's.
 func buildTree(ps []ProjectData, sessions []proto.SessionInfo, in treeIn) []treeRow {
 	byID := map[string]proto.SessionInfo{}
@@ -170,9 +170,12 @@ func buildTree(ps []ProjectData, sessions []proto.SessionInfo, in treeIn) []tree
 			pr.hint = pr.hint || tr.state == "blocked" || t.Status != nil && t.Status.NeedsYou != ""
 			kids = append(kids, tr)
 		}
-		coord := treeRow{kind: treeCoordinator, slug: p.Slug, session: pr.session, state: pr.state, remote: pr.remote, pct: -1}
+		// The threads hang under the coordinator, the project's only child.
+		coord := treeRow{kind: treeCoordinator, slug: p.Slug, session: pr.session, state: pr.state, remote: pr.remote, pct: -1, last: true}
+		if len(kids) > 0 {
+			kids[len(kids)-1].last = true
+		}
 		kids = append([]treeRow{coord}, kids...)
-		kids[len(kids)-1].last = true
 		out = append(out, pr)
 		out = append(out, kids...)
 	}
@@ -296,19 +299,22 @@ func coordLook(state string) (string, lipgloss.Style) {
 }
 
 // treeLine is one tree row cw cells wide, in this console's icon set
-// (icons.go). Full width, in the unicode set:
+// (icons.go). At the default width, in the unicode set:
 //
-//	" ■ termilator      2 ◆"  a project: its name, its open threads, the
-//	                          hint that one of them is blocked or waiting
-//	" ├─ coordinator      ○"  its coordinator
-//	" ├─ Bootstrap…   40% ●"  a thread's title, its progress, its state
-//	" └─ Sidebar tree     ▲"  the last row under the project
+//	" ■ termilator       2 ◆"  a project: its name, its open threads,
+//	                           the hint that one of them is blocked or
+//	                           waiting
+//	" └─ coordinator       ○"  its coordinator
+//	"    ├─ t-0002 B…  40% ●"  a thread's id and title, its progress, its
+//	                           state, one level under the coordinator
+//	"    └─ t-0003 S…      ▲"  the coordinator's last thread
 //
 // The nerd set opens the current project's folder and marks the
 // coordinator and threads with an icon of their own after the connector.
 // The counts and percents share one column, the state glyphs the last
 // one, so they line up down the tree; a long name or title is cut with
-// "…". Project rows are bold, the current one in the accent colour; the
+// "…", but a thread's id never is: its title gives way. Project rows are
+// bold, the current one in the accent colour; the
 // connectors are faint.
 //
 // The slim strip shows projects alone, "▸●term", the current one marked
@@ -386,9 +392,19 @@ func treeLine(r treeRow, cw int, slim, focused bool) string {
 	if r.kind == treeCoordinator {
 		node = i.coord
 	}
-	lead := " " + styleFaint.Render(conn) + " "
+	// A thread sits one level down, under the coordinator's label (its
+	// icon in the nerd set). The coordinator is the project's last row,
+	// so no │ runs down beside its threads.
+	indent := ""
+	if r.kind == treeThread {
+		indent = strings.Repeat(" ", ansi.StringWidth(i.end))
+		if i.coord == "" {
+			indent += " "
+		}
+	}
+	lead := " " + indent + styleFaint.Render(conn) + " "
 	if node != "" {
-		lead = " " + styleFaint.Render(conn+node) + " "
+		lead = " " + indent + styleFaint.Render(conn+node) + " "
 	}
 	ld := ansi.StringWidth(lead)
 	lw := max(cw-ld-rw, 1)
@@ -408,13 +424,19 @@ func treeLine(r treeRow, cw int, slim, focused bool) string {
 		g, st = i.none, styleFaint
 	}
 	// The percent has a column of its own, the same width on every row,
-	// so titles are cut at the same place; the title gets the room (the
-	// id is in the details and the status bar).
+	// so titles are cut at the same place. The id leads and is never
+	// cut: the title gives way; where even the id doesn't fit the label
+	// column it takes the percent's too, and where it still doesn't fit
+	// it is left out.
 	pct := strings.Repeat(" ", pctCol)
 	if r.pct >= 0 {
 		pct = fmt.Sprintf("%*d%%", pctCol-1, r.pct)
 	}
-	label := clipWord(cmp.Or(r.title, r.thread), lw)
+	label := threadLabel(r.thread, r.title, lw)
+	if ansi.StringWidth(r.thread) > cw-ld-rw {
+		pct = ""
+		label = threadLabel(r.thread, "", max(cw-ld-2, 0))
+	}
 	if r.here {
 		return lead + sel.Render(fit(label+right(pct, g, st, true), cw-ld))
 	}
@@ -857,6 +879,20 @@ const sideHint = "sidebar: ↑ ↓ move · → ← in/out · enter open · esc b
 
 // pctCol is the width of a thread row's percent column: " 100%".
 const pctCol = 5
+
+// threadLabel is a thread row's label w cells wide: "t-0001 Title",
+// the title cut to fit (or left out when not even a letter of it fits)
+// and the id never cut. An id wider than w leaves the label blank.
+func threadLabel(id, title string, w int) string {
+	iw := ansi.StringWidth(id)
+	switch {
+	case iw > w:
+		return strings.Repeat(" ", w)
+	case title == "" || w-iw-1 < 2:
+		return fit(id, w)
+	}
+	return id + " " + clipWord(title, w-iw-1)
+}
 
 // clipWord fits s in w cells; a cut title ends in "…" right after its
 // last letter, never after a space.

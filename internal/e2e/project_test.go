@@ -106,15 +106,16 @@ func TestSmokeSidebar(t *testing.T) {
 
 	w := env.Window(120, 30)
 	// beta, the first project, is current, with its coordinator (none
-	// runs yet); demo is expanded too, with its coordinator and its one
-	// thread, the last row under it.
+	// runs yet); demo is expanded too, with its coordinator and, nested
+	// under that, its one thread.
 	w.WaitFor(" ■ "+beta, wait)
 	w.WaitFor(" └─ coordinator       ·", wait)
 	w.WaitFor(" ■ "+demo+"             1", wait)
-	w.WaitFor(" ├─ coordinator       ·", wait)
-	w.WaitUntil("demo's thread", wait, func(sc string) bool { return treeRow(sc, demo, "Small fix") >= 0 })
+	w.WaitUntil("demo's thread", wait, func(sc string) bool {
+		return treeRow(sc, demo, "coordinator") >= 0 && strings.Contains(sc, "    └─ t-0001 ")
+	})
 	w2 := env.Window(100, 26)
-	w2.WaitUntil("demo's thread", wait, func(sc string) bool { return treeRow(sc, demo, "Small fix") >= 0 })
+	w2.WaitUntil("demo's thread", wait, func(sc string) bool { return treeRow(sc, demo, "t-0001 ") >= 0 })
 	both := []*Window{w, w2}
 
 	// A project row shows that project's dashboard, in both consoles.
@@ -139,8 +140,8 @@ func TestSmokeSidebar(t *testing.T) {
 
 	// From the session: demo's thread's row watches the thread, still in
 	// the attach view.
-	w.WaitUntil("demo's thread", wait, func(sc string) bool { return treeRow(sc, demo, "Small fix") >= 0 && lastLine(sc, beta+" coordinator") })
-	w.Click(5, treeRow(w.Screen(), demo, "Small fix"))
+	w.WaitUntil("demo's thread", wait, func(sc string) bool { return treeRow(sc, demo, "t-0001 ") >= 0 && lastLine(sc, beta+" coordinator") })
+	w.Click(5, treeRow(w.Screen(), demo, "t-0001 "))
 	for _, x := range both {
 		x.WaitUntil("watching t-0001", wait, func(sc string) bool { return lastLine(sc, "watch-only") })
 	}
@@ -226,16 +227,20 @@ func projectRow(screen, slug string) int {
 }
 
 // treeRow is the screen row of the row under slug's project in the
-// sidebar's tree whose text starts with label ("coordinator", a thread
-// title); -1 when slug has none.
+// sidebar's tree whose text starts with label ("coordinator", or a
+// thread's id on a row nested under it); -1 when slug has none.
 func treeRow(screen, slug, label string) int {
 	lines := strings.Split(screen, "\n")
 	for i := projectRow(screen, slug) + 1; i > 0 && i < len(lines); i++ {
 		r := []rune(lines[i])
-		if len(r) < 4 || r[0] != ' ' || r[1] != '├' && r[1] != '└' {
+		if len(r) < 4 || r[0] != ' ' {
 			return -1
 		}
-		if strings.HasPrefix(string(r[4:min(len(r), 23)]), label) {
+		row := []rune(strings.TrimLeft(string(r[:min(len(r), 23)]), " "))
+		if len(row) < 3 || row[0] != '├' && row[0] != '└' {
+			return -1
+		}
+		if strings.HasPrefix(string(row[3:]), label) {
 			return i
 		}
 	}

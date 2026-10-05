@@ -2,8 +2,8 @@
   beta             0  │
  └╴󰚩 coordinator      ·│
   demo             1  │
- ├╴󰚩 coordinator      ·│
- └╴ Small fix        │
+ └╴󰚩 coordinator      ·│
+   └╴ t-0001 S…      │
                        │
                        │
                        │

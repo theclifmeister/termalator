@@ -10,6 +10,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/theclifmeister/termilator/internal/view"
 )
 
 // TestDashboardSidebar: the project tree. Every project, always
@@ -29,9 +31,9 @@ func TestDashboardSidebar(t *testing.T) {
 		" ■ alpha            0  │",
 		" └─ coordinator       ▲│",
 		" ■ beta             2 ◆│", // t-0005 waits on a question
-		" ├─ coordinator       ·│",
-		" ├─ Write docs    60% ●│",
-		" └─ Old work          ·│",
+		" └─ coordinator       ·│",
+		"    ├─ t-0005 W…  60% ●│", // threads hang under the coordinator
+		"    └─ t-0006 O…      ·│",
 	}
 	lines := strings.Split(whole(m), "\n")
 	for i, w := range want {
@@ -127,7 +129,9 @@ func hereRow(rows []treeRow) treeRow {
 }
 
 // TestTreeThreadRows: every row is the same width with the percent in a
-// column of its own, so titles are cut alike whatever the percent, and never leave a space before the "…".
+// column of its own, so titles are cut alike whatever the percent, and
+// never leave a space before the "…". Each row leads with the thread's
+// id, which is never cut: the title gives way.
 func TestTreeThreadRows(t *testing.T) {
 	for _, r := range []treeRow{
 		{kind: treeThread, thread: "t-0003", title: "Key the CI cache on the Zig version", state: "blocked", pct: 0},
@@ -135,17 +139,47 @@ func TestTreeThreadRows(t *testing.T) {
 		{kind: treeThread, thread: "t-0001", title: "Fix the login session expiry", state: "working", pct: -1},
 	} {
 		l := ansi.Strip(treeLine(r, 23, false, false))
-		if strings.Contains(l, " …") || strings.Contains(l, "t-000") {
+		if strings.Contains(l, " …") {
 			t.Errorf("row %q", l)
 		}
 		if w := ansi.StringWidth(l); w != 23 {
 			t.Errorf("row %q is %d cells", l, w)
 		}
-		// The title column is the same on every row: 4 cells in, 12 wide,
-		// then the percent's 5 and the state glyph.
-		if title := []rune(l)[4:16]; strings.TrimSpace(string(title)) == "" {
-			t.Errorf("row %q: no title", l)
+		// The label column is the same on every row: 7 cells in (a level
+		// under the coordinator), 9 wide, the id, a space and what fits
+		// of the title; then the percent's 5 and the state glyph.
+		label := string([]rune(l)[7:16])
+		if !strings.HasPrefix(label, r.thread+" ") || strings.TrimSpace(label[len(r.thread):]) == "" {
+			t.Errorf("row %q: label %q", l, label)
 		}
+	}
+}
+
+// TestTreeThreadIDNeverCut: at every sidebar width and in every icon set
+// a thread row is as wide as the sidebar and shows its whole id or none
+// of it: none only at the narrowest widths, where it doesn't fit beside
+// the state glyph. At the default width and wider the title shows too.
+func TestTreeThreadIDNeverCut(t *testing.T) {
+	defer setIcons(IconsUnicode)
+	r := treeRow{kind: treeThread, thread: "t-0042", title: "Prefix each thread row with its id", state: "working", pct: 40}
+	for _, set := range IconChoices[1:] {
+		setIcons(set)
+		for w := view.SideMin; w <= view.SideMax; w++ {
+			l := ansi.Strip(treeLine(r, w-1, false, false))
+			if got := ansi.StringWidth(l); got != w-1 {
+				t.Errorf("%s width %d: row %q is %d cells", set, w, l, got)
+			}
+			whole := strings.Contains(l, "t-0042")
+			if !whole && (w >= view.SideMin+2 || strings.Contains(l, "t-")) {
+				t.Errorf("%s width %d: row %q lacks the whole id", set, w, l)
+			}
+			if w >= sideDefault && !strings.Contains(l, "t-0042 P") {
+				t.Errorf("%s width %d: row %q lacks the title", set, w, l)
+			}
+		}
+	}
+	if got := threadLabel("t-0042", "Title", 4); got != "    " {
+		t.Errorf("an id wider than its room: %q", got)
 	}
 }
 
@@ -184,7 +218,7 @@ func TestDashboardSidebarKeys(t *testing.T) {
 		}
 	}
 	// The cursor's row is highlighted, not the one you are on.
-	if l := strings.Split(whole(m), "\n")[5]; !strings.Contains(l, "Write docs") {
+	if l := strings.Split(whole(m), "\n")[5]; !strings.Contains(l, "t-0005 W…") {
 		t.Fatalf("row 5 %q", l)
 	}
 	// Not a sidebar key: the list's ? opens the help.
