@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -43,6 +44,31 @@ func tryLock(path string) (*lockFile, error) {
 		return nil, fmt.Errorf("lock %s: %w", path, err)
 	}
 	return &lockFile{f: f}, nil
+}
+
+// lockWait bounds how long a starting server waits for a lock held by a
+// process that isn't a running server: a client probing for a stale socket
+// (Connect, WaitStopped, doctor) holds it for a moment, and a server that
+// just took it has not yet written its pid file.
+const lockWait = 2 * time.Second
+
+// takeLock takes the server lock for a starting server. It refuses at once
+// when the pid file names a live process, and otherwise retries until
+// lockWait, so a probe that holds the lock for a moment is not taken for a
+// server. It returns *AlreadyRunningError if the lock stays held.
+func takeLock(p Paths) (*lockFile, error) {
+	deadline := time.Now().Add(lockWait)
+	for {
+		lk, err := tryLock(p.Lock)
+		if !errors.Is(err, ErrLocked) {
+			return lk, err
+		}
+		pid := readPID(p.PID)
+		if alive(pid) || time.Now().After(deadline) {
+			return nil, &AlreadyRunningError{PID: pid}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func (l *lockFile) unlock() {
