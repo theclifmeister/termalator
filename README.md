@@ -140,9 +140,9 @@ internal/…           see docs/SPEC.md §2.1
 scripts/run.sh       what `make run` does
 docs/SPEC.md         the v0.1 specification and milestone plan
 docs/OPERATIONS.md   installing, state, logs, doctor, service, upgrading, uninstalling
+docs/research/       findings of the early spikes (libghostty, Claude Code, symlinks)
 scripts/release/     release builds: per-target libghostty-vt, zig cc wrapper, signing, archive checks, formula
 Formula/             the Homebrew formula (rewritten by each release)
-spikes/              throwaway experiments, each with its own go.mod and FINDINGS.md
 ```
 
 ## Licence
