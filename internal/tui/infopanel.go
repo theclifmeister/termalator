@@ -91,7 +91,7 @@ func (d *infoData) prURL() string {
 func (d *infoData) prLine() string {
 	s := d.pr.Summary()
 	if s == "" {
-		if n := prNumber(d.prURL()); n > 0 {
+		if n := ticker.PRNumber(d.prURL()); n > 0 {
 			s = "#" + strconv.Itoa(n)
 		}
 	}
