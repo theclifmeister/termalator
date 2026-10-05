@@ -1,12 +1,14 @@
 package tui
 
 import (
+	"os"
 	"regexp"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/theclifmeister/termilator/internal/project"
+	"github.com/theclifmeister/termilator/internal/proto"
 	"github.com/theclifmeister/termilator/internal/tasks"
 )
 
@@ -242,4 +244,52 @@ func noteChecks(t *tasks.Task) []string {
 		}
 	}
 	return out
+}
+
+// adoptable is the session of row r that T can ask to adopt, or why
+// not (docs/SPEC.md §4, Adopt): an agent session outside the projects,
+// with a current project to adopt it into.
+func (m *dash) adoptable(r row, ok bool) (proto.SessionInfo, string) {
+	if !ok || r.session == "" {
+		return proto.SessionInfo{}, "T adopts an agent session outside the projects as a thread; select one"
+	}
+	s, found := m.session(r.session)
+	switch {
+	case !found:
+		return s, r.session + " is gone"
+	case s.Project != "" || s.Role != proto.RoleShell:
+		return s, r.session + " is a project's session already"
+	case s.Agent == "" || s.State == "exited":
+		return s, "no agent runs in " + r.session + "; only an agent session becomes a thread"
+	case m.projectHere() == "":
+		return s, "no project to adopt " + r.session + " into; n creates one"
+	}
+	return s, ""
+}
+
+// adopt asks, then has the current project's coordinator adopt the
+// selected agent session as a thread.
+func (m *dash) adopt(string) tea.Cmd {
+	r, ok := m.selected()
+	s, why := m.adoptable(r, ok)
+	if why != "" {
+		m.msg = why
+		return nil
+	}
+	slug, src := m.projectHere(), m.src
+	home, _ := os.UserHomeDir()
+	question := "Adopt " + s.ID + " (" + adoptWhere(s, home) + ") as a thread of " + slug + "? The coordinator links it to a task and briefs it."
+	m.confirmNo(question, s.ID+" not adopted", func() tea.Cmd {
+		return m.act(func() actionMsg {
+			asked, err := src.AskAdopt(slug, s)
+			if err != nil {
+				return actionMsg{err: err}
+			}
+			if !asked {
+				return actionMsg{msg: s.ID + " is already " + delegateWaiting + " to adopt it"}
+			}
+			return actionMsg{msg: "asked the coordinator to adopt " + s.ID}
+		})
+	})
+	return nil
 }
