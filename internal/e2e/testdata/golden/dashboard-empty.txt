@@ -1,24 +1,24 @@
- PROJECTS              │ tm dashboard                                       ● server ok · 0 sessions
- no projects           │  no projects; n creates one
-                       │ OTHER SESSIONS ────────────────────────────────────────────────────────────
-                       │  no sessions; s starts a shell
-                       │
-                       │
-                       │
-                       │
-                       │
-                       │
-                       │
-                       │
-                       │
-                       │
-                       │
-                       │
-                       │
-                       │
-                       │
-                       │
-                       │
-                       │────────────────────────────────────────────────────────────────────────────
-                       │ ≡ menu · n new project · , settings · ? help · q quit
-                       │
+ PROJECTS                      │ tm dashboard                               ● server ok · 0 sessions
+ no projects                   │  no projects; n creates one
+                               │ OTHER SESSIONS ────────────────────────────────────────────────────
+                               │  no sessions; s starts a shell
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │────────────────────────────────────────────────────────────────────
+                               │ ≡ menu · n new project · , settings · ? help · q quit
+                               │

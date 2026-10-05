@@ -109,7 +109,7 @@ func TestViewsSharedMain(t *testing.T) {
 	if !woken(a) || !woken(b) {
 		t.Fatal("not broadcast")
 	}
-	if r := h.takeResizes(); !slices.Equal(r, []string{"s-1 96×38"}) {
+	if r := h.takeResizes(); !slices.Equal(r, []string{fmt.Sprintf("s-1 %d×38", 120-view.SideDefault)}) {
 		t.Fatalf("the first showing resized %v", r)
 	}
 
@@ -119,7 +119,7 @@ func TestViewsSharedMain(t *testing.T) {
 	if v.Latest != b.id || v.Cols != 100 || v.Rows != 32 {
 		t.Fatalf("after B typed: %+v", v)
 	}
-	if r := h.takeResizes(); !slices.Equal(r, []string{"s-1 76×30"}) {
+	if r := h.takeResizes(); !slices.Equal(r, []string{fmt.Sprintf("s-1 %d×30", 100-view.SideDefault)}) {
 		t.Fatalf("resizes %v", r)
 	}
 	// Typing again changes nothing: no new version.
@@ -138,7 +138,7 @@ func TestViewsSharedMain(t *testing.T) {
 
 	// A window resize from A always resizes, and makes A the latest.
 	v = mustDo(t, vs, proto.MethodViewSize, proto.ViewParams{Client: a.id, Cols: 130, Rows: 40, Resize: true})
-	if v.Latest != a.id || v.Cols != 130 || !slices.Equal(h.takeResizes(), []string{"s-1 106×38"}) {
+	if v.Latest != a.id || v.Cols != 130 || !slices.Equal(h.takeResizes(), []string{fmt.Sprintf("s-1 %d×38", 130-view.SideDefault)}) {
 		t.Fatalf("after A resized: %+v", v)
 	}
 	// A size report without a resize (joining) only records it.

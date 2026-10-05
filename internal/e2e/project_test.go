@@ -5,6 +5,7 @@ package e2e
 // coordinator loses nothing" invariant (§16.6).
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,8 +45,11 @@ func TestSmokeProjectOpenAndSwitch(t *testing.T) {
 	w.WaitUntil("the tree", wait, func(sc string) bool {
 		a, b := projectRow(sc, alpha), projectRow(sc, beta)
 		lines := strings.Split(sc, "\n")
-		return a >= 0 && b == a+2 && strings.HasPrefix(lines[a+1], " └─ coordinator      ○ ") &&
-			strings.HasPrefix(lines[b+1], " └─ coordinator      · ")
+		coord := func(l, glyph string) bool {
+			l = sideCut(l, 100)
+			return strings.HasPrefix(l, " └─ coordinator ") && strings.HasSuffix(l, glyph+" │")
+		}
+		return a >= 0 && b == a+2 && coord(lines[a+1], "○") && coord(lines[b+1], "·")
 	})
 
 	// p, down, enter: beta's coordinator starts and is attached.
@@ -109,10 +113,10 @@ func TestSmokeSidebar(t *testing.T) {
 	// runs yet); demo is expanded too, with its coordinator and, nested
 	// under that, its one thread.
 	w.WaitFor(" ■ "+beta, wait)
-	w.WaitFor(" └─ coordinator      · ", wait)
-	w.WaitFor(" ■ "+demo+"            1", wait)
 	w.WaitUntil("demo's thread", wait, func(sc string) bool {
-		return treeRow(sc, demo, "coordinator") >= 0 && strings.Contains(sc, "    └─ t-0001 ")
+		d := projectRow(sc, demo)
+		return d >= 0 && strings.HasSuffix(sideCut(strings.Split(sc, "\n")[d], 120), " 1   │") &&
+			treeRow(sc, demo, "coordinator") >= 0 && strings.Contains(sc, "    └─ t-0001 ")
 	})
 	w2 := env.Window(100, 26)
 	w2.WaitUntil("demo's thread", wait, func(sc string) bool { return treeRow(sc, demo, "t-0001 ") >= 0 })
@@ -126,14 +130,15 @@ func TestSmokeSidebar(t *testing.T) {
 		})
 	}
 	// beta's row, then its coordinator's row, starts and attaches the
-	// coordinator; the panes get the window less the sidebar's 24 columns.
+	// coordinator; the panes get the window less the sidebar.
 	clickCoordinator(t, w, beta)
 	w.WaitUntil("attached to beta", agentWait, func(sc string) bool { return lastLine(sc, beta+" coordinator") })
 	w.WaitFor("Fake Claude Code", agentWait)
 	b := coordinatorOf(t, env, beta)
-	waitPaneSize(t, env, b, 96, 28)
+	waitPaneSize(t, env, b, paneCols(120), 28)
+	border := SideCols(120) - 1
 	for i, l := range strings.Split(w.Screen(), "\n")[:28] {
-		if r := []rune(l); len(r) <= 23 || r[23] != '│' {
+		if r := []rune(l); len(r) <= border || r[border] != '│' {
 			t.Fatalf("row %d lacks the sidebar's border:\n%s", i, w.Screen())
 		}
 	}
@@ -146,7 +151,7 @@ func TestSmokeSidebar(t *testing.T) {
 		x.WaitUntil("on t-0001", wait, func(sc string) bool { return lastLine(sc, demo+" t-0001") })
 	}
 	// No console sized the thread yet: the first to show it fills it.
-	waitPaneSize(t, env, th, 96, 28)
+	waitPaneSize(t, env, th, paneCols(120), 28)
 	// beta's row, from the pane, shows beta's dashboard on both consoles;
 	// its coordinator's row attaches the coordinator again.
 	w.Click(4, sideRow(t, w.Screen(), beta))
@@ -159,14 +164,18 @@ func TestSmokeSidebar(t *testing.T) {
 	// Prefix } widens the sidebar: a layout change, so the pane follows,
 	// and ui.json keeps the width.
 	w.Prefix("}")
-	waitPaneSize(t, env, b, 94, 28)
-	if !Poll(wait, func() bool { return strings.Contains(readFile(env.Home, "ui.json"), `"width": 26`) }) {
+	waitPaneSize(t, env, b, uint16(120-sideDefault-2), 28)
+	if !Poll(wait, func() bool {
+		return strings.Contains(readFile(env.Home, "ui.json"), fmt.Sprintf(`"width": %d`, sideDefault+2))
+	}) {
 		t.Fatalf("ui.json: %s", readFile(env.Home, "ui.json"))
 	}
-	// Dragging its border to column 29 makes it 30 wide.
-	w.Drag(25, 29, 5)
-	waitPaneSize(t, env, b, 90, 28)
-	if !Poll(wait, func() bool { return strings.Contains(readFile(env.Home, "ui.json"), `"width": 30`) }) {
+	// Dragging its border 4 columns right makes it 4 wider.
+	w.Drag(sideDefault+1, sideDefault+5, 5)
+	waitPaneSize(t, env, b, uint16(120-sideDefault-6), 28)
+	if !Poll(wait, func() bool {
+		return strings.Contains(readFile(env.Home, "ui.json"), fmt.Sprintf(`"width": %d`, sideDefault+6))
+	}) {
 		t.Fatalf("ui.json after the drag: %s", readFile(env.Home, "ui.json"))
 	}
 
@@ -201,6 +210,13 @@ func TestSmokeSidebar(t *testing.T) {
 	}
 }
 
+// sideCut is the sidebar's part of a screen line, its border included,
+// in a window cols wide.
+func sideCut(l string, cols int) string {
+	r := []rune(l)
+	return string(r[:min(len(r), SideCols(cols))])
+}
+
 // sideRow is the screen row where the sidebar lists slug.
 func sideRow(t *testing.T, screen, slug string) int {
 	t.Helper()
@@ -219,7 +235,7 @@ func projectRow(screen, slug string) int {
 		if len(r) < 4 || r[1] != '■' {
 			continue
 		}
-		if f := strings.Fields(string(r[3:min(len(r), 23)])); len(f) > 0 && strings.TrimSuffix(f[0], "⌁") == slug {
+		if f := strings.Fields(string(r[3:min(len(r), sideDefault-1)])); len(f) > 0 && strings.TrimSuffix(f[0], "⌁") == slug {
 			return i
 		}
 	}
@@ -236,7 +252,7 @@ func treeRow(screen, slug, label string) int {
 		if len(r) < 4 || r[0] != ' ' {
 			return -1
 		}
-		row := []rune(strings.TrimLeft(string(r[:min(len(r), 23)]), " "))
+		row := []rune(strings.TrimLeft(string(r[:min(len(r), sideDefault-1)]), " "))
 		if len(row) < 3 || row[0] != '├' && row[0] != '└' {
 			return -1
 		}

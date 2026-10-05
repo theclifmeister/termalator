@@ -12,7 +12,7 @@ type Sidebar struct {
 }
 
 const (
-	SideDefault = 24 // a full sidebar's width
+	SideDefault = 32 // a full sidebar's width: room for a thread's id and a few words of its title
 	SideMin     = 14 //
 	SideMax     = 48 //
 	SideSlim    = 7  // the slim strip: a marker, a glyph, 3 letters, a blank, the border

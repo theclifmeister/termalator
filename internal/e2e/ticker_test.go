@@ -234,7 +234,7 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	pre.Detach()
 	pre.WaitExit(wait)
 
-	w := env.Window(110+24, 30) // the dashboard and the panes get 110: the sidebar takes 24
+	w := env.Window(110+sideDefault, 30) // the dashboard and the panes get 110 beside the sidebar
 	w.WaitFor("report new", wait)
 	w.WaitFor("PR #7", wait)
 	if strings.Contains(w.Screen(), "NEEDS YOU") {
@@ -246,7 +246,7 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 
 	// 140 columns wide: the details beside the list instead of under it.
 	// A console of its own, so its selection doesn't move w's.
-	wide := env.Window(140+24, 30, "--own")
+	wide := env.Window(140+sideDefault, 30, "--own")
 	wide.WaitFor("t-0001 Fix the login", wait)
 	wide.Type("j")
 	wide.WaitFor("enter attaches it", wait)

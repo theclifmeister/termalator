@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -27,13 +28,13 @@ func TestDashboardSidebar(t *testing.T) {
 	m := newDash(DashOptions{Source: src, Width: 120, Height: 30, UIFile: ui, State: DashState{Current: "beta"}})
 	m.setData(src.data)
 	want := []string{
-		" PROJECTS            2 │ tm dashboard",
-		" ■ alpha           0 ◆ │", // a task needs you; a blank column before the border
-		" └─ coordinator      ▲ │",
-		" ■ beta            2 ◆ │", // t-0005 waits on a question
-		" └─ coordinator      · │",
-		"    ├─ t-0005    60% ● │", // threads hang under the coordinator
-		"    └─ t-0006        · │",
+		" PROJECTS                    2 │ tm dashboard",
+		" ■ alpha                   0 ◆ │", // a task needs you; a blank column before the border
+		" └─ coordinator              ▲ │",
+		" ■ beta                    2 ◆ │", // t-0005 waits on a question
+		" └─ coordinator              · │",
+		"    ├─ t-0005 Write do…  60% ● │", // threads hang under the coordinator, id and title
+		"    └─ t-0006 Old work       · │",
 	}
 	lines := strings.Split(whole(m), "\n")
 	for i, w := range want {
@@ -159,8 +160,8 @@ func TestTreeThreadRows(t *testing.T) {
 // TestTreeThreadIDNeverCut: at every sidebar width and in every icon set
 // a thread row is as wide as the sidebar, ends in its state glyph and a
 // blank column, and shows its whole id or none of it: none only at the
-// narrowest widths, where it doesn't fit beside the state glyph. Wider
-// than the default the title shows too.
+// narrowest widths, where it doesn't fit beside the state glyph. From
+// 25 columns the title shows too.
 func TestTreeThreadIDNeverCut(t *testing.T) {
 	defer setIcons(IconsUnicode)
 	r := treeRow{kind: treeThread, thread: "t-0042", title: "Prefix each thread row with its id", state: "working", pct: 40}
@@ -178,7 +179,7 @@ func TestTreeThreadIDNeverCut(t *testing.T) {
 			if !whole && (w >= view.SideMin+2 || strings.Contains(l, "t-")) {
 				t.Errorf("%s width %d: row %q lacks the whole id", set, w, l)
 			}
-			if w > sideDefault && !strings.Contains(l, "t-0042 P") {
+			if w >= 25 && !strings.Contains(l, "t-0042 P") {
 				t.Errorf("%s width %d: row %q lacks the title", set, w, l)
 			}
 		}
@@ -337,5 +338,34 @@ func TestEverySidebarClickHasKey(t *testing.T) {
 				t.Errorf("sidebar menu item %q has no key path", it.label)
 			}
 		}
+	}
+}
+
+// TestSidebarDefaultKeepsSavedWidth: the default width is 32, room for a
+// thread's id and a few words of its title; a width ui.json already
+// keeps stays, and one without a width starts at the default.
+func TestSidebarDefaultKeepsSavedWidth(t *testing.T) {
+	if sideDefault != 32 {
+		t.Fatalf("default width %d", sideDefault)
+	}
+	dir := t.TempDir()
+	for name, c := range map[string]struct {
+		json string
+		want int
+	}{
+		"saved":    {`{"sidebar":{"width":24}}`, 24},
+		"no width": {`{"details":true}`, sideDefault},
+		"zero":     {`{"sidebar":{"width":0}}`, sideDefault},
+	} {
+		path := filepath.Join(dir, name+".json")
+		if err := os.WriteFile(path, []byte(c.json), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got := LoadLayout(path).Sidebar.Width; got != c.want {
+			t.Errorf("%s: width %d, want %d", name, got, c.want)
+		}
+	}
+	if got := LoadLayout(filepath.Join(dir, "none.json")).Sidebar.Width; got != sideDefault {
+		t.Errorf("no ui.json: width %d", got)
 	}
 }
