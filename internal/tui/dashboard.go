@@ -12,6 +12,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/theclifmeister/termilator/internal/project"
 	"github.com/theclifmeister/termilator/internal/proto"
 	"github.com/theclifmeister/termilator/internal/tasks"
 	"github.com/theclifmeister/termilator/internal/view"
@@ -272,6 +273,10 @@ type boardMsg struct {
 	// reviews are the board's tasks in review, by id.
 	reviews map[int]Review
 	err     error
+	// memory is the project's memory, for the project popup's Memory
+	// tab (loadPopup), nil when not loaded; memErr is why it failed.
+	memory *project.Memory
+	memErr error
 }
 
 // actionMsg is the outcome of a key's action: attach to a session, or a
@@ -305,6 +310,18 @@ func (m *dash) loadBoard(slug string) tea.Cmd {
 	}
 }
 
+// loadPopup loads what slug's project popup shows from the project
+// folder: its board, as loadBoard, and its memory.
+func (m *dash) loadPopup(slug string) tea.Cmd {
+	board, src := m.loadBoard(slug), m.src
+	return func() tea.Msg {
+		msg := board().(boardMsg)
+		mem, err := src.Memory(slug)
+		msg.memory, msg.memErr = &mem, err
+		return msg
+	}
+}
+
 // reloadBoards reloads the open task lists, every boardRefresh.
 func (m *dash) reloadBoards() tea.Cmd {
 	if time.Since(m.boardAt) < boardRefresh {
@@ -315,7 +332,7 @@ func (m *dash) reloadBoards() tea.Cmd {
 		cmds = append(cmds, m.loadBoard(b.slug))
 	}
 	if pv := m.projectPopupView(); pv != nil {
-		cmds = append(cmds, m.loadBoard(pv.slug))
+		cmds = append(cmds, m.loadPopup(pv.slug))
 	}
 	if len(cmds) > 0 {
 		m.boardAt = time.Now()
@@ -502,9 +519,14 @@ func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		return m, tea.Batch(m.load(), m.reloadBoards())
 	case boardMsg:
-		if pv := m.projectPopupView(); pv != nil && pv.slug == msg.slug && msg.err == nil {
-			pv.setBoard(msg.board)
-			pv.reviews = msg.reviews
+		if pv := m.projectPopupView(); pv != nil && pv.slug == msg.slug {
+			if msg.err == nil {
+				pv.setBoard(msg.board)
+				pv.reviews = msg.reviews
+			}
+			if msg.memory != nil {
+				pv.memory, pv.memErr = msg.memory, msg.memErr
+			}
 		}
 		b := m.boardView()
 		if b == nil || msg.slug != b.slug {
