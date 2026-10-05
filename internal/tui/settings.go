@@ -39,7 +39,7 @@ type setting struct {
 	// from follows the value, faint: where it comes from ("all
 	// projects" on a project's setting it doesn't set itself).
 	from func(m *dash) string
-	// unset runs on x, delete or backspace: a project's own value goes,
+	// unset runs on x: a project's own value goes,
 	// so it follows all projects again.
 	unset func(m *dash) tea.Cmd
 }
@@ -64,7 +64,7 @@ func (l *settingsList) key(m *dash, k tea.KeyPressMsg) (tea.Cmd, bool) {
 		if l.sel < len(l.rows) && l.rows[l.sel].adjust != nil && !m.busy {
 			return l.rows[l.sel].adjust(m, map[bool]int{true: -1, false: 1}[k.String() == "-"]), true
 		}
-	case "x", "delete", "backspace":
+	case "x":
 		if l.sel < len(l.rows) && l.rows[l.sel].unset != nil && !m.busy {
 			return l.rows[l.sel].unset(m), true
 		}

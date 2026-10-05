@@ -882,6 +882,12 @@ func TestAllProjectsSettings(t *testing.T) {
 	for range 3 {
 		keyPress(m, "down")
 	}
+	// Only x: delete and backspace aren't its aliases.
+	act(m, src, "delete")
+	act(m, src, "backspace")
+	if cfg, _ := config.Load(); must(cfg.Safety("alpha")).ParallelThreads != 14 {
+		t.Fatal("delete or backspace dropped alpha's own value")
+	}
 	act(m, src, "x")
 	if !strings.Contains(m.msg, "alpha follows all projects in parallel threads: 15") {
 		t.Fatalf("x message: %q", m.msg)
