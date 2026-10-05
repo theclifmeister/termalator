@@ -31,6 +31,10 @@ import (
 // StopGrace is how long sessions get between SIGHUP and SIGKILL.
 const StopGrace = 5 * time.Second
 
+// handlerGrace bounds how long Run waits, after closing every
+// connection, for their goroutines to end.
+const handlerGrace = 5 * time.Second
+
 // handshakeTimeout bounds how long a new connection may take to say hello.
 const handshakeTimeout = 5 * time.Second
 
@@ -83,6 +87,9 @@ type Server struct {
 	lost     []string
 	resumed  []string
 	conns    map[net.Conn]struct{}
+	// handlers counts the connection goroutines: Run waits for them, so
+	// nothing logs or writes state after it returned.
+	handlers sync.WaitGroup
 	// prevProject maps the previous server's session ids to their
 	// project, for the restart inbox items.
 	prevProject map[string]string
@@ -204,7 +211,11 @@ func Run(ctx context.Context, opts Options) error {
 			if err != nil {
 				return
 			}
-			go s.handle(c)
+			s.handlers.Add(1)
+			go func() {
+				defer s.handlers.Done()
+				s.handle(c)
+			}()
 		}
 	}()
 	// Resume once hooks can be answered: a resumed agent fires
@@ -233,6 +244,16 @@ func Run(ctx context.Context, opts Options) error {
 	ln.Close()
 	<-acceptDone
 	s.shutdown()
+	handled := make(chan struct{})
+	go func() {
+		s.handlers.Wait()
+		close(handled)
+	}()
+	select {
+	case <-handled:
+	case <-time.After(handlerGrace):
+		logger.Printf("connections still closing; stopping anyway")
+	}
 	os.Remove(p.Socket)
 	os.Remove(p.PID)
 	logger.Printf("server stopped")
