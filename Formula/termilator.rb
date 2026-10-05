@@ -4,7 +4,7 @@
 class Termilator < Formula
   desc "Terminal workspace where coding agents work through a project's tasks"
   homepage "https://github.com/theclifmeister/termilator"
-  version "0.1.0"
+  version "0.2.0"
   license "MIT"
 
   livecheck do
@@ -15,22 +15,22 @@ class Termilator < Formula
   on_macos do
     on_arm do
       url "https://github.com/theclifmeister/termilator/releases/download/v#{version}/tm_darwin_arm64.tar.gz"
-      sha256 "2214d765bf8552466f26f9cd40d31985ce3cc0fd3e7f065e3a6cedb3a49e82ad"
+      sha256 "0b8c60d45f38563a99a554cfdfe039ac229f5801dd0225c7bfc8bac77b6f9be7"
     end
     on_intel do
       url "https://github.com/theclifmeister/termilator/releases/download/v#{version}/tm_darwin_amd64.tar.gz"
-      sha256 "2373742be4cc5f62154baa3f6b26fe95887c877cbc1c3c721e00e58f2b8d8aab"
+      sha256 "1e37d78e7e98744cec2f1e0e54f9e7859e437cb9dcb050b01956e3553e02af36"
     end
   end
 
   on_linux do
     on_arm do
       url "https://github.com/theclifmeister/termilator/releases/download/v#{version}/tm_linux_arm64.tar.gz"
-      sha256 "e13ee6c1453988ec55a5d29e1e8cecf610984b438738c675a3b8aa0b8167f1fc"
+      sha256 "f9622a2f4139f21b9c367fc7286b6f42e46961482651d858c77212edecafa431"
     end
     on_intel do
       url "https://github.com/theclifmeister/termilator/releases/download/v#{version}/tm_linux_amd64.tar.gz"
-      sha256 "f5401723add7f7ab484010d19f0b52fefb2afad5869b08ba758098cb52a9abb3"
+      sha256 "505d82f2ec47c6e450eddab8c79bfd66dfb18069a10b05f19af5430fb78f2009"
     end
   end
 
