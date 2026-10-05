@@ -381,6 +381,7 @@ func (a *manifestAgent) Launch(spec LaunchSpec) (Launch, error) {
 		}
 	}
 	out.Argv = argv
+	out.Kickoff = spec.Kickoff != "" && !spec.Resume && len(l.KickoffArgs) > 0
 	out.Unset = append([]string{}, l.UnsetEnv...)
 	for k, v := range l.Env {
 		s, err := render(v, spec)
