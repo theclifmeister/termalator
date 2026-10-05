@@ -12,7 +12,7 @@ import (
 )
 
 // TestSmokeMouseDashboard: the footer's hints are buttons; ? help opens
-// the help, its × closes it; ≡ menu lists every action and a click
+// the help, a click outside it closes it; ≡ menu lists every action and a click
 // outside closes it; a right-click on a session's row opens its menu,
 // whose attach attaches; the status bar's prefix+d dashboard goes back;
 // a double-click on the row attaches again, and the session's ≡ menu
@@ -31,7 +31,7 @@ func TestSmokeMouseDashboard(t *testing.T) {
 	top := w.Screen()
 	w.Wheel(false, 80, 10)
 	w.WaitUntil("the help scrolled", wait, func(sc string) bool { return sc != top })
-	w.ClickText("×", 1)
+	w.Click(SideCols(140), 10) // beside the box, which leaves a column each side
 	w.WaitUntil("the help closed", wait, func(sc string) bool { return !strings.Contains(sc, "keys · prefix =") })
 
 	w.ClickText("≡ menu", 28)

@@ -40,9 +40,15 @@ type projectView struct {
 	tab  int
 	// sel is each tab's selection: a repository, an inbox item, a task,
 	// a setting, a line of the keys.
-	sel      [tabCount]int
-	board    *tasks.Board
-	settings settingsList
+	sel [tabCount]int
+	// top is each tab's first content line shown; shown is the
+	// selection's line (plus one) it last scrolled to, so the content
+	// scrolls to a selection that moved, not back to one scrolled away
+	// from; nudge is how far the keys and the wheel scrolled it since,
+	// applied when it's drawn (after following the selection).
+	top, shown, nudge [tabCount]int
+	board             *tasks.Board
+	settings          settingsList
 }
 
 func (m *dash) projectPopup(string) tea.Cmd {
@@ -89,21 +95,24 @@ func (pv *projectView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	case "r":
 		return tea.Batch(m.load(), m.loadBoard(pv.slug))
 	}
+	d := scrollKeys[k.String()]
 	if pv.tab == tabSettings {
+		before := pv.settings.sel
 		cmd, _ := pv.settings.key(m, k)
+		if pv.settings.sel == before {
+			pv.nudge[tabSettings] += d
+		}
 		return cmd
 	}
-	d := 0
-	switch k.String() {
-	case "up", "k":
-		d = -1
-	case "down", "j":
-		d = 1
+	// The arrows move the selection; past the first or last item (or in
+	// a tab without one) they scroll the content.
+	before := pv.sel[pv.tab]
+	if n := pv.count(m); n > 0 {
+		pv.sel[pv.tab] = moveSel(before, d, n)
 	}
-	if pv.tab == tabKeys {
-		d = scrollKeys[k.String()]
+	if pv.sel[pv.tab] == before {
+		pv.nudge[pv.tab] += d
 	}
-	pv.sel[pv.tab] = moveSel(pv.sel[pv.tab], d, pv.count(m))
 	if pv.tab == tabOverview {
 		return pv.repoKey(m, k)
 	}
@@ -119,8 +128,6 @@ func (pv *projectView) count(m *dash) int {
 		return len(pv.data(m).Items)
 	case tabTasks:
 		return len(pv.tasks())
-	case tabKeys:
-		return len(keyLines(m.inner(m.w)))
 	}
 	return 0
 }
@@ -192,10 +199,17 @@ func (pv *projectView) tasks() []*tasks.Task {
 
 func (pv *projectView) render(m *dash) string { return m.popup(pv.box(m)) }
 
+// projectSize is the project popup's width and lines (tab bar and
+// content) in a window w×h: from the window alone, never from a tab's
+// content, so switching tabs doesn't move or resize it.
+func projectSize(w, h int) (int, int) {
+	return min(max(w*9/10, 72), 120), min(max(h*9/10, 14), 48)
+}
+
 func (pv *projectView) box(m *dash) box {
-	w := m.inner(m.w)
+	width, height := projectSize(m.w, m.bodyRows())
+	w := m.inner(width)
 	p := pv.data(m)
-	lines := []string{pv.tabBar(p), ""}
 	var body []string
 	var hits []int
 	sel := -1
@@ -213,22 +227,35 @@ func (pv *projectView) box(m *dash) box {
 		body, sel, hits = pv.settings.lines(m, w)
 		keys = "enter change · + - number · ↑ ↓ move · " + keys
 	case tabKeys:
-		// The same list as the help, scrolled the same way.
+		// The same list as the help.
 		body = keyLines(w)
 		keys = "↑ ↓ scroll · " + keys
 	}
-	scroll := 0
-	if sel >= 0 {
-		sel += len(lines)
-	} else if pv.tab == tabKeys {
-		scroll = pv.sel[tabKeys]
-	}
-	lines = append(lines, body...)
+	head := []string{pv.tabBar(p), ""}
 	all := append([]int{tabHit, noHit}, hits...)
-	for len(all) < len(lines) {
+	for len(all) < len(head)+len(body) {
 		all = append(all, noHit)
 	}
-	return box{title: pv.slug + " · prefix = " + m.prefix, body: lines, sel: sel, scroll: scroll, hits: all, keys: keys, width: m.w}
+	b := box{title: pv.slug + " · prefix = " + m.prefix, head: head, body: body, sel: -1, hits: all, keys: keys, width: width, height: height}
+	b.scroll = pv.scroll(m.boxRows(b)-len(head), sel, len(body))
+	return b
+}
+
+// scroll is the open tab's first content line shown, rows at a time of
+// n lines: where it was, moved just enough to show the line sel when the
+// selection moved there, then by the nudges since.
+func (pv *projectView) scroll(rows, sel, n int) int {
+	t := pv.top[pv.tab]
+	if sel >= 0 && sel+1 != pv.shown[pv.tab] {
+		pv.shown[pv.tab] = sel + 1
+		t = min(t, sel)
+		t = max(t, sel-rows+1)
+	}
+	t += pv.nudge[pv.tab]
+	pv.nudge[pv.tab] = 0
+	t = min(max(t, 0), max(n-max(rows, 1), 0))
+	pv.top[pv.tab] = t
+	return t
 }
 
 // tabHit is the tab bar's line: the column picks the tab.
@@ -263,9 +290,11 @@ func (pv *projectView) tabAt(p ProjectData, col int) int {
 	return -1
 }
 
+// wheel moves the selection as the arrows do, or scrolls a tab without
+// one by three lines.
 func (pv *projectView) wheel(m *dash, d int) {
 	if pv.tab == tabKeys {
-		pv.sel[tabKeys] = clampScroll(pv.sel[tabKeys]+3*d, pv.count(m))
+		pv.nudge[tabKeys] += 3 * d
 		return
 	}
 	pv.key(m, arrow(d))
