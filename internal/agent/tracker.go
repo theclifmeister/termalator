@@ -13,8 +13,9 @@ import (
 // the process exit. It is safe for concurrent use.
 //
 // The precedence is fixed: exit > status file > hooks > JSONL tail >
-// screen. A visible blocker on screen overrides any non-blocked state, and
-// background counters turn idle into working.
+// screen. A visible blocker on screen overrides any non-blocked state,
+// background counters turn idle into working, and so does a kickoff prompt
+// the agent hasn't started on yet (AwaitKickoff).
 type Tracker struct {
 	mu  sync.Mutex
 	now func() time.Time
@@ -32,7 +33,27 @@ type Tracker struct {
 	sidAt    time.Time
 	todos    []Todo
 	events   []EventRecord
+	kickoff  kickoffWait
 }
+
+// kickoffWait is a first prompt, given at launch, that the agent hasn't
+// started on yet. Claude reports idle at startup (SessionStart, its status
+// file) before it takes the prompt from its command line; without this the
+// session looks idle, e.g. not counted against the parallel threads cap,
+// until the prompt's turn starts.
+type kickoffWait struct {
+	on        bool
+	idleSince time.Time // when the agent first looked idle while waiting
+}
+
+// ReasonKickoff is the reason of the working state an idle agent shows
+// while its kickoff prompt is pending (Tracker.AwaitKickoff).
+const ReasonKickoff = "kickoff"
+
+// kickoffGrace is how long an agent may look idle with its kickoff still
+// pending before the tracker believes it: an agent that never starts on
+// the prompt must not look busy forever.
+const kickoffGrace = 2 * time.Minute
 
 // EventRecord is one hook event as the tracker saw it, for explain.
 type EventRecord struct {
@@ -85,6 +106,24 @@ func NewTracker(now func() time.Time) *Tracker {
 	return &Tracker{now: now, seq: map[string]uint64{}, counters: map[string]map[string]bool{}}
 }
 
+// AwaitKickoff says the agent was launched with a first prompt: until a
+// source sees it working or blocked, an idle state reads as working,
+// reason ReasonKickoff (for kickoffGrace at most).
+func (t *Tracker) AwaitKickoff() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.kickoff = kickoffWait{on: true}
+}
+
+// sawState ends the kickoff wait once a source sees the agent at work.
+// The screen's blocked state doesn't count: a trust dialog comes before
+// the kickoff.
+func (t *Tracker) sawState(s State, screen bool) {
+	if s == StateWorking || (s == StateBlocked && !screen) {
+		t.kickoff.on = false
+	}
+}
+
 // Exited records the process exit.
 func (t *Tracker) Exited(reason string) {
 	t.mu.Lock()
@@ -125,6 +164,7 @@ func (t *Tracker) Hook(ev HookEvent, sigs []Signal) (sidChanged bool) {
 			rec.Signals = append(rec.Signals, "todo "+string(s.Todo.Op))
 		case s.State != "":
 			sc := s
+			t.sawState(s.State, false)
 			if s.Transient {
 				t.edge = &sc
 				rec.Signals = append(rec.Signals, string(s.State)+" (transient)")
@@ -186,6 +226,7 @@ func (t *Tracker) Status(r *StatusReading, written time.Time, err error) (sidCha
 		s.At = t.now()
 	}
 	t.status, t.statusEr = &s, ""
+	t.sawState(s.State, false)
 	if s.AgentSID != "" && s.AgentSID != t.agentSID && !t.sidAt.After(s.At) {
 		t.agentSID, sidChanged = s.AgentSID, true
 		t.sidAt = s.At
@@ -199,6 +240,7 @@ func (t *Tracker) Tail(s Signal) {
 	defer t.mu.Unlock()
 	s.At = t.now()
 	t.tail = &s
+	t.sawState(s.State, false)
 }
 
 // Screen records one evaluation of the screen rules. matches lists every
@@ -210,6 +252,7 @@ func (t *Tracker) Screen(s ScreenSignal, matches []string) {
 	o := &t.screen
 	ss := s
 	o.last, o.matches, o.evalAt = &ss, matches, now
+	t.sawState(s.State, true)
 	if s.Rule == "" || s.State == StateUnknown {
 		// The screen can't tell: it abstains.
 		o.stable, o.cand, o.candN = nil, nil, 0
@@ -347,6 +390,17 @@ func (t *Tracker) merge() Merged {
 	if m.State == StateIdle && t.running() > 0 {
 		m.State, m.Reason = StateWorking, "background"
 		used = append(used, "counters")
+	}
+	// Rule 4b: a kickoff prompt not started on yet.
+	if m.State == StateIdle && t.kickoff.on {
+		now := t.now()
+		if t.kickoff.idleSince.IsZero() {
+			t.kickoff.idleSince = now
+		}
+		if now.Sub(t.kickoff.idleSince) < kickoffGrace {
+			m.State, m.Reason = StateWorking, ReasonKickoff
+			used = append(used, "kickoff")
+		}
 	}
 	if m.State == "" {
 		m.State = StateUnknown
