@@ -38,6 +38,9 @@ func SetProject(slug, key string, value any) error {
 	if key == "auto_close" && value != CloseOff && value != CloseMerged && value != CloseDays {
 		return fmt.Errorf("auto-close must be %q, %q or %q", CloseOff, CloseMerged, CloseDays)
 	}
+	if key == "complete_tasks" && value != CompleteUser && value != CompleteReleased && value != CompleteMerged {
+		return fmt.Errorf("complete tasks must be %q, %q or %q", CompleteUser, CompleteReleased, CompleteMerged)
+	}
 	if n, ok := value.(int); key == "parallel_threads" && (!ok || n < 1 || n > MaxParallelThreads) {
 		return fmt.Errorf("parallel threads must be 1 to %d", MaxParallelThreads)
 	}
@@ -70,7 +73,7 @@ func validKey(key string) bool {
 }
 
 // ProjectKeys are the settings of a [projects.<slug>] table.
-var ProjectKeys = []string{"start_threads", "yolo", "coordinator_approves", "parallel_threads", "auto_close", "auto_close_days", "auto_resolve", "pr_followup", "coordinator_remote_control", "fast_forward_checkout"}
+var ProjectKeys = []string{"start_threads", "yolo", "coordinator_approves", "parallel_threads", "auto_close", "auto_close_days", "auto_resolve", "pr_followup", "complete_tasks", "coordinator_remote_control", "fast_forward_checkout"}
 
 // Set sets key in table ("" is the top level, "keys", "projects.<slug>")
 // to value: a bool, an int or a string.
