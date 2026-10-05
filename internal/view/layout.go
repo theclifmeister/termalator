@@ -16,8 +16,8 @@ type Geometry struct {
 	// window less those.
 	SideW, InfoW, Status int
 	Area                 Rect
-	// Panes is the shown session's rectangle, by its id.
-	Panes map[string]Rect
+	// Pane is the session shown in Area, "" for none.
+	Pane string
 }
 
 // Chrome is the sidebar's width and the height of the status bar with
@@ -39,10 +39,6 @@ func (v *View) Lay(cols, rows int) Geometry {
 	if v.Thread && v.Mode == ModeLayout {
 		infoW = v.Info.Cols(cols, sideW)
 	}
-	g := Geometry{SideW: sideW, InfoW: infoW, Status: status, Panes: map[string]Rect{},
+	return Geometry{SideW: sideW, InfoW: infoW, Status: status, Pane: v.Shown(),
 		Area: Rect{sideW, 0, max(cols-sideW-infoW, 1), max(rows-status, 1)}}
-	for _, id := range v.Visible() {
-		g.Panes[id] = g.Area
-	}
-	return g
 }

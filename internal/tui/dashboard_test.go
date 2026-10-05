@@ -20,6 +20,12 @@ import (
 	"github.com/theclifmeister/termilator/internal/thread"
 )
 
+// statusLine is statusBar's line, without its buttons.
+func statusLine(s proto.SessionInfo, ts *thread.Status, pending bool, cols int, where string) string {
+	line, _ := statusBar(s, ts, pending, cols, where)
+	return line
+}
+
 // fakeSource records the dashboard's actions. Settings go to the real
 // settings file under the test's TERMILATOR_HOME, and Load reads them
 // back once one was set.

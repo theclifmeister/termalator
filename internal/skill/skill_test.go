@@ -1,15 +1,27 @@
 package skill
 
 import (
+	"sort"
 	"strings"
 	"testing"
 )
 
+// roles lists the roles that have rules.
+func roles() []string {
+	entries, _ := rules.ReadDir("rules")
+	var out []string
+	for _, e := range entries {
+		out = append(out, strings.TrimSuffix(e.Name(), ".md"))
+	}
+	sort.Strings(out)
+	return out
+}
+
 func TestText(t *testing.T) {
-	if got := strings.Join(Roles(), ","); got != "coordinator,thread" {
+	if got := strings.Join(roles(), ","); got != "coordinator,thread" {
 		t.Fatalf("roles %s", got)
 	}
-	for _, role := range Roles() {
+	for _, role := range roles() {
 		text, ok := Text(role, "v0.1.0")
 		if !ok || !strings.HasPrefix(text, "tm skill "+role+" v0.1.0\n\n") {
 			t.Fatalf("%s: %q", role, text[:min(len(text), 60)])

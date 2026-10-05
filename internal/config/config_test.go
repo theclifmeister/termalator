@@ -123,6 +123,28 @@ func TestBadSettings(t *testing.T) {
 	}
 }
 
+// TestKeysAndUI: [keys] and [ui] are read here too, the older [keys]
+// detach as the prefix, and their unknown keys are listed, not errors.
+func TestKeysAndUI(t *testing.T) {
+	write(t, "[keys]\ndetach = \"ctrl+a\"\nprefx = \"ctrl+q\"\n\n[ui]\nicon = \"nerd\"\nicons = \"ascii\"\n")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Prefix != "ctrl+a" || c.Icons != "ascii" || strings.Join(c.Unknown, ",") != "keys.prefx,ui.icon" {
+		t.Fatalf("prefix %q icons %q unknown %v", c.Prefix, c.Icons, c.Unknown)
+	}
+	write(t, "[keys]\nprefix = \"ctrl+o\"\ndetach = \"ctrl+a\"\n")
+	if c, _ = Load(); c.Prefix != "ctrl+o" {
+		t.Fatalf("prefix %q, want prefix over detach", c.Prefix)
+	}
+	// A bad project setting fails Load, but the TUI still gets its keys.
+	write(t, "[keys]\nprefix = \"ctrl+o\"\n[projects.demo]\nyoloo = true\n")
+	if c, err = Load(); err == nil || c == nil || c.Prefix != "ctrl+o" {
+		t.Fatalf("bad project: %v, %+v", err, c)
+	}
+}
+
 // TestAllProjects: each setting is the project's own value, else the
 // all-projects one ([defaults]), else the built-in default; a project
 // without a table follows all projects in everything.

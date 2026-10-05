@@ -1,9 +1,9 @@
 // Package config reads and writes ~/.termilator/config.toml, the human's
 // settings (docs/SPEC.md §5.1, §11.2): the per-project safety settings
 // under [projects.<slug>], the all-projects ones under [defaults] that a
-// project follows for every key it doesn't set, and the default agent; the prefix key ([keys])
-// and the icon set ([ui] icons) belong to the TUI, which reads them
-// itself.
+// project follows for every key it doesn't set, the default agent, and
+// the TUI's prefix key ([keys] prefix) and icon set ([ui] icons), whose
+// values the TUI checks.
 //
 // Changing safety settings is a human action: tm writes this file only
 // from the TUI's settings popups, on the human's keypress (write.go). It
@@ -12,6 +12,7 @@
 package config
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -112,7 +113,14 @@ type rawSafety struct {
 
 // Config is the parsed file.
 type Config struct {
-	Path     string
+	Path string
+	// Prefix is [keys] prefix, or the older [keys] detach that named the
+	// same key; Icons is [ui] icons. "" when unset.
+	Prefix, Icons string
+	// Unknown are the keys under [keys] and [ui] that tm doesn't know
+	// (e.g. "ui.icon"), sorted. tm doctor reports them; unlike a
+	// project's, they don't fail Load, so a typo there never stops tm.
+	Unknown  []string
 	projects map[string]rawSafety
 	// defaults is the [defaults] table: the all-projects settings.
 	defaults rawSafety
@@ -129,8 +137,11 @@ func Path() (string, error) {
 }
 
 // Load reads config.toml. A missing file gives the defaults. Unknown keys
-// inside a [projects.<slug>] or the [defaults] table are errors, so a typo
-// can't silently leave a safety setting at its default.
+// inside a [projects.<slug>] or the [defaults] table are errors, so a
+// typo can't silently leave a safety setting at its default; those under
+// [keys] and [ui] are listed in Unknown. With such a safety error, the
+// Config is returned too, for its Prefix and Icons: a file that doesn't
+// parse gives none.
 func Load() (*Config, error) {
 	path, err := Path()
 	if err != nil {
@@ -140,6 +151,13 @@ func Load() (*Config, error) {
 		DefaultAgent string               `toml:"default_agent"`
 		Projects     map[string]rawSafety `toml:"projects"`
 		Defaults     rawSafety            `toml:"defaults"`
+		Keys         struct {
+			Prefix string `toml:"prefix"`
+			Detach string `toml:"detach"`
+		} `toml:"keys"`
+		UI struct {
+			Icons string `toml:"icons"`
+		} `toml:"ui"`
 	}
 	md, err := toml.DecodeFile(path, &raw)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -148,18 +166,23 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
+	c := &Config{Path: path, projects: raw.Projects, defaults: raw.Defaults, agent: raw.DefaultAgent,
+		Prefix: cmp.Or(raw.Keys.Prefix, raw.Keys.Detach), Icons: raw.UI.Icons}
 	for _, k := range md.Undecoded() {
-		if len(k) >= 3 && k[0] == "projects" || len(k) >= 2 && k[0] == "defaults" {
-			return nil, fmt.Errorf("%s: unknown setting %s", path, k.String())
+		switch {
+		case len(k) >= 3 && k[0] == "projects", len(k) >= 2 && k[0] == "defaults":
+			return c, fmt.Errorf("%s: unknown setting %s", path, k.String())
+		case len(k) >= 2 && (k[0] == "keys" || k[0] == "ui"):
+			c.Unknown = append(c.Unknown, k.String())
 		}
 	}
-	c := &Config{Path: path, projects: raw.Projects, defaults: raw.Defaults, agent: raw.DefaultAgent}
+	sort.Strings(c.Unknown)
 	if _, err := c.AllProjects(); err != nil {
-		return nil, err
+		return c, err
 	}
 	for slug := range raw.Projects {
 		if _, err := c.Safety(slug); err != nil {
-			return nil, err
+			return c, err
 		}
 	}
 	return c, nil

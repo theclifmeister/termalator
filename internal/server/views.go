@@ -306,30 +306,25 @@ func (vs *views) tag(v *view.View) {
 	v.Thread = v.Focus != "" && ok && info.thread
 }
 
-// resize sizes the sessions lv shows to their rectangles at its size.
-// With claim set (a claim from typing) only the sessions that follow
-// typing are resized. vs.mu held.
+// resize sizes the session lv shows to its pane at its size. With claim
+// set (a claim from typing) only a session that follows typing is
+// resized. vs.mu held.
 func (vs *views) resize(lv *liveView, claim bool) {
 	v := &lv.v
 	if v.Mode != view.ModeLayout || v.Cols == 0 || v.Rows == 0 {
 		return
 	}
 	g := v.Lay(int(v.Cols), int(v.Rows))
-	for _, id := range v.Visible() {
-		r, ok := g.Panes[id]
-		info, alive := vs.host.pane(id)
-		if !ok || !alive || r.W < 1 || r.H < 1 {
-			continue
-		}
-		if claim && !info.follows {
-			continue
-		}
-		vs.host.resizePane(id, uint16(r.W), uint16(r.H))
+	r := g.Area
+	info, alive := vs.host.pane(g.Pane)
+	if g.Pane == "" || !alive || r.W < 1 || r.H < 1 || claim && !info.follows {
+		return
 	}
+	vs.host.resizePane(g.Pane, uint16(r.W), uint16(r.H))
 }
 
-// fill gives the sessions lv shows that no console has sized yet their
-// rectangles at its size: a new pane fills the console that shows it
+// fill gives the session lv shows, if no console has sized it yet, its
+// pane's size: a new pane fills the console that shows it
 // first. Panes already sized, and agents whose manifest says
 // screen.resize = "explicit", are left alone: showing a pane never
 // resizes it after that (docs/SPEC.md §3.3). vs.mu held.
@@ -339,14 +334,12 @@ func (vs *views) fill(lv *liveView) {
 		return
 	}
 	g := v.Lay(int(v.Cols), int(v.Rows))
-	for _, id := range v.Visible() {
-		r, ok := g.Panes[id]
-		info, alive := vs.host.pane(id)
-		if !ok || !alive || info.sized || !info.follows || r.W < 1 || r.H < 1 {
-			continue
-		}
-		vs.host.resizePane(id, uint16(r.W), uint16(r.H))
+	r := g.Area
+	info, alive := vs.host.pane(g.Pane)
+	if g.Pane == "" || !alive || info.sized || !info.follows || r.W < 1 || r.H < 1 {
+		return
 	}
+	vs.host.resizePane(g.Pane, uint16(r.W), uint16(r.H))
 }
 
 // do runs one view.* action for a client.

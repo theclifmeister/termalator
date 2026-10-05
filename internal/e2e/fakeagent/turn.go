@@ -133,7 +133,7 @@ func (a *app) doRemote() {
 
 // doClear ends the session and starts a new one with a new id.
 func (a *app) doClear() {
-	_, _ = a.fireHook(nil, "SessionEnd", map[string]any{"reason": "clear"})
+	_, _ = a.fireHook(context.Background(), "SessionEnd", map[string]any{"reason": "clear"})
 	a.mu.Lock()
 	a.sid = newUUID()
 	a.conv = nil
@@ -152,7 +152,7 @@ func (a *app) doCompact(ctx context.Context) {
 	a.spinLabel, a.spinning = "Compacting…", true
 	a.mu.Unlock()
 	a.requestRedraw()
-	_, _ = a.fireHook(nil, "PreCompact", map[string]any{"trigger": "manual", "custom_instructions": ""})
+	_, _ = a.fireHook(context.Background(), "PreCompact", map[string]any{"trigger": "manual", "custom_instructions": ""})
 	_ = sleepCtx(context.Background(), 300*time.Millisecond)
 	a.sessionStart("compact")
 	a.mu.Lock()
@@ -208,7 +208,7 @@ func (a *app) finishTurn() {
 	a.syncSessionLocked()
 	a.mu.Unlock()
 	a.requestRedraw()
-	_, _ = a.fireHook(nil, "Stop", map[string]any{"stop_hook_active": false, "last_assistant_message": last})
+	_, _ = a.fireHook(context.Background(), "Stop", map[string]any{"stop_hook_active": false, "last_assistant_message": last})
 	if s := os.Getenv("FAKEAGENT_SUGGEST"); s != "" {
 		a.mu.Lock()
 		a.suggestion = s
@@ -216,7 +216,7 @@ func (a *app) finishTurn() {
 		a.requestRedraw()
 		go func() {
 			time.Sleep(100 * time.Millisecond)
-			_, _ = a.fireHook(nil, "SubagentStop", map[string]any{"agent_id": randID("a", 17), "last_assistant_message": s, "stop_hook_active": false})
+			_, _ = a.fireHook(context.Background(), "SubagentStop", map[string]any{"agent_id": randID("a", 17), "last_assistant_message": s, "stop_hook_active": false})
 		}()
 	}
 }
@@ -261,8 +261,8 @@ func (a *app) cancelTurnLocked() {
 	}
 }
 
-// waitDialog shows d and waits for a choice (1-based). A nil ctx is the
-// startup screens: 0 means exit. Esc on a turn dialog cancels ctx.
+// waitDialog shows d and waits for a choice (1-based). The startup
+// screens pass context.Background(): 0 means exit. Esc on a turn dialog cancels ctx.
 func (a *app) waitDialog(ctx context.Context, d *dialog) (int, error) {
 	d.result = make(chan int, 1)
 	a.mu.Lock()
@@ -278,15 +278,11 @@ func (a *app) waitDialog(ctx context.Context, d *dialog) (int, error) {
 	a.syncSessionLocked()
 	a.mu.Unlock()
 	a.requestRedraw()
-	var done <-chan struct{}
-	if ctx != nil {
-		done = ctx.Done()
-	}
 	var n int
 	var err error
 	select {
 	case n = <-d.result:
-	case <-done:
+	case <-ctx.Done():
 		err = errCancelled
 	}
 	a.mu.Lock()
@@ -306,7 +302,7 @@ func (a *app) notifyLater(d *dialog, st step) {
 	open := a.dialog == d
 	a.mu.Unlock()
 	if open {
-		_, _ = a.fireHook(nil, "Notification", notifyPayload(st))
+		_, _ = a.fireHook(context.Background(), "Notification", notifyPayload(st))
 	}
 }
 
