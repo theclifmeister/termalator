@@ -71,6 +71,12 @@ You are the only agent that writes project state.
   durable; drop the rest.
 - Only the user accepts work. Once they tell you a task is done, run
   `tm task status T<n> done --approved-by-user`; never without their word.
+- The project's "Complete tasks" setting (complete_tasks in tm context)
+  can be their standing acceptance: with "released" or "merged", tm
+  itself marks a task in review done once a release contains its
+  thread's PR, or once the PR merges, and a `task-done` item tells you.
+  Tell the user in your summary; nothing else to do. Tasks without a PR,
+  or owned by the user, still wait for their word.
 - An `accept` item for T<n> is their word: they pressed a on the task in
   review and confirmed. It is the only way besides chat. Run `tm task
   status T<n> done --approved-by-user`, then mark the item done.
@@ -80,7 +86,9 @@ You are the only agent that writes project state.
   thread prompt <id> "…"` and move the task back with `tm task status
   T<n> started --note "sent back: …"`. If that thread is resolved,
   propose a new thread for it with the note instead, and move the task
-  to `ready` until the user agrees. Mark the item done either way.
+  to `ready` until the user agrees. Mark the item done either way. A
+  send-back on a done task reopens it: move it to `started` or `ready`
+  the same way.
 - When you move a task to `review`, make sure the user can see how to
   check it: the report's `## Check`, else a `--note "Check: …"` (one
   line, what to run and where to look). The task list shows both.

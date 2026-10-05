@@ -56,11 +56,12 @@ func repos(p *project.Project) []string {
 // syncRepos fetches each repo of the project every PRPoll, and at once
 // after one of its PRs merged, and fast-forwards the user's checkout when
 // fast_forward_checkout allows and it is safe (worktree.Sync). Each
-// fast-forward is journaled as caller ticker.
-func (t *Ticker) syncRepos(p *project.Project, safety config.Safety, now time.Time, merged bool) {
+// fast-forward is journaled as caller ticker. It reports whether it
+// synced.
+func (t *Ticker) syncRepos(p *project.Project, safety config.Safety, now time.Time, merged bool) bool {
 	pm := t.projectMemo(p.Slug)
 	if !merged && now.Sub(pm.Synced) < t.o.PRPoll {
-		return
+		return false
 	}
 	pm.Synced = now
 	list := repos(p)
@@ -93,6 +94,7 @@ func (t *Ticker) syncRepos(p *project.Project, safety config.Safety, now time.Ti
 			t.o.Log.Printf("ticker: %s: fast-forwarded %s %s", p.Slug, repo, detail)
 		}
 	}
+	return true
 }
 
 func short(oid string) string {

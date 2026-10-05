@@ -127,6 +127,11 @@ type projectMemo struct {
 	// found, by repo path.
 	Synced time.Time            `json:"synced,omitzero"`
 	Repos  map[string]*repoMemo `json:"repos,omitempty"`
+	// Merges are thread PRs seen merged, by thread id, while a task not
+	// done still names the thread; Completed is the merge commit each
+	// task was completed for by complete_tasks, by task ref (complete.go).
+	Merges    map[string]*mergeMemo `json:"merges,omitempty"`
+	Completed map[string]string     `json:"completed,omitempty"`
 }
 
 // repoMemo is a repo's checkout as the last sync left it, and the PR
@@ -297,7 +302,9 @@ func (t *Ticker) Sweep() {
 			safety = config.Defaults
 		}
 		merged := t.sweepThreads(p, sessions, safety, now, seen)
-		t.syncRepos(p, safety, now, merged)
+		if t.syncRepos(p, safety, now, merged) {
+			t.completeTasks(p, safety)
+		}
 		t.followMain(p, sessions, safety, now)
 		t.nudge(p, sessions, now)
 		if prune {
@@ -429,6 +436,7 @@ func (t *Ticker) sweepThreads(p *project.Project, sessions []proto.SessionInfo, 
 		if t.pollPR(p, r, m, info, live, safety, now) {
 			merged = true
 		}
+		t.rememberMerge(p, r, m.PR)
 
 		t.autoClose(p, r, m, cur, safety, now)
 	}
@@ -576,7 +584,7 @@ var verbs = map[string]string{
 	"report": "reported", "thread-done": "done", "thread-resolved": "resolved", "needs-you": "waiting for the user",
 	KindBlocked: "blocked", KindIdle: "idle with a report", KindExited: "exited", KindServerRestart: "server restarted",
 	KindPROpened: "opened a PR", KindPRChecks: "PR checks failed", KindPRReview: "PR reviewed",
-	KindPRMerged: "PR merged", KindPRClosed: "PR closed", KindPRConflict: "PR conflicts with main", KindCloseHeld: "not auto-closed", project.KindTakeover: "taken over by the user",
+	KindPRMerged: "PR merged", KindPRClosed: "PR closed", KindTaskDone: "done by the user's setting", KindPRConflict: "PR conflicts with main", KindCloseHeld: "not auto-closed", project.KindTakeover: "taken over by the user",
 	project.KindDelegate: "to delegate (the user's go-ahead)", project.KindAccept: "accepted by the user",
 	project.KindSendBack: "sent back by the user",
 }

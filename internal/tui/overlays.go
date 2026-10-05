@@ -221,14 +221,7 @@ func (b *boardView) setBoard(t *tasks.Board) {
 	if b.sel < len(b.list) {
 		keep = b.list[b.sel].ID
 	}
-	b.board, b.list = t, nil
-	for _, g := range []tasks.Group{tasks.NeedsYou, tasks.InMotion, tasks.OnDeck} {
-		for _, task := range t.Tasks {
-			if tasks.GroupOf(task.Status) == g {
-				b.list = append(b.list, task)
-			}
-		}
-	}
+	b.board, b.list = t, listed(t)
 	b.selectID(keep)
 }
 
@@ -325,20 +318,13 @@ func (b *boardView) render(m *dash) string {
 		}
 		lines = append(lines, line(r, w, i == b.sel))
 	}
-	done := 0
-	for _, t := range b.board.Tasks {
-		if t.Status == tasks.Done {
-			done++
-		}
-	}
 	if len(b.list) == 0 {
-		lines = append(lines, styleFaint.Render("no open tasks"))
+		lines = append(lines, styleFaint.Render("no tasks"))
 	}
-	lines = append(lines, styleFaint.Render(fmt.Sprintf("done: %d", done)))
 	keys := "enter show · D delegate · esc back"
 	if b.sel < len(b.list) {
 		switch t := b.list[b.sel]; t.Status {
-		case tasks.Review, tasks.Blocked:
+		case tasks.Review, tasks.Blocked, tasks.Done:
 			keys = joinKeys("enter show", taskKeys(t), "esc back")
 		}
 	}
