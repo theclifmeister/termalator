@@ -9,8 +9,10 @@
 # snapshot, a fork, a local `make release-snapshot`) the binary keeps the
 # ad-hoc signature zig's linker gave it, and the script says so.
 #
-#   TM_SIGN_IDENTITY  "Developer ID Application: Name (TEAMID)"; set by the
-#                     release workflow from the imported certificate
+#   TM_SIGN_IDENTITY  the identity's SHA-1 hash (security find-identity) or
+#                     "Developer ID Application: Name (TEAMID)" if that name is
+#                     unique; the release workflow sets the hash of the
+#                     imported certificate
 #   TM_NOTARY_KEY     path to the App Store Connect API key (.p8); with
 #   TM_NOTARY_KEY_ID  and TM_NOTARY_ISSUER, notarise after signing
 #

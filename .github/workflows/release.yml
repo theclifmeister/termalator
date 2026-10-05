@@ -114,8 +114,10 @@ jobs:
           # find-identity exits 0 even when it finds nothing. A leaf whose
           # intermediate is missing from the .p12 is not listed as valid.
           security find-identity -v -p codesigning "$keychain"
+          # Sign by SHA-1, not by name: codesign refuses a name that two
+          # certificates share ("ambiguous"), as after a renewal.
           identity=$(security find-identity -v -p codesigning "$keychain" |
-            grep -o "\"Developer ID Application: .* ($APPLE_TEAM_ID)\"" | head -1 | tr -d '"')
+            grep "\"Developer ID Application: .* ($APPLE_TEAM_ID)\"" | awk '{print $2}' | head -1)
           if [ -z "$identity" ]; then
             echo "no valid Developer ID Application identity for team $APPLE_TEAM_ID — does" >&2
             echo "SIGNING_CERT_P12_BASE64 include the Developer ID Certification Authority intermediate?" >&2
