@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/theclifmeister/termilator/internal/agent"
+	"github.com/theclifmeister/termilator/internal/config"
 	"github.com/theclifmeister/termilator/internal/proto"
 	"github.com/theclifmeister/termilator/internal/session"
 )
@@ -45,9 +46,20 @@ func (s *Server) remote(p proto.SessionRemoteParams) (any, *proto.Error) {
 	if st, _ := sess.AgentState(); st.RemoteKnown {
 		r.RemoteControl = st.RemoteControl // the agent's own word
 	}
+	// A manual off holds against the setting until the coordinator is
+	// started anew (the ticker's enforcement, §11.2); an on lifts it.
+	held := !p.On && remoteSetting(r.Project)
+	if r.RemoteHeld != !p.On {
+		r.RemoteHeld = !p.On
+		s.records[p.ID] = r
+		sess.SetRemoteHeld(!p.On)
+		if err := s.saveLocked(""); err != nil {
+			s.log.Printf("sessions.json: %v", err)
+		}
+	}
 	if r.RemoteControl == p.On {
 		s.mu.Unlock()
-		return proto.SessionRemoteResult{RemoteControl: p.On, How: proto.RemoteUnchanged}, nil
+		return proto.SessionRemoteResult{RemoteControl: p.On, How: proto.RemoteUnchanged, Held: held}, nil
 	}
 	text, err := rc.Text(p.On, agent.LaunchSpec{Role: agent.Role(r.Role), SessionID: r.ID, AgentSID: r.AgentSessionID,
 		Cwd: r.Cwd, RemoteControl: p.On, RemoteName: remoteName(r)})
@@ -82,14 +94,24 @@ func (s *Server) remote(p proto.SessionRemoteParams) (any, *proto.Error) {
 		if d := rc.DisableDialog; d != nil && !p.On {
 			go s.answerDialog(sess, *d, before)
 		}
-		return proto.SessionRemoteResult{RemoteControl: p.On, How: proto.RemotePrompted}, nil
+		return proto.SessionRemoteResult{RemoteControl: p.On, How: proto.RemotePrompted, Held: held}, nil
 	}
 	s.relaunch[p.ID] = p.On
 	s.mu.Unlock()
 	s.log.Printf("session %s: remote control %v: restarting the agent", p.ID, p.On)
 	sess.SetCloseNote(proto.ClosedRestarting)
 	sess.Stop(StopGrace)
-	return proto.SessionRemoteResult{RemoteControl: p.On, How: proto.RemoteRestarted}, nil
+	return proto.SessionRemoteResult{RemoteControl: p.On, How: proto.RemoteRestarted, Held: held}, nil
+}
+
+// remoteSetting is the project's coordinator_remote_control setting.
+func remoteSetting(slug string) bool {
+	cfg, err := config.Load()
+	if err != nil {
+		return false
+	}
+	safety, err := cfg.Safety(slug)
+	return err == nil && safety.CoordinatorRemoteControl
 }
 
 // Timing of answerDialog: the pasted text waits for the agent to be idle;

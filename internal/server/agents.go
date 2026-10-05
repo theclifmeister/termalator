@@ -255,7 +255,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		Logf:      s.log.Printf,
 		OnExit:    s.sessionExited,
 		// Set before Start: the first session.list must show it.
-		RemoteControl: r.RemoteControl,
+		RemoteControl: r.RemoteControl, RemoteHeld: r.RemoteHeld,
 		Agent: &session.AgentConfig{
 			Agent: a, AgentSID: r.AgentSessionID, Kickoff: launch.Kickoff, Home: home,
 			Context:  contextFor(r.Role, r.Project, r.Thread, r.Brief, ticker.StatePath(s.opts.Paths.Sessions)),

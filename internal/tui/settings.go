@@ -436,9 +436,9 @@ func projectSettings(slug string) []setting {
 		{label: "Pull request follow-up", help: "Prompt a thread when its pull request's checks fail, a reviewer asks for changes, or main moves past it.",
 			value:  func(m *dash) string { return onOff(safety(m).PRFollowup) },
 			change: toggle("pr_followup", func(s config.Safety) bool { return s.PRFollowup }, "pull request follow-up")},
-		{label: "Remote control", help: "New coordinators start so you can continue them from another device. prefix+r changes the running one.",
+		{label: "Remote control", help: "Coordinators keep remote control on, so you can continue them from another device: a new one starts with it, and tm turns it back on when it drops. prefix+r changes the running one; your off holds until it is started anew.",
 			value:  func(m *dash) string { return onOff(safety(m).CoordinatorRemoteControl) },
-			change: toggle("coordinator_remote_control", func(s config.Safety) bool { return s.CoordinatorRemoteControl }, "remote control for new coordinators"),
+			change: toggle("coordinator_remote_control", func(s config.Safety) bool { return s.CoordinatorRemoteControl }, "remote control for coordinators"),
 			note: func(m *dash) []string {
 				return remoteNote(safety(m).CoordinatorRemoteControl, m.data.Sessions, slug)
 			}},
@@ -502,10 +502,14 @@ func (m *dash) workingThreads(slug string) int {
 }
 
 // remoteNote says when the running coordinator's remote control differs
-// from the setting (prefix+r changed it since it started).
+// from the setting: prefix+r changed it since it started, or it dropped
+// and the ticker turns it back on once the coordinator is idle.
 func remoteNote(setting bool, sessions []proto.SessionInfo, slug string) []string {
 	for _, s := range sessions {
 		if s.Role == proto.RoleCoordinator && s.Project == slug && s.RemoteControl != setting {
+			if setting && !s.RemoteHeld {
+				return []string{styleWarn.Render("the running coordinator has it off; tm turns it on once the coordinator is idle")}
+			}
 			return []string{styleWarn.Render("the running coordinator has it " + onOff(s.RemoteControl) + " (prefix+r), until it is started anew")}
 		}
 	}

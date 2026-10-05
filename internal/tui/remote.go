@@ -32,12 +32,21 @@ func RemoteMessage(slug string, res proto.SessionRemoteResult) string {
 	state := map[bool]string{true: "on", false: "off"}[res.RemoteControl]
 	switch res.How {
 	case proto.RemoteUnchanged:
+		if res.Held {
+			return fmt.Sprintf("remote control is already off for %s; it stays off until the coordinator is started anew", slug)
+		}
 		return fmt.Sprintf("remote control is already %s for %s", state, slug)
 	case proto.RemoteRestarted:
+		if res.Held {
+			return fmt.Sprintf("remote control off for %s: the coordinator restarted and continues its conversation; it stays off until it is started anew, then the project's settings turn it on again", slug)
+		}
 		return fmt.Sprintf("remote control %s for %s: the coordinator restarted and continues its conversation; until it is started anew", state, slug)
 	}
 	if res.RemoteControl {
 		return fmt.Sprintf("remote control on for %s: listed there as %q; until the coordinator is started anew", slug, slug)
+	}
+	if res.Held {
+		return fmt.Sprintf("remote control off for %s; it stays off until the coordinator is started anew, then the project's settings turn it on again", slug)
 	}
 	return fmt.Sprintf("remote control off for %s; until the coordinator is started anew", slug)
 }

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -350,7 +351,8 @@ func TestSmokeDelegateFromList(t *testing.T) {
 	w.WaitFor("asked the coordinator to delegate T1", wait)
 	w.WaitFor("waiting on coordinator", wait)
 	items := waitInbox(t, env, "delegate: the user asks to delegate T1")
-	if strings.Contains(items, "delegate T2") || strings.Contains(items, "-t2 ") { // not "T2": item ids hold a time like T204629Z
+	// A whole word: item ids start with a UTC timestamp ("…T201400Z").
+	if regexp.MustCompile(`\bT2\b`).MatchString(items) {
 		t.Fatalf("inbox:\n%s", items)
 	}
 	nudge := env.WaitFake("prompt", agentWait, func(r FakeRecord) bool { return strings.HasPrefix(r.Str("text"), "[tm] ") })
