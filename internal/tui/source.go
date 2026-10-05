@@ -3,6 +3,7 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -28,6 +29,9 @@ type Data struct {
 	// goes up (docs/SPEC.md §4).
 	Alerts   uint64
 	Projects []ProjectData
+	// Defaults are the all-projects settings, which a project follows
+	// for each one it doesn't set; nil when they can't be read.
+	Defaults *config.Safety
 	Err      string // why the poll failed, shown in the header
 }
 
@@ -40,6 +44,9 @@ type ProjectData struct {
 	Counts map[string]int
 	// Safety are the project's settings; nil when they can't be read.
 	Safety *config.Safety
+	// Own are the settings the project sets itself (config keys); it
+	// follows all projects in the rest.
+	Own []string
 	// Unread counts every unhandled inbox item; Items are all of them,
 	// for the inbox view.
 	Unread int
@@ -80,8 +87,10 @@ type Source interface {
 	// first if none runs.
 	OpenProject(slug string, cols, rows int) (string, error)
 	// SetSetting changes a setting, on the human's keypress in a settings
-	// popup (docs/SPEC.md §11.2): key in table "" (the top level), "keys"
-	// or "projects.<slug>". It is refused when tm runs inside an agent.
+	// popup (docs/SPEC.md §11.2): key in table "" (the top level), "keys",
+	// "defaults" (all projects) or "projects.<slug>"; a nil value removes
+	// a project's own value, so it follows all projects again. It is
+	// refused when tm runs inside an agent.
 	SetSetting(table, key string, value any) error
 	// SetRepo adds or removes one of a project's repositories.
 	SetRepo(slug, path string, add bool) error
@@ -170,13 +179,18 @@ func (s *ServerSource) Load() Data {
 	} else {
 		d.ServerOK, d.Sessions, d.Alerts = true, res.Sessions, res.Alerts
 	}
+	if cfg, err := config.Load(); err == nil {
+		if all, err := cfg.AllProjects(); err == nil {
+			d.Defaults = &all
+		}
+	}
 	list, err := project.List()
 	if err != nil && d.Err == "" {
 		d.Err = err.Error()
 	}
 	for _, sum := range list {
 		pd := ProjectData{Slug: sum.Slug, Name: sum.Name, Goal: sum.Goal, Repos: sum.Repos,
-			Counts: sum.Counts, Safety: sum.Safety, Err: sum.Error,
+			Counts: sum.Counts, Safety: sum.Safety, Own: sum.Own, Err: sum.Error,
 			Checkouts: ticker.Checkouts(ticker.StatePath(s.Paths.Sessions), sum.Slug)}
 		if p, err := project.Open(sum.Slug); err == nil {
 			b, err := p.Tasks().Load()
@@ -258,18 +272,52 @@ func (s *ServerSource) SetSetting(table, key string, value any) error {
 	if s.Caller.IsAgent() {
 		return errHumanOnly
 	}
+	if table == config.DefaultsTable {
+		if err := config.SetDefaults(key, value); err != nil {
+			return err
+		}
+		journalAll(s.Caller, key, value)
+		return nil
+	}
 	slug, isProject := strings.CutPrefix(table, "projects.")
 	if !isProject {
 		return config.Set(table, key, value)
 	}
-	if err := config.SetProject(slug, key, value); err != nil {
+	detail := fmt.Sprint(value)
+	if value == nil {
+		if err := config.UnsetProject(slug, key); err != nil {
+			return err
+		}
+		detail = "(follows all projects)"
+	} else if err := config.SetProject(slug, key, value); err != nil {
 		return err
 	}
 	// The project's journal records the change, as every tm action.
 	if p, err := project.Open(slug); err == nil {
-		p.Journal(s.Caller, "settings."+key, slug, fmt.Sprint(value))
+		p.Journal(s.Caller, "settings."+key, slug, detail)
 	}
 	return nil
+}
+
+// journalAll records a change of an all-projects setting in the journal
+// of each project that follows it, i.e. doesn't set key itself.
+func journalAll(c caller.Caller, key string, value any) {
+	cfg, err := config.Load()
+	if err != nil {
+		return
+	}
+	if key == "auto_resolve" {
+		key = "auto_close"
+	}
+	list, _ := project.List()
+	for _, sum := range list {
+		if slices.Contains(cfg.Own(sum.Slug), key) {
+			continue
+		}
+		if p, err := project.Open(sum.Slug); err == nil {
+			p.Journal(c, "settings."+key, sum.Slug, fmt.Sprint(value)+" (all projects)")
+		}
+	}
 }
 
 func (s *ServerSource) SetRepo(slug, path string, add bool) error {

@@ -291,6 +291,10 @@ func (pv *projectView) box(m *dash) box {
 	case tabSettings:
 		body, sel, hits = pv.settings.lines(m, w)
 		keys = "enter change · + - number · ↑ ↓ move · " + keys
+		if l := pv.settings; l.sel < len(l.rows) && l.rows[l.sel].from != nil && l.rows[l.sel].from(m) == "" {
+			// The project sets it itself: x follows all projects again.
+			keys = "enter change · + - number · x follow all projects · ↑ ↓ move · esc close"
+		}
 	case tabKeys:
 		// The same list as the help.
 		body = keyLines(w)

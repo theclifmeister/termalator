@@ -40,7 +40,8 @@ var sessionKeys = []keyHelp{
 var popupKeys = []keyHelp{
 	{"← → 1-5", "previous / next tab, or pick one"},
 	{"↑ ↓", "move in the tab"},
-	{"enter space", "on a setting: change it (yolo mode asks first)"},
+	{"enter space", "on a setting: change it (yolo mode asks first); it is the project's own from then on"},
+	{"x", "on a setting the project sets itself: follow all projects again (the , settings' All projects tab)"},
 	{"+ x", "on the overview: add a repository / remove the selected one (asks first)"},
 	{"enter", "on a task (Tasks tab): show it, with what it is blocked on, or how to check it and whether its pull request merged"},
 	{"D", "on an open, ready or blocked task (Tasks tab, or the t list): delegate it; the coordinator starts a thread for it (asks first)"},
