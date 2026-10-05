@@ -10,6 +10,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	uv "github.com/charmbracelet/ultraviolet"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/theclifmeister/termilator/internal/view"
@@ -367,5 +369,70 @@ func TestSidebarDefaultKeepsSavedWidth(t *testing.T) {
 	}
 	if got := LoadLayout(filepath.Join(dir, "none.json")).Sidebar.Width; got != sideDefault {
 		t.Errorf("no ui.json: width %d", got)
+	}
+}
+
+// TestTreeHighlightRunsToBorder: in every icon set, on every kind of
+// row and in both widths, the highlighted row is in reverse video up to
+// the border, through the blank column before it, so a Nerd Font icon
+// in the last column (the bell) that draws wider than its cell shows
+// whole (T16); other rows leave both last cells plain. The blank column
+// stays blank either way, and the glyph sits right before it.
+func TestTreeHighlightRunsToBorder(t *testing.T) {
+	defer setIcons(IconsUnicode)
+	rows := []treeRow{
+		{kind: treeProject, slug: "termilator", state: "idle", hint: true, threads: 1, current: true},
+		{kind: treeProject, slug: "todo", state: "", threads: 0},
+		{kind: treeCoordinator, slug: "termilator", state: "idle", last: true},
+		{kind: treeThread, slug: "termilator", thread: "t-0008", title: "Small follow-ups", state: "working", pct: 65, last: true},
+	}
+	reverse := func(line string, w int) []bool {
+		buf := uv.NewScreenBuffer(w, 1)
+		uv.NewStyledString(line).Draw(buf, uv.Rect(0, 0, w, 1))
+		out := make([]bool, w)
+		for x := range w {
+			if c := buf.CellAt(x, 0); c != nil {
+				out[x] = c.Style.Attrs&uv.AttrReverse != 0
+			}
+		}
+		return out
+	}
+	for _, set := range IconChoices[1:] {
+		setIcons(set)
+		for _, w := range []int{sideSlim, view.SideMin, sideDefault, view.SideMax} {
+			cw := w - 1
+			slim := w <= sideSlim
+			for _, r := range rows {
+				if slim && r.kind != treeProject {
+					continue
+				}
+				for _, mode := range []string{"plain", "here", "cursor"} {
+					r := r
+					r.here, r.cursor = mode == "here", mode == "cursor"
+					focused := mode == "cursor"
+					l := treeLine(r, cw, slim, focused)
+					plain := []rune(ansi.Strip(l))
+					name := fmt.Sprintf("%s width %d %s row %q (%s)", set, w, mode, string(plain), r.slug+r.thread)
+					if got := ansi.StringWidth(string(plain)); got != cw {
+						t.Errorf("%s: %d cells", name, got)
+						continue
+					}
+					if plain[len(plain)-1] != ' ' {
+						t.Errorf("%s: the last column isn't blank", name)
+					}
+					rev := reverse(l, cw)
+					hl := mode != "plain"
+					if rev[cw-1] != hl || rev[cw-2] != hl {
+						t.Errorf("%s: last two cells reverse %v %v, want %v", name, rev[cw-2], rev[cw-1], hl)
+					}
+				}
+			}
+		}
+	}
+	// The bell is the project row's last glyph, right before the blank.
+	setIcons(IconsNerd)
+	l := []rune(ansi.Strip(treeLine(treeRow{kind: treeProject, slug: "termilator", hint: true, threads: 1, here: true}, sideDefault-1, false, false)))
+	if string(l[len(l)-2:]) != nerdIcons.hint+" " {
+		t.Errorf("project row %q doesn't end in the bell and the blank", string(l))
 	}
 }

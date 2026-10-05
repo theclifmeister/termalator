@@ -307,9 +307,26 @@ const sideGap = 1
 
 // treeLine is one tree row cw cells wide, its last sideGap blank: the
 // glyphs keep off the border, and the title (the slug in the slim strip)
-// gives up the room.
+// gives up the room. On the highlighted row the blank is highlighted
+// too: a Nerd Font icon in the last column draws wider than its cell,
+// and its overflow, in the highlight's foreground, would vanish on the
+// plain background.
 func treeLine(r treeRow, cw int, slim, focused bool) string {
-	return treeCells(r, max(cw-sideGap, 0), slim, focused) + strings.Repeat(" ", min(sideGap, cw))
+	gap := strings.Repeat(" ", min(sideGap, cw))
+	if hl, sel := treeSel(r, focused); hl {
+		gap = sel.Render(gap)
+	}
+	return treeCells(r, max(cw-sideGap, 0), slim, focused) + gap
+}
+
+// treeSel says whether r is the highlighted row (the keyboard's while
+// the sidebar has the focus, else the one you are on) and its style.
+func treeSel(r treeRow, focused bool) (bool, lipgloss.Style) {
+	sel := styleSel.Bold(true)
+	if focused {
+		return r.cursor, sel.Foreground(lipgloss.Cyan)
+	}
+	return r.here, sel
 }
 
 // treeCells is one tree row cw cells wide, in this console's icon set
@@ -340,11 +357,8 @@ func treeLine(r treeRow, cw int, slim, focused bool) string {
 // focus, the keyboard's row is instead, in the accent colour.
 func treeCells(r treeRow, cw int, slim, focused bool) string {
 	i := ic()
-	sel := styleSel.Bold(true)
-	if focused {
-		r.here = r.cursor
-		sel = sel.Foreground(lipgloss.Cyan)
-	}
+	var sel lipgloss.Style
+	r.here, sel = treeSel(r, focused)
 	rc := ""
 	if r.remote {
 		rc = i.remote
