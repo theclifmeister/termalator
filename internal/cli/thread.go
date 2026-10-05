@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -873,6 +874,7 @@ func (e *Env) threadResolve(p *project.Project, id string) error {
 		default:
 			did = append(did, "removed worktree "+r.Worktree)
 		}
+		var deleted []string
 		if r.Branch != "" && worktree.BranchExists(r.Repo, r.Branch) {
 			switch st := worktree.PRState(r.Repo, r.Branch); st {
 			case "MERGED":
@@ -880,6 +882,7 @@ func (e *Env) threadResolve(p *project.Project, id string) error {
 					did = append(did, "kept branch "+r.Branch+" ("+oneLine(err.Error(), 120)+")")
 				} else {
 					did = append(did, "deleted branch "+r.Branch+" (PR merged)")
+					deleted = append(deleted, r.Branch+" (PR merged)")
 				}
 			default:
 				// No merged PR (a repo without remote or gh, or one merged
@@ -890,12 +893,20 @@ func (e *Env) threadResolve(p *project.Project, id string) error {
 						did = append(did, "kept branch "+r.Branch+" ("+oneLine(err.Error(), 120)+")")
 					} else {
 						did = append(did, "deleted branch "+r.Branch+" (merged into "+base+")")
+						deleted = append(deleted, r.Branch+" (merged into "+base+")")
 					}
 				} else if st == "" {
 					did = append(did, "kept branch "+r.Branch+" (no merged PR found)")
 				} else {
 					did = append(did, "kept branch "+r.Branch+" (PR "+strings.ToLower(st)+")")
 				}
+			}
+		}
+		more, gone := otherBranches(p, r)
+		did, deleted = append(did, more...), append(deleted, gone...)
+		for _, d := range deleted {
+			if err := p.Journal(e.Caller, "branch.delete", id, d); err != nil {
+				return err
 			}
 		}
 	default:
@@ -917,6 +928,57 @@ func (e *Env) threadResolve(p *project.Project, id string) error {
 	}
 	fmt.Fprintln(e.Stdout, summary)
 	return nil
+}
+
+// otherBranches cleans up the thread's branches other than its own: the
+// head branches of the PRs its reports named, and local branches named
+// tm/<slug>/<id>-… (docs/SPEC.md §9). Each is deleted with git branch
+// -d, and only when worktree.PruneBranch finds nothing would be lost; an
+// open PR's branch is kept. It returns what it did, for the resolve
+// item, and the deleted branches, for the journal.
+func otherBranches(p *project.Project, r *thread.Record) (did, deleted []string) {
+	prOf := map[string]string{} // branch → its PR, "PR #12 merged", or ""
+	open := map[string]bool{}
+	for _, url := range thread.ReportPRs(p, r.ID) {
+		st, n, head := worktree.PRHead(r.Repo, url)
+		if head == "" || head == r.Branch || !worktree.BranchExists(r.Repo, head) {
+			continue
+		}
+		prOf[head] = fmt.Sprintf("PR #%d %s", n, strings.ToLower(st))
+		open[head] = open[head] || st == "OPEN"
+	}
+	for _, b := range worktree.ThreadBranches(r.Repo, p.Slug, r.ID) {
+		if _, ok := prOf[b]; !ok && b != r.Branch {
+			prOf[b] = ""
+		}
+	}
+	branches := make([]string, 0, len(prOf))
+	for b := range prOf {
+		branches = append(branches, b)
+	}
+	sort.Strings(branches)
+	for _, b := range branches {
+		pr := prOf[b]
+		if open[b] {
+			did = append(did, "kept branch "+b+" ("+pr+")")
+			continue
+		}
+		ok, how := worktree.PruneBranch(r.Repo, b)
+		if !ok {
+			if pr != "" {
+				how = pr + ", but " + how
+			}
+			did = append(did, "kept branch "+b+" ("+oneLine(how, 120)+")")
+			continue
+		}
+		how = "merged into " + how
+		if pr != "" {
+			how = pr + ", " + how
+		}
+		did = append(did, "deleted branch "+b+" ("+how+")")
+		deleted = append(deleted, b+" ("+how+")")
+	}
+	return did, deleted
 }
 
 // ownThread is the thread a report, status or done call is about: the
