@@ -215,6 +215,11 @@ func (m *dash) press(mo tea.Mouse) tea.Cmd {
 	}
 	switch mo.Button {
 	case tea.MouseLeft:
+		// A click gives its area the keyboard.
+		m.focus = focusList
+		if split, lw := m.split(); split && x > lw {
+			m.focus = focusDetails
+		}
 		return m.click(x, y, double)
 	case tea.MouseRight:
 		return m.rowMenu(x, y)
@@ -263,13 +268,18 @@ func (m *dash) wheel(x, y, d int) {
 		return
 	}
 	if split, lw := m.split(); split && x > lw {
-		if m.detailKey != m.sel {
-			m.detailKey, m.detailTop = m.sel, 0
-		}
-		m.detailTop = max(m.detailTop+3*d, 0)
+		m.scrollDetails(3 * d)
 		return
 	}
 	m.move(d)
+}
+
+// scrollDetails scrolls the details panel by d lines.
+func (m *dash) scrollDetails(d int) {
+	if m.detailKey != m.sel {
+		m.detailKey, m.detailTop = m.sel, 0
+	}
+	m.detailTop = max(m.detailTop+d, 0)
 }
 
 // rowAt is the key of the list's row at window row y ("" for none).

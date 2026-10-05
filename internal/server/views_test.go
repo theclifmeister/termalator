@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -318,6 +319,13 @@ func TestViewsTree(t *testing.T) {
 	}
 	if v = mustDo(t, vs, proto.MethodViewExpand, proto.ViewParams{Client: a.id, Project: "p"}); len(v.Expanded) != 0 {
 		t.Fatalf("collapse: %+v", v)
+	}
+	// view.sidesel moves the sidebar's keyboard row, on every console.
+	if v = mustDo(t, vs, proto.MethodViewSideSel, proto.ViewParams{Client: b.id, Key: "c:p"}); v.SideSel != "c:p" || !woken(a) {
+		t.Fatalf("sidesel: %+v", v)
+	}
+	if _, err := vs.do(proto.MethodViewSideSel, proto.ViewParams{Client: a.id, Key: strings.Repeat("x", view.MaxKey+1)}); err == nil {
+		t.Fatal("sidesel took an overlong key")
 	}
 	for _, m := range []string{proto.MethodViewProject, proto.MethodViewExpand} {
 		if _, err := vs.do(m, proto.ViewParams{Client: a.id}); err == nil {

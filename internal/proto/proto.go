@@ -11,8 +11,8 @@ import (
 // goes up when a method's meaning or the attach framing changes. 2: the
 // server-owned views (view.*), which consoles need. 3: the sidebar's
 // tree (view.project, view.expand). 4: view.drag, a divider dragged
-// with the mouse.
-const Protocol = 4
+// with the mouse. 5: view.sidesel, the sidebar's keyboard row.
+const Protocol = 5
 
 // Kind is what a connection is for.
 type Kind string

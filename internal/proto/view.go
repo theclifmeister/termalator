@@ -25,6 +25,8 @@ const (
 	MethodViewExpand = "view.expand"
 	// MethodViewSelect selects a dashboard row (Key).
 	MethodViewSelect = "view.select"
+	// MethodViewSideSel moves the sidebar's keyboard row to Key.
+	MethodViewSideSel = "view.sidesel"
 	// MethodViewSplit starts a shell in the focused pane's directory and
 	// shows it beside (Side) or below the focused pane.
 	MethodViewSplit = "view.split"

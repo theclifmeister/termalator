@@ -358,9 +358,10 @@ func prRef(url string) string {
 }
 
 // threadDetail is what shows under a selected thread row (§4): its full
-// todo list, its task's steps and its report's ## Next lines, styled and
-// indented by ind. The coordinator acts on them; the user only reads.
-func threadDetail(t *ThreadRow, ind string) []string {
+// todo list and its task's steps, styled and indented by ind, and, with
+// report set, its latest report's state. The coordinator alone acts on
+// reports, so their ## Next lines never show here; the user only reads.
+func threadDetail(t *ThreadRow, ind string, report bool) []string {
 	var out []string
 	if t.Status != nil && len(t.Status.Todos) > 0 {
 		out = append(out, ind+styleFaint.Render("todos:"))
@@ -374,16 +375,30 @@ func threadDetail(t *ThreadRow, ind string) []string {
 			out = append(out, fmt.Sprintf("%s  %s %d %s", ind, todoGlyph(map[bool]string{true: "done"}[st.Done]), st.N, oneLine(st.Text)))
 		}
 	}
-	if t.Report != nil && len(t.Report.Next) > 0 {
-		out = append(out, ind+styleFaint.Render(fmt.Sprintf("report %d (%s) next:", t.Reports, t.ReportState())))
-		for i, n := range t.Report.Next {
-			out = append(out, fmt.Sprintf("%s  %s %s", ind, styleAccent.Render(fmt.Sprint(i+1)), oneLine(n)))
-		}
+	if report && t.Reports > 0 {
+		out = append(out, ind+styleFaint.Render("report ")+reportState(t, false))
 	}
 	if len(out) == 0 {
 		out = append(out, ind+styleFaint.Render("no todos, steps or report yet"))
 	}
 	return out
+}
+
+// reportState is a thread's latest report as the user sees it: whether
+// the coordinator has read it, "new · for the coordinator" or "read",
+// after how many there are with count.
+func reportState(t *ThreadRow, count bool) string {
+	rs := "read"
+	if t.ReportState() == "new" {
+		rs = "new"
+	}
+	if count {
+		rs = fmt.Sprintf("%d, %s", t.Reports, rs)
+	}
+	if t.ReportState() == "new" {
+		return styleWarn.Render(rs) + styleFaint.Render(" · for the coordinator")
+	}
+	return rs
 }
 
 func joinSp(parts ...string) string {

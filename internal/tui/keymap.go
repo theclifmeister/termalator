@@ -32,6 +32,7 @@ var sessionKeys = []keyHelp{
 	{"prefix+ctrl+arrows", "resize: move the nearest divider (for half a second more, no prefix needed)"},
 	{"prefix+z x space", "zoom the focused pane, close it (its session keeps running), switch the layout"},
 	{"prefix+{ } b", "narrow / widen the sidebar, or make it a slim strip"},
+	{"prefix+tab", "the keyboard to the projects sidebar (its keys below); esc or tab back to the pane, which gets no keys meanwhile"},
 	{"prefix+u", "take over a watch-only thread pane and type into it (asks first; its coordinator is told)"},
 	{"prefix+r", "turn remote control of a coordinator on or off, to continue it from another device (asks first)"},
 	{"prefix+prefix", "send the prefix key itself to the program"},
@@ -68,10 +69,17 @@ func keyGroups() []keyGroup {
 			dash = append(dash, keyHelp{a.label, a.help})
 		}
 	}
+	var side []keyHelp
+	for _, a := range sideActions {
+		if a.label != "" {
+			side = append(side, keyHelp{a.label, a.help})
+		}
+	}
 	return []keyGroup{
 		{"On the dashboard", dash},
 		{"With the mouse", mouseKeys},
 		{"In a session", sessionKeys},
+		{"In the sidebar (tab, or prefix+tab in a session)", side},
 		{"In the project popup", popupKeys},
 	}
 }

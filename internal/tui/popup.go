@@ -60,14 +60,23 @@ func (g *boxGeo) onClose(x, y int) bool {
 	return g.close && y == g.y && x >= g.x+g.w-4 && x <= g.x+g.w-2
 }
 
+// sliver is the narrowest margin beside a popup that still shows what
+// is under it.
+const sliver = 4
+
 // popup draws b over the list.
 func (m *dash) popup(b box) string {
 	room := m.bodyRows()
 	base := m.listBody()
 	// A small window: the box takes the whole body.
 	bw := min(b.width, m.w-4)
-	if m.w < 44 {
+	switch {
+	case m.w < 44:
 		bw = m.w
+	case b.at == nil && bw >= m.w-4:
+		// No room for a margin worth showing: the box takes the width
+		// but a cleared column each side.
+		bw = m.w - 2
 	}
 	bw = max(bw, 8)
 	inner := bw - 4 // border and a space each side
@@ -122,9 +131,17 @@ func (m *dash) popup(b box) string {
 			body[i] = styleFaint.Render(plain)
 			continue
 		}
-		left := ansi.Cut(plain, 0, x)
-		right := ansi.Cut(plain, x+bw, m.w)
-		body[i] = styleFaint.Render(fit(left, x)) + lines[i-y] + reset + styleFaint.Render(right)
+		// Beside the box, a margin too narrow to read is cleared, so no
+		// cut-off letters of what is under it show.
+		left := fit(ansi.Cut(plain, 0, x), x)
+		right := fit(ansi.Cut(plain, x+bw, m.w), max(m.w-x-bw, 0))
+		if x < sliver {
+			left = strings.Repeat(" ", x)
+		}
+		if m.w-x-bw < sliver {
+			right = strings.Repeat(" ", max(m.w-x-bw, 0))
+		}
+		body[i] = styleFaint.Render(left) + lines[i-y] + reset + styleFaint.Render(right)
 	}
 	return m.frame("", body, -1, b.keys)
 }
