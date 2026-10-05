@@ -297,3 +297,36 @@ func TestRefusesBrokenFile(t *testing.T) {
 		t.Fatal("rewrote a broken file")
 	}
 }
+
+// TestCompleteBySetting: the ticker marks a task in review done on the
+// user's setting, with a note and a task.done journal line; a task not
+// in review is left alone, and agents are refused.
+func TestCompleteBySetting(t *testing.T) {
+	s, ev := newStore(t)
+	mustAdd(t, s, human, NewTask{Title: "Ship it", Status: "review"}, NewTask{Title: "Not yet", Status: "started"})
+	ticker := caller.Caller{Kind: caller.Ticker}
+	for _, c := range []caller.Caller{coord, thread} {
+		if _, err := s.CompleteBySetting(c, 1, "released in v1.0.0 (PR #7)"); code(err) != "human-only" {
+			t.Fatalf("%v: %v", c, err)
+		}
+	}
+	res, err := s.CompleteBySetting(ticker, 1, "released in v1.0.0 (PR #7)")
+	if err != nil || !res.Changed || res.Task.Status != Done {
+		t.Fatalf("%+v %v", res, err)
+	}
+	if !strings.Contains(res.Task.Notes, "done (2026-10-04): released in v1.0.0 (PR #7), by the project's setting") {
+		t.Fatalf("notes %q", res.Task.Notes)
+	}
+	if j := ev.journal[len(ev.journal)-1]; j != "ticker task.done T1 released in v1.0.0 (PR #7)" {
+		t.Fatalf("journal %q", j)
+	}
+	n := len(ev.journal)
+	for _, id := range []int{1, 2} { // done already; not in review
+		if res, err := s.CompleteBySetting(ticker, id, "merged (PR #8)"); err != nil || res.Changed {
+			t.Fatalf("T%d: %+v %v", id, res, err)
+		}
+	}
+	if got, _ := s.Get(2); got.Status != Started || len(ev.journal) != n {
+		t.Fatalf("T2 %s, journal %v", got.Status, ev.journal)
+	}
+}
