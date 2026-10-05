@@ -15,6 +15,7 @@ import (
 	"github.com/theclifmeister/termilator/internal/project"
 	"github.com/theclifmeister/termilator/internal/proto"
 	"github.com/theclifmeister/termilator/internal/server"
+	"github.com/theclifmeister/termilator/internal/thread"
 	"github.com/theclifmeister/termilator/internal/tui"
 )
 
@@ -117,7 +118,7 @@ func (e *Env) tookOver(s proto.SessionInfo) error {
 	if err != nil {
 		return err
 	}
-	return p.TookOver(e.Caller, s.Thread)
+	return p.TookOver(e.Caller, s.Thread, thread.Label(p, s.Thread))
 }
 
 // attach draws the view's layout on this terminal until it leaves it or

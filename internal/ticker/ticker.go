@@ -314,6 +314,7 @@ func liveState(r *thread.Record, sessions []proto.SessionInfo) (state, reason st
 }
 
 func (t *Ticker) item(p *project.Project, kind, subject, summary string, needsUser bool) {
+	summary = thread.Labelled(p, subject, summary)
 	if _, err := p.AddItem(kind, subject, summary, needsUser); err != nil {
 		t.o.Log.Printf("ticker: %s: inbox: %v", p.Slug, err)
 		return
@@ -533,9 +534,11 @@ var verbs = map[string]string{
 }
 
 // NudgeText is the one line an idle coordinator gets (§7.5). It holds
-// only fixed words and ids: never a summary, which could carry text from
-// a thread or a PR.
-func NudgeText(items []project.Item) string {
+// only fixed words, ids and what label makes of an id (thread.Label: the
+// task and title, which only the coordinator and tm write): never a
+// summary, which could carry text from a thread or a PR. A nil label
+// leaves ids bare.
+func NudgeText(items []project.Item, label func(id string) string) string {
 	const show = 5
 	var parts []string
 	for i, it := range items {
@@ -548,7 +551,11 @@ func NudgeText(items []project.Item) string {
 			verb = "new item"
 		}
 		if subjectRE.MatchString(it.Subject) {
-			parts = append(parts, it.Subject+" "+verb)
+			name := it.Subject
+			if label != nil {
+				name = label(it.Subject)
+			}
+			parts = append(parts, name+" "+verb)
 		} else {
 			parts = append(parts, verb)
 		}
@@ -600,7 +607,7 @@ func (t *Ticker) nudge(p *project.Project, sessions []proto.SessionInfo, now tim
 	if coord == nil || coord.State != "idle" || coord.Queued > 0 || now.Sub(pm.LastNudge) < t.o.Nudge {
 		return
 	}
-	if err := t.o.Host.Prompt(coord.ID, NudgeText(fresh)); err != nil {
+	if err := t.o.Host.Prompt(coord.ID, NudgeText(fresh, func(id string) string { return thread.Label(p, id) })); err != nil {
 		t.o.Log.Printf("ticker: %s: nudge: %v", p.Slug, err)
 		return
 	}

@@ -247,7 +247,7 @@ func TestSmokeThreadLifecycle(t *testing.T) {
 		t.Fatalf("thread list: %+v", list)
 	}
 	inbox := env.MustCLI("inbox", "list", "--project", "demo")
-	for _, w := range []string{"report: t-0001 handed in report 1 (T1)", "thread-done: t-0001 is done with T1"} {
+	for _, w := range []string{"report: t-0001 (T1 Fix the login) handed in report 1", "thread-done: t-0001 (T1 Fix the login) is done"} {
 		if !strings.Contains(inbox, w) {
 			t.Errorf("inbox lacks %q:\n%s", w, inbox)
 		}
@@ -399,7 +399,7 @@ func TestThreadRestartResumes(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(rec.Worktree, "wip.txt")); err != nil {
 		t.Fatal("dirty worktree removed")
 	}
-	if items := env.MustCLI("inbox", "list", "--project", "demo"); !strings.Contains(items, "thread-resolved: t-0001 resolved: kept worktree") {
+	if items := env.MustCLI("inbox", "list", "--project", "demo"); !strings.Contains(items, "thread-resolved: t-0001 (Small fix) resolved: kept worktree") {
 		t.Fatalf("inbox:\n%s", items)
 	}
 }
