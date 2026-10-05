@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,6 +21,7 @@ import (
 	"github.com/theclifmeister/termilator/internal/agent"
 	"github.com/theclifmeister/termilator/internal/caller"
 	"github.com/theclifmeister/termilator/internal/emu"
+	"github.com/theclifmeister/termilator/internal/keychain"
 	"github.com/theclifmeister/termilator/internal/proto"
 	"github.com/theclifmeister/termilator/internal/session"
 	"github.com/theclifmeister/termilator/internal/ticker"
@@ -188,6 +190,11 @@ func Run(ctx context.Context, opts Options) error {
 		logger.Printf("sessions.json: %v", err)
 	}
 	logger.Printf("server pid %d %s protocol %d listening on %s", os.Getpid(), s.build, proto.Protocol, p.Socket)
+	go func() {
+		if st := keychain.Probe(runtime.GOOS, os.Getenv, keychain.Run); st.Checked && !st.OK {
+			logger.Printf("keychain: %s; gh and git push over https will fail in sessions: %s", st.Detail, keychain.Fix)
+		}
+	}()
 
 	acceptDone := make(chan struct{})
 	go func() {
@@ -444,6 +451,8 @@ func (s *Server) dispatch(req proto.Request, peerPID int) (any, *proto.Error) {
 		return map[string]bool{"pong": true}, nil
 	case proto.MethodServerStatus:
 		return s.status(), nil
+	case proto.MethodServerKeychain:
+		return keychain.Probe(runtime.GOOS, os.Getenv, keychain.Run), nil
 	case proto.MethodServerStop:
 		var p proto.ServerStopParams
 		if err := decodeParams(req.Params, &p); err != nil {

@@ -11,6 +11,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/theclifmeister/termilator/internal/project"
+	"github.com/theclifmeister/termilator/internal/proto"
 	"github.com/theclifmeister/termilator/internal/server"
 	"github.com/theclifmeister/termilator/internal/thread"
 	"github.com/theclifmeister/termilator/internal/update"
@@ -308,5 +309,45 @@ func TestInstall(t *testing.T) {
 	d.Latest = func() (string, error) { return "", errors.New("dial tcp: no route") }
 	if got := Install(d); got[1].Status != Warn || !strings.Contains(got[1].Detail, "couldn't check") {
 		t.Fatalf("offline: %+v", got)
+	}
+}
+
+func TestKeychain(t *testing.T) {
+	d := testDeps(t)
+	restarted := false
+	d.Restart = func() error { restarted = true; return nil }
+	local := proto.KeychainStatus{Checked: true, OK: true, Session: "Aqua"}
+	d.Keychain = func() proto.KeychainStatus { return local }
+
+	if cs := keychainCheck(d, proto.KeychainStatus{Checked: true, OK: true}, nil); len(cs) != 1 || cs[0].Status != OK {
+		t.Fatalf("reachable: %+v", cs)
+	}
+	if cs := keychainCheck(d, proto.KeychainStatus{}, nil); len(cs) != 0 {
+		t.Fatalf("not checked (Linux): %+v", cs)
+	}
+	if cs := keychainCheck(d, proto.KeychainStatus{}, proto.Errorf(proto.ErrUnknownMethod, "unknown method")); len(cs) != 0 {
+		t.Fatalf("older server: %+v", cs)
+	}
+
+	bad := proto.KeychainStatus{Checked: true, OverSSH: true, Session: "Background",
+		Detail: "the server runs in a Background session, not the desktop's (Aqua)"}
+	cs := keychainCheck(d, bad, nil)
+	if len(cs) != 1 || cs[0].Status != Warn || !strings.Contains(cs[0].Detail, "Background") ||
+		!strings.Contains(cs[0].Detail, "not over SSH") || cs[0].Fix == nil {
+		t.Fatalf("unreachable, doctor on the Mac: %+v", cs)
+	}
+	if cs[0].Fix.Apply(); !restarted {
+		t.Fatal("the fix didn't restart the server")
+	}
+	// From an SSH login, or a session of the same server, a restart
+	// would start the server where it was: only say what to do.
+	for _, l := range []proto.KeychainStatus{
+		{Checked: true, OK: true, OverSSH: true, Session: "Aqua"},
+		{Checked: true, Session: "Background"},
+	} {
+		local = l
+		if cs := keychainCheck(d, bad, nil); len(cs) != 1 || cs[0].Fix != nil {
+			t.Fatalf("doctor in %+v: %+v", l, cs)
+		}
 	}
 }

@@ -62,6 +62,16 @@ tm server restart         # stop, start, resume the agents
 tm server stop --force    # a hung server: SIGKILL the pid that holds the lock
 ```
 
+### Over SSH (macOS)
+
+Start and restart the server from a terminal on the Mac itself, not over SSH. A server started from an SSH login runs in that login's security session, and so does every session under it: the keychain refuses them, so `gh` says its token is invalid and `git push` over https fails ("Interaction with the Security Server is not allowed"). Any `tm` command that starts the server over SSH (`tm server start` or `restart`, `tm update`'s restart, or a command that auto-starts it) still starts it, but warns:
+
+```
+tm: warning: the server was started over SSH, so its sessions can't use the keychain (gh, git push over https); restart the server from a terminal on the Mac itself, not over SSH: tm server restart
+```
+
+`tm doctor` shows whether the running server's sessions can reach the keychain (`server keychain`), wherever you run it from. The fix is `tm server restart` from a terminal on the Mac; `tm doctor --fix` offers that restart only when you run it there, outside tm's own sessions. Using tm over SSH is fine once the server runs; it's only the start that matters. On Linux none of this applies.
+
 `tm server stop` and `tm server restart` work whatever version the running server is. When a newer `tm` meets an older server, other commands say `the running tm server is older than this tm …; run 'tm server restart'`, and that is the fix: restart stops the old server (asking it in its own protocol, or with `SIGTERM` when it can't be asked) and starts this `tm`'s, which resumes the agents. tm only ever signals the process that holds this home's server lock and runs `tm server run`.
 
 A `tm` from before this fix can't do that: it prints `tm server speaks protocol 1 …, this tm speaks 4 …; run 'tm server restart'` and the restart fails the same way. Get out once with (on Linux the pid file is in `$XDG_RUNTIME_DIR/termilator/` when that is set):
@@ -96,7 +106,7 @@ Any `tm` command starts the server when needed, so you don't need a service. If 
 `tm doctor` checks your installation and changes nothing:
 - the `tm` build and libghostty-vt, git and gh;
 - how `tm` was installed (Homebrew, a direct download, or built from source) and whether a newer release exists, with the command that updates it;
-- the server: running and answering, the same build as this `tm` (a server of an older protocol is a warning; `tm doctor --fix` restarts it, agents are resumed), a previous crash, stale `tm.sock`, `server.pid` and session runtime dirs (it never starts a server);
+- the server: running and answering, the same build as this `tm` (a server of an older protocol is a warning; `tm doctor --fix` restarts it, agents are resumed), on macOS whether its sessions can reach the keychain (not when it was started over SSH; see [Over SSH](#over-ssh-macos)), a previous crash, stale `tm.sock`, `server.pid` and session runtime dirs (it never starts a server);
 - each agent's installed version against its manifest's `tested_versions`. An untested Claude still works, but termilator stops trusting its undocumented status file and messaging socket;
 - the sandbox tools Claude needs for threads: `sandbox-exec` on macOS, `bwrap` and `socat` on Linux;
 - leftovers: worktrees under `~/.termilator/worktrees` whose thread is resolved or gone, and `tm/<project>/…` branches already merged into the default branch.
@@ -129,6 +139,8 @@ tm server restart
 ```
 
 On a terminal the restart asks again before stopping agents that are mid-turn (`--yes` skips that). The restart works even when the server is older than the `tm` you ran `tm update` with.
+
+On macOS, upgrade and restart from a terminal on the Mac, not over SSH: a server restarted from an SSH login leaves its sessions without the keychain, so gh and `git push` over https fail in every agent ([Over SSH](#over-ssh-macos)). If you upgraded over SSH, `brew upgrade` is fine; leave the restart for when you are at the Mac, or redo it there.
 
 ### Upgrading from Termalator
 

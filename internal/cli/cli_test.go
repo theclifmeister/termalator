@@ -298,3 +298,23 @@ func TestServerAndSessionDispatch(t *testing.T) {
 		}
 	}
 }
+
+func TestWarnSSH(t *testing.T) {
+	ssh := func(k string) string {
+		if k == "SSH_CONNECTION" {
+			return "10.0.0.2 51000 10.0.0.1 22"
+		}
+		return ""
+	}
+	var b strings.Builder
+	warnSSH(&b, "darwin", ssh)
+	if !strings.HasPrefix(b.String(), "tm: warning: ") || !strings.Contains(b.String(), "tm server restart") {
+		t.Fatalf("darwin over SSH: %q", b.String())
+	}
+	b.Reset()
+	warnSSH(&b, "linux", ssh)
+	warnSSH(&b, "darwin", func(string) string { return "" })
+	if b.Len() != 0 {
+		t.Fatalf("warned without cause: %q", b.String())
+	}
+}

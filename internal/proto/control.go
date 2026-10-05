@@ -53,6 +53,9 @@ const (
 	MethodSessionStop  = "session.stop"
 	MethodSessionRead  = "session.read"
 	MethodSessionKeys  = "session.keys"
+	// MethodServerKeychain reports whether the server's sessions can reach
+	// the macOS login keychain (docs/SPEC.md §3.1).
+	MethodServerKeychain = "server.keychain"
 )
 
 // Control methods of the agent layer (M3).
@@ -109,6 +112,20 @@ type ServerStatus struct {
 	// Resumed lists agent sessions of the previous server that were
 	// relaunched with their agent session ids (docs/SPEC.md §3.6).
 	Resumed []string `json:"resumed,omitempty"`
+}
+
+// KeychainStatus is the result of server.keychain.
+type KeychainStatus struct {
+	// Checked is false where there is no keychain to check (Linux).
+	Checked bool `json:"checked"`
+	// OK means the server's sessions can reach the login keychain.
+	OK bool `json:"ok"`
+	// OverSSH means the server's environment is an SSH login's.
+	OverSSH bool `json:"over_ssh,omitempty"`
+	// Session is launchd's name for the server's session: Aqua for the
+	// desktop's, Background or StandardIO for an SSH login's.
+	Session string `json:"session,omitempty"`
+	Detail  string `json:"detail,omitempty"`
 }
 
 // ServerStopParams are the params of server.stop.
