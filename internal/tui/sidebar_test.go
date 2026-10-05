@@ -159,17 +159,23 @@ func TestTreeThreadRows(t *testing.T) {
 	}
 }
 
+// sideWidest is the widest sidebar the width sweeps draw: there is no
+// maximum, so well past the old 48.
+const sideWidest = 160
+
 // TestTreeThreadIDNeverCut: at every sidebar width and in every icon set
 // a thread row is as wide as the sidebar, ends in its state glyph and a
 // blank column, and shows its whole id or none of it: none only at the
 // narrowest widths, where it doesn't fit beside the state glyph. From
-// 25 columns the title shows too.
+// 25 columns the title shows too, and a wide sidebar (there is no
+// maximum width) shows a long one whole.
 func TestTreeThreadIDNeverCut(t *testing.T) {
 	defer setIcons(IconsUnicode)
-	r := treeRow{kind: treeThread, thread: "t-0042", title: "Prefix each thread row with its id", state: "working", pct: 40}
+	const title = "Prefix each thread row with its id, and keep the title whole when the sidebar is wide"
+	r := treeRow{kind: treeThread, thread: "t-0042", title: title, state: "working", pct: 40}
 	for _, set := range IconChoices[1:] {
 		setIcons(set)
-		for w := view.SideMin; w <= view.SideMax; w++ {
+		for w := view.SideMin; w <= sideWidest; w++ {
 			l := ansi.Strip(treeLine(r, w-1, false, false))
 			if got := ansi.StringWidth(l); got != w-1 {
 				t.Errorf("%s width %d: row %q is %d cells", set, w, l, got)
@@ -183,6 +189,9 @@ func TestTreeThreadIDNeverCut(t *testing.T) {
 			}
 			if w >= 25 && !strings.Contains(l, "t-0042 P") {
 				t.Errorf("%s width %d: row %q lacks the title", set, w, l)
+			}
+			if w >= 120 && (!strings.Contains(l, title) || strings.Contains(l, "…")) {
+				t.Errorf("%s width %d: row %q cuts the title", set, w, l)
 			}
 		}
 	}
@@ -399,7 +408,7 @@ func TestTreeHighlightRunsToBorder(t *testing.T) {
 	}
 	for _, set := range IconChoices[1:] {
 		setIcons(set)
-		for _, w := range []int{sideSlim, view.SideMin, sideDefault, view.SideMax} {
+		for _, w := range []int{sideSlim, view.SideMin, sideDefault, 48, 80, sideWidest} {
 			cw := w - 1
 			slim := w <= sideSlim
 			for _, r := range rows {
@@ -434,5 +443,49 @@ func TestTreeHighlightRunsToBorder(t *testing.T) {
 	l := []rune(ansi.Strip(treeLine(treeRow{kind: treeProject, slug: "termilator", hint: true, threads: 1, here: true}, sideDefault-1, false, false)))
 	if string(l[len(l)-2:]) != nerdIcons.hint+" " {
 		t.Errorf("project row %q doesn't end in the bell and the blank", string(l))
+	}
+}
+
+// TestSidebarWiderThanWindow: the sidebar has no maximum width. A wide
+// one shows a long title whole; in a window too narrow for it, it is cut
+// to leave the panes their room, and ui.json keeps the saved width, so
+// it comes back in a wider window. Keys and drags work on the width
+// shown.
+func TestSidebarWiderThanWindow(t *testing.T) {
+	src := &fakeSource{data: testData()}
+	ui := filepath.Join(t.TempDir(), "ui.json")
+	if err := os.WriteFile(ui, []byte(`{"sidebar":{"width":90}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := newDash(DashOptions{Source: src, Width: 200, Height: 30, UIFile: ui, State: DashState{Current: "beta"}})
+	m.setData(src.data)
+	if m.sideW() != 90 || m.w != 110 || !strings.Contains(whole(m), "t-0005 Write docs") {
+		t.Fatalf("wide window: sidebar %d, dashboard %d:\n%s", m.sideW(), m.w, whole(m))
+	}
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	if m.sideW() != 120-sideRoom || m.w != sideRoom || LoadLayout(ui).Sidebar.Width != 90 {
+		t.Fatalf("narrow window: sidebar %d, dashboard %d, ui.json %+v", m.sideW(), m.w, LoadLayout(ui))
+	}
+	m.Update(tea.WindowSizeMsg{Width: 200, Height: 30})
+	if m.sideW() != 90 {
+		t.Fatalf("wider again: sidebar %d", m.sideW())
+	}
+
+	// Dragging past the old 48 columns, then a narrower window and }: the
+	// saved width stays.
+	m.Update(tea.MouseClickMsg{X: 89, Y: 5, Button: tea.MouseLeft})
+	m.Update(tea.MouseMotionMsg{X: 69, Y: 5, Button: tea.MouseLeft})
+	m.Update(tea.MouseReleaseMsg{X: 69, Y: 5, Button: tea.MouseLeft})
+	if m.sideW() != 70 || LoadLayout(ui).Sidebar.Width != 70 {
+		t.Fatalf("drag: sidebar %d, ui.json %+v", m.sideW(), LoadLayout(ui))
+	}
+	m.Update(tea.WindowSizeMsg{Width: 110, Height: 30})
+	press(m, "}")
+	if m.sideW() != 110-sideRoom || LoadLayout(ui).Sidebar.Width != 70 {
+		t.Fatalf("} at the window's limit: sidebar %d, ui.json %+v", m.sideW(), LoadLayout(ui))
+	}
+	press(m, "{")
+	if m.sideW() != 110-sideRoom-2 || LoadLayout(ui).Sidebar.Width != 110-sideRoom-2 {
+		t.Fatalf("{ from the width shown: sidebar %d, ui.json %+v", m.sideW(), LoadLayout(ui))
 	}
 }
