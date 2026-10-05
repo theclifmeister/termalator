@@ -28,8 +28,13 @@ import (
 // actions.go, and the views opened on top of it are the overlays in
 // overlays.go.
 
-// refresh is how often the dashboard polls.
-const refresh = time.Second
+// refresh is how often the dashboard polls; an open task list reloads
+// every boardRefresh (it asks git where reviews stand), so no key
+// refreshes.
+const (
+	refresh      = time.Second
+	boardRefresh = 5 * time.Second
+)
 
 // DashState is what survives an attach: the selected row, the project
 // last attached to (for ] and [), and a message for the footer.
@@ -97,6 +102,9 @@ type DashResult struct {
 	// (Over), for the session's status bar: a key that couldn't open its
 	// popup says why there.
 	Message string
+	// Command is a prefix command for the session to run once attached
+	// again: prefix then r or tab over it, which are the session's own.
+	Command string
 }
 
 // Dashboard runs the dashboard until the user quits or picks a session.
@@ -169,10 +177,11 @@ type dash struct {
 	dragging bool // the mouse is moving the divider
 	sideDrag bool // the mouse is moving the sidebar's border
 
-	prefix   string // the prefix key, as tea names it
-	prefixed bool   // the prefix was typed: the next key is a command
-	quitting bool   // prefix+q: this console quits, popup or not
-	then     string // a key to run after the first poll
+	prefix   string    // the prefix key, as tea names it
+	prefixed bool      // the prefix was typed: the next key is a command
+	quitting bool      // prefix+q: this console quits, popup or not
+	then     string    // a key to run after the first poll
+	boardAt  time.Time // when the open task list last reloaded on its own
 
 	alerts uint64
 	seen   bool // the first poll arrived (no bell for old alerts)
@@ -283,6 +292,24 @@ func (m *dash) loadBoard(slug string) tea.Cmd {
 		}
 		return msg
 	}
+}
+
+// reloadBoards reloads the open task lists, every boardRefresh.
+func (m *dash) reloadBoards() tea.Cmd {
+	if time.Since(m.boardAt) < boardRefresh {
+		return nil
+	}
+	var cmds []tea.Cmd
+	if b := m.boardView(); b != nil {
+		cmds = append(cmds, m.loadBoard(b.slug))
+	}
+	if pv := m.projectPopupView(); pv != nil {
+		cmds = append(cmds, m.loadBoard(pv.slug))
+	}
+	if len(cmds) > 0 {
+		m.boardAt = time.Now()
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m *dash) Init() tea.Cmd { return tea.Batch(m.load(), m.waitView(), m.waitFeed()) }
@@ -459,7 +486,7 @@ func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dataMsg:
 		return m, m.setData(Data(msg))
 	case tickMsg:
-		return m, m.load()
+		return m, tea.Batch(m.load(), m.reloadBoards())
 	case boardMsg:
 		if pv := m.projectPopupView(); pv != nil && pv.slug == msg.slug && msg.err == nil {
 			pv.setBoard(msg.board)
@@ -729,9 +756,9 @@ func (m *dash) move(d int) {
 func (m *dash) paneSize() (int, int) { return m.w, max(m.h-2, 1) }
 
 // key sends a key to the topmost overlay, else to the list's actions.
-// The prefix works here as in a session, so the same keys do the same
-// things: prefix then a key is that key, prefix q quits from anywhere
-// and prefix d is a no-op.
+// The prefix works here as in a session (docs/SPEC.md §4, the key
+// table): prefix then a key is that prefix command, the same everywhere,
+// and never reaches a popup as a plain key.
 func (m *dash) key(k tea.KeyPressMsg) tea.Cmd {
 	if k.String() == "ctrl+c" {
 		return tea.Quit
@@ -743,19 +770,7 @@ func (m *dash) key(k tea.KeyPressMsg) tea.Cmd {
 	}
 	if m.prefixed {
 		m.prefixed = false
-		if k.String() == "q" {
-			m.quitting = true
-			return tea.Quit
-		}
-		if k.String() == "d" && m.over != nil {
-			// Over a session, as in it: the view's dashboard.
-			m.dropOver()
-			m.stack = nil
-			return m.call(proto.MethodViewDashboard, proto.ViewParams{})
-		}
-		if k.String() == "d" || k.String() == m.prefix || k.String() == "esc" {
-			return nil
-		}
+		return m.prefixCommand(k.String())
 	} else if k.String() == m.prefix {
 		m.prefixed = true
 		return nil
@@ -1058,7 +1073,7 @@ func (m *dash) frame(title string, body []string, sel int, keys string) string {
 	foot := []string{m.rule("")}
 	switch {
 	case m.prefixed:
-		keys = "prefix ▸ any dashboard key · q quit · d or esc cancels"
+		keys = prefixHint
 	case m.focus == focusSide && m.top() == nil:
 		keys = sideHint + " · tab next"
 	case m.area() == focusDetails && m.top() == nil:
