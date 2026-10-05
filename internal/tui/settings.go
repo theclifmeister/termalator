@@ -418,7 +418,7 @@ func projectSettings(slug string) []setting {
 				}
 				return set(m, "auto_close_days", n, msg, func(x *config.Safety) { x.AutoCloseDays = n })
 			}},
-		{label: "Pull request follow-up", help: "Prompt a thread when its pull request's checks fail or a reviewer asks for changes.",
+		{label: "Pull request follow-up", help: "Prompt a thread when its pull request's checks fail, a reviewer asks for changes, or main moves past it.",
 			value:  func(m *dash) string { return onOff(safety(m).PRFollowup) },
 			change: toggle("pr_followup", func(s config.Safety) bool { return s.PRFollowup }, "pull request follow-up")},
 		{label: "Remote control", help: "New coordinators start so you can continue them from another device. prefix+r changes the running one.",
@@ -427,6 +427,9 @@ func projectSettings(slug string) []setting {
 			note: func(m *dash) []string {
 				return remoteNote(safety(m).CoordinatorRemoteControl, m.data.Sessions, slug)
 			}},
+		{label: "Keep my checkout current", help: "Fast-forward your own checkout of each repository when its default branch is checked out, clean and only behind origin; else the overview says how far behind.",
+			value:  func(m *dash) string { return onOff(safety(m).FastForwardCheckout) },
+			change: toggle("fast_forward_checkout", func(s config.Safety) bool { return s.FastForwardCheckout }, "keeping your checkout current")},
 	}
 }
 

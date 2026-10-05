@@ -62,11 +62,16 @@ type Safety struct {
 	// the project (§8.2 [remote_control]). The prefix key and tm project
 	// remote change only the running session.
 	CoordinatorRemoteControl bool `json:"coordinator_remote_control"`
+	// FastForwardCheckout lets the ticker fast-forward the user's own
+	// checkout of a project repo to origin's default branch when that
+	// branch is checked out, clean and only behind (§7.5).
+	FastForwardCheckout bool `json:"fast_forward_checkout"`
 }
 
 // Defaults are the settings of a project that config.toml doesn't name.
 var Defaults = Safety{StartThreads: StartPropose, Yolo: false, CoordinatorApproves: true,
-	ParallelThreads: 10, AutoClose: CloseMerged, AutoCloseDays: 7, PRFollowup: true}
+	ParallelThreads: 10, AutoClose: CloseMerged, AutoCloseDays: 7, PRFollowup: true,
+	FastForwardCheckout: true}
 
 type rawSafety struct {
 	StartThreads        *string `toml:"start_threads"`
@@ -80,6 +85,7 @@ type rawSafety struct {
 	AutoResolve   *bool `toml:"auto_resolve"`
 	PRFollowup    *bool `toml:"pr_followup"`
 	CoordinatorRC *bool `toml:"coordinator_remote_control"`
+	FastForward   *bool `toml:"fast_forward_checkout"`
 }
 
 // Config is the parsed file.
@@ -180,6 +186,9 @@ func (c *Config) Safety(slug string) (Safety, error) {
 	}
 	if r.CoordinatorRC != nil {
 		s.CoordinatorRemoteControl = *r.CoordinatorRC
+	}
+	if r.FastForward != nil {
+		s.FastForwardCheckout = *r.FastForward
 	}
 	return s, nil
 }
