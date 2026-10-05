@@ -372,7 +372,7 @@ func (m *dash) dashItems() []menuItem {
 	return out
 }
 
-// enterWord is what enter does on r (attach, watch, open), "" nothing.
+// enterWord is what enter does on r (attach, open), "" nothing.
 func (m *dash) enterWord(r row) string {
 	for _, a := range actions {
 		if a.keys[0] == "enter" {
@@ -382,8 +382,8 @@ func (m *dash) enterWord(r row) string {
 	return ""
 }
 
-// rowItems are the menu of a list row: open it, take over a thread's
-// session (asking first), and the project's popup, tasks and inbox. Each
+// rowItems are the menu of a list row: open it, and the project's popup,
+// tasks and inbox. Each
 // selects the row again first, should the view have moved it.
 func (m *dash) rowItems(r row) []menuItem {
 	on := func(it menuItem) menuItem {
@@ -398,23 +398,10 @@ func (m *dash) rowItems(r row) []menuItem {
 	if word := m.enterWord(r); word != "" {
 		out = append(out, on(pressItem(word, "enter")))
 	}
-	if r.thread != nil && r.session != "" {
-		out = append(out, on(menuItem{label: "take over…", key: "prefix+u", run: func(m *dash) tea.Cmd { return m.takeOver(r.session, r.project) }}))
-	}
 	if r.project != "" {
 		out = append(out, on(pressItem("project popup", "a")), on(pressItem("tasks", "t")), on(pressItem("inbox", "i")))
 	}
 	return out
-}
-
-// takeOver watches a thread's session and asks, in the session, whether
-// to take it over (prefix+u there): the confirmation stays the session's.
-func (m *dash) takeOver(session, project string) tea.Cmd {
-	if m.busy {
-		return nil
-	}
-	m.result.TakeOver = session
-	return m.act(func() actionMsg { return actionMsg{attach: session, current: project} })
 }
 
 // sideMenu opens the menu of the sidebar row under a right-click.
@@ -450,10 +437,9 @@ func (m *dash) sideMenu(mo tea.Mouse) tea.Cmd {
 	default:
 		title = r.thread
 		items = append(items,
-			menuItem{label: "watch", key: "enter", run: func(m *dash) tea.Cmd {
+			menuItem{label: "attach", key: "enter", run: func(m *dash) tea.Cmd {
 				return m.act(func() actionMsg { return actionMsg{attach: t.Session, current: t.Project} })
-			}},
-			menuItem{label: "take over…", key: "prefix+u", run: func(m *dash) tea.Cmd { return m.takeOver(t.Session, t.Project) }})
+			}})
 	}
 	m.openMenu(title, items, 0, mo.Y-1)
 	return nil

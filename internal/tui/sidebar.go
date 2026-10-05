@@ -31,7 +31,7 @@ import (
 // threads hang under it on tree connectors (├─ └─), with their state
 // glyphs and progress in columns of their own. The current project is in
 // the accent colour, and the row you are on is highlighted. A click on a project shows its dashboard, on the
-// coordinator attaches to it, on a thread watches it. Its border column
+// coordinator attaches to it, on a thread attaches its session. Its border column
 // can be dragged, and { } b change it from the keys.
 //
 // Its state (width, slim strip, keyboard row) is part of the
@@ -439,7 +439,7 @@ func sideHitAt(all []treeRow, w, h, x, y int) (r treeRow, ok, border bool) {
 }
 
 // Target is where a click on the sidebar goes: a project's dashboard, its
-// coordinator (started when none runs), or a thread's session, watched.
+// coordinator (started when none runs), or a thread's session.
 type Target struct {
 	Project string
 	// Coordinator opens the project's coordinator; Session shows that
@@ -788,7 +788,7 @@ var sideActions = []sideAction{
 	{[]string{"down", "j"}, sideDown, "", ""},
 	{[]string{"right", "l"}, sideIn, "→ ←", "→ on a project goes down into it, ← on a row under a project up to it"},
 	{[]string{"left", "h"}, sideOut, "", ""},
-	{[]string{"enter"}, sideEnter, "enter", "what a click does: a project shows its dashboard, its coordinator attaches, a thread watches it"},
+	{[]string{"enter"}, sideEnter, "enter", "what a click does: a project shows its dashboard, its coordinator or a thread attaches"},
 	{[]string{"esc"}, sideBack, "esc", "back to the list (in a session: to the pane)"},
 }
 

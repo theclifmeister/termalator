@@ -29,7 +29,6 @@ var sessionKeys = []keyHelp{
 	{"prefix+i t , ?", "back to the dashboard with the inbox, tasks, settings or help open"},
 	{"prefix+{ } b", "narrow / widen the sidebar, or make it a slim strip"},
 	{"prefix+tab", "the keyboard to the projects sidebar (its keys below); esc or tab back to the pane, which gets no keys meanwhile"},
-	{"prefix+u", "take over a watch-only thread's pane and type into it (asks first; its coordinator is told)"},
 	{"prefix+r", "turn remote control of a coordinator on or off, to continue it from another device (asks first)"},
 	{"prefix+prefix", "send the prefix key itself to the program"},
 }
@@ -47,11 +46,11 @@ var popupKeys = []keyHelp{
 // key has one (TestEveryKeyHasMousePath).
 var mouseKeys = []keyHelp{
 	{"click", "a row selects it; a footer hint presses its key; a popup's tab, row or setting picks it (a number's − + step it); outside a popup closes it"},
-	{"double-click", "a row opens it: a coordinator attaches, a thread watches, a task shows"},
-	{"right-click", "a row of the list or the sidebar: a menu of its actions (open, watch, take over, its popup, …); in a session, the status bar or a pane that doesn't take the mouse: the session's menu"},
+	{"double-click", "a row opens it: a coordinator or a thread attaches, a task shows"},
+	{"right-click", "a row of the list or the sidebar: a menu of its actions (open or attach, its popup, …); in a session, the status bar or a pane that doesn't take the mouse: the session's menu"},
 	{menuButton + " menu", "every action, first in the footer; in a session, every prefix command, on the status bar"},
-	{"status bar", menuButton + " menu, prefix+d dashboard, prefix+u takes over, y yes"},
-	{"sidebar", "a project shows its dashboard, its coordinator attaches, a thread watches it"},
+	{"status bar", menuButton + " menu, prefix+d dashboard, y yes"},
+	{"sidebar", "a project shows its dashboard, its coordinator or a thread attaches"},
 	{"wheel", "moves through a list; scrolls the details panel and long popups"},
 	{"drag", "the divider beside the details panel, the sidebar's border"},
 	{"shift+drag", "select text, as usual; a pane whose program takes the mouse (Claude Code does) gets its clicks"},

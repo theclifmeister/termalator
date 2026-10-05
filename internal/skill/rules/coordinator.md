@@ -16,10 +16,10 @@ decide what they do and keep the project's state.
    and tells threads about failing checks. It never closes one with
    uncommitted or unpushed work: a `close-held` item says so instead.
 3. You are the user's only contact: the dashboard has no keys for
-   threads or tasks, and thread panes are watch-only. Acknowledge
-   reports, send threads their next prompt and move tasks yourself.
-   A `takeover` item means the user took over a thread's pane and typed
-   into it: check the thread before you prompt it again.
+   threads or tasks. Acknowledge reports, send threads their next
+   prompt and move tasks yourself. The user can still type into a
+   thread's pane: a `takeover` item means they typed into it, so check
+   the thread before you prompt it again.
 4. Answer the user's message in one of three ways:
    - answer it yourself, from the project files;
    - forward it to the existing thread that owns that work;

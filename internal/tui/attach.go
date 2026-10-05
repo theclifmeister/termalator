@@ -43,11 +43,10 @@ import (
 // padded. What stays here is this console's own: its window, the outer
 // terminal's modes, the local scrollback, the prefix and the takeovers.
 //
-// A thread's pane is watch-only: the user talks to coordinators, and
-// threads to their coordinator (docs/SPEC.md §4). Keys, paste and the
-// mouse don't reach it until the user takes it over with the prefix then
-// u and confirms; the thread's coordinator is then told. A takeover is
-// this console's, for this attach.
+// A thread's pane takes input like any other. The user talks to
+// coordinators, and threads to their coordinator (docs/SPEC.md §4), so
+// the first input this console sends a thread's pane during an attach
+// tells the thread's coordinator, without asking: a takeover.
 
 const (
 	frameInterval = time.Second / 120 // render cap
@@ -77,15 +76,13 @@ type Options struct {
 	// Log receives diagnostics (digest checks, key encodings); nil
 	// discards them.
 	Log *log.Logger
-	// Takeover tells a thread's coordinator that the user took over the
-	// thread's pane; nil tells no one.
+	// Takeover tells a thread's coordinator that the user typed into the
+	// thread's pane: once per thread for the attach, on its first input
+	// from this console. nil tells no one.
 	Takeover func(s proto.SessionInfo) error
 	// Sidebar configures the projects sidebar, which every view shows
 	// (docs/SPEC.md §4); nil is the defaults.
 	Sidebar *SidebarOptions
-	// TakeOver is a session to ask about taking over once its pane has
-	// the focus: "take over…" picked from a dashboard menu.
-	TakeOver string
 }
 
 // SidebarOptions configure the attach view's projects sidebar.
@@ -152,7 +149,7 @@ func Attach(opts Options) (res Result, err error) {
 	vc := opts.View
 	v := vc.View()
 	c.vc, c.me = vc, vc.Client()
-	c.prefix, c.takeover, c.askFor = prefix, opts.Takeover, opts.TakeOver
+	c.prefix, c.takeover, c.told = prefix, opts.Takeover, map[string]bool{}
 	c.bare, c.dashboard = v.Bare, !v.Bare
 	so := opts.Sidebar
 	if so == nil {
@@ -224,7 +221,6 @@ type pane struct {
 	held     bool // inside the program's 2026 hold
 	heldAt   time.Time
 	scrolled bool // the local viewport is scrolled back
-	watch    bool // a thread's pane, not taken over: no input reaches it
 	info     proto.SessionInfo
 	status   *thread.Status // a thread's STATUS.md, for the status bar
 	rect     view.Rect      // where it is in this window; empty when cropped away
@@ -263,14 +259,13 @@ type client struct {
 	prefix  chord
 	pending bool   // the prefix was typed: the next key is a command
 	flash   string // a note for the status bar until the next key
-	confirm *pane  // asking whether to take over this watch-only pane
 	// confirmRemote: asking whether to turn this coordinator's remote
 	// control on or off.
 	confirmRemote *pane
 	takeover      func(proto.SessionInfo) error
-	// askFor is a session to ask about taking over once its pane has the
-	// focus (a menu's "take over…").
-	askFor string
+	// told are the threads' sessions whose coordinator this attach has
+	// told of a takeover.
+	told map[string]bool
 
 	// The mouse (attachmouse.go): the open menu and the status bar's
 	// buttons, by column from its start.
@@ -350,7 +345,7 @@ func (c *client) open(id string) (*pane, error) {
 		conn.Close()
 		return nil, err
 	}
-	p := &pane{conn: conn, r: r, info: *info, watch: info.Role == proto.RoleThread,
+	p := &pane{conn: conn, r: r, info: *info,
 		status: threadStatuses([]proto.SessionInfo{*info})[info.ID]}
 	// The stream starts with the pane's snapshot.
 	typ, payload, err := conn.ReadFrame()
@@ -538,9 +533,6 @@ func (c *client) free(p *pane) {
 	}
 	if c.focus == p {
 		c.focus = nil
-	}
-	if c.confirm == p {
-		c.confirm = nil
 	}
 }
 
@@ -733,13 +725,6 @@ func (c *client) relayout() {
 	c.paneRows = max(c.rows-c.geo.Status, 1)
 	own := view.Rect{X: c.sideW, Y: 0, W: c.paneCols, H: c.paneRows}
 	c.focus = c.panes[c.v.Focus]
-	if c.askFor != "" && c.focus != nil && c.focus.info.ID == c.askFor {
-		// A menu's "take over…": ask now its pane has the focus.
-		if c.focus.watch {
-			c.confirm = c.focus
-		}
-		c.askFor = ""
-	}
 	vis := c.visible()
 	// The pane draws alone, unless it shares the window with the sidebar
 	// or the status bar (which has an empty row above it).
@@ -806,7 +791,7 @@ func (c *client) needClaim() bool {
 	need := c.v.Latest != c.me
 	for _, p := range c.visible() {
 		r := c.geo.Panes[p.info.ID]
-		if cols, rows := p.mirror.Size(); !p.watch && (int(cols) != r.W || int(rows) != r.H) {
+		if cols, rows := p.mirror.Size(); int(cols) != r.W || int(rows) != r.H {
 			need = true
 		}
 	}
@@ -938,11 +923,12 @@ func (c *client) handle(ev uv.Event) {
 			return
 		}
 		p := c.focus
-		if p == nil || p.watch || c.sideFocus {
+		if p == nil || c.sideFocus {
 			c.mu.Unlock()
 			return
 		}
 		b, err := emu.Paste(p.mirror, []byte(e.Content))
+		c.typed(p)
 		claim := c.needClaim()
 		c.mu.Unlock()
 		if claim {
@@ -975,10 +961,6 @@ func (c *client) key(k uv.Key) {
 	}
 	if c.menu != nil {
 		c.menuKey(k)
-		return
-	}
-	if p := c.confirm; p != nil {
-		c.answerTakeover(p, keyName(k) == "y")
 		return
 	}
 	if p := c.confirmRemote; p != nil {
@@ -1017,8 +999,6 @@ func (c *client) run(do prefixDo) {
 		c.detachThen(do.then)
 	case do.pane != "":
 		c.paneCommand(do.pane)
-	case do.takeover:
-		c.askTakeover()
 	case do.remote:
 		c.askRemote()
 	}
@@ -1031,8 +1011,6 @@ type prefixDo struct {
 	detach bool   // detach, then run then on the dashboard
 	then   string //
 	pane   string // a sidebar command (paneCommands)
-	// takeover asks to take over the focused watch-only pane.
-	takeover bool
 	// remote asks to turn the focused coordinator's remote control on
 	// or off.
 	remote bool
@@ -1058,8 +1036,8 @@ func keyName(k uv.Key) string {
 
 // prefixStep decides what k does. After the prefix: d detaches, a
 // dashboard key detaches and runs there (only when there is a dashboard
-// to go back to), a pane command acts on the panes, u takes over a
-// watch-only pane, the prefix again goes to the program, and anything
+// to go back to), a pane command acts on the panes, r asks to turn remote
+// control on or off, the prefix again goes to the program, and anything
 // else cancels.
 func prefixStep(prefix chord, pending bool, k uv.Key, dashboard bool) prefixDo {
 	name := keyName(k)
@@ -1070,8 +1048,6 @@ func prefixStep(prefix chord, pending bool, k uv.Key, dashboard bool) prefixDo {
 		return prefixDo{input: true}
 	case name == "d":
 		return prefixDo{detach: true}
-	case name == "u":
-		return prefixDo{takeover: true}
 	case name == "r":
 		return prefixDo{remote: true}
 	case prefixCommands[name] && dashboard:
@@ -1132,47 +1108,18 @@ func (c *client) paneCommand(cmd string) {
 	c.poke()
 }
 
-// askTakeover asks, in the status bar, whether to take over the focused
-// pane when it is watch-only.
-func (c *client) askTakeover() {
-	if !c.lock() {
+// typed notes input from this console to p: the first into a thread's
+// pane during this attach tells its coordinator, without asking
+// (docs/SPEC.md §4). c.mu held.
+func (c *client) typed(p *pane) {
+	if p.info.Role != proto.RoleThread || c.told[p.info.ID] {
 		return
 	}
-	switch {
-	case c.focus == nil:
-	case c.focus.watch:
-		c.confirm = c.focus
-	default:
-		c.flash = "this pane takes your keys already"
-	}
-	c.status()
-	c.mu.Unlock()
-	c.poke()
-}
-
-// answerTakeover takes over p on yes: it takes keys from now on, in this
-// console, for this attach, and its coordinator is told. c.mu held;
-// released here.
-func (c *client) answerTakeover(p *pane, yes bool) {
-	c.confirm = nil
-	yes = yes && !p.gone
-	if yes {
-		p.watch = false
-		c.flash = "you took over " + paneName(p.info) + "; its coordinator is told"
-	} else {
-		c.flash = "still watching"
-	}
-	c.status()
-	info, tell := p.info, c.takeover
-	c.mu.Unlock()
-	c.poke()
-	if yes && tell != nil {
+	c.told[p.info.ID] = true
+	if tell, info := c.takeover, p.info; tell != nil {
 		go func() {
-			if err := tell(info); err != nil && c.lock() {
-				c.flash = "telling the coordinator failed: " + err.Error()
-				c.status()
-				c.mu.Unlock()
-				c.poke()
+			if err := tell(info); err != nil {
+				c.log.Printf("takeover %s: %v", info.ID, err)
 			}
 		}()
 	}
@@ -1200,22 +1147,9 @@ func (c *client) status() {
 		c.statusText, c.statusHits = line, questionHits(line)
 		return
 	}
-	if p := c.confirm; p != nil {
-		line := "\x1b[7m" + fit(" take over "+paneName(p.info)+" and type into it? Its coordinator is told. y yes · any other key no", c.paneCols) + "\x1b[27m"
-		if c.single {
-			c.focus.r.SetStatus(line)
-		}
-		c.statusText, c.statusHits = line, questionHits(line)
-		return
-	}
 	where := ""
-	switch {
-	case c.sideFocus:
+	if c.sideFocus {
 		where = sideHint
-	case c.focus.watch:
-		where = "watch-only, " + takeOverHint
-	case c.focus.info.Role == proto.RoleThread:
-		where = "taken over"
 	}
 	if c.flash != "" {
 		where = strings.TrimPrefix(where+" · "+c.flash, " · ")
@@ -1227,8 +1161,7 @@ func (c *client) status() {
 	c.statusText, c.statusHits = line, hits
 }
 
-// input sends a key to the focused program, unless its pane is
-// watch-only.
+// input sends a key to the focused program.
 func (c *client) input(k uv.Key) {
 	if !c.lock() {
 		return
@@ -1252,10 +1185,6 @@ func (c *client) input(k uv.Key) {
 		c.poke()
 		return
 	}
-	if p.watch {
-		c.mu.Unlock()
-		return
-	}
 	if p.scrolled {
 		p.mirror.ScrollViewportBottom()
 		p.scrolled = false
@@ -1266,6 +1195,9 @@ func (c *client) input(k uv.Key) {
 	var err error
 	if ok {
 		b, err = c.enc.Key(p.mirror, ek)
+	}
+	if err == nil && len(b) > 0 {
+		c.typed(p)
 	}
 	claim := c.needClaim()
 	c.mu.Unlock()
@@ -1281,8 +1213,8 @@ func (c *client) input(k uv.Key) {
 // mouse handles a mouse event (attachmouse.go): the open menu, a
 // question in the status bar, the sidebar and the status bar are tm's.
 // Over the pane, a click takes the keyboard back from the sidebar; the
-// event goes to the program when it tracks the mouse and the pane isn't
-// watch-only, and otherwise a right-click opens the ≡ menu. The outer terminal reports the mouse
+// event goes to the program when it tracks the mouse, and otherwise a
+// right-click opens the ≡ menu. The outer terminal reports the mouse
 // while the focused program tracks it or the sidebar shows (see
 // outerModes).
 func (c *client) mouse(ev uv.Event) {
@@ -1296,14 +1228,10 @@ func (c *client) mouse(ev uv.Event) {
 	case c.menu != nil:
 		c.menuMouse(m)
 		return
-	case press && (c.confirm != nil || c.confirmRemote != nil):
+	case press && c.confirmRemote != nil:
 		// A click on y yes says yes; any other click, no.
 		yes := status && m.Button == emu.MouseLeft && hintAt(c.statusHits, m.X-c.sideW) == "y"
-		if p := c.confirm; p != nil {
-			c.answerTakeover(p, yes)
-		} else {
-			c.answerRemote(c.confirmRemote, yes)
-		}
+		c.answerRemote(c.confirmRemote, yes)
 		return
 	case c.side != nil && (m.X < c.sideW || c.side.drag):
 		if press && m.Button == emu.MouseRight && !c.side.drag {
@@ -1333,13 +1261,13 @@ func (c *client) mouse(ev uv.Event) {
 		c.status()
 		c.poke()
 	}
-	if p.watch || !p.mirror.Modes().MouseTracking() {
+	if !p.mirror.Modes().MouseTracking() {
 		// tm's: the program doesn't take the mouse.
 		if press && m.Button == emu.MouseRight {
 			c.openMenu("", c.sessionItems(), m.X, m.Y, false)
 		}
 		_, wheel := ev.(uv.MouseWheelEvent)
-		claim := !p.watch && (click || wheel) && c.needClaim()
+		claim := (click || wheel) && c.needClaim()
 		c.mu.Unlock()
 		if claim {
 			c.claim(p.info.ID)
@@ -1360,6 +1288,9 @@ func (c *client) mouse(ev uv.Event) {
 	if m.X < int(cols) && m.Y < int(rows) {
 		b, err = c.enc.Mouse(p.mirror, m)
 	}
+	if press && err == nil && len(b) > 0 {
+		c.typed(p)
+	}
 	c.mu.Unlock()
 	if claim {
 		c.claim(p.info.ID)
@@ -1374,7 +1305,7 @@ func (c *client) focusReport(gained bool) {
 		return
 	}
 	p := c.focus
-	if p == nil || p.watch {
+	if p == nil {
 		c.mu.Unlock()
 		return
 	}

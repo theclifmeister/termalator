@@ -36,7 +36,6 @@ type viewHost interface {
 
 // paneInfo is what views know about a session.
 type paneInfo struct {
-	role string
 	// follows is false for an agent whose manifest says screen.resize =
 	// "explicit": typing doesn't resize it.
 	follows bool
@@ -294,10 +293,9 @@ func (vs *views) sessionGone(id string) {
 }
 
 // resize sizes the sessions lv shows to their rectangles at its size.
-// With typed set (a claim from typing) only the sessions that follow
-// typing are resized, and a thread's only when it is the one typed into
-// (watch-only panes never resize). vs.mu held.
-func (vs *views) resize(lv *liveView, typed string, claim bool) {
+// With claim set (a claim from typing) only the sessions that follow
+// typing are resized. vs.mu held.
+func (vs *views) resize(lv *liveView, claim bool) {
 	v := &lv.v
 	if v.Mode != view.ModeLayout || v.Cols == 0 || v.Rows == 0 {
 		return
@@ -309,7 +307,7 @@ func (vs *views) resize(lv *liveView, typed string, claim bool) {
 		if !ok || !alive || r.W < 1 || r.H < 1 {
 			continue
 		}
-		if claim && (!info.follows || info.role == proto.RoleThread && id != typed) {
+		if claim && !info.follows {
 			continue
 		}
 		vs.host.resizePane(id, uint16(r.W), uint16(r.H))
@@ -359,7 +357,7 @@ func (vs *views) do(method string, p proto.ViewParams) (view.View, *proto.Error)
 		m.active = time.Now()
 		vs.makeLatest(lv, m)
 	}
-	resize, claim, typed := false, false, ""
+	resize, claim := false, false
 	switch method {
 	case proto.MethodViewAttach:
 		if !vs.alive(p.Session) {
@@ -406,13 +404,13 @@ func (vs *views) do(method string, p proto.ViewParams) (view.View, *proto.Error)
 			break
 		}
 		layout()
-		resize, claim, typed = true, true, p.Session
+		resize, claim = true, true
 	default:
 		return before, proto.Errorf(proto.ErrUnknownMethod, "unknown method %q", method)
 	}
 	v.Normalize()
 	if resize {
-		vs.resize(lv, typed, claim)
+		vs.resize(lv, claim)
 	}
 	vs.fill(lv)
 	if !view.Equal(before, *v) {
@@ -428,8 +426,7 @@ func (s *Server) pane(id string) (paneInfo, bool) {
 	if perr != nil {
 		return paneInfo{}, false
 	}
-	cfg := sess.Config()
-	return paneInfo{role: cfg.Role, follows: agent.FollowsTyping(sess.Agent()), sized: sess.Sized()}, true
+	return paneInfo{follows: agent.FollowsTyping(sess.Agent()), sized: sess.Sized()}, true
 }
 
 func (s *Server) resizePane(id string, cols, rows uint16) {

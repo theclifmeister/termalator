@@ -106,14 +106,14 @@ func TestSmokeMouseStatusBar(t *testing.T) {
 	w.WaitExit(wait)
 }
 
-// TestSmokeMousePopupsAndTakeOver: a right-click on a project in the
+// TestSmokeMousePopupsAndAttach: a right-click on a project in the
 // sidebar opens its menu, which shows its dashboard; the footer's a
 // project opens the popup, a click on a tab switches to it and a click on
 // a setting changes it; a click outside closes the popup. A right-click
-// on the thread's row, then take over…, watches it and asks in the status
-// bar; a click on y yes takes it over, and the coordinator is told. In
-// the session, the sidebar's right-click menu opens the coordinator.
-func TestSmokeMousePopupsAndTakeOver(t *testing.T) {
+// on the thread's row, then attach, attaches it; a click into it reaches
+// the program and tells the coordinator, without asking. In the session,
+// the sidebar's right-click menu opens the coordinator.
+func TestSmokeMousePopupsAndAttach(t *testing.T) {
 	env, projDir, _ := threadEnv(t)
 	startThread(t, env, projDir)
 	w := env.Window(120, 30)
@@ -137,11 +137,13 @@ func TestSmokeMousePopupsAndTakeOver(t *testing.T) {
 
 	x, y := w.TextAt("t-0001 Small fix", 1)
 	w.RightClick(x, y)
-	w.WaitFor("take over…", wait)
-	w.ClickText("take over…", 1)
-	w.WaitUntil("asked to take over", wait, func(sc string) bool { return lastLine(sc, "take over t-0001 and type into it?") })
-	w.ClickText("y yes", 29)
-	w.WaitUntil("taken over", wait, func(sc string) bool { return lastLine(sc, "you took over t-0001") })
+	w.WaitFor("attach", wait)
+	if strings.Contains(w.Screen(), "take over") {
+		t.Fatalf("the thread's menu has take over:\n%s", w.Screen())
+	}
+	w.ClickText("attach", y)
+	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, "demo t-0001") })
+	w.Type("x")
 	waitInbox(t, env, "takeover")
 
 	// In the session, a right-click on the sidebar's coordinator row opens

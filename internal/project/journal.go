@@ -77,14 +77,14 @@ func (p *Project) AddItem(kind, subject, summary string, needsUser bool) (*Item,
 	return it, nil
 }
 
-// KindTakeover is the inbox item that tells the coordinator the user took
-// over a thread's watch-only pane and may type into it (§4).
+// KindTakeover is the inbox item that tells the coordinator the user typed
+// into a thread's pane (§4).
 const KindTakeover = "takeover"
 
-// TookOver records that the user took over thread id's pane: an inbox
+// TookOver records that the user typed into thread id's pane: an inbox
 // item for the coordinator and a journal line.
 func (p *Project) TookOver(c caller.Caller, id string) error {
-	if _, err := p.AddItem(KindTakeover, id, "the user took over "+id+"'s pane and may type into it", false); err != nil {
+	if _, err := p.AddItem(KindTakeover, id, "the user typed into "+id+"'s pane", false); err != nil {
 		return err
 	}
 	return p.Journal(c, "thread.takeover", id, "")

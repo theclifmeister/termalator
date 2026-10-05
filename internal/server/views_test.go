@@ -26,7 +26,7 @@ type fakeHost struct {
 func newFakeHost(ids ...string) *fakeHost {
 	h := &fakeHost{panes: map[string]paneInfo{}, sizes: map[string][2]uint16{}}
 	for _, id := range ids {
-		h.panes[id] = paneInfo{role: proto.RoleShell, follows: true}
+		h.panes[id] = paneInfo{follows: true}
 	}
 	return h
 }
@@ -162,11 +162,11 @@ func TestViewsSharedMain(t *testing.T) {
 	}
 }
 
-func TestViewsClaimSkipsWatchOnlyAndExplicit(t *testing.T) {
+func TestViewsClaimSkipsExplicit(t *testing.T) {
 	h := newFakeHost("co", "th", "inl")
-	h.panes["co"] = paneInfo{role: proto.RoleCoordinator, follows: true, sized: true}
-	h.panes["th"] = paneInfo{role: proto.RoleThread, follows: true, sized: true}
-	h.panes["inl"] = paneInfo{role: proto.RoleShell, follows: false}
+	h.panes["co"] = paneInfo{follows: true, sized: true}
+	h.panes["th"] = paneInfo{follows: true, sized: true}
+	h.panes["inl"] = paneInfo{follows: false}
 	vs := newViews(h, "", nil)
 	a, _ := join(t, vs, proto.ViewSubscribeParams{View: "x", Cols: 120, Rows: 40})
 	b, _ := join(t, vs, proto.ViewSubscribeParams{View: "x", Cols: 100, Rows: 30})
@@ -177,7 +177,7 @@ func TestViewsClaimSkipsWatchOnlyAndExplicit(t *testing.T) {
 	if r := h.takeResizes(); len(r) != 1 || r[0][:3] != "co " {
 		t.Fatalf("claim resized %v", r)
 	}
-	// Typing into the thread (taken over) resizes it too.
+	// Typing into a thread resizes it like any other pane.
 	mustDo(t, vs, proto.MethodViewAttach, proto.ViewParams{Client: a.id, Session: "th"})
 	mustDo(t, vs, proto.MethodViewInput, proto.ViewParams{Client: b.id, Session: "th"})
 	if r := h.takeResizes(); len(r) != 1 || r[0][:3] != "th " {
@@ -197,20 +197,20 @@ func TestViewsClaimSkipsWatchOnlyAndExplicit(t *testing.T) {
 }
 
 // TestViewsFirstShowFills: a pane no console has sized yet takes its
-// rectangle in the first view that shows it, watch-only threads too;
+// rectangle in the first view that shows it, threads too;
 // after that, showing it in another view or console never resizes it,
 // and agents that resize only explicitly are never filled.
 func TestViewsFirstShowFills(t *testing.T) {
 	h := newFakeHost("co", "th", "inl")
-	h.panes["th"] = paneInfo{role: proto.RoleThread, follows: true}
-	h.panes["inl"] = paneInfo{role: proto.RoleShell, follows: false}
+	h.panes["th"] = paneInfo{follows: true}
+	h.panes["inl"] = paneInfo{follows: false}
 	vs := newViews(h, "", nil)
 	a, _ := join(t, vs, proto.ViewSubscribeParams{Cols: 120, Rows: 40, Sidebar: &view.Sidebar{Width: 20}})
 	mustDo(t, vs, proto.MethodViewAttach, proto.ViewParams{Client: a.id, Session: "co"})
 	if r := h.takeResizes(); !slices.Equal(r, []string{"co 100×38"}) {
 		t.Fatalf("the coordinator's first showing resized %v", r)
 	}
-	// The watch-only thread fills too, the first time it shows.
+	// The thread fills too, the first time it shows.
 	mustDo(t, vs, proto.MethodViewAttach, proto.ViewParams{Client: a.id, Session: "th"})
 	if r := h.takeResizes(); !slices.Equal(r, []string{"th 100×38"}) {
 		t.Fatalf("the thread's first showing resized %v", r)

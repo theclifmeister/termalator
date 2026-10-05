@@ -18,7 +18,7 @@ var (
 
 // TestSmokeSidebarKeys: the sidebar from the keyboard (docs/SPEC.md §4).
 // On the dashboard tab gives it the keyboard; ↓ moves, → goes into a
-// project and ← back up to it, enter on a thread watches it. In the session prefix+tab
+// project and ← back up to it, enter on a thread attaches it. In the session prefix+tab
 // gives it the keyboard, esc gives it back, enter on a coordinator
 // attaches it. Meanwhile no key reaches the pane.
 func TestSmokeSidebarKeys(t *testing.T) {
@@ -37,18 +37,18 @@ func TestSmokeSidebarKeys(t *testing.T) {
 	w.WaitFor("sidebar: ↑ ↓ move", wait)
 
 	// ↓ ↓ past beta's coordinator to demo, → into it (its coordinator),
-	// ← back up to demo, → again, ↓ to its thread; enter watches it.
+	// ← back up to demo, → again, ↓ to its thread; enter attaches it.
 	for _, k := range []emu.Key{keyDown, keyDown, keyRight, keyLeft, keyRight, keyDown} {
 		w.Key(k)
 	}
 	w.Key(keyEnter)
-	w.WaitUntil("watching t-0001", wait, func(sc string) bool { return lastLine(sc, "watch-only") })
+	w.WaitUntil("on t-0001", wait, func(sc string) bool { return lastLine(sc, demo+" t-0001") })
 
 	// prefix+tab: the sidebar has the keyboard; esc gives it back.
 	w.Prefix("\t")
 	w.WaitUntil("sidebar focused", wait, func(sc string) bool { return lastLine(sc, "sidebar: ↑ ↓ move") })
 	w.Key(keyEsc)
-	w.WaitUntil("pane focused", wait, func(sc string) bool { return lastLine(sc, "watch-only") })
+	w.WaitUntil("pane focused", wait, func(sc string) bool { return lastLine(sc, demo+" t-0001") && !lastLine(sc, "sidebar: ↑ ↓ move") })
 
 	// prefix+tab, ↑ to demo's coordinator, enter attaches it.
 	w.Prefix("\t")

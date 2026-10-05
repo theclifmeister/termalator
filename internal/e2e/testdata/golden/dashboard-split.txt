@@ -15,7 +15,7 @@
                        │                                                                                           │   ✓ 1 Reproduce
                        │                                                                                           │   ○ 2 Fix
                        │                                                                                           │
-                       │                                                                                           │ enter watches it; the coordinator acts on it
+                       │                                                                                           │ enter attaches it; the coordinator acts on it
                        │                                                                                           │
                        │                                                                                           │
                        │                                                                                           │
@@ -26,5 +26,5 @@
                        │                                                                                           │
                        │                                                                                           │
                        │────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-                       │ ≡ menu · enter watch · a project · t tasks · i inbox · , settings · ? help · q quit
+                       │ ≡ menu · enter attach · a project · t tasks · i inbox · , settings · ? help · q quit
                        │

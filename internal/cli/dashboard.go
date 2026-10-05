@@ -82,10 +82,9 @@ func (e *Env) fullConsole(own bool, goTo *tui.Target, agentName string) int {
 		}
 	}
 	attach := vc.View().Mode == view.ModeLayout
-	takeOver := ""
 	for {
 		if attach {
-			ares, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Agent: agentName}, args, takeOver)
+			ares, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Agent: agentName}, args)
 			if code != ExitOK {
 				return code
 			}
@@ -107,7 +106,7 @@ func (e *Env) fullConsole(own bool, goTo *tui.Target, agentName string) int {
 		if res.Attach == "" {
 			return ExitOK
 		}
-		attach, st, takeOver = true, tui.DashState{}, res.TakeOver
+		attach, st = true, tui.DashState{}
 	}
 }
 
@@ -144,7 +143,7 @@ func (e *Env) openCmd(slug, agentName string) error {
 	if err != nil {
 		return err
 	}
-	res, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Agent: agentName}, []string{"project", "open", slug, "--agent", agentName}, "")
+	res, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Agent: agentName}, []string{"project", "open", slug, "--agent", agentName})
 	vc.Close()
 	if code != ExitOK {
 		return &exitError{code}

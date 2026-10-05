@@ -135,7 +135,7 @@ func TestSmokeViewSurvivesRestart(t *testing.T) {
 
 // TestSmokeFirstViewFills: a pane no console has sized yet fills the
 // first console that shows it (docs/SPEC.md §3.3), a coordinator and a
-// watch-only thread alike; a console showing it later doesn't resize it,
+// thread alike; a console showing it later doesn't resize it,
 // and once someone types the console typed in sizes it, as before.
 func TestSmokeFirstViewFills(t *testing.T) {
 	env := New(t)
@@ -169,11 +169,11 @@ func TestSmokeFirstViewFills(t *testing.T) {
 	w1.Type("y")
 	waitPaneSize(t, env, co, 112, 38)
 
-	// The watch-only thread fills its first console too, and the next
-	// one to watch it leaves it alone.
+	// The thread fills its first console too, and the next one to show
+	// it leaves it alone.
 	w3 := env.Attach(120, 30, th.ID)
 	w3.WaitFor("Fake Claude Code", agentWait)
-	waitPaneSize(t, env, th, 96, 28) // the watch-only status bar and the row above it
+	waitPaneSize(t, env, th, 96, 28) // the status bar and the row above it
 	w4 := env.Attach(90, 24, th.ID)
 	w4.WaitFor("Fake Claude Code", agentWait)
 	time.Sleep(time.Second)
