@@ -117,7 +117,7 @@ func runHookCmd(h hookCmd, payload []byte, dir string, env []string) (string, in
 // It returns the stdouts and errCancelled when ctx ended before or during
 // the run.
 func (a *app) fireHook(ctx context.Context, event string, extra map[string]any) ([]string, error) {
-	if ctx != nil && ctx.Err() != nil {
+	if ctx.Err() != nil {
 		return nil, errCancelled
 	}
 	a.mu.Lock()
@@ -148,7 +148,7 @@ func (a *app) fireHook(ctx context.Context, event string, extra map[string]any) 
 		a.log("hook", map[string]any{"event": event, "payload": json.RawMessage(b), "stdout": out, "exit_code": code})
 	}
 	a.hookMu.Unlock()
-	if ctx != nil && ctx.Err() != nil {
+	if ctx.Err() != nil {
 		return outs, errCancelled
 	}
 	return outs, nil
@@ -175,7 +175,7 @@ func (a *app) sessionStart(source string) {
 	if a.opts.model != "" {
 		extra["model"] = a.opts.model
 	}
-	outs, _ := a.fireHook(nil, "SessionStart", extra)
+	outs, _ := a.fireHook(context.Background(), "SessionStart", extra)
 	for _, out := range outs {
 		var r struct {
 			HookSpecificOutput struct {

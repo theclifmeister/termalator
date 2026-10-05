@@ -141,9 +141,6 @@ func (m *dash) threadPanel(d *panel, r row) {
 	}
 }
 
-// taskPanel shows a task.
-func taskPanel(d *panel, t *tasks.Task) { taskPanelWith(d, t, nil, "") }
-
 // taskPanelWith shows a task with what the user needs to act on it:
 // what it is blocked on; for a task in review, how to check it and
 // whether its change shipped (rv, when known); and what the coordinator

@@ -13,6 +13,11 @@ import (
 // everywhere, and no plain key on any screen means something else than
 // the prefix command of the same key.
 
+// isPrefixCommand says whether key is a command after the prefix.
+func isPrefixCommand(key string) bool {
+	return key == "d" || key == "q" || key == "r" || prefixCommands[key] || paneCommands[key]
+}
+
 // prefixKeysAll are every prefix command's key but the prefix itself.
 func prefixKeysAll() []string {
 	keys := []string{"d", "q", "r"}

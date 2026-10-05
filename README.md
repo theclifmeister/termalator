@@ -26,7 +26,7 @@ brew install termilator
 
 Newer Homebrew refuses formulas from a tap it doesn't trust; `brew trust` once after tapping allows this one.
 
-Termilator was called Termalator up to v0.1.0. Coming from that, see [Upgrading from Termalator](docs/OPERATIONS.md#upgrading-from-termalator).
+Termilator was called Termalator up to v0.1.0; to upgrade from that, see [Upgrading from Termalator](docs/OPERATIONS.md#upgrading-from-termalator).
 
 or directly, into `~/.local/bin`:
 

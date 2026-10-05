@@ -113,21 +113,16 @@ func fit(s string, w int) string {
 	return s
 }
 
-// statusLine is the attach status bar (docs/SPEC.md §4): session,
-// project, state, progress, a note on the pane (where: the sidebar's keys,
-// a flash) and "prefix+d dashboard", in reverse video. After the
-// prefix it lists the commands instead. Hints never show the prefix's
-// key, which is configurable: only the help and the settings do.
-func statusLine(s proto.SessionInfo, ts *thread.Status, pending bool, cols int, where string) string {
-	line, _ := statusBar(s, ts, pending, cols, where)
-	return line
-}
-
 // pendingHead starts the status bar's list of commands after the prefix.
 const pendingHead = " prefix ▸ "
 
-// statusBar is statusLine with its buttons, by column: after the prefix
-// each command; else the ≡ menu and "prefix+d dashboard".
+// statusBar is the attach status bar (docs/SPEC.md §4): session,
+// project, state, progress, a note on the pane (where: the sidebar's keys,
+// a flash) and "prefix+d dashboard", in reverse video. After the
+// prefix it lists the commands instead. Hints never show the prefix's
+// key, which is configurable: only the help and the settings do. It
+// returns the line and its buttons, by column: after the prefix each
+// command; else the ≡ menu and "prefix+d dashboard".
 func statusBar(s proto.SessionInfo, ts *thread.Status, pending bool, cols int, where string) (string, []hint) {
 	parts := []string{" " + s.ID}
 	if s.Project != "" {

@@ -1,13 +1,9 @@
 package tui
 
 import (
-	"errors"
-	"io/fs"
 	"os"
 	"slices"
 	"sync/atomic"
-
-	"github.com/BurntSushi/toml"
 
 	"github.com/theclifmeister/termilator/internal/config"
 )
@@ -128,25 +124,14 @@ func setIcons(value string) {
 // iconsSetting is the icons setting's value this console uses.
 func iconsSetting() string { return iconsValue.Load().(string) }
 
-// configIcons reads [ui] icons from config.toml: auto when the file or
-// the key is missing or unreadable (tm doctor reports a broken file).
+// configIcons is config.toml's [ui] icons: auto when the file or the key
+// is missing or unreadable (tm doctor reports a broken file).
 func configIcons() string {
-	path, err := config.Path()
-	if err != nil {
+	cfg, _ := config.Load()
+	if cfg == nil || !slices.Contains(IconChoices, cfg.Icons) {
 		return IconsAuto
 	}
-	var cfg struct {
-		UI struct {
-			Icons string `toml:"icons"`
-		} `toml:"ui"`
-	}
-	if _, err := toml.DecodeFile(path, &cfg); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return IconsAuto
-	}
-	if !slices.Contains(IconChoices, cfg.UI.Icons) {
-		return IconsAuto
-	}
-	return cfg.UI.Icons
+	return cfg.Icons
 }
 
 // loadIcons makes config.toml's icons setting this console's set.
