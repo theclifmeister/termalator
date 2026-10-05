@@ -38,7 +38,7 @@ Everything is under `~/.termilator`, or `$TERMILATOR_HOME` when that is set. Not
 
 | Path | What |
 |---|---|
-| `config.toml` | your settings: default agent, keys, per-project safety |
+| `config.toml` | your settings: default agent, keys, safety for all projects (`[defaults]`) and per project (`[projects.<slug>]`, which wins) |
 | `agents/<name>.toml` | your own agent manifests (they override the built-in ones) |
 | `projects/<slug>/` | one folder per project: `PROJECT.md`, `TASKS.md`, `JOURNAL.md`, `inbox/`, `threads/<id>/` (brief, reports, status), memory |
 | `worktrees/<slug>/<id>-…/` | thread worktrees: plain git checkouts of the project's repos |
@@ -110,7 +110,7 @@ Any `tm` command starts the server when needed, so you don't need a service. If 
 - each agent's installed version against its manifest's `tested_versions`. An untested Claude still works, but termilator stops trusting its undocumented status file and messaging socket;
 - the sandbox tools Claude needs for threads: `sandbox-exec` on macOS, `bwrap` and `socat` on Linux;
 - leftovers: worktrees under `~/.termilator/worktrees` whose thread is resolved or gone, and `tm/<project>/…` branches already merged into the default branch;
-- settings in `config.toml` that tm no longer has: a project's Complete tasks still set to the removed "when released" (it now means by you; pick again in Settings).
+- settings in `config.toml` that tm no longer has: a project's (or All projects') Complete tasks still set to the removed "when released" (it now means by you; pick again in Settings).
 
 It exits 1 only when a check fails; warnings don't count. `--json` prints the results for scripts.
 
