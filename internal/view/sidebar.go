@@ -13,32 +13,37 @@ type Sidebar struct {
 
 const (
 	SideDefault = 32 // a full sidebar's width: room for a thread's id and a few words of its title
-	SideMin     = 14 //
-	SideMax     = 48 //
+	SideMin     = 14 // no maximum: only the window bounds it (SideRoom)
 	SideSlim    = 7  // the slim strip: a marker, a glyph, 3 letters, a blank, the border
 	SideRoom    = 60 // a full sidebar leaves the panes at least this many columns
 	SideStep    = 2  // { and } change the width this much
 )
 
-// Clamp keeps the width in range; 0 is the default.
+// Clamp keeps the width in range; 0 is the default. There is no upper
+// bound: a width too wide for the window is shown narrower (Cols) and
+// kept, so it comes back in a wider window.
 func (s Sidebar) Clamp() Sidebar {
 	if s.Width == 0 {
 		s.Width = SideDefault
 	}
-	s.Width = min(max(s.Width, SideMin), SideMax)
+	s.Width = max(s.Width, SideMin)
 	return s
 }
 
 // Cols is the sidebar's width in a window w columns wide: the full width,
-// or the slim strip when asked for or when the window is narrow. It never
-// disappears.
+// cut to leave the panes SideRoom, or the slim strip when asked for or
+// when the window is narrow. A width wider than the default shrinks down
+// to the default before the strip takes over. It never disappears.
 func (s Sidebar) Cols(w int) int {
 	full := s.Clamp().Width
-	if s.Slim || w-full < SideRoom {
+	if s.Slim || w-SideRoom < s.least() {
 		return min(SideSlim, max(w-1, 1))
 	}
-	return full
+	return min(full, w-SideRoom)
 }
+
+// least is the narrowest the full sidebar shrinks to in a narrow window.
+func (s Sidebar) least() int { return min(s.Clamp().Width, SideDefault) }
 
 // Full says whether the sidebar is at its full width in a window w wide.
 func (s Sidebar) Full(w int) bool { return s.Cols(w) > SideSlim }
@@ -47,7 +52,7 @@ func (s Sidebar) Full(w int) bool { return s.Cols(w) > SideSlim }
 // off) to s in a window w wide; msg says why nothing changed.
 func (s Sidebar) Key(key string, w int) (out Sidebar, msg string) {
 	s = s.Clamp()
-	narrow := fmt.Sprintf("the window is too narrow for the full sidebar (it needs %d columns)", s.Width+SideRoom)
+	narrow := fmt.Sprintf("the window is too narrow for the full sidebar (it needs %d columns)", s.least()+SideRoom)
 	switch key {
 	case "b":
 		s.Slim = !s.Slim
@@ -67,8 +72,14 @@ func (s Sidebar) Key(key string, w int) (out Sidebar, msg string) {
 		if key == "{" {
 			d = -d
 		}
-		// Never wider than the window allows: the panes keep SideRoom.
-		s.Width = min(max(s.Width+d, SideMin), SideMax, max(w-SideRoom, SideMin))
+		// Step from the width shown, never wider than the window allows
+		// (the panes keep SideRoom); at that limit } keeps a wider saved
+		// width as it is.
+		shown, most := s.Cols(w), max(w-SideRoom, SideMin)
+		if d > 0 && shown >= most {
+			return s, ""
+		}
+		s.Width = min(max(shown+d, SideMin), most)
 	}
 	return s, ""
 }
@@ -77,7 +88,7 @@ func (s Sidebar) Key(key string, w int) (out Sidebar, msg string) {
 func (s Sidebar) DragTo(x, w int) Sidebar {
 	s.Slim = x+1 <= SideSlim
 	if !s.Slim {
-		s.Width = min(max(x+1, SideMin), SideMax, max(w-SideRoom, SideMin))
+		s.Width = min(max(x+1, SideMin), max(w-SideRoom, SideMin))
 	}
 	return s.Clamp()
 }
