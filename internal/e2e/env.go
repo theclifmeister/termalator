@@ -58,7 +58,12 @@ func build(t testing.TB) string {
 			buildErr = err
 			return
 		}
-		if binDir, err = os.MkdirTemp("", "tm-e2e-bin"); err != nil {
+		if binDir, err = os.MkdirTemp("", binPrefix); err != nil {
+			buildErr = err
+			return
+		}
+		// Marks the dir as this run's for sweepStale (stale.go).
+		if err = os.WriteFile(filepath.Join(binDir, ownerFile), []byte(strconv.Itoa(os.Getpid())), 0o644); err != nil {
 			buildErr = err
 			return
 		}
@@ -360,9 +365,16 @@ func (e *Env) RestartServer() {
 // left (the orphan check), and saves artifacts if the test failed.
 func (e *Env) cleanup() {
 	t := e.T
+	artifacts := ""
 	if t.Failed() {
-		e.saveArtifacts()
+		artifacts = e.saveArtifacts()
 	}
+	// Last, so failures of the checks below count too.
+	defer func() {
+		if t.Failed() {
+			noteFailed(t.Name(), artifacts)
+		}
+	}()
 	for i, w := range e.windows {
 		w.KillClient()
 		w.CloseWindow()
@@ -410,15 +422,15 @@ func (e *Env) cleanup() {
 
 // saveArtifacts writes every window's last screen, the server log and
 // sessions.json under $E2E_ARTIFACTS (default: a temp dir) for CI to
-// upload.
-func (e *Env) saveArtifacts() {
+// upload, and returns the dir.
+func (e *Env) saveArtifacts() string {
 	base := os.Getenv("E2E_ARTIFACTS")
 	if base == "" {
 		base = filepath.Join(os.TempDir(), "tm-e2e-artifacts")
 	}
 	dir := filepath.Join(base, strings.NewReplacer("/", "_", " ", "_").Replace(e.T.Name()))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return
+		return ""
 	}
 	for i, w := range e.windows {
 		os.WriteFile(filepath.Join(dir, fmt.Sprintf("window-%d.txt", i+1)), []byte(w.Screen()+"\n"), 0o644)
@@ -443,6 +455,7 @@ func (e *Env) saveArtifacts() {
 		}
 	}
 	e.T.Logf("artifacts saved in %s", dir)
+	return dir
 }
 
 // Alive reports whether a process exists.

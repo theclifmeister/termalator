@@ -242,7 +242,7 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	}
 	w.Type("j")
 	w.WaitFor("report new · for the coordinator", wait)
-	Golden(t, w.Screen(), "dashboard-thread.txt", dashMasks...)
+	w.Golden("dashboard-thread.txt", dashMasks...)
 
 	// 140 columns wide: the details beside the list instead of under it.
 	// A console of its own, so its selection doesn't move w's.
@@ -250,7 +250,7 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	wide.WaitFor("t-0001 Fix the login", wait)
 	wide.Type("j")
 	wide.WaitFor("enter watches it", wait)
-	Golden(t, wide.Screen(), "dashboard-split.txt", dashMasks...)
+	wide.Golden("dashboard-split.txt", dashMasks...)
 	wide.Type("q")
 	wide.WaitExit(wait)
 
@@ -266,7 +266,7 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	w.Type("i")
 	w.WaitFor("demo inbox", wait)
 	w.WaitFor("t-0001 handed in report 1", wait)
-	Golden(t, w.Screen(), "dashboard-inbox.txt", dashMasks...)
+	w.Golden("dashboard-inbox.txt", dashMasks...)
 	w.Key(keyEsc)
 
 	// enter on the thread: watch-only.

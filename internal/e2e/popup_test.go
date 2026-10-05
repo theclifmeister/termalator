@@ -60,16 +60,16 @@ func TestSmokeProjectPopup(t *testing.T) {
 	w.WaitFor("1 Overview", wait)
 	w.WaitFor("Repositories", wait)
 	screens = append(screens, w.Screen())
-	Golden(t, w.Screen(), "popup-overview.txt", popupMasks...)
+	w.Golden("popup-overview.txt", popupMasks...)
 
 	w.Type("3")
 	w.WaitFor("✓ Draft", wait)
 	w.WaitFor("ON DECK", wait)
 	screens = append(screens, w.Screen())
-	Golden(t, w.Screen(), "popup-tasks.txt", popupMasks...)
+	w.Golden("popup-tasks.txt", popupMasks...)
 	w.Key(emu.Key{Special: emu.KeyTab})
 	w.WaitFor("Start threads", wait)
-	Golden(t, w.Screen(), "popup-settings.txt", popupMasks...)
+	w.Golden("popup-settings.txt", popupMasks...)
 
 	// Start threads: ask first → automatically, saved and in the
 	// coordinator's context.
