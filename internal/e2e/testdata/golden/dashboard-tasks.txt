@@ -20,5 +20,5 @@
                                │
                                │
                                │────────────────────────────────────────────────────────────────────
-                               │ enter show · r refresh · esc back
+                               │ enter show · d delegate · r refresh · esc back
                                │

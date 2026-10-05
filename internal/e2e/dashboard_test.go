@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/theclifmeister/termilator/internal/emu"
 )
@@ -36,8 +35,8 @@ func newProject(env *Env, name string) (slug, dir string) {
 
 // TestSmokeDashboard: the dashboard's screens, empty, and with a project
 // and sessions; a task in review shows in NEEDS YOU, and enter shows it
-// in the project popup's Tasks tab; t shows the tasks, read-only, and d
-// does nothing.
+// in the project popup's Tasks tab; t shows the tasks, and d on a task
+// in review only says why it isn't delegated.
 func TestSmokeDashboard(t *testing.T) {
 	env := New(t)
 	w := env.Window(100, 24)
@@ -67,7 +66,7 @@ func TestSmokeDashboard(t *testing.T) {
 	w.Type("k")
 	w.WaitFor("enter show", wait)
 	w.Key(keyEnter)
-	w.WaitFor("read-only: the coordinator changes tasks", wait)
+	w.WaitFor("d asks the coordinator to delegate a task", wait)
 	w.Key(keyEsc)
 	w.WaitFor("NEEDS YOU 1", wait)
 
@@ -77,7 +76,7 @@ func TestSmokeDashboard(t *testing.T) {
 	w.WaitFor("T1", wait)
 	w.Golden("dashboard-tasks.txt", dashMasks...)
 	w.Type("d")
-	w.Quiet(500 * time.Millisecond)
+	w.WaitFor("T1 is in review", wait)
 	if out := env.MustCLI("task", "show", "T1", "--project", slug, "--json"); !strings.Contains(out, `"status": "review"`) {
 		t.Fatalf("T1 after d:\n%s", out)
 	}

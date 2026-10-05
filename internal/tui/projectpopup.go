@@ -21,7 +21,7 @@ import (
 // docs/SPEC.md §4): everything about one project in tabs. Only the
 // repositories and the settings change here, on the human's keypress;
 // the inbox and the tasks are read-only, since the coordinator handles
-// them. Which tab is open is this console's own, as every popup.
+// them, save that d asks it to delegate a task (delegate.go). Which tab is open is this console's own, as every popup.
 
 // The tabs, in order.
 const (
@@ -120,7 +120,8 @@ func (pv *projectView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	case "r":
 		return tea.Batch(m.load(), m.loadBoard(pv.slug))
 	}
-	d := scrollKeys[k.String()]
+	s := k.String()
+	d := scrollKeys[s]
 	if pv.tab == tabSettings {
 		before := pv.settings.sel
 		cmd, _ := pv.settings.key(m, k)
@@ -138,8 +139,13 @@ func (pv *projectView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	if pv.sel[pv.tab] == before {
 		pv.nudge[pv.tab] += d
 	}
-	if pv.tab == tabOverview {
+	switch {
+	case pv.tab == tabOverview:
 		return pv.repoKey(m, k)
+	case pv.tab == tabTasks && s == "d":
+		if ts := pv.tasks(); pv.sel[tabTasks] < len(ts) {
+			return m.delegate(pv.slug, ts[pv.sel[tabTasks]])
+		}
 	}
 	return nil
 }
@@ -247,7 +253,8 @@ func (pv *projectView) box(m *dash) box {
 		body, sel, hits = inboxLines(p.Items, pv.sel[tabInbox], w)
 		body = append(body, "", styleFaint.Render("Read-only: the coordinator handles these."))
 	case tabTasks:
-		body, sel, hits = pv.taskLines(w)
+		body, sel, hits = pv.taskLines(m, w)
+		keys = "d delegate · " + keys
 	case tabSettings:
 		body, sel, hits = pv.settings.lines(m, w)
 		keys = "enter change · + - number · ↑ ↓ move · " + keys
@@ -460,7 +467,7 @@ func (pv *projectView) coordinatorLine(m *dash, p ProjectData) string {
 }
 
 // taskLines are the live tasks, grouped, each with its steps.
-func (pv *projectView) taskLines(w int) ([]string, int, []int) {
+func (pv *projectView) taskLines(m *dash, w int) ([]string, int, []int) {
 	if pv.board == nil {
 		return []string{styleFaint.Render("loading…")}, -1, nil
 	}
@@ -488,6 +495,9 @@ func (pv *projectView) taskLines(w int) ([]string, int, []int) {
 		if t.Thread != "" {
 			tail += " · " + t.Thread
 		}
+		if m.delegating(pv.slug, t) {
+			tail += " · " + delegateWaiting
+		}
 		for j := range 1 + len(t.Steps) {
 			taskAt[len(out)+j] = i
 		}
@@ -510,7 +520,7 @@ func (pv *projectView) taskLines(w int) ([]string, int, []int) {
 	if len(out) == 0 {
 		out = append(out, styleFaint.Render("no open tasks"))
 	}
-	out = append(out, "", styleFaint.Render(fmt.Sprintf("done: %d · read-only: the coordinator changes tasks", done)))
+	out = append(out, "", styleFaint.Render(fmt.Sprintf("done: %d · d asks the coordinator to delegate a task", done)))
 	return out, sel, lineHits(len(out), taskAt)
 }
 

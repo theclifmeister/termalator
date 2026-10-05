@@ -167,9 +167,9 @@ func wrapInput(label, text string, w int) []string {
 	return lines
 }
 
-// boardView is a project's task board, read-only: its live tasks in
-// board order (needs you, in motion, on deck), or one of them when open.
-// The coordinator changes tasks (tm task).
+// boardView is a project's task board: its live tasks in board order
+// (needs you, in motion, on deck), or one of them when open. The
+// coordinator changes tasks (tm task); d asks it to delegate a task.
 type boardView struct {
 	slug  string
 	board *tasks.Board
@@ -232,6 +232,10 @@ func (b *boardView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 		if len(b.list) > 0 {
 			b.open = true
 		}
+	case "d":
+		if b.board != nil && b.sel < len(b.list) {
+			return m.delegate(b.slug, b.list[b.sel])
+		}
 	case "r":
 		return m.loadBoard(b.slug)
 	}
@@ -250,7 +254,10 @@ func (b *boardView) render(m *dash) string {
 		for i, l := range d.lines {
 			d.lines[i] = strings.TrimPrefix(l, " ")
 		}
-		return m.popup(box{title: b.slug + " " + t.Ref(), body: d.lines, sel: -1, keys: "esc back", width: 88})
+		if m.delegating(b.slug, t) {
+			d.lines = append(d.lines, "", styleWarn.Render(delegateWaiting))
+		}
+		return m.popup(box{title: b.slug + " " + t.Ref(), body: d.lines, sel: -1, keys: "d delegate · esc back", width: 88})
 	}
 	w := m.inner(popupWidth)
 	var lines []string
@@ -273,6 +280,9 @@ func (b *boardView) render(m *dash) string {
 			r.pct = pctOf(t.StepsDone(), len(t.Steps))
 			r.rest = joinSp(fmt.Sprintf("%d/%d", t.StepsDone(), len(t.Steps)), t.Thread)
 		}
+		if m.delegating(b.slug, t) {
+			r.rest = joinSp(r.rest, delegateWaitingRow)
+		}
 		if i == b.sel {
 			sel = len(lines)
 		}
@@ -288,7 +298,7 @@ func (b *boardView) render(m *dash) string {
 		lines = append(lines, styleFaint.Render("no open tasks"))
 	}
 	lines = append(lines, styleFaint.Render(fmt.Sprintf("done: %d", done)))
-	return m.popup(box{title: title, body: lines, sel: sel, hits: hits, keys: "enter show · r refresh · esc back", width: popupWidth})
+	return m.popup(box{title: title, body: lines, sel: sel, hits: hits, keys: "enter show · d delegate · r refresh · esc back", width: popupWidth})
 }
 
 // click selects a task; a double-click shows it.

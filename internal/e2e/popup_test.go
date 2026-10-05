@@ -32,6 +32,36 @@ func popupBody(screen string, cols int) []string {
 	return out
 }
 
+// liveRows counts the rows of pane (a PaneScreen with a popup open)
+// whose strip left of the popup's box starts with as much of text as
+// fits there: the session's output showing under the popup, at any
+// sidebar or popup width.
+func liveRows(t *testing.T, pane, text string) int {
+	t.Helper()
+	lines := strings.Split(pane, "\n")
+	edge := -1 // the box's left border, in pane columns
+	for _, l := range lines {
+		if i := strings.Index(l, "╭─"); i >= 0 {
+			edge = len([]rune(l[:i]))
+			break
+		}
+	}
+	if edge < 0 {
+		return 0 // no popup yet
+	}
+	if edge == 0 {
+		t.Fatal("the popup covers the whole pane: nothing of it shows to check")
+	}
+	want := string([]rune(text)[:min(edge, len([]rune(text)))])
+	n := 0
+	for _, l := range lines {
+		if r := []rune(l); len(r) >= edge && strings.HasPrefix(string(r[:edge]), want) {
+			n++
+		}
+	}
+	return n
+}
+
 // popupMasks hide the temp paths and the machine's name, with the
 // padding after them, whose width depends on theirs.
 var popupMasks = []Mask{
@@ -158,10 +188,12 @@ func TestSmokeProjectPopup(t *testing.T) {
 	screens = append(screens, w.Screen())
 	// The session keeps drawing under the popup: the other console types
 	// into it, and this one shows the output with the popup still open.
-	// Only the pane's left edge shows beside the box.
+	// Only the pane's left edge shows beside the box, as wide as the
+	// sidebar and the popup leave it: each output row shows there as
+	// much of "live-" as fits.
 	w2.Type("for i in $(seq 30); do echo live-$i; done\r")
-	w.WaitUntil("output under the popup", wait, func(sc string) bool {
-		return strings.Count(sc, "live-") >= 10 && strings.Contains(sc, "1 Overview")
+	w.WaitUntil("output under the popup", wait, func(string) bool {
+		return liveRows(t, w.PaneScreen(), "live-") >= 10 && strings.Contains(w.Screen(), "1 Overview")
 	})
 	w.Key(keyEsc)
 	w.WaitUntil("back on the session", wait, func(sc string) bool {

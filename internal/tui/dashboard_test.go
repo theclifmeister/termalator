@@ -30,7 +30,9 @@ type fakeSource struct {
 	started  []string
 	settings []string // table.key=value
 	repos    []string // +path or -path
-	agents   []string
+	// delegated are the tasks asked to be delegated: "slug T12".
+	delegated []string
+	agents    []string
 }
 
 func (f *fakeSource) Load() Data {
@@ -70,6 +72,19 @@ func (f *fakeSource) SetRepo(slug, path string, add bool) error {
 		}
 	}
 	return nil
+}
+func (f *fakeSource) Delegate(slug string, id int) (bool, error) {
+	ref := fmt.Sprintf("T%d", id)
+	f.delegated = append(f.delegated, slug+" "+ref)
+	for i := range f.data.Projects {
+		if p := &f.data.Projects[i]; p.Slug == slug {
+			if project.DelegateAsked(p.Items, ref) {
+				return false, nil
+			}
+			p.Items = append(p.Items, project.Item{ID: "x-delegate-" + ref, Kind: project.KindDelegate, Subject: ref})
+		}
+	}
+	return true, nil
 }
 func (f *fakeSource) Agents() []string                       { return f.agents }
 func (f *fakeSource) NewProject(name string) (string, error) { return name, nil }

@@ -39,6 +39,7 @@ var popupKeys = []keyHelp{
 	{"↑ ↓", "move in the tab"},
 	{"enter space", "on a setting: change it (yolo mode asks first)"},
 	{"+ x", "on the overview: add a repository / remove the selected one (asks first)"},
+	{"d", "on an open, ready or blocked task (Tasks tab, or the t list): delegate it; the coordinator starts a thread for it (asks first)"},
 	{"esc", "close"},
 }
 

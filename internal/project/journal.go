@@ -91,6 +91,39 @@ func (p *Project) TookOver(c caller.Caller, id, name string) error {
 	return p.Journal(c, "thread.takeover", id, "")
 }
 
+// KindDelegate is the inbox item that asks the coordinator to delegate a
+// task: the user pressed d on it in the task list and confirmed (§4).
+// It is the user's go-ahead to start a thread for it.
+const KindDelegate = "delegate"
+
+// AskDelegate records that the user asks to delegate task ref ("T12"):
+// an inbox item for the coordinator and a journal line. It reports false
+// when an unhandled item already asks it.
+func (p *Project) AskDelegate(c caller.Caller, ref string) (bool, error) {
+	items, err := p.Inbox()
+	if err != nil {
+		return false, err
+	}
+	if DelegateAsked(items, ref) {
+		return false, nil
+	}
+	if _, err := p.AddItem(KindDelegate, ref, "the user asks to delegate "+ref, false); err != nil {
+		return false, err
+	}
+	return true, p.Journal(c, "task.delegate.ask", ref, "")
+}
+
+// DelegateAsked tells whether items hold an unhandled delegate item for
+// task ref: the task waits on the coordinator.
+func DelegateAsked(items []Item, ref string) bool {
+	for _, it := range items {
+		if it.Kind == KindDelegate && it.Subject == ref {
+			return true
+		}
+	}
+	return false
+}
+
 // Inbox lists the unhandled items, oldest first.
 func (p *Project) Inbox() ([]Item, error) {
 	entries, err := os.ReadDir(p.Path("inbox"))

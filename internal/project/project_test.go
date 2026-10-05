@@ -250,3 +250,34 @@ func TestPruneDone(t *testing.T) {
 		t.Fatal("fresh item pruned")
 	}
 }
+
+func TestAskDelegate(t *testing.T) {
+	setup(t)
+	p, err := New(Options{Name: "Delegate"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if asked, err := p.AskDelegate(human, "T3"); !asked || err != nil {
+		t.Fatalf("first ask: %v, %v", asked, err)
+	}
+	// A second ask while the first is unhandled adds nothing.
+	if asked, err := p.AskDelegate(human, "T3"); asked || err != nil {
+		t.Fatalf("second ask: %v, %v", asked, err)
+	}
+	items, _ := p.Inbox()
+	if len(items) != 1 || items[0].Kind != KindDelegate || items[0].Subject != "T3" || items[0].Summary != "the user asks to delegate T3" {
+		t.Fatalf("items %+v", items)
+	}
+	if !DelegateAsked(items, "T3") || DelegateAsked(items, "T4") {
+		t.Fatal("DelegateAsked")
+	}
+	lines, _, _ := p.JournalTail(5)
+	if j := strings.Join(lines, "\n"); !strings.Contains(j, "human task.delegate.ask T3") {
+		t.Fatalf("journal %q", j)
+	}
+	// Once handled, the user can ask again.
+	p.DoneItem(items[0].ID)
+	if asked, err := p.AskDelegate(human, "T3"); !asked || err != nil {
+		t.Fatalf("ask after done: %v, %v", asked, err)
+	}
+}

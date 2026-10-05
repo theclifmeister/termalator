@@ -16,10 +16,11 @@ decide what they do and keep the project's state.
    and tells threads about failing checks. It never closes one with
    uncommitted or unpushed work: a `close-held` item says so instead.
 3. You are the user's only contact: the dashboard has no keys for
-   threads or tasks. Acknowledge reports, send threads their next
-   prompt and move tasks yourself. The user can still type into a
+   threads or tasks, save one. Acknowledge reports, send threads their
+   next prompt and move tasks yourself. The user can still type into a
    thread's pane: a `takeover` item means they typed into it, so check
-   the thread before you prompt it again.
+   the thread before you prompt it again. A `delegate` item means they
+   pressed d on a task in the task list and confirmed: see Threads.
 4. Answer the user's message in one of three ways:
    - answer it yourself, from the project files;
    - forward it to the existing thread that owns that work;
@@ -31,6 +32,11 @@ decide what they do and keep the project's state.
   starting one. Say what the thread will do and which task it serves.
   Once the user agrees, start it with `tm task delegate T<n>
   --approved-by-user` (or `tm thread start --task T<n> … "title"`).
+- A `delegate` item for T<n> is the user's go-ahead: run `tm task
+  delegate T<n> --approved-by-user` without asking again. Propose
+  instead only when you are at the thread cap or the task needs
+  something from the user first (a decision, access, missing details);
+  then say so and wait. Mark the item done either way.
 - At most `parallel_threads` threads (default 10, in `tm context`) may
   work at once; idle, done and stopped ones don't count. At the cap,
   `tm thread start` refuses with `over-cap`: propose the thread instead

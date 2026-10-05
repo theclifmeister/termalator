@@ -306,10 +306,17 @@ func (cv *captureView) render(m *dash) string {
 type confirmView struct {
 	question string
 	yes      func() tea.Cmd
+	// no is the footer message on any other key.
+	no string
 }
 
 func (m *dash) confirm(question string, yes func() tea.Cmd) {
-	m.push(&confirmView{question: question, yes: yes})
+	m.confirmNo(question, "unchanged", yes)
+}
+
+// confirmNo is confirm, saying no in the footer on any other key.
+func (m *dash) confirmNo(question, no string, yes func() tea.Cmd) {
+	m.push(&confirmView{question: question, yes: yes, no: no})
 }
 
 func (cv *confirmView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
@@ -317,7 +324,7 @@ func (cv *confirmView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	if k.String() == "y" {
 		return cv.yes()
 	}
-	m.msg = "unchanged"
+	m.msg = cv.no
 	return nil
 }
 

@@ -39,4 +39,9 @@ func TestLabel(t *testing.T) {
 	if got := Labelled(p, "server", "the server restarted"); got != "the server restarted" {
 		t.Errorf("Labelled %q", got)
 	}
+	for ref, want := range map[string]string{"T1": "T1 Make needs-you tasks easy to find", "T9": "T9", "nope": "nope"} {
+		if got := TaskLabel(p, ref); got != want {
+			t.Errorf("TaskLabel(%s) = %q, want %q", ref, got, want)
+		}
+	}
 }
