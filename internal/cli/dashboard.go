@@ -82,12 +82,13 @@ func (e *Env) fullConsole(own bool, goTo *tui.Target, agentName string) int {
 		}
 	}
 	attach := vc.View().Mode == view.ModeLayout
-	flash := ""   // the popup's last message, for the session's status bar
-	command := "" // a prefix command typed over the popup, for the session
+	flash := ""        // the popup's last message, for the session's status bar
+	command := ""      // a prefix command typed over the popup, for the session
+	sideFocus := false // the sidebar has the keyboard, across screens
 	for {
 		var over *tui.Over
 		if attach {
-			ares, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Agent: agentName}, flash, command, args)
+			ares, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Agent: agentName, Focus: sideFocus}, flash, command, args)
 			if code != ExitOK {
 				return code
 			}
@@ -96,6 +97,7 @@ func (e *Env) fullConsole(own bool, goTo *tui.Target, agentName string) int {
 			}
 			st.Message = strings.TrimPrefix(ares.Session+": "+ares.Reason, ": ")
 			st.Then = ares.Then // prefix then p, ] or [ in the session
+			st.SideFocus = ares.SideFocus
 			if ares.Then != "" || ares.GoTo != nil || ares.Over != nil {
 				// Left to run a key, open a row or a popup: no news.
 				st.Message = ""
@@ -112,7 +114,7 @@ func (e *Env) fullConsole(own bool, goTo *tui.Target, agentName string) int {
 		if res.Attach == "" {
 			return ExitOK
 		}
-		attach, st, flash, command = true, tui.DashState{}, res.Message, res.Command
+		attach, st, flash, command, sideFocus = true, tui.DashState{}, res.Message, res.Command, res.SideFocus
 	}
 }
 

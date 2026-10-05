@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"slices"
@@ -14,6 +16,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/server"
 	"github.com/theclifmeister/termilator/internal/view"
 )
 
@@ -487,5 +491,105 @@ func TestSidebarWiderThanWindow(t *testing.T) {
 	press(m, "{")
 	if m.sideW() != 110-sideRoom-2 || LoadLayout(ui).Sidebar.Width != 110-sideRoom-2 {
 		t.Fatalf("{ from the width shown: sidebar %d, ui.json %+v", m.sideW(), LoadLayout(ui))
+	}
+}
+
+// TestClickFocus: a click gives its area the keyboard (docs/SPEC.md §4):
+// a list row the list, the details panel the panel, a sidebar row the
+// sidebar with its cursor on the row, so the arrows move it at once. A
+// sidebar row that attaches keeps the keyboard in the sidebar; enter on
+// it gives it to the session instead, as in a session.
+func TestClickFocus(t *testing.T) {
+	src := &fakeSource{data: testData()}
+	sw := sideDefault
+	m := newDash(DashOptions{Source: src, Width: 140 + sw, Height: 30, State: DashState{Current: "beta"}})
+	m.setData(src.data)
+	cursor := func() string {
+		for _, r := range m.tree() {
+			if r.cursor {
+				return r.key()
+			}
+		}
+		return ""
+	}
+
+	// A project row: the sidebar, its cursor on alpha; ↓ moves it.
+	m.Update(tea.MouseClickMsg{X: 5, Y: 1, Button: tea.MouseLeft})
+	if m.focus != focusSide || cursor() != "p:alpha" || m.current != "alpha" {
+		t.Fatalf("project click: focus %d cursor %q current %q", m.focus, cursor(), m.current)
+	}
+	keyPress(m, "down")
+	if cursor() != "c:alpha" || m.focus != focusSide {
+		t.Fatalf("↓ after the click: cursor %q focus %d", cursor(), m.focus)
+	}
+
+	// A list row: the list; the details panel: the panel.
+	_, lw := m.split()
+	m.Update(tea.MouseClickMsg{X: sw + 3, Y: 3, Button: tea.MouseLeft})
+	if m.focus != focusList || cursor() != "" {
+		t.Fatalf("list click: focus %d cursor %q", m.focus, cursor())
+	}
+	m.Update(tea.MouseClickMsg{X: sw + lw + 5, Y: 3, Button: tea.MouseLeft})
+	if m.focus != focusDetails {
+		t.Fatalf("details click: focus %d", m.focus)
+	}
+
+	// A thread row attaches its session and keeps the sidebar's keyboard,
+	// cursor on the thread.
+	run(m, m.sideClick(tea.Mouse{X: 5, Y: 5, Button: tea.MouseLeft}))
+	if m.result.Attach != "s-5" || m.focus != focusSide || cursor() != "t:beta/t-0005" {
+		t.Fatalf("thread click: attach %q focus %d cursor %q", m.result.Attach, m.focus, cursor())
+	}
+	// A row without a session still takes the keyboard, and says why.
+	m.result = DashResult{}
+	m.focus = focusList
+	m.Update(tea.MouseClickMsg{X: 5, Y: 6, Button: tea.MouseLeft})
+	if m.focus != focusSide || cursor() != "t:beta/t-0006" || !strings.Contains(m.msg, "no running session") {
+		t.Fatalf("thread without a session: focus %d cursor %q msg %q", m.focus, cursor(), m.msg)
+	}
+	// enter on the thread gives the session the keyboard.
+	keyPress(m, "up")
+	run(m, keyPress(m, "enter"))
+	if m.result.Attach != "s-5" || m.focus != focusList {
+		t.Fatalf("enter on t-0005: attach %q focus %d", m.result.Attach, m.focus)
+	}
+
+	// Back from a session whose sidebar had the keyboard: it keeps it.
+	m = newDash(DashOptions{Source: src, Width: 140 + sw, Height: 30, State: DashState{Current: "beta", SideFocus: true}})
+	if m.focus != focusSide {
+		t.Fatalf("SideFocus: focus %d", m.focus)
+	}
+}
+
+// TestSessionSidebarClickFocus: in a session, a click on a sidebar row
+// gives the sidebar the keyboard, its cursor on the row (the row you are
+// on here), and keys then stay out of the pane (a click on the pane
+// gives it back: TestSidebarClickFocus in e2e). An attach that ends with
+// the sidebar's keyboard says so, for the dashboard.
+func TestSessionSidebarClickFocus(t *testing.T) {
+	c, err := newClient(server.Paths{}, log.New(io.Discard, "", 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.enc.Close()
+	d := testData()
+	c.prefix, c.statusBar = chord{'\\'}, true
+	c.setWindow(160, 40)
+	p := &pane{info: proto.SessionInfo{ID: "s-5", Role: proto.RoleThread, Project: "beta", Thread: "t-0005"}}
+	c.v = view.View{Mode: view.ModeLayout, Focus: "s-5"}
+	c.panes["s-5"], c.focus = p, p
+	c.side, c.sideW = &sidebar{projects: d.Projects, sessions: d.Sessions}, sideDefault
+
+	c.mouse(uv.MouseClickEvent{X: 5, Y: 5, Button: uv.MouseLeft})
+	if !c.sideFocus || c.v.SideSel != "t:beta/t-0005" || !strings.Contains(c.statusText, "you are on it") {
+		t.Fatalf("click on t-0005: focus %v sel %q status %q", c.sideFocus, c.v.SideSel, c.statusText)
+	}
+	c.key(uv.Key{Code: 'x', Text: "x"}) // the sidebar's: nothing reaches the pane
+	if !c.sideFocus {
+		t.Fatal("a key lost the sidebar's focus")
+	}
+	c.finish(Result{Reason: "detached"})
+	if !c.result.SideFocus {
+		t.Fatal("the result doesn't carry the sidebar's keyboard")
 	}
 }
