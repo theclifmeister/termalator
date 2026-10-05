@@ -422,6 +422,9 @@ func (m *dash) rowItems(r row) []menuItem {
 	if r.project != "" {
 		out = append(out, on(pressItem("project popup", "a")), on(pressItem("tasks", "t")), on(pressItem("inbox", "i")))
 	}
+	if _, why := m.adoptable(r, true); why == "" {
+		out = append(out, on(pressItem("adopt as a thread", "T")))
+	}
 	return out
 }
 

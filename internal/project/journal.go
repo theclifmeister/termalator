@@ -107,6 +107,34 @@ const (
 	KindSendBack = "send-back"
 )
 
+// KindAdopt asks the coordinator to adopt a running agent session as a
+// thread (T on the dashboard, docs/SPEC.md §4 Adopt): the user's
+// go-ahead for tm thread adopt. Its subject is the session id.
+const KindAdopt = "adopt"
+
+// AskAdopt records that the user asks to adopt session sid; where says
+// what runs in it and where ("claude in /src/app on fix-login"). It
+// reports false when an unhandled item already asks it.
+func (p *Project) AskAdopt(c caller.Caller, sid, where string) (bool, error) {
+	items, err := p.Inbox()
+	if err != nil {
+		return false, err
+	}
+	for _, it := range items {
+		if it.Kind == KindAdopt && it.Subject == sid {
+			return false, nil
+		}
+	}
+	summary := "the user asks to adopt session " + sid
+	if where != "" {
+		summary += " (" + where + ")"
+	}
+	if _, err := p.AddItem(KindAdopt, sid, summary+" as a thread (tm thread adopt "+sid+" --approved-by-user)", false); err != nil {
+		return false, err
+	}
+	return true, p.Journal(c, "thread.adopt.ask", sid, where)
+}
+
 // MaxSendBackNote is the longest note a send-back item carries, in runes.
 const MaxSendBackNote = 200
 

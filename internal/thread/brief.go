@@ -43,6 +43,13 @@ func TaskText(r *Record, t *tasks.Task) string {
 	return b.String()
 }
 
+// AdoptKickoff is the prompt an adopted session gets (docs/SPEC.md §9,
+// Adopt): it is told it is a thread now, and where its brief is.
+func AdoptKickoff(slug, id, briefPath string) string {
+	return "You are now thread " + id + " of termilator project " + slug + ". Run `tm skill thread`, then read your brief at " +
+		briefPath + " and do what it says. Your earlier work in this session is part of the task."
+}
+
 // WriteTaskText writes task.md, keeping the forwarded prompts already in
 // it.
 func WriteTaskText(p *project.Project, id, text string) error {
