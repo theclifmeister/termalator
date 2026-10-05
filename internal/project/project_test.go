@@ -273,8 +273,8 @@ func TestAskDelegate(t *testing.T) {
 	if len(items) != 1 || items[0].Kind != KindDelegate || items[0].Subject != "T3" || items[0].Summary != "the user asks to delegate T3" {
 		t.Fatalf("items %+v", items)
 	}
-	if !DelegateAsked(items, "T3") || DelegateAsked(items, "T4") {
-		t.Fatal("DelegateAsked")
+	if TaskAsked(items, "T3") != KindDelegate || TaskAsked(items, "T4") != "" {
+		t.Fatal("TaskAsked")
 	}
 	lines, _, _ := p.JournalTail(5)
 	if j := strings.Join(lines, "\n"); !strings.Contains(j, "human task.delegate.ask T3") {
@@ -284,5 +284,48 @@ func TestAskDelegate(t *testing.T) {
 	p.DoneItem(items[0].ID)
 	if asked, err := p.AskDelegate(human, "T3"); !asked || err != nil {
 		t.Fatalf("ask after done: %v, %v", asked, err)
+	}
+}
+
+func TestAskAcceptSendBack(t *testing.T) {
+	setup(t)
+	p, err := New(Options{Name: "Review"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if asked, err := p.AskAccept(human, "T5"); !asked || err != nil {
+		t.Fatalf("accept: %v, %v", asked, err)
+	}
+	// One ask per task at a time: neither a second accept nor a
+	// send-back is added while the accept waits.
+	if asked, err := p.AskAccept(human, "T5"); asked || err != nil {
+		t.Fatalf("second accept: %v, %v", asked, err)
+	}
+	if asked, err := p.AskSendBack(human, "T5", "too slow"); asked || err != nil {
+		t.Fatalf("send-back over accept: %v, %v", asked, err)
+	}
+	if _, err := p.AskSendBack(human, "T6", " \t "); err == nil {
+		t.Fatal("empty note accepted")
+	}
+	if _, err := p.AskSendBack(human, "T6", strings.Repeat("x", MaxSendBackNote+1)); err == nil {
+		t.Fatal("long note accepted")
+	}
+	if asked, err := p.AskSendBack(human, "T6", "the bell\nis   cut off"); !asked || err != nil {
+		t.Fatalf("send-back: %v, %v", asked, err)
+	}
+	items, _ := p.Inbox()
+	if len(items) != 2 || items[0].Kind != KindAccept || items[0].Summary != "the user accepts T5" ||
+		items[1].Kind != KindSendBack || items[1].Subject != "T6" || items[1].Summary != "the user sends T6 back: the bell is cut off" {
+		t.Fatalf("items %+v", items)
+	}
+	if TaskAsked(items, "T5") != KindAccept || TaskAsked(items, "T6") != KindSendBack {
+		t.Fatal("TaskAsked")
+	}
+	lines, _, _ := p.JournalTail(5)
+	j := strings.Join(lines, "\n")
+	for _, w := range []string{"human task.accept.ask T5", "human task.sendback.ask T6 the bell is cut off"} {
+		if !strings.Contains(j, w) {
+			t.Errorf("journal lacks %q: %q", w, j)
+		}
 	}
 }

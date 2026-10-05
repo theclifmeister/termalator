@@ -531,7 +531,8 @@ var verbs = map[string]string{
 	KindBlocked: "blocked", KindIdle: "idle with a report", KindExited: "exited", KindServerRestart: "server restarted",
 	KindPROpened: "opened a PR", KindPRChecks: "PR checks failed", KindPRReview: "PR reviewed",
 	KindPRMerged: "PR merged", KindPRClosed: "PR closed", KindCloseHeld: "not auto-closed", project.KindTakeover: "taken over by the user",
-	project.KindDelegate: "to delegate (the user's go-ahead)",
+	project.KindDelegate: "to delegate (the user's go-ahead)", project.KindAccept: "accepted by the user",
+	project.KindSendBack: "sent back by the user",
 }
 
 // NudgeText is the one line an idle coordinator gets (§7.5). It holds

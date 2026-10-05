@@ -86,12 +86,13 @@ func TestStatusRoundTrip(t *testing.T) {
 }
 
 func TestValidate(t *testing.T) {
-	good := "PR: https://github.com/o/r/pull/12\n\n## Report\nDone.\n\n## Next\n- Merge the PR\nRemove the worktree\n\n## Remember\n- lesson\n"
+	good := "PR: https://github.com/o/r/pull/12\n\n## Report\nDone.\n\n## Next\n- Merge the PR\nRemove the worktree\n\n## Check\nRun tm, press t\n\n## Remember\n- lesson\n"
 	r, err := Validate(good)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.PR != "https://github.com/o/r/pull/12" || len(r.Next) != 2 || r.Next[0] != "Merge the PR" || len(r.Remember) != 1 {
+	if r.PR != "https://github.com/o/r/pull/12" || len(r.Next) != 2 || r.Next[0] != "Merge the PR" || len(r.Remember) != 1 ||
+		len(r.Check) != 1 || r.Check[0] != "Run tm, press t" {
 		t.Fatalf("%+v", r)
 	}
 	for _, c := range []struct{ text, want string }{

@@ -248,7 +248,9 @@ type viewDoneMsg struct {
 type boardMsg struct {
 	slug  string
 	board *tasks.Board
-	err   error
+	// reviews are the board's tasks in review, by id.
+	reviews map[int]Review
+	err     error
 }
 
 // actionMsg is the outcome of a key's action: attach to a session, or a
@@ -270,7 +272,15 @@ func (m *dash) loadBoard(slug string) tea.Cmd {
 	src := m.src
 	return func() tea.Msg {
 		b, err := src.Board(slug)
-		return boardMsg{slug: slug, board: b, err: err}
+		msg := boardMsg{slug: slug, board: b, err: err, reviews: map[int]Review{}}
+		if b != nil {
+			for _, t := range b.Tasks {
+				if t.Status == tasks.Review {
+					msg.reviews[t.ID] = src.Review(slug, t)
+				}
+			}
+		}
+		return msg
 	}
 }
 
@@ -448,6 +458,7 @@ func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case boardMsg:
 		if pv := m.projectPopupView(); pv != nil && pv.slug == msg.slug && msg.err == nil {
 			pv.setBoard(msg.board)
+			pv.reviews = msg.reviews
 		}
 		b := m.boardView()
 		if b == nil || msg.slug != b.slug {
@@ -459,6 +470,7 @@ func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		b.setBoard(msg.board)
+		b.reviews = msg.reviews
 		return m, nil
 	case actionMsg:
 		m.busy = false

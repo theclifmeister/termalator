@@ -358,7 +358,7 @@ func TestSmokeDelegateFromList(t *testing.T) {
 	}
 	// Asked once: d again adds nothing.
 	w.Type("d")
-	w.WaitFor("T1 is already waiting on the coordinator", wait)
+	w.WaitFor("T1 is already waiting on the coordinator to delegate it", wait)
 	if items := env.MustCLI("inbox", "list", "--project", "demo"); strings.Count(items, "delegate:") != 1 {
 		t.Fatalf("inbox:\n%s", items)
 	}
@@ -366,6 +366,74 @@ func TestSmokeDelegateFromList(t *testing.T) {
 		t.Fatalf("T1 changed:\n%s", out)
 	}
 	w.Key(keyEsc)
+	w.Type("q")
+	w.WaitExit(wait)
+}
+
+// TestSmokeAcceptSendBack: in the t list, a on a task in review asks
+// first; y drops an accept item, the row waits on the coordinator and
+// the idle coordinator's nudge names the task as accepted. x on another
+// asks for a note and drops a send-back item carrying it. A blocked
+// task, shown, says what it is blocked on, and c attaches the
+// coordinator. No task changes.
+func TestSmokeAcceptSendBack(t *testing.T) {
+	env, projDir, _ := tickerEnv(t)
+	coord := env.StartAgent("claude", projDir, "--role", "coordinator", "--project", "demo")
+	env.WaitState(coord, "idle", agentWait)
+	env.MustCLI("task", "add", "Ship it", "--project", "demo")
+	env.MustCLI("task", "add", "Fix the bell", "--project", "demo")
+	env.MustCLI("task", "add", "Pick a licence", "--project", "demo")
+	env.MustCLI("task", "status", "T1", "review", "--project", "demo", "--note", "Check: run tm and press t")
+	env.MustCLI("task", "status", "T2", "review", "--project", "demo")
+	env.MustCLI("task", "status", "T3", "blocked", "--project", "demo", "--note", "which licence, MIT or Apache?")
+
+	w := env.Window(110, 30)
+	w.WaitFor("3 needs you", wait)
+	w.Type("t")
+	w.WaitFor("demo tasks", wait)
+	w.WaitFor("a accept · x send back", wait)
+	w.Key(keyEnter)
+	w.WaitFor("• run tm and press t", wait)
+	w.Type("a")
+	w.WaitFor("Accept T1? The coordinator marks T1 Ship it done.", wait)
+	w.Type("y")
+	w.WaitFor("told the coordinator you accept T1", wait)
+	w.WaitFor("waiting on the coordinator to accept it", wait)
+	waitInbox(t, env, "accept: the user accepts T1")
+	nudge := env.WaitFake("prompt", agentWait, func(r FakeRecord) bool { return strings.HasPrefix(r.Str("text"), "[tm] ") })
+	if text := nudge.Str("text"); !strings.Contains(text, "T1 Ship it accepted by the user") {
+		t.Fatalf("nudge %q", text)
+	}
+	// Asked once: x adds nothing either.
+	w.Type("x")
+	w.WaitFor("T1 is already waiting on the coordinator to accept it", wait)
+	w.Key(keyEsc)
+	w.WaitFor("waiting on coordinator", wait)
+
+	w.Type("j")
+	w.Type("x")
+	w.WaitFor("Send T2 back. What should change?", wait)
+	w.Type("the bell is cut")
+	w.Key(keyEnter)
+	w.WaitFor("sent T2 back with your note", wait)
+	items := waitInbox(t, env, "send-back: the user sends T2 back: the bell is cut")
+	if strings.Count(items, "accept:") != 1 {
+		t.Fatalf("inbox:\n%s", items)
+	}
+
+	w.Type("j")
+	w.WaitFor("enter show · c coordinator · esc back", wait)
+	w.Key(keyEnter)
+	w.WaitFor("Blocked on: which licence, MIT or Apache?", wait)
+	for _, ref := range []string{"T1", "T2"} {
+		if out := env.MustCLI("task", "show", ref, "--project", "demo", "--json"); !strings.Contains(out, `"status": "review"`) {
+			t.Fatalf("%s changed:\n%s", ref, out)
+		}
+	}
+	w.Type("c")
+	w.WaitUntil("attached to the coordinator", agentWait, func(sc string) bool { return lastLine(sc, "demo coordinator") })
+	w.Prefix("d")
+	w.WaitFor("NEEDS YOU", wait)
 	w.Type("q")
 	w.WaitExit(wait)
 }

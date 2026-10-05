@@ -193,3 +193,39 @@ func Unsaved(dir, pushed string) (string, error) {
 	}
 	return n + " unpushed commits", nil
 }
+
+// MergeCommit is the commit that merged GitHub pull request n into the
+// default branch as last fetched (origin's, else the checked-out
+// branch): the merge commit GitHub writes, "Merge pull request #n from
+// …". "" when there is none: not merged, squashed, or not fetched yet.
+// No fetch.
+func MergeCommit(repo string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	for _, base := range []string{"refs/remotes/origin/HEAD", "HEAD"} {
+		out, err := git(repo, "log", "--merges", "-1", "--format=%H", "--grep", fmt.Sprintf("^Merge pull request #%d from ", n), base, "--")
+		if err == nil && out != "" {
+			return out
+		}
+	}
+	return ""
+}
+
+// ReleasedIn is the first tag, in version order, that contains commit:
+// the release that shipped it, "" when none has yet. ok is false when
+// the repo doesn't have the commit (not fetched), so it can't tell.
+func ReleasedIn(repo, commit string) (tag string, ok bool) {
+	if commit == "" || strings.HasPrefix(commit, "-") {
+		return "", false
+	}
+	if _, err := git(repo, "cat-file", "-e", commit+"^{commit}"); err != nil {
+		return "", false
+	}
+	out, err := git(repo, "tag", "--contains", commit, "--sort=v:refname")
+	if err != nil {
+		return "", false
+	}
+	tag, _, _ = strings.Cut(out, "\n")
+	return strings.TrimSpace(tag), true
+}

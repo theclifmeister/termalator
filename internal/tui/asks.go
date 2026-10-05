@@ -1,0 +1,230 @@
+package tui
+
+import (
+	"regexp"
+	"strings"
+
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/theclifmeister/termilator/internal/project"
+	"github.com/theclifmeister/termilator/internal/tasks"
+)
+
+// Asking the coordinator (docs/SPEC.md §4): keys on a task in the Tasks
+// tab or the t list ask the project's coordinator to act on it. The
+// dashboard still changes no task: it drops an inbox item, which the
+// coordinator takes as the user's word. d delegates an open, ready or
+// blocked task, a accepts a task in review, x sends one back with a
+// note; c opens the coordinator, to answer what a task is blocked on.
+
+// notDelegable is why task t can't be delegated, "" when it can: an
+// open, ready or blocked task can.
+func notDelegable(t *tasks.Task) string {
+	switch t.Status {
+	case tasks.Open, tasks.Ready, tasks.Blocked:
+		return ""
+	case tasks.Started:
+		return t.Ref() + " is started: a thread already works on it"
+	case tasks.Review:
+		return t.Ref() + " is in review: a accepts it, x sends it back"
+	case tasks.Done:
+		return t.Ref() + " is done"
+	}
+	return t.Ref() + " is " + string(t.Status)
+}
+
+// notInReview is why task t can't be accepted or sent back, "" when it
+// can: only a task in review can.
+func notInReview(t *tasks.Task) string {
+	if t.Status == tasks.Review {
+		return ""
+	}
+	return t.Ref() + " is " + string(t.Status) + ", not in review"
+}
+
+// notAskable is why kind can't be asked for task t, "" when it can.
+func notAskable(t *tasks.Task, kind string) string {
+	switch kind {
+	case project.KindDelegate:
+		return notDelegable(t)
+	case project.KindAccept, project.KindSendBack:
+		return notInReview(t)
+	}
+	return "unknown ask " + kind
+}
+
+// delegateWaiting is what a task's row says while an item asks the
+// coordinator something about it.
+const delegateWaiting = "waiting on the coordinator"
+
+// delegateWaitingRow is delegateWaiting for the t list's narrow row.
+const delegateWaitingRow = "waiting on coordinator"
+
+// waitingFor says what the coordinator is asked, for kind's item.
+func waitingFor(kind string) string {
+	switch kind {
+	case project.KindAccept:
+		return delegateWaiting + " to accept it"
+	case project.KindSendBack:
+		return delegateWaiting + " to send it back"
+	}
+	return delegateWaiting + " to delegate it"
+}
+
+// asked is the kind of the item that asks slug's coordinator about task
+// t, "" for none: while there is one, the task waits on the coordinator.
+func (m *dash) asked(slug string, t *tasks.Task) string {
+	if p := m.projectData(slug); p != nil {
+		return project.TaskAsked(p.Items, t.Ref())
+	}
+	return ""
+}
+
+// loaded tells whether t is a task from a loaded board.
+func loaded(t *tasks.Task) bool { return t != nil && (t.Title != "" || t.Status != "") }
+
+// canAsk checks before asking: the footer says why when kind can't be
+// asked for t (with what the key does, hint), or when an item already
+// asks something of it.
+func (m *dash) canAsk(slug string, t *tasks.Task, kind, hint string) bool {
+	if !loaded(t) {
+		return false // the board isn't loaded yet
+	}
+	if why := notAskable(t, kind); why != "" {
+		m.msg = why + "; " + hint
+		return false
+	}
+	if k := m.asked(slug, t); k != "" {
+		m.msg = t.Ref() + " is already " + waitingFor(k)
+		return false
+	}
+	return true
+}
+
+// askCoordinator drops kind's item for slug's task t; the footer says
+// done.
+func (m *dash) askCoordinator(slug string, t *tasks.Task, kind, note, done string) tea.Cmd {
+	src, ref, id := m.src, t.Ref(), t.ID
+	return m.act(func() actionMsg {
+		asked, err := src.Ask(slug, id, kind, note)
+		if err != nil {
+			return actionMsg{err: err}
+		}
+		if !asked {
+			return actionMsg{msg: ref + " is already " + delegateWaiting}
+		}
+		return actionMsg{msg: done}
+	})
+}
+
+// delegate asks, then has the coordinator delegate slug's task t.
+func (m *dash) delegate(slug string, t *tasks.Task) tea.Cmd {
+	if !m.canAsk(slug, t, project.KindDelegate, "d delegates open, ready and blocked tasks") {
+		return nil
+	}
+	ref := t.Ref()
+	question := "Delegate " + ref + " to the coordinator? It starts a thread for " + ref + " " + oneLine(t.Title) + "."
+	m.confirmNo(question, ref+" not delegated", func() tea.Cmd {
+		return m.askCoordinator(slug, t, project.KindDelegate, "", "asked the coordinator to delegate "+ref+"; it starts a thread for it")
+	})
+	return nil
+}
+
+// accept asks, then tells the coordinator the user accepts slug's task
+// t in review: it marks the task done.
+func (m *dash) accept(slug string, t *tasks.Task) tea.Cmd {
+	if !m.canAsk(slug, t, project.KindAccept, "a accepts tasks in review") {
+		return nil
+	}
+	ref := t.Ref()
+	question := "Accept " + ref + "? The coordinator marks " + ref + " " + oneLine(t.Title) + " done."
+	m.confirmNo(question, ref+" not accepted", func() tea.Cmd {
+		return m.askCoordinator(slug, t, project.KindAccept, "", "told the coordinator you accept "+ref+"; it marks it done")
+	})
+	return nil
+}
+
+// sendBack asks for a note, then has the coordinator send slug's task t
+// back to work with it.
+func (m *dash) sendBack(slug string, t *tasks.Task) tea.Cmd {
+	if !m.canAsk(slug, t, project.KindSendBack, "x sends back tasks in review") {
+		return nil
+	}
+	ref := t.Ref()
+	m.promptNo("Send "+ref+" back. What should change? ", ref+" not sent back", project.MaxSendBackNote, func(note string) tea.Cmd {
+		return m.askCoordinator(slug, t, project.KindSendBack, note, "sent "+ref+" back with your note; the coordinator passes it on")
+	})
+	return nil
+}
+
+// taskKey runs a task key on slug's task t: d, a, x or c.
+func (m *dash) taskKey(slug string, t *tasks.Task, key string) tea.Cmd {
+	switch key {
+	case "d":
+		return m.delegate(slug, t)
+	case "a":
+		return m.accept(slug, t)
+	case "x":
+		return m.sendBack(slug, t)
+	case "c":
+		return m.openProject(slug)
+	}
+	return nil
+}
+
+// taskKeys is the footer's key list for task t, before the view's own
+// keys; each list, with the view's keys, fits the 60 columns a full
+// sidebar leaves at the least (view.SideRoom).
+func taskKeys(t *tasks.Task) string {
+	if t == nil {
+		return ""
+	}
+	switch t.Status {
+	case tasks.Review:
+		return "a accept · x send back"
+	case tasks.Blocked:
+		return "c coordinator"
+	case tasks.Open, tasks.Ready:
+		return "d delegate"
+	}
+	return ""
+}
+
+// blockedOn is what task t is blocked on: its latest "blocked (date):"
+// note, "" when it has none.
+func blockedOn(t *tasks.Task) string {
+	paras := strings.Split(strings.TrimSpace(t.Notes), "\n\n")
+	for i := len(paras) - 1; i >= 0; i-- {
+		p := strings.TrimSpace(paras[i])
+		if rest, ok := strings.CutPrefix(p, string(tasks.Blocked)+" ("); ok {
+			if _, note, ok := strings.Cut(rest, "): "); ok {
+				return oneLine(note)
+			}
+		}
+	}
+	return ""
+}
+
+// statusNoteRE is a status note's start: "review (2026-10-05): ".
+var statusNoteRE = regexp.MustCompile(`^[a-z]+ \([0-9-]+\): `)
+
+// noteChecks are the task notes that say how to check it: a paragraph
+// starting "Check:", "To check:" or "How to check:" (after a status
+// note's "review (date): ").
+func noteChecks(t *tasks.Task) []string {
+	var out []string
+	for _, p := range strings.Split(strings.TrimSpace(t.Notes), "\n\n") {
+		p = strings.TrimSpace(p)
+		p = statusNoteRE.ReplaceAllString(p, "")
+		low := strings.ToLower(p)
+		for _, pre := range []string{"check:", "to check:", "how to check:"} {
+			if strings.HasPrefix(low, pre) {
+				if s := oneLine(strings.TrimSpace(p[len(pre):])); s != "" {
+					out = append(out, s)
+				}
+				break
+			}
+		}
+	}
+	return out
+}

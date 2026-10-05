@@ -19,13 +19,15 @@ type PR struct {
 	Failed int    `json:"failed,omitempty"` // failing checks
 	Review string `json:"review,omitempty"` // APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED, ""
 	// MergedAt is when it merged (when the ticker first saw it merged,
-	// if gh doesn't say); Head is its head commit.
+	// if gh doesn't say); Head is its head commit, Merge the commit its
+	// merge made on the base branch.
 	MergedAt time.Time `json:"merged_at,omitzero"`
 	Head     string    `json:"head,omitempty"`
+	Merge    string    `json:"merge,omitempty"`
 }
 
 // prFields is what `gh pr view --json` is asked for.
-const prFields = "number,url,state,reviewDecision,statusCheckRollup,mergedAt,headRefOid"
+const prFields = "number,url,state,reviewDecision,statusCheckRollup,mergedAt,headRefOid,mergeCommit"
 
 // ghPR is gh's answer. statusCheckRollup mixes check runs (status,
 // conclusion) and commit statuses (state).
@@ -36,7 +38,10 @@ type ghPR struct {
 	ReviewDecision string `json:"reviewDecision"`
 	MergedAt       string `json:"mergedAt"`
 	HeadRefOid     string `json:"headRefOid"`
-	Rollup         []struct {
+	MergeCommit    *struct {
+		Oid string `json:"oid"`
+	} `json:"mergeCommit"`
+	Rollup []struct {
 		Status     string `json:"status"`
 		Conclusion string `json:"conclusion"`
 		State      string `json:"state"`
@@ -74,6 +79,9 @@ func ParsePR(data []byte) (PR, error) {
 	}
 	if oidRE.MatchString(g.HeadRefOid) {
 		pr.Head = g.HeadRefOid
+	}
+	if g.MergeCommit != nil && pr.State == "MERGED" && oidRE.MatchString(g.MergeCommit.Oid) {
+		pr.Merge = g.MergeCommit.Oid
 	}
 	pending := false
 	for _, c := range g.Rollup {

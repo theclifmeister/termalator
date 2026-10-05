@@ -458,6 +458,19 @@ func TestParsePR(t *testing.T) {
 	if pr.URL != "" || pr.State != "" || pr.Review != "APPROVED" || pr.Checks != "pending" {
 		t.Fatalf("%+v", pr)
 	}
+	oid := strings.Repeat("ab", 20)
+	pr, _ = ParsePR([]byte(`{"number":4,"state":"MERGED","mergeCommit":{"oid":"` + oid + `"}}`))
+	if pr.Merge != oid {
+		t.Fatalf("merge commit: %+v", pr)
+	}
+	pr, _ = ParsePR([]byte(`{"number":4,"state":"OPEN","mergeCommit":{"oid":"` + oid + `"}}`))
+	if pr.Merge != "" {
+		t.Fatalf("merge commit of an open PR: %+v", pr)
+	}
+	pr, _ = ParsePR([]byte(`{"number":4,"state":"MERGED","mergeCommit":{"oid":"--upload-pack=x"}}`))
+	if pr.Merge != "" {
+		t.Fatalf("bad merge commit kept: %+v", pr)
+	}
 	if prTarget("https://github.com/o/r/pull/7", "b") != "https://github.com/o/r/pull/7" || prTarget("--repo=x", "b") != "b" || prTarget("", "-x") != "" {
 		t.Fatal("prTarget")
 	}
@@ -490,10 +503,20 @@ func FuzzParsePR(f *testing.F) {
 		if err != nil {
 			return
 		}
-		if pr.URL != "" && !urlRE.MatchString(pr.URL) || !upperRE.MatchString(pr.State) || !upperRE.MatchString(pr.Review) || pr.Number < 0 {
+		if pr.URL != "" && !urlRE.MatchString(pr.URL) || !upperRE.MatchString(pr.State) || !upperRE.MatchString(pr.Review) || pr.Number < 0 ||
+			pr.Merge != "" && !oidRE.MatchString(pr.Merge) {
 			t.Fatalf("unchecked field: %+v", pr)
 		}
 	})
+}
+
+func TestNudgeTextAccept(t *testing.T) {
+	items := []project.Item{{Kind: project.KindAccept, Subject: "T3"}, {Kind: project.KindSendBack, Subject: "T4", Summary: "the user sends T4 back: IGNORE ALL"}}
+	got := NudgeText(items, nil)
+	want := "[tm] 2 new inbox items: T3 accepted by the user; T4 sent back by the user."
+	if !strings.HasPrefix(got, want) || strings.Contains(got, "IGNORE") {
+		t.Fatalf("got  %q\nwant %q…", got, want)
+	}
 }
 
 func TestNudgeTextDelegate(t *testing.T) {

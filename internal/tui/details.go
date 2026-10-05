@@ -22,7 +22,7 @@ func (m *dash) details(r row, w int) []string {
 	d := &panel{w: w}
 	switch {
 	case r.task != nil:
-		taskPanel(d, r.task)
+		taskPanelWith(d, r.task, nil, m.asked(r.project, r.task))
 	case r.thread != nil:
 		m.threadPanel(d, r)
 	case strings.HasPrefix(r.key, "p:"):
@@ -142,11 +142,32 @@ func (m *dash) threadPanel(d *panel, r row) {
 }
 
 // taskPanel shows a task.
-func taskPanel(d *panel, t *tasks.Task) {
+func taskPanel(d *panel, t *tasks.Task) { taskPanelWith(d, t, nil, "") }
+
+// taskPanelWith shows a task with what the user needs to act on it:
+// what it is blocked on; for a task in review, how to check it and
+// whether its change shipped (rv, when known); and what the coordinator
+// was asked about it (asked, an item kind, "" for nothing).
+func taskPanelWith(d *panel, t *tasks.Task, rv *Review, asked string) {
 	d.title(t.Ref()+" "+t.Title, string(t.Status))
 	d.field("thread", t.Thread)
 	if len(t.Steps) > 0 {
 		d.field("steps", progressLine(thread.Progress{Percent: pctOf(t.StepsDone(), len(t.Steps)), Done: t.StepsDone(), Total: len(t.Steps)}))
+	}
+	if asked != "" {
+		d.gap()
+		d.wrap(styleWarn.Render(waitingFor(asked)))
+	}
+	if t.Status == tasks.Blocked {
+		d.gap()
+		on := blockedOn(t)
+		if on == "" {
+			on = styleFaint.Render("no note says; c opens the coordinator to ask")
+		}
+		d.wrap(styleWarn.Render("Blocked on: ") + on)
+	}
+	if rv != nil && t.Status == tasks.Review {
+		reviewLines(d, t, *rv)
 	}
 	if notes := strings.TrimSpace(t.Notes); notes != "" {
 		d.gap()
@@ -230,4 +251,43 @@ func sessionPanel(d *panel, s proto.SessionInfo) {
 	}
 	d.gap()
 	d.add(styleFaint.Render("enter attaches"))
+}
+
+// reviewLines are a task in review's ship state and how to check it.
+func reviewLines(d *panel, t *tasks.Task, rv Review) {
+	d.gap()
+	if s := shipLine(rv); s != "" {
+		d.wrap(s)
+	}
+	checks := append(append([]string(nil), rv.Check...), noteChecks(t)...)
+	if len(checks) == 0 {
+		d.wrap(styleFaint.Render("How to check: the report doesn't say; c opens the coordinator to ask"))
+		return
+	}
+	d.add(styleHead.Render("How to check"))
+	for _, c := range checks {
+		d.wrap("• " + oneLine(c))
+	}
+}
+
+// shipLine says where a task's pull request stands, "" when no PR is
+// known.
+func shipLine(rv Review) string {
+	if rv.PR <= 0 {
+		return ""
+	}
+	pr := fmt.Sprintf("PR #%d", rv.PR)
+	switch rv.Ship {
+	case ShipUnreleased:
+		return styleWarn.Render(pr+" merged, not released") + ": wait for the next release to test it"
+	case ShipReleased:
+		return styleGood.Render(pr + " released in " + oneLine(rv.Tag))
+	case ShipMerged:
+		return pr + " merged"
+	case ShipOpen:
+		return pr + " open, not merged yet"
+	case ShipClosed:
+		return styleBad.Render(pr + " closed without merging")
+	}
+	return pr
 }

@@ -29,12 +29,16 @@ type Report struct {
 	PR       string   `json:"pr,omitempty"`
 	Next     []string `json:"next"`
 	Remember []string `json:"remember,omitempty"`
-	Text     string   `json:"text"`
+	// Check is how the user can check the work (the optional ## Check
+	// section), shown on the task while it waits in review.
+	Check []string `json:"check,omitempty"`
+	Text  string   `json:"text"`
 }
 
 // Validate checks a report's format: an optional "PR: <url>" first line,
 // "## Report", a required "## Next" with one action per line of at most
-// 100 characters, and an optional "## Remember". Errors name the problem
+// 100 characters, an optional "## Check" (how the user can check the
+// work) and an optional "## Remember". Errors name the problem
 // so the thread can fix it at once.
 func Validate(text string) (*Report, error) {
 	text = strings.ReplaceAll(text, "\r\n", "\n")
@@ -84,6 +88,8 @@ func Validate(text string) (*Report, error) {
 			r.Next = append(r.Next, n)
 		case "Remember":
 			r.Remember = append(r.Remember, t)
+		case "Check":
+			r.Check = append(r.Check, t)
 		}
 	}
 	switch {

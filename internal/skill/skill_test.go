@@ -19,13 +19,14 @@ func TestText(t *testing.T) {
 		}
 	}
 	coord, _ := Text("coordinator", "dev")
-	for _, w := range []string{"tm context", "tm inbox done", "propose", "Only the user accepts work", "--approved-by-user", "a `takeover` item", "Needs you:", "id (task + short title)", "parallel_threads", "--over-cap", "A `delegate` item for T<n> is the user's go-ahead", "tm task\n  delegate T<n> --approved-by-user"} {
+	for _, w := range []string{"tm context", "tm inbox done", "propose", "Only the user accepts work", "--approved-by-user", "a `takeover` item", "Needs you:", "id (task + short title)", "parallel_threads", "--over-cap", "A `delegate` item for T<n> is the user's go-ahead", "tm task\n  delegate T<n> --approved-by-user",
+		"An `accept` item for T<n> is their word", "It is the only way besides chat", "A `send-back` item for T<n>", "propose a new thread for it with the note", "`--note \"Check: …\"`"} {
 		if !strings.Contains(coord, w) {
 			t.Errorf("coordinator rules lack %q", w)
 		}
 	}
 	thread, _ := Text("thread", "dev")
-	for _, w := range []string{"Stay in your worktree", "read-only", "tm task steps T<n> add", "tm report", "## Remember"} {
+	for _, w := range []string{"Stay in your worktree", "read-only", "tm task steps T<n> add", "tm report", "## Remember", "`## Check`"} {
 		if !strings.Contains(thread, w) {
 			t.Errorf("thread rules lack %q", w)
 		}
