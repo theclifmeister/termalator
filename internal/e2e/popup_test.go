@@ -216,8 +216,8 @@ func TestSmokeProjectPopup(t *testing.T) {
 			}
 		}
 	}
-	w.Type("q")
+	w.Quit()
 	w.WaitExit(wait)
-	w2.Type("q")
+	w2.Quit()
 	w2.WaitExit(wait)
 }

@@ -71,7 +71,7 @@ func TestSmokeProjectOpenAndSwitch(t *testing.T) {
 	w.WaitFor("enter open its coordinator", wait)
 	w.Key(keyEsc)
 	w.WaitFor("SESSIONS", wait)
-	w.Type("q")
+	w.Quit()
 	w.WaitExit(wait)
 
 	n := 0
@@ -205,7 +205,7 @@ func TestSmokeSidebar(t *testing.T) {
 	w3.Detach() // a full console now: back to the dashboard, everywhere
 	for _, x := range []*Window{w3, w, w2} {
 		x.WaitFor("SESSIONS", wait)
-		x.Type("q")
+		x.Quit()
 		x.WaitExit(wait)
 	}
 }

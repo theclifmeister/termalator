@@ -26,6 +26,7 @@ import (
 // help's order (sessionKeys in keymap.go).
 var sessionMenu = []struct{ label, key string }{
 	{"dashboard", "d"},
+	{"quit this console", "q"},
 	{"project popup", "a"},
 	{"switch project", "p"},
 	{"next project", "]"},

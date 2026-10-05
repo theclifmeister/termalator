@@ -80,7 +80,7 @@ func TestSmokeViewsShared(t *testing.T) {
 	if sc := w1.Screen(); !lastLine(sc, alpha+" coordinator") {
 		t.Fatalf("an own view's detach reached main:\n%s", sc)
 	}
-	w3.Type("q")
+	w3.Quit()
 	w3.WaitExit(wait)
 
 	// Back to the dashboard from w2: w1 follows.
@@ -92,9 +92,9 @@ func TestSmokeViewsShared(t *testing.T) {
 	w1.WaitUntil("w1 on beta", agentWait, func(sc string) bool { return lastLine(sc, beta+" coordinator") })
 	w2.Detach()
 	w1.WaitFor("SESSIONS", wait)
-	w1.Type("q")
+	w1.Quit()
 	w1.WaitExit(wait)
-	w2.Type("q")
+	w2.Quit()
 	w2.WaitExit(wait)
 }
 
@@ -135,7 +135,7 @@ func TestSmokeViewSurvivesRestart(t *testing.T) {
 	})
 	w2.Detach()
 	w2.WaitFor("SESSIONS", wait)
-	w2.Type("q")
+	w2.Quit()
 	w2.WaitExit(wait)
 }
 

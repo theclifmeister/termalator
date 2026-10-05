@@ -78,7 +78,7 @@ func TestSmokeSidebarKeys(t *testing.T) {
 	}
 	w.Detach()
 	w.WaitFor("SESSIONS", wait)
-	w.Type("q")
+	w.Quit()
 	w.WaitExit(wait)
 }
 
@@ -112,7 +112,7 @@ func TestSmokeSidebarIcons(t *testing.T) {
 				}
 				return strings.Join(lines, "\n")
 			}, "sidebar-"+set+".txt")
-			w.Type("q")
+			w.Quit()
 			w.WaitExit(wait)
 		})
 	}

@@ -81,7 +81,7 @@ func TestSmokeDashboard(t *testing.T) {
 		t.Fatalf("T1 after d:\n%s", out)
 	}
 	w.Key(keyEsc)
-	w.Type("q")
+	w.Quit()
 	w.WaitExit(wait)
 }
 
@@ -135,7 +135,7 @@ func TestSmokeFirstLocalRun(t *testing.T) {
 	w2 := env.Window(100, 30)
 	w2.WaitFor(s.ID, wait)
 	w2.WaitFor("idle", wait)
-	w2.Type("q")
+	w2.Quit()
 	w2.WaitExit(wait)
 }
 
