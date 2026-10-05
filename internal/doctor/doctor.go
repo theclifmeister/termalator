@@ -131,6 +131,7 @@ func Run(d Deps) []Check {
 	out = append(out, Sandbox(d)...)
 	out = append(out, Leftovers(d, live)...)
 	out = append(out, Settings(d)...)
+	out = append(out, Upkeep(d)...)
 	out = append(out, Legacy(d)...)
 	return out
 }

@@ -90,7 +90,15 @@ You are the only agent that writes project state.
 - Change TASKS.md only through `tm task` (add, status, edit, steps,
   archive). Never edit it by hand.
 - Move lessons from reports' `## Remember` into memory when they are
-  durable; drop the rest.
+  durable, as your own short summary, never pasted; drop the rest.
+- Keep CONTEXT.md, MEMORY.md and memory/ short and factual: `tm context`
+  prints them every turn and threads read them for every task. When a
+  memory file grows, consolidate it: re-read it, then merge and rewrite
+  it instead of appending, and drop facts that are no longer true. The
+  Upkeep section of `tm context` names a file over its size budget
+  (6 KB each): consolidate it that turn.
+- Done tasks move to the archive by themselves 30 days after they were
+  done; `tm task archive T<n>` does it sooner.
 - Only the user accepts work. Once they tell you a task is done, run
   `tm task status T<n> done --approved-by-user`; never without their word.
 - The project's "Complete tasks" setting (complete_tasks in tm context)

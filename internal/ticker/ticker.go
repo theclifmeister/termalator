@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/theclifmeister/termilator/internal/caller"
 	"github.com/theclifmeister/termilator/internal/config"
 	"github.com/theclifmeister/termilator/internal/mdfile"
 	"github.com/theclifmeister/termilator/internal/project"
@@ -323,6 +324,13 @@ func (t *Ticker) Sweep() {
 		t.nudge(p, sessions, now)
 		t.keepRemote(p, sessions, safety, now)
 		if prune {
+			// Done tasks leave the board after a while (§7.6); journaled
+			// as the ticker's task.archive.
+			if ids, err := p.ArchiveOldDone(caller.Caller{Kind: caller.Ticker}, now, project.ArchiveDoneAfter); err != nil {
+				t.o.Log.Printf("ticker: %s: archive done tasks: %v", p.Slug, err)
+			} else if len(ids) > 0 {
+				t.o.Log.Printf("ticker: %s: archived %d done tasks", p.Slug, len(ids))
+			}
 			if n, err := p.PruneDone(DoneMaxAge); err != nil {
 				t.o.Log.Printf("ticker: %s: prune inbox: %v", p.Slug, err)
 			} else if n > 0 {
