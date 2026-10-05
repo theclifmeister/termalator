@@ -58,7 +58,7 @@ jobs:
         id: pins
         run: |
           echo "zig=$(grep -E '^ZIG_(VERSION|SHA256_)' Makefile | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
-          echo "ghostty=$(grep -E '^(GHOSTTY_(REV|REPO|CPU)|ZIG_VERSION) ' Makefile | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+          echo "ghostty=$({ grep -E '^(GHOSTTY_(REV|REPO|CPU)|ZIG_VERSION) ' Makefile; echo "$GITHUB_WORKSPACE"; } | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
 
       - name: Cache Zig
         uses: actions/cache@v6

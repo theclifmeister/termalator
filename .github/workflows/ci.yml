@@ -40,10 +40,12 @@ jobs:
 
       # libghostty-vt only changes with the Ghostty pin (and the Zig that
       # builds it), so its cache is keyed on those lines alone: other
-      # Makefile edits don't force a rebuild.
+      # Makefile edits don't force a rebuild. The checkout path is in the
+      # key too: the build's pkg-config files name their absolute prefix,
+      # which moved when the repository was renamed.
       - name: Ghostty pin
         id: ghostty
-        run: echo "key=$(grep -E '^(GHOSTTY_(REV|REPO|CPU)|ZIG_VERSION) ' Makefile | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+        run: echo "key=$({ grep -E '^(GHOSTTY_(REV|REPO|CPU)|ZIG_VERSION) ' Makefile; echo "$GITHUB_WORKSPACE"; } | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
 
       - name: Cache libghostty-vt
         uses: actions/cache@v6
@@ -105,7 +107,7 @@ jobs:
         id: pins
         run: |
           echo "zig=$(grep -E '^ZIG_(VERSION|SHA256_)' Makefile | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
-          echo "ghostty=$(grep -E '^(GHOSTTY_(REV|REPO|CPU)|ZIG_VERSION) ' Makefile | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+          echo "ghostty=$({ grep -E '^(GHOSTTY_(REV|REPO|CPU)|ZIG_VERSION) ' Makefile; echo "$GITHUB_WORKSPACE"; } | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
 
       - name: Cache Zig
         uses: actions/cache@v6

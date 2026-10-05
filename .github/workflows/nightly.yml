@@ -44,7 +44,7 @@ jobs:
 
       - name: Ghostty pin
         id: ghostty
-        run: echo "key=$(grep -E '^(GHOSTTY_(REV|REPO|CPU)|ZIG_VERSION) ' Makefile | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+        run: echo "key=$({ grep -E '^(GHOSTTY_(REV|REPO|CPU)|ZIG_VERSION) ' Makefile; echo "$GITHUB_WORKSPACE"; } | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
 
       - name: Cache libghostty-vt
         uses: actions/cache@v6
@@ -100,7 +100,7 @@ jobs:
 
       - name: Ghostty pin
         id: ghostty
-        run: echo "key=$(grep -E '^(GHOSTTY_(REV|REPO|CPU)|ZIG_VERSION) ' Makefile | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+        run: echo "key=$({ grep -E '^(GHOSTTY_(REV|REPO|CPU)|ZIG_VERSION) ' Makefile; echo "$GITHUB_WORKSPACE"; } | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
 
       - name: Cache libghostty-vt
         uses: actions/cache@v6
