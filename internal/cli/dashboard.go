@@ -82,11 +82,12 @@ func (e *Env) fullConsole(own bool, goTo *tui.Target, agentName string) int {
 		}
 	}
 	attach := vc.View().Mode == view.ModeLayout
-	flash := "" // the popup's last message, for the session's status bar
+	flash := ""   // the popup's last message, for the session's status bar
+	command := "" // a prefix command typed over the popup, for the session
 	for {
 		var over *tui.Over
 		if attach {
-			ares, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Agent: agentName}, flash, args)
+			ares, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Agent: agentName}, flash, command, args)
 			if code != ExitOK {
 				return code
 			}
@@ -111,7 +112,7 @@ func (e *Env) fullConsole(own bool, goTo *tui.Target, agentName string) int {
 		if res.Attach == "" {
 			return ExitOK
 		}
-		attach, st, flash = true, tui.DashState{}, res.Message
+		attach, st, flash, command = true, tui.DashState{}, res.Message, res.Command
 	}
 }
 
@@ -148,7 +149,7 @@ func (e *Env) openCmd(slug, agentName string) error {
 	if err != nil {
 		return err
 	}
-	res, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Agent: agentName}, "", []string{"project", "open", slug, "--agent", agentName})
+	res, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Agent: agentName}, "", "", []string{"project", "open", slug, "--agent", agentName})
 	vc.Close()
 	if code != ExitOK {
 		return &exitError{code}

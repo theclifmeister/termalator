@@ -108,32 +108,29 @@ func (pv *projectView) data(m *dash) ProjectData {
 
 func (pv *projectView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	if pv.tab == tabTasks {
-		// The task keys (asks.go), a among them: on this tab it accepts
-		// a task rather than closing the popup.
+		// The task keys (asks.go).
 		if t := pv.selTask(); t != nil {
 			switch k.String() {
 			case "enter":
 				return m.openTask(pv, t)
-			case "d", "a", "x", "c":
+			case "D", "A", "x", "c":
 				return m.taskKey(pv.slug, t, k.String())
 			}
 		}
 	}
 	switch s := k.String(); s {
-	case "esc", "q", "a":
+	case "esc":
 		m.pop()
 		return nil
-	case "tab", "right", "l":
+	case "right", "l":
 		pv.tab = (pv.tab + 1) % tabCount
 		return nil
-	case "shift+tab", "left", "h":
+	case "left", "h":
 		pv.tab = (pv.tab + tabCount - 1) % tabCount
 		return nil
 	case "1", "2", "3", "4", "5":
 		pv.tab = int(s[0] - '1')
 		return nil
-	case "r":
-		return tea.Batch(m.load(), m.loadBoard(pv.slug))
 	}
 	s := k.String()
 	d := scrollKeys[s]
@@ -279,7 +276,7 @@ func (pv *projectView) box(m *dash) box {
 	var body []string
 	var hits []int
 	sel := -1
-	keys := "tab next tab · 1-5 pick one · esc close"
+	keys := "← → tabs · esc close"
 	switch pv.tab {
 	case tabOverview:
 		body, sel, hits = pv.overview(m, p, w)

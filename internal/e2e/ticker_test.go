@@ -323,7 +323,7 @@ func (e *Env) scriptsDir() string {
 	return ""
 }
 
-// TestSmokeDelegateFromList: d on a task in the t list asks first; y
+// TestSmokeDelegateFromList: D on a task in the t list asks first; y
 // drops a delegate item, the row waits on the coordinator, the footer
 // says so, and the idle coordinator's nudge names the task as the
 // user's go-ahead. A started task isn't delegated.
@@ -339,12 +339,12 @@ func TestSmokeDelegateFromList(t *testing.T) {
 	w.WaitFor("1 in motion · 1 on deck", wait)
 	w.Type("t")
 	w.WaitFor("demo tasks", wait)
-	w.WaitFor("d delegate", wait)
-	// T2 (in motion) first: d only says why.
-	w.Type("d")
+	w.WaitFor("D delegate", wait)
+	// T2 (in motion) first: D only says why.
+	w.Type("D")
 	w.WaitFor("T2 is started: a thread already works on it", wait)
 	w.Type("j")
-	w.Type("d")
+	w.Type("D")
 	w.WaitFor("Delegate T1 to the coordinator?", wait)
 	w.Type("y")
 	w.WaitFor("asked the coordinator to delegate T1", wait)
@@ -357,8 +357,8 @@ func TestSmokeDelegateFromList(t *testing.T) {
 	if text := nudge.Str("text"); !strings.Contains(text, "T1 Ship it to delegate (the user's go-ahead)") {
 		t.Fatalf("nudge %q", text)
 	}
-	// Asked once: d again adds nothing.
-	w.Type("d")
+	// Asked once: D again adds nothing.
+	w.Type("D")
 	w.WaitFor("T1 is already waiting on the coordinator to delegate it", wait)
 	if items := env.MustCLI("inbox", "list", "--project", "demo"); strings.Count(items, "delegate:") != 1 {
 		t.Fatalf("inbox:\n%s", items)
@@ -371,7 +371,7 @@ func TestSmokeDelegateFromList(t *testing.T) {
 	w.WaitExit(wait)
 }
 
-// TestSmokeAcceptSendBack: in the t list, a on a task in review asks
+// TestSmokeAcceptSendBack: in the t list, A on a task in review asks
 // first; y drops an accept item, the row waits on the coordinator and
 // the idle coordinator's nudge names the task as accepted. x on another
 // asks for a note and drops a send-back item carrying it. A blocked
@@ -392,10 +392,10 @@ func TestSmokeAcceptSendBack(t *testing.T) {
 	w.WaitFor("3 needs you", wait)
 	w.Type("t")
 	w.WaitFor("demo tasks", wait)
-	w.WaitFor("a accept · x send back", wait)
+	w.WaitFor("A accept · x send back", wait)
 	w.Key(keyEnter)
 	w.WaitFor("• run tm and press t", wait)
-	w.Type("a")
+	w.Type("A")
 	w.WaitFor("Accept T1? The coordinator marks T1 Ship it done.", wait)
 	w.Type("y")
 	w.WaitFor("told the coordinator you accept T1", wait)

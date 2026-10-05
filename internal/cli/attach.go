@@ -86,7 +86,7 @@ func attachCmd(e *Env, args []string) int {
 	if err != nil {
 		return e.srvFail("attach", err)
 	}
-	res, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Agent: config.DefaultAgent(defaultAgent)}, "", []string{"attach", id})
+	res, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Agent: config.DefaultAgent(defaultAgent)}, "", "", []string{"attach", id})
 	vc.Close()
 	if code != ExitOK {
 		return code
@@ -117,7 +117,7 @@ func (e *Env) tookOver(s proto.SessionInfo) error {
 // attach draws the view's layout on this terminal until it leaves it or
 // the user detaches. On a build mismatch it re-execs the server's binary
 // with args (docs/SPEC.md §3.3) and doesn't return.
-func (e *Env) attach(p server.Paths, vc *tui.ViewConn, side *tui.SidebarOptions, flash string, args []string) (tui.Result, int) {
+func (e *Env) attach(p server.Paths, vc *tui.ViewConn, side *tui.SidebarOptions, flash, command string, args []string) (tui.Result, int) {
 	id := vc.View().Focus
 	logger := log.New(io.Discard, "", 0)
 	if path := e.Getenv(attachLogEnv); path != "" {
@@ -127,7 +127,7 @@ func (e *Env) attach(p server.Paths, vc *tui.ViewConn, side *tui.SidebarOptions,
 		}
 	}
 	res, err := tui.Attach(tui.Options{Paths: p, View: vc, In: os.Stdin, Out: os.Stdout, Log: logger,
-		Takeover: e.tookOver, Sidebar: side, Flash: flash})
+		Takeover: e.tookOver, Sidebar: side, Flash: flash, Command: command})
 	var verr *proto.MismatchError
 	if errors.As(err, &verr) && verr.ReExec && e.Getenv(reexecEnv) == "" {
 		// The snapshot format is only stable within one build: become the

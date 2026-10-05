@@ -27,6 +27,9 @@ type AgentConfig struct {
 	Agent agent.Agent
 	// AgentSID is the agent's own session id, when pre-assigned or resumed.
 	AgentSID string
+	// Kickoff says the agent was launched with a first prompt: it reads
+	// as working until it starts on it (agent.Tracker.AwaitKickoff).
+	Kickoff bool
 	// Home is the user's home directory, for status-file and snapshot
 	// path templates.
 	Home string
@@ -90,6 +93,9 @@ func newAgentRT(cfg AgentConfig, pid int, observed bool) (*agentRT, error) {
 	if cfg.AgentSID != "" {
 		rt.tr.SetAgentSID(cfg.AgentSID)
 		rt.lastSID = cfg.AgentSID
+	}
+	if cfg.Kickoff && !observed {
+		rt.tr.AwaitKickoff()
 	}
 	return rt, nil
 }

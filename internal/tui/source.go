@@ -95,6 +95,9 @@ type Source interface {
 	// Review is how to check task t, in review, and whether its change
 	// has shipped.
 	Review(slug string, t *tasks.Task) Review
+	// SetRemote turns remote control of the project's running
+	// coordinator on or off (prefix+r), saying what it did.
+	SetRemote(slug string, on bool) (string, error)
 }
 
 // Review is what the user needs to review a task: how to check it (the
@@ -369,6 +372,14 @@ func shipped(repo string, n int, pr ticker.PR) (ship, tag string) {
 		return ShipClosed, ""
 	}
 	return "", ""
+}
+
+func (s *ServerSource) SetRemote(slug string, on bool) (string, error) {
+	res, err := SetRemote(s.call, slug, on)
+	if err != nil {
+		return "", err
+	}
+	return RemoteMessage(slug, res), nil
 }
 
 func (s *ServerSource) Agents() []string {

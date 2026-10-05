@@ -98,7 +98,7 @@ func TestSmokeProjectPopup(t *testing.T) {
 	w.WaitFor("ON DECK", wait)
 	screens = append(screens, w.Screen())
 	w.Golden("popup-tasks.txt", popupMasks...)
-	w.Key(emu.Key{Special: emu.KeyTab})
+	w.Key(emu.Key{Special: emu.KeyRight})
 	w.WaitFor("Start threads", wait)
 	w.Golden("popup-settings.txt", popupMasks...)
 
@@ -158,7 +158,7 @@ func TestSmokeProjectPopup(t *testing.T) {
 	w.Key(keyEsc)
 	w.WaitUntil("popup closed", wait, func(sc string) bool { return !strings.Contains(sc, "1 Overview") })
 	w.Type("?")
-	w.WaitFor("any other key returns", wait)
+	w.WaitFor("↑ ↓ scroll · esc back", wait)
 	help := popupBody(w.Screen(), cols)
 	screens = append(screens, w.Screen())
 	// Each wraps to its own box's width and shows what fits: word for
@@ -167,8 +167,8 @@ func TestSmokeProjectPopup(t *testing.T) {
 	if n := min(len(kw), len(hw)); n < 20 || !slices.Equal(kw[:n], hw[:n]) {
 		t.Fatalf("keys tab and help differ:\n%s\n----\n%s", strings.Join(keys, "\n"), strings.Join(help, "\n"))
 	}
-	w.Type("x")
-	w.WaitUntil("help closed", wait, func(sc string) bool { return !strings.Contains(sc, "any other key returns") })
+	w.Key(keyEsc)
+	w.WaitUntil("help closed", wait, func(sc string) bool { return !strings.Contains(sc, "↑ ↓ scroll · esc back") })
 
 	// , has the settings of every project.
 	w.Type(",")
@@ -210,11 +210,11 @@ func TestSmokeProjectPopup(t *testing.T) {
 	})
 	// prefix+? the same; prefix+d from the popup goes to the dashboard.
 	w.Prefix("?")
-	w.WaitFor("any other key returns", wait)
+	w.WaitFor("↑ ↓ scroll · esc back", wait)
 	w.Prefix("d")
 	w.WaitFor("SESSIONS", wait)
 	w2.WaitFor("SESSIONS", wait)
-	if strings.Contains(w.Screen(), "any other key returns") {
+	if strings.Contains(w.Screen(), "↑ ↓ scroll · esc back") {
 		t.Fatalf("prefix d left the help open:\n%s", w.Screen())
 	}
 	for _, sc := range screens {

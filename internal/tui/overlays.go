@@ -81,7 +81,7 @@ func (m *dash) inner(width int) int {
 }
 
 // helpView lists the keys (keymap.go) as wide as the window; the arrows
-// scroll, any other key closes it.
+// scroll, esc closes it.
 type helpView struct{ scroll int }
 
 func (h *helpView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
@@ -89,13 +89,15 @@ func (h *helpView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 		h.scroll = clampScroll(h.scroll+d, len(keyLines(m.inner(m.w))))
 		return nil
 	}
-	m.pop()
+	if k.String() == "esc" {
+		m.pop()
+	}
 	return nil
 }
 
 func (h *helpView) box(m *dash) box {
 	return box{title: "keys", body: keyLines(m.inner(m.w)), sel: -1, scroll: h.scroll,
-		keys: "↑ ↓ scroll · any other key returns", width: m.w}
+		keys: "↑ ↓ scroll · esc back", width: m.w}
 }
 
 func (h *helpView) render(m *dash) string { return m.popup(h.box(m)) }
@@ -239,7 +241,7 @@ func (b *boardView) selectID(id int) {
 
 func (b *boardView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	switch k.String() {
-	case "esc", "q", "t":
+	case "esc":
 		if b.open && !b.back {
 			b.open = false
 		} else {
@@ -257,12 +259,10 @@ func (b *boardView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 		if len(b.list) > 0 {
 			b.open = true
 		}
-	case "d", "a", "x", "c":
+	case "D", "A", "x", "c":
 		if b.board != nil && b.sel < len(b.list) {
 			return m.taskKey(b.slug, b.list[b.sel], k.String())
 		}
-	case "r":
-		return m.loadBoard(b.slug)
 	}
 	return nil
 }
@@ -285,7 +285,7 @@ func (b *boardView) render(m *dash) string {
 		}
 		keys := joinKeys(taskKeys(t), "esc back")
 		if t.Status == tasks.Blocked {
-			keys = "c coordinator · d delegate · esc back"
+			keys = "c coordinator · D delegate · esc back"
 		}
 		return m.popup(box{title: b.slug + " " + t.Ref(), body: d.lines, sel: -1, keys: keys, width: 88})
 	}
@@ -321,7 +321,7 @@ func (b *boardView) render(m *dash) string {
 	if len(b.list) == 0 {
 		lines = append(lines, styleFaint.Render("no tasks"))
 	}
-	keys := "enter show · d delegate · r refresh · esc back"
+	keys := "enter show · D delegate · esc back"
 	if b.sel < len(b.list) {
 		switch t := b.list[b.sel]; t.Status {
 		case tasks.Review, tasks.Blocked, tasks.Done:
@@ -365,7 +365,7 @@ type switchView struct{ sel int }
 
 func (sw *switchView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	switch k.String() {
-	case "esc", "q", "p":
+	case "esc":
 		m.pop()
 	case "up", "k":
 		sw.sel = moveSel(sw.sel, -1, len(m.data.Projects))
@@ -430,14 +430,12 @@ func (in *inboxView) items(m *dash) []project.Item {
 
 func (in *inboxView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	switch k.String() {
-	case "esc", "q", "i":
+	case "esc":
 		m.pop()
 	case "up", "k":
 		in.sel = moveSel(in.sel, -1, len(in.items(m)))
 	case "down", "j":
 		in.sel = moveSel(in.sel, 1, len(in.items(m)))
-	case "r":
-		return m.load()
 	}
 	return nil
 }
@@ -445,7 +443,7 @@ func (in *inboxView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 func (in *inboxView) render(m *dash) string {
 	lines, sel, hits := inboxLines(in.items(m), in.sel, m.inner(popupWidth))
 	lines = append(lines, "", styleFaint.Render("The coordinator handles these (tm inbox done)."))
-	return m.popup(box{title: in.slug + " inbox", body: lines, sel: sel, hits: hits, keys: "r refresh · esc back", width: popupWidth})
+	return m.popup(box{title: in.slug + " inbox", body: lines, sel: sel, hits: hits, keys: "esc back", width: popupWidth})
 }
 
 func (in *inboxView) click(_ *dash, item, _ int, _ bool) tea.Cmd {

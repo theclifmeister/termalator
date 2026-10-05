@@ -20,5 +20,5 @@
                                │
                                │
                                │────────────────────────────────────────────────────────────────────
-                               │ enter show · a accept · x send back · esc back
+                               │ enter show · A accept · x send back · esc back
                                │

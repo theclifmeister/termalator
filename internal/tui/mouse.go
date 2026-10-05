@@ -96,6 +96,10 @@ func hintKey(k string) string {
 		return k
 	case "↑", "↓":
 		return ""
+	case "←":
+		return "left"
+	case "→":
+		return "right"
 	}
 	if rest, ok := strings.CutPrefix(k, "prefix+"); ok && utf8.RuneCountInString(rest) == 1 {
 		return k
@@ -133,6 +137,10 @@ func keyMsg(name string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: tea.KeyUp}
 	case "down":
 		return tea.KeyPressMsg{Code: tea.KeyDown}
+	case "left":
+		return tea.KeyPressMsg{Code: tea.KeyLeft}
+	case "right":
+		return tea.KeyPressMsg{Code: tea.KeyRight}
 	}
 	if c, ok := strings.CutPrefix(name, "ctrl+"); ok {
 		r, _ := utf8.DecodeRuneInString(c)
@@ -458,7 +466,8 @@ func (m *dash) sideMenu(mo tea.Mouse) tea.Cmd {
 	return nil
 }
 
-// menuView is a menu: picked with a click, or the arrows and enter.
+// menuView is a menu: picked with a click, or the arrows and enter;
+// esc (or a click outside) closes it.
 type menuView struct {
 	title string
 	items []menuItem
@@ -481,7 +490,7 @@ func (mv *menuView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 		mv.sel = moveSel(mv.sel, 1, len(mv.items))
 	case "enter", "space":
 		return mv.pick(m, mv.sel)
-	default:
+	case "esc":
 		m.close(mv)
 	}
 	return nil

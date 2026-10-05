@@ -35,8 +35,10 @@ func newProject(env *Env, name string) (slug, dir string) {
 
 // TestSmokeDashboard: the dashboard's screens, empty, and with a project
 // and sessions; a task in review shows in NEEDS YOU, and enter shows it
-// in the project popup's Tasks tab; t shows the tasks, and d on a task
-// in review only says why it isn't delegated.
+// in the project popup's Tasks tab, where prefix+a opens the project
+// popup anew rather than accepting (docs/SPEC.md §4, the key table); t
+// shows the tasks, and D on a task in review only says why it isn't
+// delegated.
 func TestSmokeDashboard(t *testing.T) {
 	env := New(t)
 	w := env.Window(100, 24)
@@ -66,7 +68,12 @@ func TestSmokeDashboard(t *testing.T) {
 	w.Type("k")
 	w.WaitFor("enter show", wait)
 	w.Key(keyEnter)
-	w.WaitFor("a accept · x send back · enter show · esc close", wait)
+	w.WaitFor("A accept · x send back · enter show · esc close", wait)
+	w.Prefix("a")
+	w.WaitFor("+ add repository", wait)
+	if strings.Contains(w.Screen(), "Accept T1?") {
+		t.Fatalf("prefix+a reached the Tasks tab:\n%s", w.Screen())
+	}
 	w.Key(keyEsc)
 	w.WaitFor("NEEDS YOU 1", wait)
 
@@ -75,10 +82,10 @@ func TestSmokeDashboard(t *testing.T) {
 	w.WaitFor("demo tasks", wait)
 	w.WaitFor("T1", wait)
 	w.Golden("dashboard-tasks.txt", dashMasks...)
-	w.Type("d")
+	w.Type("D")
 	w.WaitFor("T1 is in review", wait)
 	if out := env.MustCLI("task", "show", "T1", "--project", slug, "--json"); !strings.Contains(out, `"status": "review"`) {
-		t.Fatalf("T1 after d:\n%s", out)
+		t.Fatalf("T1 after D:\n%s", out)
 	}
 	w.Key(keyEsc)
 	w.Quit()
