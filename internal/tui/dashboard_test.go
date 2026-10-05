@@ -44,6 +44,7 @@ type fakeSource struct {
 	agents    []string
 	remote    []string // "slug on" or "slug off"
 	lifecycle []string // "slug verb"
+	memory    project.Memory
 }
 
 func (f *fakeSource) SetRemote(slug string, on bool) (string, error) {
@@ -123,6 +124,7 @@ func (f *fakeSource) Ask(slug string, id int, kind, note string) (bool, error) {
 	return true, nil
 }
 func (f *fakeSource) Review(slug string, t *tasks.Task) Review { return f.reviews[t.ID] }
+func (f *fakeSource) Memory(string) (project.Memory, error)    { return f.memory, nil }
 func (f *fakeSource) Agents() []string                         { return f.agents }
 func (f *fakeSource) NewProject(name string) (string, error)   { return name, nil }
 func (f *fakeSource) StartShell(cwd string, c, r int) (string, error) {

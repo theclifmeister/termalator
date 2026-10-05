@@ -102,6 +102,9 @@ type Source interface {
 	// "pause", "resume", "archive", "delete"), saying what it did
 	// (lifecycle.go).
 	Lifecycle(slug, verb string) (string, error)
+	// Memory is the project's CONTEXT.md, MEMORY.md and memory notes'
+	// titles, for the project popup's Memory tab.
+	Memory(slug string) (project.Memory, error)
 }
 
 // Review is what the user needs to review a task: how to check it (the
@@ -224,6 +227,14 @@ func (s *ServerSource) Board(slug string) (*tasks.Board, error) {
 		return nil, err
 	}
 	return p.Tasks().Load()
+}
+
+func (s *ServerSource) Memory(slug string) (project.Memory, error) {
+	p, err := project.Open(slug)
+	if err != nil {
+		return project.Memory{}, err
+	}
+	return p.ReadMemory()
 }
 
 func (s *ServerSource) start(p proto.SessionStartParams) (string, error) {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -21,9 +22,9 @@ import (
 // The project popup (a on the dashboard, prefix+a in a session;
 // docs/SPEC.md §4): everything about one project in tabs. Only the
 // repositories and the settings change here, on the human's keypress;
-// the inbox and the tasks are read-only, since the coordinator handles
-// them, save that d, a and x ask it to act on a task (asks.go). Which
-// tab is open is this console's own, as every popup.
+// the inbox, the tasks and the memory are read-only, since the
+// coordinator keeps them, save that D, A and x ask it to act on a task
+// (asks.go). Which tab is open is this console's own, as every popup.
 
 // The tabs, in order.
 const (
@@ -32,10 +33,11 @@ const (
 	tabTasks
 	tabSettings
 	tabKeys
+	tabMemory
 	tabCount
 )
 
-var tabNames = [tabCount]string{"Overview", "Inbox", "Tasks", "Settings", "Keys"}
+var tabNames = [tabCount]string{"Overview", "Inbox", "Tasks", "Settings", "Keys", "Memory"}
 
 type projectView struct {
 	slug string
@@ -52,6 +54,10 @@ type projectView struct {
 	board             *tasks.Board
 	reviews           map[int]Review // the tasks in review, by id
 	settings          settingsList
+	// memory is the project's memory (the Memory tab), nil until it
+	// loads; memErr is why it didn't.
+	memory *project.Memory
+	memErr error
 	// pick is the task to select once the board loads, 0 for none.
 	pick int
 }
@@ -63,7 +69,7 @@ func (m *dash) projectPopup(string) tea.Cmd {
 	}
 	pv := &projectView{slug: slug, settings: settingsList{rows: projectSettings(slug)}}
 	m.push(pv)
-	return m.loadBoard(slug)
+	return m.loadPopup(slug)
 }
 
 // showTask opens slug's project popup on the Tasks tab with task id
@@ -72,7 +78,7 @@ func (m *dash) projectPopup(string) tea.Cmd {
 func (m *dash) showTask(slug string, id int) tea.Cmd {
 	pv := &projectView{slug: slug, tab: tabTasks, pick: id, settings: settingsList{rows: projectSettings(slug)}}
 	m.push(pv)
-	return m.loadBoard(slug)
+	return m.loadPopup(slug)
 }
 
 // setBoard takes a loaded board, selecting the task to pick.
@@ -122,13 +128,13 @@ func (pv *projectView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	case "esc":
 		m.pop()
 		return nil
-	case "right", "l":
+	case "right":
 		pv.tab = (pv.tab + 1) % tabCount
 		return nil
-	case "left", "h":
+	case "left":
 		pv.tab = (pv.tab + tabCount - 1) % tabCount
 		return nil
-	case "1", "2", "3", "4", "5":
+	case "1", "2", "3", "4", "5", "6":
 		pv.tab = int(s[0] - '1')
 		return nil
 	}
@@ -193,12 +199,12 @@ func (pv *projectView) count(m *dash) int {
 func (pv *projectView) repoKey(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	slug, repos := pv.slug, pv.data(m).Repos
 	switch k.String() {
-	case "+", "n":
+	case "+":
 		m.prompt("add a repository (its directory): ", m.cwd, func(path string) tea.Cmd {
 			path = absPath(path, m.cwd)
 			return m.setRepo(slug, path, true, "added "+path)
 		})
-	case "x", "delete", "backspace":
+	case "x":
 		i := pv.sel[tabOverview]
 		if i >= len(repos) {
 			return nil
@@ -295,6 +301,9 @@ func (pv *projectView) box(m *dash) box {
 		// The same list as the help.
 		body = keyLines(w)
 		keys = "↑ ↓ scroll · " + keys
+	case tabMemory:
+		body = pv.memoryLines(m, w)
+		keys = "↑ ↓ scroll · " + keys
 	}
 	head := []string{pv.tabBar(p), ""}
 	all := append([]int{tabHit, noHit}, hits...)
@@ -358,8 +367,8 @@ func (pv *projectView) tabAt(p ProjectData, col int) int {
 // wheel moves the selection as the arrows do, or scrolls a tab without
 // one by three lines.
 func (pv *projectView) wheel(m *dash, d int) {
-	if pv.tab == tabKeys {
-		pv.nudge[tabKeys] += 3 * d
+	if pv.tab == tabKeys || pv.tab == tabMemory {
+		pv.nudge[pv.tab] += 3 * d
 		return
 	}
 	pv.key(m, arrow(d))
@@ -590,4 +599,87 @@ func inboxLines(items []project.Item, sel, w int) ([]string, int, []int) {
 		hits = append(hits, noHit)
 	}
 	return lines, at, hits
+}
+
+// memoryLines are the project's memory, read-only: CONTEXT.md, MEMORY.md
+// and the memory notes' titles, as text (a link shows its text only, so
+// no file path shows).
+func (pv *projectView) memoryLines(m *dash, w int) []string {
+	switch {
+	case pv.memErr != nil:
+		return []string{styleBad.Render("error: " + oneLine(pv.memErr.Error()))}
+	case pv.memory == nil:
+		return []string{styleFaint.Render("loading…")}
+	}
+	mem := pv.memory
+	var out []string
+	section := func(title, text, none string) {
+		if len(out) > 0 {
+			out = append(out, "")
+		}
+		out = append(out, m.ruleIn(title, styleTitle, w))
+		if lines := mdLines(text, w); len(lines) > 0 {
+			out = append(out, lines...)
+		} else {
+			out = append(out, styleFaint.Render(none))
+		}
+	}
+	section("CONTEXT", mem.Context, "no context yet")
+	section("MEMORY", mem.Index, "no memory yet")
+	notes := ""
+	for _, n := range mem.Notes {
+		notes += "- " + n + "\n"
+	}
+	section("NOTES", notes, "no notes yet")
+	out = append(out, "", styleFaint.Render("Read-only: the coordinator keeps these; every thread is told them."))
+	return out
+}
+
+// mdLink is a markdown link: its text and its target.
+var mdLink = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
+
+// mdLines is a markdown file as text w cells wide: a heading in bold
+// (its first one, the file's title, left out), a link as its text, a
+// list item wrapped under its text.
+func mdLines(text string, w int) []string {
+	var out []string
+	first := true
+	for _, l := range strings.Split(strings.TrimSpace(text), "\n") {
+		l = mdLink.ReplaceAllString(strings.TrimRight(l, " \t"), "$1")
+		if h, ok := strings.CutPrefix(l, "#"); ok {
+			h = strings.TrimSpace(strings.TrimLeft(h, "#"))
+			if !first || !strings.HasPrefix(l, "# ") {
+				out = append(out, styleHead.Render(fit(h, w)))
+			}
+			first = false
+			continue
+		}
+		first = false
+		if strings.TrimSpace(l) == "" {
+			if len(out) > 0 && out[len(out)-1] != "" {
+				out = append(out, "")
+			}
+			continue
+		}
+		// A list item's lines hang under its text.
+		body := strings.TrimLeft(l, " ")
+		indent := len(l) - len(body)
+		for _, b := range []string{"- ", "* ", "+ "} {
+			if strings.HasPrefix(body, b) {
+				indent += len(b)
+				break
+			}
+		}
+		lead := l[:indent]
+		for i, wl := range wrapLines(l[indent:], w-indent) {
+			if i > 0 {
+				lead = strings.Repeat(" ", indent)
+			}
+			out = append(out, lead+wl)
+		}
+	}
+	for len(out) > 0 && out[len(out)-1] == "" {
+		out = out[:len(out)-1]
+	}
+	return out
 }

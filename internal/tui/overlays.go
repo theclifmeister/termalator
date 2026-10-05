@@ -96,7 +96,7 @@ func (h *helpView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 }
 
 func (h *helpView) box(m *dash) box {
-	return box{title: "keys", body: keyLines(m.inner(m.w)), sel: -1, scroll: h.scroll,
+	return box{title: "keys · prefix = " + m.prefix, body: keyLines(m.inner(m.w)), sel: -1, scroll: h.scroll,
 		keys: "↑ ↓ scroll · esc back", width: m.w}
 }
 
@@ -104,7 +104,8 @@ func (h *helpView) render(m *dash) string { return m.popup(h.box(m)) }
 
 func (h *helpView) wheel(m *dash, d int) { h.key(m, arrow(d)) }
 
-// scrollKeys scroll a long popup: by a line, or by a page.
+// scrollKeys scroll a long popup, or move a list's selection: by a line,
+// or by a page.
 var scrollKeys = map[string]int{"up": -1, "k": -1, "down": 1, "j": 1, "pgup": -10, "pgdown": 10}
 
 func clampScroll(s, n int) int { return min(max(s, 0), max(n-1, 0)) }
@@ -247,13 +248,9 @@ func (b *boardView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 		} else {
 			m.pop()
 		}
-	case "up", "k":
+	case "up", "k", "down", "j", "pgup", "pgdown":
 		if !b.back {
-			b.sel = moveSel(b.sel, -1, len(b.list))
-		}
-	case "down", "j":
-		if !b.back {
-			b.sel = moveSel(b.sel, 1, len(b.list))
+			b.sel = moveSel(b.sel, scrollKeys[k.String()], len(b.list))
 		}
 	case "enter":
 		if len(b.list) > 0 {
@@ -284,9 +281,6 @@ func (b *boardView) render(m *dash) string {
 			d.lines[i] = strings.TrimPrefix(l, " ")
 		}
 		keys := joinKeys(taskKeys(t), "esc back")
-		if t.Status == tasks.Blocked {
-			keys = "c coordinator · D delegate · esc back"
-		}
 		return m.popup(box{title: b.slug + " " + t.Ref(), body: d.lines, sel: -1, keys: keys, width: 88})
 	}
 	w := m.inner(popupWidth)
@@ -321,12 +315,9 @@ func (b *boardView) render(m *dash) string {
 	if len(b.list) == 0 {
 		lines = append(lines, styleFaint.Render("no tasks"))
 	}
-	keys := "enter show · D delegate · esc back"
+	keys := "esc back"
 	if b.sel < len(b.list) {
-		switch t := b.list[b.sel]; t.Status {
-		case tasks.Review, tasks.Blocked, tasks.Done:
-			keys = joinKeys("enter show", taskKeys(t), "esc back")
-		}
+		keys = joinKeys("enter show", taskKeys(b.list[b.sel]), keys)
 	}
 	return m.popup(box{title: title, body: lines, sel: sel, hits: hits, keys: keys, width: popupWidth})
 }
@@ -367,10 +358,8 @@ func (sw *switchView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	switch k.String() {
 	case "esc":
 		m.pop()
-	case "up", "k":
-		sw.sel = moveSel(sw.sel, -1, len(m.data.Projects))
-	case "down", "j":
-		sw.sel = moveSel(sw.sel, 1, len(m.data.Projects))
+	case "up", "k", "down", "j", "pgup", "pgdown":
+		sw.sel = moveSel(sw.sel, scrollKeys[k.String()], len(m.data.Projects))
 	case "enter":
 		if sw.sel < len(m.data.Projects) && !m.busy {
 			m.pop()
@@ -432,10 +421,8 @@ func (in *inboxView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	switch k.String() {
 	case "esc":
 		m.pop()
-	case "up", "k":
-		in.sel = moveSel(in.sel, -1, len(in.items(m)))
-	case "down", "j":
-		in.sel = moveSel(in.sel, 1, len(in.items(m)))
+	case "up", "k", "down", "j", "pgup", "pgdown":
+		in.sel = moveSel(in.sel, scrollKeys[k.String()], len(in.items(m)))
 	}
 	return nil
 }
