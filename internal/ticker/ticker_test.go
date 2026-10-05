@@ -59,6 +59,8 @@ type rig struct {
 	now  time.Time
 	gh   []string // answers, in turn; "" is an error (no PR)
 	ghN  int
+	// ghFor, when set, answers instead by what gh is asked about.
+	ghFor func(target string) string
 	// unsaved is what closing the thread would lose.
 	unsaved string
 }
@@ -93,6 +95,12 @@ func newRigIn(t *testing.T, repo string, repos []string) *rig {
 		Now:     func() time.Time { return r.now },
 		Unsaved: func(*thread.Record, string) (string, error) { return r.unsaved, nil },
 		GH: func(dir string, args ...string) ([]byte, error) {
+			if r.ghFor != nil {
+				if out := r.ghFor(args[2]); out != "" {
+					return []byte(out), nil
+				}
+				return nil, fmt.Errorf("no pull requests found")
+			}
 			if r.ghN >= len(r.gh) || r.gh[r.ghN] == "" {
 				r.ghN++
 				return nil, fmt.Errorf("no pull requests found")

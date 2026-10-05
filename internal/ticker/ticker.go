@@ -305,7 +305,7 @@ func (t *Ticker) Sweep() {
 		if t.syncRepos(p, safety, now, merged) {
 			t.completeTasks(p, safety)
 		}
-		t.followMain(p, sessions, safety)
+		t.followMain(p, sessions, safety, now)
 		t.nudge(p, sessions, now)
 		if prune {
 			if n, err := p.PruneDone(DoneMaxAge); err != nil {
@@ -505,22 +505,32 @@ func (t *Ticker) pollPR(p *project.Project, r *thread.Record, m *threadMemo, inf
 	if r.Repo == "" || now.Sub(m.PRPolled) < t.o.PRPoll || m.PR.State == "MERGED" {
 		return false
 	}
+	merged, _ = t.refreshPR(p, r, m, info, live, safety, now)
+	return merged
+}
+
+// refreshPR asks gh about a thread's PR now, as pollPR does; ok is false
+// when gh gave no PR.
+func (t *Ticker) refreshPR(p *project.Project, r *thread.Record, m *threadMemo, info proto.SessionInfo, live bool, safety config.Safety, now time.Time) (merged, ok bool) {
+	if r.Repo == "" {
+		return false, false
+	}
 	reportPR := ""
 	if rep, _ := thread.ReadReport(p, r.ID); rep != nil {
 		reportPR = rep.PR
 	}
 	target := prTarget(reportPR, r.Branch)
 	if target == "" {
-		return false
+		return false, false
 	}
 	m.PRPolled = now
 	out, err := t.o.GH(r.Repo, "pr", "view", target, "--json", prFields)
 	if err != nil {
-		return false // no PR yet, no gh, no network: try again next time
+		return false, false // no PR yet, no gh, no network: try again next time
 	}
 	pr, err := ParsePR(out)
 	if err != nil || pr.Number == 0 {
-		return false
+		return false, false
 	}
 	old := m.PR
 	m.PR = pr
@@ -564,7 +574,7 @@ func (t *Ticker) pollPR(p *project.Project, r *thread.Record, m *threadMemo, inf
 			t.item(p, KindPRClosed, r.ID, fmt.Sprintf("%s of %s was closed without merging", ref, r.ID), false)
 		}
 	}
-	return merged
+	return merged, true
 }
 
 var subjectRE = regexp.MustCompile(`^(t-[0-9]{4,}|T[0-9]{1,9})$`)

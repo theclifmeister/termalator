@@ -264,3 +264,29 @@ func TestInfoPanelKeyboardCycle(t *testing.T) {
 		t.Fatal("not back to the pane")
 	}
 }
+
+// TestInfoPanelClickToFocus: with T25's click-to-focus, a click gives its
+// area the keyboard: the panel, then a sidebar row (which takes it from
+// the panel), then the panel again (which takes it from the sidebar).
+func TestInfoPanelClickToFocus(t *testing.T) {
+	c := infoClient(t, 200)
+	c.side.projects = []ProjectData{{Slug: "demo"}}
+	c.mouse(uv.MouseClickEvent{X: c.infoX() + 3, Y: 2, Button: uv.MouseLeft})
+	if !c.infoFocus || c.sideFocus {
+		t.Fatal("a click in the panel didn't give it the keyboard")
+	}
+	c.mu.Lock()
+	rows := c.sideTree()
+	c.mu.Unlock()
+	if len(rows) == 0 {
+		t.Fatal("no sidebar rows")
+	}
+	c.mouse(uv.MouseClickEvent{X: 3, Y: 1, Button: uv.MouseLeft})
+	if c.infoFocus || !c.sideFocus {
+		t.Fatalf("a click on a sidebar row: info %v, sidebar %v", c.infoFocus, c.sideFocus)
+	}
+	c.mouse(uv.MouseClickEvent{X: c.infoX() + 3, Y: 2, Button: uv.MouseLeft})
+	if !c.infoFocus || c.sideFocus {
+		t.Fatal("a click in the panel didn't take the keyboard from the sidebar")
+	}
+}

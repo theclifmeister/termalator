@@ -753,7 +753,8 @@ func (c *client) sideKey(key string) {
 }
 
 // sideMouse handles the mouse over the sidebar, or dragging its border:
-// a click on a row goes where it points (sideGo). c.mu held; released here.
+// a click on a row gives the sidebar the keyboard and goes where the row
+// points (sideGo). c.mu held; released here.
 func (c *client) sideMouse(m emu.Mouse) {
 	sd := c.side
 	switch {
@@ -778,6 +779,16 @@ func (c *client) sideMouse(m emu.Mouse) {
 	}
 	r, ok, border := sideHitAt(c.sideTree(), c.sideW, c.rows, m.X, m.Y)
 	t, can, why := r.target()
+	sel := ""
+	if ok && !border {
+		// A click on a row gives the sidebar the keyboard, its cursor on
+		// the row; it keeps it while the row's session shows.
+		sel = r.key()
+		c.sideFocus, c.infoFocus, c.v.SideSel = true, false, sel
+		c.flash = ""
+		c.status()
+	}
+	open := false
 	switch {
 	case border:
 		sd.drag = true
@@ -789,11 +800,15 @@ func (c *client) sideMouse(m emu.Mouse) {
 		c.flash = "you are on it"
 		c.status()
 	default:
-		c.mu.Unlock()
-		c.sideGo(t)
-		return
+		open = true
 	}
 	c.mu.Unlock()
+	if sel != "" && c.vc != nil {
+		c.act(proto.MethodViewSideSel, proto.ViewParams{Key: sel})
+	}
+	if open {
+		c.sideGo(t)
+	}
 	c.poke()
 }
 

@@ -53,12 +53,12 @@ var popupKeys = []keyHelp{
 // mouseKeys are the mouse's ways, in the help beside the keys: every
 // key has one (TestEveryKeyHasMousePath).
 var mouseKeys = []keyHelp{
-	{"click", "a row selects it; a footer hint presses its key; a popup's tab, row or setting picks it (a number's − + step it); outside a popup closes it"},
+	{"click", "a row selects it and gives its area the keyboard (the list, the details panel); a footer hint presses its key; a popup's tab, row or setting picks it (a number's − + step it); outside a popup closes it"},
 	{"double-click", "a row opens it: a coordinator or a thread attaches, a task shows"},
 	{"right-click", "a row of the list or the sidebar: a menu of its actions (open or attach, its popup, …); in a session, the status bar or a pane that doesn't take the mouse: the session's menu"},
 	{menuButton + " menu", "every action, first in the footer; in a session, every prefix command, on the status bar"},
 	{"status bar", menuButton + " menu, prefix+d dashboard, y yes"},
-	{"sidebar", "a project shows its dashboard, its coordinator or a thread attaches"},
+	{"sidebar", "a row takes the keyboard, its cursor on it, and a project shows its dashboard, its coordinator or a thread attaches; a click on the pane gives the keyboard back"},
 	{"info panel", "beside a thread's pane: its task opens the task view, its PR the browser; a click elsewhere gives it the keyboard"},
 	{"wheel", "moves through a list; scrolls the details panel and long popups"},
 	{"drag", "the divider beside the details panel, the sidebar's border, the info panel's border"},

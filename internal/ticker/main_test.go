@@ -8,6 +8,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/thread"
 )
 
 func gitT(t *testing.T, dir string, args ...string) string {
@@ -171,7 +174,7 @@ func TestFollowMainByGitHub(t *testing.T) {
 	pr := func(mergeable, state string) string {
 		return fmt.Sprintf(`{"number":9,"url":"https://github.com/o/r/pull/9","state":"OPEN","statusCheckRollup":[],"headRefOid":%q,"baseRefName":"main","mergeable":%q,"mergeStateStatus":%q}`, missing, mergeable, state)
 	}
-	r.gh = []string{pr("UNKNOWN", "UNKNOWN"), pr("CONFLICTING", "DIRTY")}
+	r.gh = []string{pr("UNKNOWN", "UNKNOWN"), pr("CONFLICTING", "DIRTY"), pr("CONFLICTING", "DIRTY")}
 	r.sweep(0)
 	push(t, other, "g", "two\n", "two")
 	r.sweep(time.Minute) // a merge seen elsewhere: the poll is not due
@@ -181,5 +184,65 @@ func TestFollowMainByGitHub(t *testing.T) {
 	r.sweep(2 * time.Minute)
 	if len(r.host.prompts) != 1 || !strings.Contains(r.host.prompts[0], "conflicts with it") {
 		t.Fatalf("prompts %q", r.host.prompts)
+	}
+}
+
+// TestFollowMainOwnMerge: main moving to the merge of a thread's own PR
+// prompts nobody but the threads whose PRs it left behind, even while
+// gh still calls the merged PR open.
+func TestFollowMainOwnMerge(t *testing.T) {
+	repo, other := gitFixture(t)
+	heads := map[string]string{}
+	for _, b := range []struct{ branch, file string }{{"tm/demo/t-0001-fix-it", "h"}, {"tm/demo/t-0002-other", "i"}} {
+		gitT(t, repo, "checkout", "-q", "-b", b.branch, "main")
+		heads[b.branch] = commitT(t, repo, b.file, "thread\n", "thread work")
+		gitT(t, repo, "push", "-q", "origin", "HEAD")
+	}
+	gitT(t, repo, "checkout", "-q", "main")
+	r := newRigIn(t, repo, []string{repo})
+	if _, err := thread.Create(r.p, thread.Record{Title: "Other", Task: "T2", Agent: "claude", Repo: repo,
+		Branch: "tm/demo/t-0002-other", State: thread.Running, Session: "s-3"}); err != nil {
+		t.Fatal(err)
+	}
+	r.host.sessions = append(r.host.sessions, proto.SessionInfo{ID: "s-3", Role: proto.RoleThread, Project: "demo", Thread: "t-0002", State: "idle"})
+	num := map[string]int{"tm/demo/t-0001-fix-it": 9, "tm/demo/t-0002-other": 10}
+	r.ghFor = func(target string) string {
+		// GitHub hasn't caught up: #9 still reads open after its merge.
+		return fmt.Sprintf(`{"number":%d,"url":"https://github.com/o/r/pull/%d","state":"OPEN","statusCheckRollup":[],"headRefOid":%q,"baseRefName":"main","mergeable":"MERGEABLE","mergeStateStatus":"CLEAN"}`, num[target], num[target], heads[target])
+	}
+	r.sweep(0)
+	r.handleAll()
+
+	gitT(t, other, "fetch", "-q", "origin")
+	gitT(t, other, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-ff", "-m", "Merge pull request #9 from o/tm/demo/t-0001-fix-it", "origin/tm/demo/t-0001-fix-it")
+	gitT(t, other, "push", "-q", "origin", "main")
+	r.sweep(2 * time.Minute)
+	if len(r.host.prompts) != 1 || !strings.HasPrefix(r.host.prompts[0], "s-3 [tm] main moved to ") || !strings.Contains(r.host.prompts[0], "(#9 merged), and your PR #10 is behind it.") {
+		t.Fatalf("prompts %q", r.host.prompts)
+	}
+}
+
+// TestFollowMainRecheck: a PR the last poll called behind is asked
+// about again before the prompt; merged by then, it gets none.
+func TestFollowMainRecheck(t *testing.T) {
+	repo, other := gitFixture(t)
+	r := newRigIn(t, repo, []string{repo})
+	missing := strings.Repeat("a", 40)
+	pr := func(state, mergeState string) string {
+		return fmt.Sprintf(`{"number":9,"url":"https://github.com/o/r/pull/9","state":%q,"statusCheckRollup":[],"headRefOid":%q,"baseRefName":"main","mergeable":"MERGEABLE","mergeStateStatus":%q}`, state, missing, mergeState)
+	}
+	r.gh = []string{pr("OPEN", "CLEAN"), pr("OPEN", "BEHIND"), pr("MERGED", "UNKNOWN")}
+	r.sweep(0)
+	r.handleAll()
+	push(t, other, "g", "two\n", "Merge pull request #9 from a/b")
+	r.sweep(2 * time.Minute)
+	if len(r.host.prompts) != 0 {
+		t.Fatalf("prompted a merged PR: %q", r.host.prompts)
+	}
+	if r.ghN != 3 {
+		t.Fatalf("asked gh %d times", r.ghN)
+	}
+	if k := r.kinds(); k != KindPRMerged {
+		t.Fatalf("items %s", k)
 	}
 }
