@@ -45,15 +45,13 @@ type settingsList struct {
 
 func (l *settingsList) key(m *dash, k tea.KeyPressMsg) (tea.Cmd, bool) {
 	switch k.String() {
-	case "up", "k":
-		l.sel = moveSel(l.sel, -1, len(l.rows))
-	case "down", "j":
-		l.sel = moveSel(l.sel, 1, len(l.rows))
+	case "up", "k", "down", "j", "pgup", "pgdown":
+		l.sel = moveSel(l.sel, scrollKeys[k.String()], len(l.rows))
 	case "enter", "space", " ":
 		if l.sel < len(l.rows) && l.rows[l.sel].change != nil && !m.busy {
 			return l.rows[l.sel].change(m), true
 		}
-	case "+", "=", "-":
+	case "+", "-":
 		if l.sel < len(l.rows) && l.rows[l.sel].adjust != nil && !m.busy {
 			return l.rows[l.sel].adjust(m, map[bool]int{true: -1, false: 1}[k.String() == "-"]), true
 		}

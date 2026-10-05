@@ -51,6 +51,12 @@ func init() {
 	actions = []action{
 		{keys: []string{"up", "k"}, mouse: "the wheel, or a click on a row", run: func(m *dash, _ string) tea.Cmd { m.move(-1); return nil }},
 		{keys: []string{"down", "j"}, mouse: "the wheel, or a click on a row", run: func(m *dash, _ string) tea.Cmd { m.move(1); return nil }},
+		{keys: []string{"pgup", "pgdown"}, mouse: "the wheel", run: func(m *dash, k string) tea.Cmd {
+			for range 10 {
+				m.move(scrollKeys[k] / 10)
+			}
+			return nil
+		}},
 		{keys: []string{"tab", "shift+tab"}, label: "tab shift+tab", help: "the keyboard to the next / previous area: the list, the details panel, the projects sidebar (its keys below); esc back to the list",
 			mouse: "a click on the area", run: (*dash).cycleFocus},
 		{keys: []string{"enter"}, label: "enter", help: "attach to the selected session; on a project, open its coordinator; a task in NEEDS YOU shows in the project popup",

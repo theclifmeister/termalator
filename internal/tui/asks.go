@@ -188,8 +188,10 @@ func (m *dash) taskKey(slug string, t *tasks.Task, key string) tea.Cmd {
 }
 
 // taskKeys is the footer's key list for task t, before the view's own
-// keys; each list, with the view's keys, fits the 60 columns a full
-// sidebar leaves at the least (view.SideRoom).
+// keys: the one table of which task keys work in which status, for the
+// Tasks tab, the t list and a shown task alike (each key only where it
+// works, as notAskable says). Each list, with the view's keys, fits the
+// 60 columns a full sidebar leaves at the least (view.SideRoom).
 func taskKeys(t *tasks.Task) string {
 	if t == nil {
 		return ""
@@ -200,7 +202,7 @@ func taskKeys(t *tasks.Task) string {
 	case tasks.Done:
 		return "x send back"
 	case tasks.Blocked:
-		return "c coordinator"
+		return "c coordinator · D delegate"
 	case tasks.Open, tasks.Ready:
 		return "D delegate"
 	}
