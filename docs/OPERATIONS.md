@@ -145,7 +145,7 @@ On macOS, upgrade and restart from a terminal on the Mac, not over SSH: a server
 
 ### Upgrading from Termalator
 
-Termilator was called Termalator up to v0.1.0 (`brew install termalator`, state in `~/.termalator`). Termilator v0.2.0 to v0.5.1 moved such an install over by themselves; later releases don't. To upgrade from Termalator by hand: stop its server (`tm server stop` with the old `tm`), `brew uninstall termalator`, install Termilator as above, `mv ~/.termalator ~/.termilator`, run `git worktree repair` in each thread worktree, and rename `TERMALATOR_*` variables to `TERMILATOR_*`. Or install the v0.5.1 release archive first, run `tm server restart` with it, then upgrade.
+Termilator was called Termalator up to v0.1.0 (`brew install termalator`, state in `~/.termalator`). Termilator v0.2.0 to v0.5.2 moved such an install over by themselves; later releases don't. To upgrade from Termalator by hand: stop its server (`tm server stop` with the old `tm`), `brew uninstall termalator`, install Termilator as above, `mv ~/.termalator ~/.termilator`, run `git worktree repair` in each thread worktree, and rename `TERMALATOR_*` variables to `TERMILATOR_*`. Or install the v0.5.2 release archive first, run `tm server restart` with it, then upgrade.
 
 ## Uninstalling
 
