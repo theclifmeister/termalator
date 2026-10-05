@@ -83,11 +83,12 @@ func (e *Env) fullConsole(own bool, goTo *tui.Target, agentName string) int {
 	}
 	attach := vc.View().Mode == view.ModeLayout
 	flash := ""        // the popup's last message, for the session's status bar
+	command := ""      // a prefix command typed over the popup, for the session
 	sideFocus := false // the sidebar has the keyboard, across screens
 	for {
 		var over *tui.Over
 		if attach {
-			ares, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Agent: agentName, Focus: sideFocus}, flash, args)
+			ares, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Agent: agentName, Focus: sideFocus}, flash, command, args)
 			if code != ExitOK {
 				return code
 			}
@@ -113,7 +114,7 @@ func (e *Env) fullConsole(own bool, goTo *tui.Target, agentName string) int {
 		if res.Attach == "" {
 			return ExitOK
 		}
-		attach, st, flash, sideFocus = true, tui.DashState{}, res.Message, res.SideFocus
+		attach, st, flash, command, sideFocus = true, tui.DashState{}, res.Message, res.Command, res.SideFocus
 	}
 }
 
@@ -150,7 +151,7 @@ func (e *Env) openCmd(slug, agentName string) error {
 	if err != nil {
 		return err
 	}
-	res, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Agent: agentName}, "", []string{"project", "open", slug, "--agent", agentName})
+	res, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Agent: agentName}, "", "", []string{"project", "open", slug, "--agent", agentName})
 	vc.Close()
 	if code != ExitOK {
 		return &exitError{code}

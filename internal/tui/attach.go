@@ -86,6 +86,10 @@ type Options struct {
 	// Flash is a note for the status bar until the first key: what a
 	// popup over the session last said.
 	Flash string
+	// Command is a prefix command to run once attached (r or tab):
+	// typed after the prefix over a popup on this session, which closed
+	// it (DashResult.Command).
+	Command string
 }
 
 // SidebarOptions configure the attach view's projects sidebar.
@@ -218,6 +222,12 @@ func Attach(opts Options) (res Result, err error) {
 		go c.pollState(ctx)
 	}
 	c.poke() // paint the snapshot now, even if the pane is idle
+	switch opts.Command {
+	case "r":
+		go c.askRemote()
+	case "tab":
+		go c.paneCommand("tab")
+	}
 	res = c.renderLoop(opts.Out)
 	cancel()
 	stopInput()

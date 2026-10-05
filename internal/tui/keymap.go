@@ -20,32 +20,33 @@ type keyGroup struct {
 	keys  []keyHelp
 }
 
-// sessionKeys are the prefix commands in a session (attach.go), in the
-// order the help lists them.
+// sessionKeys are the prefix commands (attach.go, prefix.go), in the
+// order the help lists them. Each means the same everywhere: in a
+// session, on the dashboard, over any popup (which it closes first).
 var sessionKeys = []keyHelp{
-	{"prefix+d", "back to the dashboard, on every console of the view (the session keeps running)"},
+	{"prefix+d", "back to the dashboard, on every console of the view (the session keeps running); on the dashboard it closes the popups"},
 	{"prefix+q", "quit this console, from anywhere: a session, the dashboard, a popup, the sidebar, tm attach (the server, the sessions and other consoles keep running)"},
-	{"prefix+a", "the project popup over the session: overview, inbox, tasks, settings, keys; esc back to the session"},
-	{"prefix+p ] [", "back to the dashboard and switch project"},
-	{"prefix+i t , ?", "the inbox, tasks, settings or help over the session; esc back to the session"},
+	{"prefix+a i t , ?", "the project popup, inbox, tasks, settings or help, over the session or the dashboard; esc closes it"},
+	{"prefix+p ] [", "the project switcher, the next / previous project's coordinator"},
 	{"prefix+{ } b", "narrow / widen the sidebar, or make it a slim strip"},
-	{"prefix+tab", "the keyboard to the projects sidebar (its keys below); esc or tab back to the pane, which gets no keys meanwhile"},
-	{"prefix+r", "turn remote control of a coordinator on or off, to continue it from another device (asks first)"},
+	{"prefix+tab", "the keyboard to the next area: in a session the projects sidebar (its keys below) and back to the pane, which gets no keys meanwhile; on the dashboard as tab"},
+	{"prefix+r", "turn remote control of a coordinator on or off, to continue it from another device (asks first): the session's, or on the dashboard the selected project's"},
 	{"prefix+prefix", "send the prefix key itself to the program"},
 }
 
-// popupKeys are the project popup's own keys (projectView).
+// popupKeys are the project popup's own keys (projectView). None is a
+// prefix command (TestNoPlainKeyIsAPrefixCommand).
 var popupKeys = []keyHelp{
-	{"tab shift+tab", "next / previous tab; 1 to 5 or ← → pick one"},
+	{"← → 1-5", "previous / next tab, or pick one"},
 	{"↑ ↓", "move in the tab"},
 	{"enter space", "on a setting: change it (yolo mode asks first)"},
 	{"+ x", "on the overview: add a repository / remove the selected one (asks first)"},
 	{"enter", "on a task (Tasks tab): show it, with what it is blocked on, or how to check it and whether its change is released"},
-	{"d", "on an open, ready or blocked task (Tasks tab, or the t list): delegate it; the coordinator starts a thread for it (asks first)"},
-	{"a", "on a task in review (Tasks tab, or the t list): accept it; the coordinator marks it done (asks first)"},
+	{"D", "on an open, ready or blocked task (Tasks tab, or the t list): delegate it; the coordinator starts a thread for it (asks first)"},
+	{"A", "on a task in review (Tasks tab, or the t list): accept it; the coordinator marks it done (asks first)"},
 	{"x", "on a task in review: send it back with a note on what to change; the coordinator passes it on"},
 	{"c", "on a task: open the project's coordinator, to answer what a blocked task waits on"},
-	{"esc", "close (a too, outside the Tasks tab)"},
+	{"esc", "close; esc is the only key that closes a popup"},
 }
 
 // mouseKeys are the mouse's ways, in the help beside the keys: every
@@ -79,7 +80,7 @@ func keyGroups() []keyGroup {
 	return []keyGroup{
 		{"On the dashboard", dash},
 		{"With the mouse", mouseKeys},
-		{"In a session", sessionKeys},
+		{"Prefix commands: the same everywhere", sessionKeys},
 		{"In the sidebar (tab, or prefix+tab in a session)", side},
 		{"In the project popup", popupKeys},
 	}
@@ -102,7 +103,7 @@ func keyLines(w int) []string {
 		}
 	}
 	out = append(out, "")
-	out = append(out, faintLines("On the dashboard, prefix+<key> is that key, so the same keys work in both places; prefix+q quits from anywhere. The prefix is in the settings (,); inside tmux, which takes ctrl+b, pick another.", w)...)
+	out = append(out, faintLines("A prefix command does the same in a session, on the dashboard and over a popup, and no plain key means something else: popups close with esc, and the lists refresh by themselves. The prefix is in the settings (,); inside tmux, which takes ctrl+b, pick another.", w)...)
 	return append(out, faintLines("Every tm shows the same view: what one does, the others show, sized by the one typed in. tm --own keeps to itself. You talk to coordinators; they run the threads, their reports and the tasks.", w)...)
 }
 
