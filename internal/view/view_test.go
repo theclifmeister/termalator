@@ -2,6 +2,7 @@ package view
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -165,7 +166,11 @@ func TestSidebar(t *testing.T) {
 		{"narrow window: slim strip", def, SideDefault + SideRoom - 1, SideSlim},
 		{"slim asked for", Sidebar{Width: 30, Slim: true}, 200, SideSlim},
 		{"tiny window: still there", def, 4, 3},
-		{"too wide a setting", Sidebar{Width: 99}, 300, SideMax},
+		{"no maximum width", Sidebar{Width: 99}, 300, 99},
+		{"wider than the window allows: cut to fit", Sidebar{Width: 99}, 120, 120 - SideRoom},
+		{"wide setting, narrow window: down to the default", Sidebar{Width: 99}, SideDefault + SideRoom, SideDefault},
+		{"wide setting, narrower window: slim strip", Sidebar{Width: 99}, SideDefault + SideRoom - 1, SideSlim},
+		{"narrow setting keeps its own threshold", Sidebar{Width: 20}, 80, 20},
 	}
 	for _, c := range cases {
 		if got := c.l.Cols(c.w); got != c.want {
@@ -194,10 +199,33 @@ func TestSidebar(t *testing.T) {
 	if l, _ = wide.Key("}", 101); l.Width != 41 {
 		t.Fatalf("} in 101 columns: %+v", l)
 	}
+	// No maximum: } widens past 48 in a wide window.
+	if l, _ = (Sidebar{Width: 48}).Key("}", 200); l.Width != 50 {
+		t.Fatalf("} past 48: %+v", l)
+	}
+	// A saved width too wide for the window is shown cut and kept: } at
+	// the window's limit leaves it, { steps down from the width shown.
+	saved := Sidebar{Width: 100}
+	if l, _ = saved.Key("}", 120); l.Width != 100 {
+		t.Fatalf("} at the limit lost the saved width: %+v", l)
+	}
+	if l, _ = saved.Key("{", 120); l.Width != 120-SideRoom-SideStep {
+		t.Fatalf("{ from a cut width: %+v", l)
+	}
+	if _, msg = (Sidebar{Width: 100, Slim: true}).Key("b", SideDefault+SideRoom-1); !strings.Contains(msg, fmt.Sprint(SideDefault+SideRoom)) {
+		t.Fatalf("too narrow for a wide setting: %q", msg)
+	}
 	if l = def.DragTo(3, 120); !l.Slim {
 		t.Fatalf("drag to 3: %+v", l)
 	}
 	if l = def.DragTo(30, 120); l.Slim || l.Width != 31 {
 		t.Fatalf("drag to 30: %+v", l)
+	}
+	// Dragging has no maximum but the window's: the panes keep SideRoom.
+	if l = def.DragTo(89, 200); l.Width != 90 {
+		t.Fatalf("drag to 89: %+v", l)
+	}
+	if l = def.DragTo(150, 200); l.Width != 200-SideRoom {
+		t.Fatalf("drag to 150: %+v", l)
 	}
 }
