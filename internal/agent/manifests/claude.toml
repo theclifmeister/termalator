@@ -113,6 +113,15 @@ disable = "/remote-control"
 status_field = "remote_control"
 disable_dialog = { contains = "Disconnect this session", keys = "\u001b[A\u001b[A\r", done = "Remote Control disconnected" }
 
+# tm thread answer (docs/SPEC.md §11.2): the coordinator relays the
+# user's answer to an AskUserQuestion menu. A number picks that option;
+# the last one, "Type something.", is a text field once focused: its
+# number focuses it, then the text and Enter.
+[answer]
+rule = "blocked-question"
+text_option = "Type something"
+submit = "\r"
+
 [inject]
 # Bracketed paste + Enter while idle with an empty prompt box (core).
 # "channel" would use Claude's undocumented uds-messaging socket (Go, in

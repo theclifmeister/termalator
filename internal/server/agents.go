@@ -104,6 +104,18 @@ func realPath(p string) string {
 	return p
 }
 
+// ownWorktree reports whether dir is a worktree tm created: one level
+// below a project's folder in ~/.termilator/worktrees.
+func (s *Server) ownWorktree(dir string) bool {
+	root := realPath(filepath.Join(s.opts.Paths.Home, "worktrees"))
+	rel, err := filepath.Rel(root, realPath(dir))
+	if err != nil {
+		return false
+	}
+	parts := strings.Split(rel, string(filepath.Separator))
+	return len(parts) == 2 && parts[0] != ".." && parts[0] != "." && parts[1] != ".."
+}
+
 // accessFor is the role's file access policy (docs/SPEC.md §5.2). A
 // session outside a project gets no grants and no restrictions.
 func (s *Server) accessFor(role, slug, cwd string) (agent.Access, error) {
@@ -228,6 +240,13 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 	env := sessionEnv(base, set)
 	r.Argv = launch.Argv
 	home, _ := os.UserHomeDir()
+	// A thread never waits on a folder-trust screen for the worktree tm
+	// made for it (docs/SPEC.md §8.6): an agent that can, trusts it first.
+	if t, ok := a.(agent.Truster); ok && r.Role == proto.RoleThread && home != "" && s.ownWorktree(r.Cwd) {
+		if err := t.TrustDir(home, r.Cwd); err != nil {
+			s.log.Printf("session %s: trust %s: %v", r.ID, r.Cwd, err)
+		}
+	}
 	sess, err := session.Start(session.Config{
 		ID: r.ID, Role: r.Role, Project: r.Project, Thread: r.Thread, Argv: launch.Argv, Cwd: r.Cwd, Env: env,
 		Cols: l.cols, Rows: l.rows, Created: r.Created,

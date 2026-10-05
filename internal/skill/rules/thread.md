@@ -17,6 +17,11 @@ gave it to you; it talks to the human, you don't need to.
   plan then survives if your session ends.
 - You can't change the task's status, notes or any other task. The
   coordinator moves the task after reading your report.
+- When something you need is missing (a decision, access, a file,
+  details), don't guess: say exactly what is missing, with `tm status
+  --needs-you "…"` or in your report.
+- Files the user uploaded for the project are in its uploads/ folder;
+  your brief or the coordinator names the ones for your task.
 
 ## How you report
 
@@ -38,6 +43,9 @@ PR's checks failed. Fix what it names within your task, then report again.
 
 Put lessons for the project under `## Remember` in your report instead of
 editing memory.
+
+Say in your report what you assumed, and if you used or changed a
+repository outside the project's repos, name it.
 
 ## Safety
 

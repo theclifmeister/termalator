@@ -409,9 +409,12 @@ func (t *Ticker) sweepThreads(p *project.Project, sessions []proto.SessionInfo, 
 				summary += " on a " + reason + " prompt"
 			}
 			needsUser := reason != "permission" || !safety.CoordinatorApproves
-			if needsUser {
+			switch {
+			case reason == "question":
+				summary += "; ask the user and relay their answer (tm thread read " + r.ID + "; tm thread answer " + r.ID + " --choice N)"
+			case needsUser:
 				summary += "; the user answers it (attach to the thread)"
-			} else {
+			default:
 				summary += " (tm thread read " + r.ID + "; tm thread approve " + r.ID + " if it is in scope)"
 			}
 			t.item(p, KindBlocked, r.ID, summary, needsUser)

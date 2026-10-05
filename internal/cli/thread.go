@@ -14,7 +14,9 @@ import (
 	"strings"
 	"text/tabwriter"
 	"time"
+	"unicode"
 
+	"github.com/theclifmeister/termilator/internal/agent"
 	"github.com/theclifmeister/termilator/internal/caller"
 	"github.com/theclifmeister/termilator/internal/config"
 	"github.com/theclifmeister/termilator/internal/project"
@@ -34,6 +36,7 @@ const threadUsage = `usage: tm thread <command> [--project <slug>] [--json]
   read <id> [--lines N]          the thread's screen as text
   prompt <id> "text" | --next N  queue a prompt (sent when idle; refused while blocked)
   approve <id> [--choice N]      answer a permission prompt with "allow once"
+  answer <id> --choice N [--text T]  relay the user's answer to a question menu
   ack <id>                       acknowledge the latest report
   stop <id> | restart <id> | resolve <id>
 
@@ -174,6 +177,19 @@ func runThread(e *Env, args []string) error {
 				}
 			}
 			return e.threadApprove(p, id, n)
+		}
+	case "answer":
+		choice, text := f.String("choice"), f.String("text")
+		run = func(p *project.Project, pos []string) error {
+			id, err := oneID(pos, "answer <id> --choice N [--text T]")
+			if err != nil {
+				return err
+			}
+			n, err := strconv.Atoi(*choice)
+			if !f.IsSet("choice") || err != nil || n < 1 || n > 9 {
+				return usagef("--choice takes a number 1-9")
+			}
+			return e.threadAnswer(p, id, n, *text, f.IsSet("text"))
 		}
 	case "ack", "stop", "restart", "resolve":
 		run = func(p *project.Project, pos []string) error {
@@ -545,12 +561,16 @@ func (e *Env) threadShow(p *project.Project, id string, asJSON bool) error {
 		if rep != nil {
 			out["report_text"] = rep.Text
 		}
+		if a := thread.Attachments(p, id); len(a) > 0 {
+			out["attachments"] = a
+		}
 		return e.printJSON(out)
 	}
 	w := tabwriter.NewWriter(e.Stdout, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(w, row.Line())
 	for _, kv := range [][2]string{{"worktree", r.Worktree}, {"branch", r.Branch}, {"base", r.Base}, {"repo", r.Repo},
-		{"agent", r.Agent}, {"session", r.Session}, {"state", r.State}, {"folder", thread.Dir(p, id)}} {
+		{"agent", r.Agent}, {"session", r.Session}, {"state", r.State}, {"folder", thread.Dir(p, id)},
+		{"attached", strings.Join(thread.Attachments(p, id), ", ")}} {
 		if kv[1] != "" {
 			fmt.Fprintf(w, "  %s:\t%s\n", kv[0], kv[1])
 		}
@@ -712,6 +732,92 @@ func (e *Env) threadApprove(p *project.Project, id string, choice int) error {
 		return err
 	}
 	fmt.Fprintf(e.Stdout, "approved %s: %s\n", id, option)
+	return nil
+}
+
+// answerPause lets the agent redraw between the keys of an answer: a
+// TUI reads one burst of input as one key.
+var answerPause = 300 * time.Millisecond
+
+// threadAnswer relays the user's answer to a question menu on a thread's
+// screen (docs/SPEC.md §11.2): option n, or the free-text option with
+// text. The menu is recognised by the agent's own screen rule.
+func (e *Env) threadAnswer(p *project.Project, id string, choice int, text string, withText bool) error {
+	if err := e.coordinatorOnly(p, "answering questions"); err != nil {
+		return err
+	}
+	r, info, err := e.liveThread(p, id)
+	if err != nil {
+		return err
+	}
+	paths, err := server.ResolvePaths()
+	if err != nil {
+		return err
+	}
+	var ans *agent.Answer
+	if reg, _ := agent.Load(paths.AgentsDir()); reg != nil {
+		if a, ok := reg.Get(info.Agent); ok {
+			ans = agent.AnswerOf(a)
+		}
+	}
+	if ans == nil {
+		return &tasks.Error{Code: "no-answer", Msg: fmt.Sprintf("agent %q has no question menus tm can answer; the user answers in thread %s's pane", info.Agent, id)}
+	}
+	if info.State != "blocked" || info.Reason != "question" {
+		return &tasks.Error{Code: "not-question", Msg: fmt.Sprintf("thread %s is %s/%s, not blocked on a question", id, info.State, info.Reason)}
+	}
+	var x struct {
+		Screen *struct{ Rule string } `json:"screen"`
+	}
+	if err := e.call(proto.MethodAgentExplain, proto.SessionIDParams{ID: r.Session}, &x); err != nil {
+		return err
+	}
+	if x.Screen == nil || x.Screen.Rule != ans.Rule {
+		return &tasks.Error{Code: "no-menu", Msg: fmt.Sprintf("no question menu on thread %s's screen; look with tm thread read %s", id, id)}
+	}
+	var screen proto.SessionReadResult
+	if err := e.call(proto.MethodSessionRead, proto.SessionReadParams{ID: r.Session}, &screen); err != nil {
+		return err
+	}
+	option, question := dialogLines(screen.Text, choice)
+	if option == "" {
+		return &tasks.Error{Code: "no-option", Msg: fmt.Sprintf("the menu on thread %s's screen has no option %d", id, choice)}
+	}
+	isText := ans.TextOption != "" && strings.Contains(option, ans.TextOption)
+	text = strings.TrimSpace(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, text))
+	switch {
+	case withText && !isText:
+		return &tasks.Error{Code: "not-text-option", Msg: fmt.Sprintf("option %d (%s) takes no text", choice, option)}
+	case isText && text == "":
+		return &tasks.Error{Code: "needs-text", Msg: fmt.Sprintf("option %d (%s) takes the user's words: add --text", choice, option)}
+	}
+	keys := func(data string) error {
+		return e.call(proto.MethodSessionKeys, proto.SessionKeysParams{ID: r.Session, Data: data}, nil)
+	}
+	if err := keys(strconv.Itoa(choice)); err != nil {
+		return err
+	}
+	answer := option
+	if isText {
+		time.Sleep(answerPause)
+		if err := keys(text); err != nil {
+			return err
+		}
+		time.Sleep(answerPause)
+		if err := keys(ans.Submit); err != nil {
+			return err
+		}
+		answer = strconv.Quote(text)
+	}
+	if err := p.Journal(e.Caller, "thread.answer", id, oneLine(question+" → "+answer, 160)); err != nil {
+		return err
+	}
+	fmt.Fprintf(e.Stdout, "answered %s: %s\n", id, answer)
 	return nil
 }
 

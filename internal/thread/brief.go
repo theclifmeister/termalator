@@ -95,6 +95,7 @@ func WriteBrief(p *project.Project, r *Record, restart bool) (string, error) {
 	for _, f := range []string{"PROJECT.md", "CONTEXT.md", "MEMORY.md", "memory/", "TASKS.md"} {
 		fmt.Fprintf(&b, "- %s\n", p.Path(f))
 	}
+	fmt.Fprintf(&b, "- %s (files the user uploaded for the project; your task names the ones for you)\n", p.Path("uploads")+"/")
 	b.WriteString("\n## How to work and report\n\n")
 	if r.Task != "" {
 		fmt.Fprintf(&b, "- Work through %s's steps in order and tick each one: `tm task steps %s check N`.\n", r.Task, r.Task)

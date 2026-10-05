@@ -54,6 +54,11 @@ type Manifest struct {
 	// agent has none.
 	RemoteControl RemoteControl `toml:"remote_control"`
 
+	// Answer: how a question menu takes the user's answer, which the
+	// coordinator relays with `tm thread answer` (docs/SPEC.md §11.2).
+	// Without a rule the agent's menus are answered in its pane only.
+	Answer Answer `toml:"answer"`
+
 	Screen struct {
 		// Resize: "follow" (the default) lets the console typed in size
 		// the pane; "explicit" resizes it only on a window resize or a
@@ -94,6 +99,26 @@ type RemoteControl struct {
 	// what tm last asked for (an agent may reconnect on resume). Without
 	// that entry (or a status file) tm goes by what it asked for.
 	StatusField string `toml:"status_field"`
+}
+
+// Answer is a manifest's [answer] table. A menu's options are numbered;
+// option N is chosen by typing its number. The option named TextOption
+// takes the user's own words: its number focuses it, then the text is
+// typed and Submit sent.
+type Answer struct {
+	// Rule names the screen rule that matches a question menu; tm
+	// answers only while it is the screen's settled match.
+	Rule       string `toml:"rule"`
+	TextOption string `toml:"text_option"` // part of the free-text option's label
+	Submit     string `toml:"submit"`      // keys after the text, e.g. "\r"
+}
+
+// AnswerOf returns a's [answer], or nil when it has none.
+func AnswerOf(a Agent) *Answer {
+	if m := ManifestOf(a); m != nil && m.Answer.Rule != "" {
+		return &m.Answer
+	}
+	return nil
 }
 
 // RemoteDialog answers a dialog that in-session text opens: once the
@@ -273,6 +298,18 @@ func (m *Manifest) validate() error {
 			if _, err := regexp.Compile(r.Regex); err != nil {
 				errs = append(errs, fmt.Errorf("rules[%d] %s: %w", i, r.ID, err))
 			}
+		}
+	}
+	if a := m.Answer; a.Rule != "" || a.TextOption != "" || a.Submit != "" {
+		found := false
+		for _, x := range m.Rules {
+			found = found || (x.ID == a.Rule && x.State == StateBlocked)
+		}
+		if !found {
+			errs = append(errs, fmt.Errorf("answer.rule %q names no blocked rule", a.Rule))
+		}
+		if (a.TextOption == "") != (a.Submit == "") {
+			errs = append(errs, errors.New("answer: text_option and submit go together"))
 		}
 	}
 	if r := m.Inject.EmptyRule; r != "" {
