@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // argv is a fake agent start record's command line.
@@ -54,6 +55,25 @@ func remoteIs(t *testing.T, env *Env, s *Session, on bool, pid int) {
 	if i, _ := env.Info(s); i.PID != pid {
 		t.Fatalf("the agent restarted: pid %d, was %d", i.PID, pid)
 	}
+}
+
+// remoteMarked reports whether the sidebar on screen sc shows "⌁" on
+// the coordinator's row only, at its right, beside the state glyph, and
+// not after the project's name.
+func remoteMarked(sc, slug string) bool {
+	marked := false
+	for _, l := range strings.Split(sc, "\n") {
+		side := []rune(l)
+		side = side[:min(len(side), sideDefault)]
+		row := strings.TrimRight(string(side[:max(len(side)-1, 0)]), " ")
+		if strings.Contains(row, slug+"⌁") || strings.Contains(row, slug+" ⌁") {
+			return false
+		}
+		if f := strings.Fields(row); len(f) >= 3 && f[len(f)-3] == "coordinator" && f[len(f)-2] == "⌁" {
+			marked = true
+		}
+	}
+	return marked
 }
 
 // remoteProject is a project whose setting starts its coordinator with
@@ -116,10 +136,10 @@ func TestSmokeCoordinatorRemoteControl(t *testing.T) {
 	env.WaitState(coord, "idle", agentWait)
 
 	w := env.Window(120, 30)
-	w.WaitFor(alpha+"⌁", wait) // the dashboard's sidebar
+	w.WaitUntil("sidebar marker", wait, func(sc string) bool { return remoteMarked(sc, alpha) }) // the dashboard's sidebar
 	clickCoordinator(t, w, alpha)
 	w.WaitUntil("status bar marker", agentWait, func(sc string) bool { return lastLine(sc, "remote control on") })
-	w.WaitFor(alpha+"⌁", wait) // the attached view's sidebar
+	w.WaitUntil("sidebar marker", wait, func(sc string) bool { return remoteMarked(sc, alpha) }) // the attached view's sidebar
 	w.Prefix("r")
 	w.WaitFor("turn remote control off for "+alpha+"?", wait)
 	w.Type("y")
@@ -183,7 +203,7 @@ func TestSmokeRemoteControlRestart(t *testing.T) {
 	w.Type("y")
 	w.WaitFor(coord.ID+" is back", agentWait)
 	w.WaitUntil("markers", wait, func(sc string) bool {
-		return lastLine(sc, "remote control on") && strings.Contains(sc, alpha+"⌁") && strings.HasPrefix(sc, " PROJECTS")
+		return lastLine(sc, "remote control on") && remoteMarked(sc, alpha) && strings.HasPrefix(sc, " PROJECTS")
 	})
 	if !Poll(agentWait, func() bool {
 		n := 0
@@ -206,4 +226,56 @@ func TestSmokeRemoteControlRestart(t *testing.T) {
 	w.WaitFor("SESSIONS", wait)
 	w.Quit()
 	w.WaitExit(wait)
+}
+
+// TestSmokeTickerKeepsRemoteOn: with the setting on, the ticker turns a
+// running coordinator's remote control on when it reads off (here: it
+// started before the setting was turned on), once it is idle, and
+// journals it; the user's own off then holds (docs/SPEC.md §11.2).
+func TestSmokeTickerKeepsRemoteOn(t *testing.T) {
+	env := New(t)
+	env.FakeClaude()
+	env.Setenv("TERMILATOR_TICK_SWEEP", "300ms")
+	env.Setenv("TERMILATOR_TICK_REMOTE", "1s")
+	env.Setenv("TERMILATOR_TICK_REMOTE_GRACE", "1s")
+	slug, dir := newProject(env, "Alpha")
+	env.Trust(dir)
+	id := strings.TrimSpace(env.MustCLI("project", "open", slug))
+	coord := &Session{ID: id}
+	info, _ := env.Info(coord)
+	coord.PID = info.PID
+	env.track(info.PID, "coordinator "+id)
+	turnsDone(env, coord, 1)
+	if info, _ := env.Info(coord); info.RemoteControl {
+		t.Fatalf("started with remote control: %+v", info)
+	}
+
+	writeConfig(t, env, "[projects."+slug+"]\ncoordinator_remote_control = true\n")
+	enable := func(r FakeRecord) bool { return r.Str("text") == "/remote-control "+slug }
+	env.WaitFake("slash", agentWait, enable)
+	remoteIs(t, env, coord, true, info.PID)
+	if !Poll(wait, func() bool {
+		j, _ := os.ReadFile(filepath.Join(dir, "JOURNAL.md"))
+		return strings.Contains(string(j), " ticker remote.on "+slug+" "+id)
+	}) {
+		j, _ := os.ReadFile(filepath.Join(dir, "JOURNAL.md"))
+		t.Fatalf("no journal line:\n%s", j)
+	}
+	env.WaitState(coord, "idle", agentWait)
+
+	out := env.MustCLI("project", "remote", "off", slug)
+	if !strings.Contains(out, "stays off until the coordinator is started anew") {
+		t.Fatalf("remote off said %q", out)
+	}
+	env.WaitFor(coord, "Remote Control disconnected.", agentWait)
+	remoteIs(t, env, coord, false, info.PID)
+	env.WaitState(coord, "idle", agentWait)
+	// Several of the ticker's tries later, it is still off.
+	time.Sleep(4 * time.Second)
+	if n := len(slices.DeleteFunc(env.FakeRecords("slash"), func(r FakeRecord) bool { return !enable(r) })); n != 1 {
+		t.Fatalf("the ticker turned it on %d times; the user's off must hold", n)
+	}
+	if i, _ := env.Info(coord); i.RemoteControl || !i.RemoteHeld {
+		t.Fatalf("after the user's off: %+v", i)
+	}
 }
