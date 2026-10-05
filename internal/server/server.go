@@ -832,19 +832,6 @@ loop:
 		switch typ {
 		case proto.FrameInput:
 			sess.Input(payload)
-		case proto.FrameSetSize, proto.FrameClaimSize:
-			// A window resize or split change always resizes; typing only
-			// when the pane's agent follows it (docs/SPEC.md §3.3).
-			if typ == proto.FrameClaimSize && !agent.FollowsTyping(sess.Agent()) {
-				break
-			}
-			cols, rows, err := proto.ParseSize(payload)
-			if err == nil {
-				err = sess.RequestResize(cols, rows)
-			}
-			if err != nil {
-				s.log.Printf("session %s: resize: %v", sess.ID(), err)
-			}
 		case proto.FrameDigestReq:
 			sess.RequestDigest(sub)
 		case proto.FrameColorScheme:

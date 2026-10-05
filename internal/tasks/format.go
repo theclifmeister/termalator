@@ -1,5 +1,7 @@
 package tasks
 
+//lint:file-ignore ST1005 parse errors start with the task ID (T12: …)
+
 import (
 	"bytes"
 	"fmt"

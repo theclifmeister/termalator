@@ -43,13 +43,26 @@ func (s *Server) loadAgents() {
 	var errs []string
 	if err != nil {
 		s.log.Printf("agents: %v", err)
-		for _, e := range strings.Split(err.Error(), "\n") {
-			errs = append(errs, e)
-		}
+		errs = strings.Split(err.Error(), "\n")
 	}
 	s.mu.Lock()
 	s.agents, s.agentErrs = reg, errs
 	s.mu.Unlock()
+}
+
+// writeLaunchFiles writes an agent's generated files (hooks, settings,
+// brief) under its runtime dir. A session must not start without them.
+func writeLaunchFiles(rt string, files map[string][]byte) error {
+	for name, data := range files {
+		p := filepath.Join(rt, name)
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			return err
+		}
+		if err := os.WriteFile(p, data, 0o600); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Server) registry() *agent.Registry {
@@ -221,14 +234,9 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 	if err != nil {
 		return nil, proto.Errorf(proto.ErrRefused, "%v", err)
 	}
-	for name, data := range launch.Files {
-		p := filepath.Join(rt, name)
-		if err := os.MkdirAll(filepath.Dir(p), 0o700); err == nil {
-			err = os.WriteFile(p, data, 0o600)
-		}
-		if err != nil {
-			return nil, proto.Errorf(proto.ErrInternal, "%v", err)
-		}
+	if err := writeLaunchFiles(rt, launch.Files); err != nil {
+		os.RemoveAll(rt)
+		return nil, proto.Errorf(proto.ErrInternal, "%v", err)
 	}
 	set := s.termilatorEnv(r)
 	for _, kv := range launch.Env {

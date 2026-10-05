@@ -118,7 +118,7 @@ The dependency rule: `server`, `session`, `ticker`, `tui`, `project`, `thread` a
   - The run directory is `$XDG_RUNTIME_DIR/termilator` on Linux when that is set, and `~/.termilator/run` otherwise.
   - If `<run dir>/tm.sock` would be over 100 bytes, the run directory falls back to `/tmp/termilator-<uid>-<hash>`, where `<hash>` is 8 hex digits of the SHA-256 of `TERMILATOR_HOME` (cleaned, with the symlinks in its existing part resolved). Every home keeps its own server even with the fallback; the default `~/.termilator` is unaffected unless its own path is that long.
   - `$TERMILATOR_SOCKET` overrides the socket path, and an override over 100 bytes is refused, not truncated.
-  - `TERMILATOR_HOME` (default `~/.termilator`) moves everything else, which is how tests run isolated servers. Termilator was called Termalator up to v0.1.0: `internal/legacy` still reads `TERMALATOR_*` when the new variable is unset and moves a `~/.termalator` to `~/.termilator` once no Termalator server holds it (docs/OPERATIONS.md, "Upgrading from Termalator"); a later release drops it. A custom `TERMILATOR_HOME` ignores `$XDG_RUNTIME_DIR`, so a test server never shares a run directory with the user's.
+  - `TERMILATOR_HOME` (default `~/.termilator`) moves everything else, which is how tests run isolated servers. (Termilator was called Termalator up to v0.1.0; releases after v0.5.2 no longer read `TERMALATOR_*` or move `~/.termalator`: docs/OPERATIONS.md, "Upgrading from Termalator".) A custom `TERMILATOR_HOME` ignores `$XDG_RUNTIME_DIR`, so a test server never shares a run directory with the user's.
   - `server.lock` and `server.pid` sit next to the socket, in the run directory. A `$TERMILATOR_SOCKET` override therefore isolates the lock too (`server.ResolvePaths`).
 - **Permissions.**
   - The run directory is `0700` and owned by the user; the server refuses to use it otherwise.
@@ -152,7 +152,7 @@ The types are in `internal/proto`.
 **Versioning** (`proto.Check`):
 - **Control and hook** connections accept a client whose `protocol` is lower than or equal to the server's. Methods and fields are only ever added, and unknown fields are ignored. A newer client gets `the running tm server is older than this tm (protocol N, …); run 'tm server restart' to switch it to this tm (agents are resumed)` and exits with code 3. That command works (below).
 - **Attach** connections require the **identical build**. The client mirrors the server's emulator from a libghostty snapshot, and libghostty says outright that its snapshot format "does not yet carry a binary-compatibility guarantee". On a mismatch the client **re-execs the server's binary** (`bin` from the server's hello) with the same arguments. Attaching keeps working after an upgrade until the server is restarted.
-- The protocol number goes up when the attach framing or a method's meaning changes. Protocol 2 added the views (below), which every console needs.
+- The protocol number goes up when the attach framing or a method's meaning changes. Protocol 2 added the views (below), which every console needs. Protocol 9 dropped the unused `SET_SIZE`, `CLAIM_SIZE` and `STATE` frames: consoles size panes through their view (`view.size`, `view.input`).
 
 **Stopping across protocols.** `tm server stop` and `tm server restart` (and `tm update`'s and `tm doctor --fix`'s restarts, which run them) stop a server of any protocol (`server.Stop`):
 
@@ -199,11 +199,8 @@ After the hello the client sends `{"attach":{"session":"s-…","cols":C,"rows":R
 | server → client | `OUTPUT` | Raw PTY output after the snapshot point, in order. The mirror feeds it to its emulator. These are the "diffs" |
 | server → client | `RESIZE` | The pane was resized at exactly this point in the byte stream, so the mirror resizes at the same offset as the server |
 | server → client | `DIGEST` | Full-state digest of the server's emulator at this point (debugging and `tm doctor --attach`) |
-| server → client | `STATE` | JSON: agent state, progress and the current item, for the client's status line |
 | server → client | `CLOSED` | The session exited, or the server is stopping; carries a reason |
 | client → server | `INPUT` | Bytes for the PTY, already encoded for the pane's modes |
-| client → server | `SET_SIZE` | Resize the pane to this size. tm's consoles size panes through their view (`view.size`, `view.input`) and no longer send it |
-| client → server | `CLAIM_SIZE` | The same, unless the agent's `resize` is `explicit`. Also no longer sent |
 | client → server | `DIGEST_REQ` | Ask for a `DIGEST` in the stream |
 | client → server | `DETACH` | Leave cleanly |
 | client → server | `COLOR_SCHEME` | One byte, 1 dark or 2 light: the scheme the client's terminal reported (§3.3, colour scheme) |
@@ -462,7 +459,7 @@ The processes die with the server, because the PTY master closes and the childre
 ```
 
 - **Writer discipline.** Every write is a write to a temp file followed by `rename`, under a per-file lock (a hidden `.<file>.lock`, `flock`). Files marked `[tm]` are only ever rewritten by `tm`. A human hand-editing `TASKS.md` is tolerated: `tm` re-parses the file, and if it can't, it refuses to write and reports the line number.
-- **`config.toml` is the human's.** Besides the projects' tables (§11.2) it holds `default_agent` (the agent new coordinators run; `claude` when unset), `[keys] prefix` and `[ui] icons` (§4). People edit it by hand, and `tm` writes it only when the human changes a setting in the TUI's settings popups (§4, §11.2). That write edits the one line (or appends the table and the line), so comments, order and formatting stay as they were; it keeps the file's mode, parses the result and checks it says what was meant before the atomic rename, under the file's lock. A setting written in another form (a dotted key, an inline table) is left alone, and the popup says it can't change it there; a file that doesn't parse is never written over.
+- **`config.toml` is the human's.** Besides the projects' tables (§11.2) it holds `default_agent` (the agent new coordinators run; `claude` when unset), `[keys] prefix` and `[ui] icons` (§4), all read in one place (`config.Load`). An unknown key in a project's table is an error, so a typo can't leave a safety setting at its default; one under `[keys]` or `[ui]` is ignored and `tm doctor` warns about it. People edit it by hand, and `tm` writes it only when the human changes a setting in the TUI's settings popups (§4, §11.2). That write edits the one line (or appends the table and the line), so comments, order and formatting stay as they were; it keeps the file's mode, parses the result and checks it says what was meant before the atomic rename, under the file's lock. A setting written in another form (a dotted key, an inline table) is left alone, and the popup says it can't change it there; a file that doesn't parse is never written over.
 - **Front matter** is TOML between `+++` lines, as in herdr-projects.
 - **Worktrees live outside the project folder.** Claude Code loads `CLAUDE.md` from parent directories, so a worktree under the project folder would inherit the coordinator's role file.
 

@@ -1,14 +1,10 @@
 package tui
 
 import (
-	"cmp"
-	"errors"
 	"fmt"
-	"io/fs"
 	"strings"
 	"unicode/utf8"
 
-	"github.com/BurntSushi/toml"
 	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/theclifmeister/termilator/internal/config"
@@ -45,33 +41,20 @@ func parseChord(s string) (chord, error) {
 	return chord{r}, nil
 }
 
-// prefixKey reads [keys] prefix from config.toml, or the older [keys]
-// detach, which named the same key; a missing file or key gives the
-// default.
+// prefixKey is config.toml's prefix key ([keys] prefix); a missing file
+// or key gives the default.
 func prefixKey() (chord, error) {
 	def, _ := parseChord(DefaultPrefixKey)
-	path, err := config.Path()
+	cfg, err := config.Load() // a bad project setting is the settings popup's to show
+	if cfg == nil {
+		return def, err
+	}
+	if cfg.Prefix == "" {
+		return def, nil
+	}
+	c, err := parseChord(cfg.Prefix)
 	if err != nil {
-		return def, nil
-	}
-	var cfg struct {
-		Keys struct {
-			Prefix string `toml:"prefix"`
-			Detach string `toml:"detach"`
-		} `toml:"keys"`
-	}
-	if _, err := toml.DecodeFile(path, &cfg); errors.Is(err, fs.ErrNotExist) {
-		return def, nil
-	} else if err != nil {
-		return def, fmt.Errorf("%s: %w", path, err)
-	}
-	key := cmp.Or(cfg.Keys.Prefix, cfg.Keys.Detach)
-	if key == "" {
-		return def, nil
-	}
-	c, err := parseChord(key)
-	if err != nil {
-		return def, fmt.Errorf("%s: %w", path, err)
+		return def, fmt.Errorf("%s: %w", cfg.Path, err)
 	}
 	return c, nil
 }
