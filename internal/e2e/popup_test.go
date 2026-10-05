@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -121,7 +122,10 @@ func TestSmokeProjectPopup(t *testing.T) {
 	w.WaitFor("any other key returns", wait)
 	help := popupBody(w.Screen(), cols)
 	screens = append(screens, w.Screen())
-	if len(keys) < 3 || len(help) != len(keys) || strings.Join(keys[2:], "\n") != strings.Join(help[:len(help)-2], "\n") {
+	// Each wraps to its own box's width and shows what fits: word for
+	// word, the shorter is where the longer starts.
+	kw, hw := strings.Fields(strings.Join(keys[min(2, len(keys)):], " ")), strings.Fields(strings.Join(help, " "))
+	if n := min(len(kw), len(hw)); n < 20 || !slices.Equal(kw[:n], hw[:n]) {
 		t.Fatalf("keys tab and help differ:\n%s\n----\n%s", strings.Join(keys, "\n"), strings.Join(help, "\n"))
 	}
 	w.Type("x")

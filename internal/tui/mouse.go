@@ -13,7 +13,7 @@ import (
 // path. A click selects a row and a double-click opens it; the wheel
 // moves through lists and scrolls the details panel and long popups; the
 // footer's hints are buttons; a popup's tabs, rows and settings take
-// clicks, and a click outside it or on its × closes it; a right-click on
+// clicks, and a click outside it closes it; a right-click on
 // a row opens a menu of that row's actions, and the ≡ menu has every
 // action of the keys table (actions.go), so none lacks a mouse path.
 // Popups and menus are this console's own; what they do acts on the
@@ -240,14 +240,14 @@ func (m *dash) hintClick(x int) tea.Cmd {
 }
 
 // popupClick handles a button pressed on body cell (x, y) while o is the
-// topmost overlay: the × or a click outside closes it, as esc does; a
+// topmost overlay: a click outside closes it, as esc does; a
 // click on a line goes to the overlay.
 func (m *dash) popupClick(o overlay, btn tea.MouseButton, x, y int, double bool) tea.Cmd {
 	g := m.geo
 	if g == nil || y < 0 || y >= m.bodyRows() {
 		return nil
 	}
-	if !g.inside(x, y) || g.onClose(x, y) {
+	if !g.inside(x, y) {
 		return o.key(m, keyMsg("esc"))
 	}
 	c, ok := o.(clicker)
@@ -530,6 +530,6 @@ func (mv *menuView) box() box {
 		}
 		lines[i] = fit(it.label, lw) + "  " + styleFaint.Render(key)
 	}
-	return box{title: mv.title, body: lines, sel: mv.sel, hits: hits, at: &mv.at, menu: true,
+	return box{title: mv.title, body: lines, sel: mv.sel, hits: hits, at: &mv.at,
 		keys: "enter pick · esc close", width: w + 4}
 }

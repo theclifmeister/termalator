@@ -211,15 +211,18 @@ func TestDashboardClicks(t *testing.T) {
 		t.Fatal("the wheel didn't move the selection")
 	}
 
-	// Footer buttons: ? help, then its × closes it; , settings, and a
-	// click outside closes it.
+	// Footer buttons: ? help, which has no ×, and a click outside
+	// closes it; , settings, and a click outside closes it.
 	clickOn(t, m, "? help")
 	if _, ok := m.top().(*helpView); !ok {
 		t.Fatalf("? help didn't open the help: %T", m.top())
 	}
-	clickOn(t, m, "×")
+	if strings.Contains(screen(m), "×") {
+		t.Fatalf("the help has a ×:\n%s", screen(m))
+	}
+	mouseAt(m, tea.MouseLeft, m.sideW(), 2)
 	if m.top() != nil {
-		t.Fatalf("× didn't close the help: %T", m.top())
+		t.Fatalf("a click outside didn't close the help: %T", m.top())
 	}
 	clickOn(t, m, ", settings")
 	if _, ok := m.top().(*settingsView); !ok {
@@ -327,7 +330,8 @@ func TestPopupClicks(t *testing.T) {
 	}
 	clickOn(t, m, "5 Keys")
 	mouseAt(m, tea.MouseWheelDown, m.sideW()+10, 10)
-	if pv.sel[tabKeys] == 0 {
+	m.render()
+	if pv.top[tabKeys] == 0 {
 		t.Fatal("the wheel didn't scroll the keys")
 	}
 	// The footer's buttons go to the popup: esc closes it.

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -275,9 +276,13 @@ func TestKeysParity(t *testing.T) {
 	keyPress(m, "x")
 	keyPress(m, "a")
 	keyPress(m, "5")
-	tab := m.top().(*projectView).box(m).body
-	if len(tab) < 2 || strings.Join(tab[2:], "\n") != strings.Join(help, "\n") {
-		t.Fatalf("keys tab and help differ:\n%s\n----\n%s", strings.Join(tab, "\n"), strings.Join(help, "\n"))
+	// Both are keyLines, each wrapped to its own box's width.
+	b := m.top().(*projectView).box(m)
+	if want := keyLines(m.inner(b.width)); strings.Join(b.body, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("keys tab isn't the keys:\n%s", strings.Join(b.body, "\n"))
+	}
+	if want := keyLines(m.inner(m.w)); strings.Join(help, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("help isn't the keys:\n%s", strings.Join(help, "\n"))
 	}
 	text := ansi.Strip(strings.Join(help, "\n"))
 	for _, a := range actions {
@@ -380,5 +385,91 @@ func TestPrefixCapture(t *testing.T) {
 	}
 	if !strings.Contains(screen(m), "pi") {
 		t.Fatalf("default agent not shown:\n%s", screen(m))
+	}
+}
+
+// TestProjectPopupFixed: the project popup's size and place come from
+// the window, not a tab's content, so they stay put across tabs; it has
+// no ×; the tab bar stays at its top while long content scrolls under
+// it, keeping the selection in view; and esc closes it from every tab.
+func TestProjectPopupFixed(t *testing.T) {
+	src, m := popupData(t)
+	for i := range 40 {
+		src.board.Tasks = append(src.board.Tasks, &tasks.Task{ID: 10 + i, Title: fmt.Sprintf("Task number %d", 10+i), Status: tasks.Ready})
+	}
+	for _, size := range [][2]int{{110, 40}, {200, 60}, {80, 24}, {60, 16}} {
+		m.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+		m.Update(keyPress(m, "a")()) // the board
+		pv := m.top().(*projectView)
+		var geo *boxGeo
+		for tab := range tabCount {
+			pv.tab = tab
+			out := screen(m)
+			if geo == nil {
+				geo = m.geo
+			} else if g := m.geo; g.x != geo.x || g.y != geo.y || g.w != geo.w || g.h != geo.h {
+				t.Fatalf("%v: tab %d is at %d,%d %d×%d, tab 0 at %d,%d %d×%d", size, tab, g.x, g.y, g.w, g.h, geo.x, geo.y, geo.w, geo.h)
+			}
+			if strings.Contains(out, "×") {
+				t.Fatalf("%v: tab %d has a ×:\n%s", size, tab, out)
+			}
+		}
+		keyPress(m, "esc")
+		if m.top() != nil {
+			t.Fatalf("%v: esc left %T", size, m.top())
+		}
+	}
+
+	m.Update(tea.WindowSizeMsg{Width: 110, Height: 40})
+	m.Update(keyPress(m, "a")())
+	pv := m.top().(*projectView)
+	keyPress(m, "3")
+	for range 30 {
+		keyPress(m, "down")
+		m.render()
+	}
+	out := screen(m)
+	sel := pv.tasks()[pv.sel[tabTasks]].Title
+	if pv.sel[tabTasks] != 30 || !strings.Contains(out, sel) || !strings.Contains(out, "1 Overview") || !strings.Contains(out, "more ↑ ↓") {
+		t.Fatalf("down 30 times: sel %d (%s), tab bar and both arrows wanted:\n%s", pv.sel[tabTasks], sel, out)
+	}
+	if strings.Contains(out, "IN MOTION") {
+		t.Fatalf("the content didn't scroll:\n%s", out)
+	}
+	// The wheel inside the content moves the selection, which stays in
+	// view.
+	x, y := at(t, m, sel)
+	for range 15 {
+		mouseAt(m, tea.MouseWheelDown, x, y)
+	}
+	out = screen(m)
+	if sel = pv.tasks()[pv.sel[tabTasks]].Title; pv.sel[tabTasks] != 41 || !strings.Contains(out, sel) || !strings.Contains(out, "1 Overview") {
+		t.Fatalf("wheel: sel %d (%s):\n%s", pv.sel[tabTasks], sel, out)
+	}
+	// Past the last task the arrows scroll on to the content's end.
+	for range 5 {
+		keyPress(m, "down")
+		m.render()
+	}
+	if out = screen(m); !strings.Contains(out, "done: 0") || strings.Contains(out, "more ↓") {
+		t.Fatalf("the end of the tasks:\n%s", out)
+	}
+	// Back up to the top: the first group shows again.
+	for range 50 {
+		keyPress(m, "up") // several keys may come between frames
+	}
+	if out = screen(m); pv.sel[tabTasks] != 0 || !strings.Contains(out, "IN MOTION") {
+		t.Fatalf("back up: sel %d:\n%s", pv.sel[tabTasks], out)
+	}
+	// A click on a tab still picks it, wherever the content is scrolled.
+	clickOn(t, m, "5 Keys")
+	if pv.tab != tabKeys {
+		t.Fatalf("click on 5 Keys: tab %d", pv.tab)
+	}
+	for range 3 {
+		mouseAt(m, tea.MouseWheelDown, x, y)
+	}
+	if out = screen(m); pv.top[tabKeys] != 9 || !strings.Contains(out, "1 Overview") {
+		t.Fatalf("wheel on the keys: top %d:\n%s", pv.top[tabKeys], out)
 	}
 }

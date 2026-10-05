@@ -9,7 +9,7 @@
                        │  tasks: 0 needs you · 1 in motion · 0 on deck
                        │ OTHER SESSIONS ──────────────────────────────────────────────────────────────────────────────────────────────
                        │  none outside the projects (1 in them); s starts a shell
-                       │   ╭─ demo inbox ────────────────────────────────────────────────────────────────────────────────────── × ╮
+                       │   ╭─ demo inbox ─────────────────────────────────────────────────────────────────────────────────────────╮
                        │   │ report           <duration>     t-0001 handed in report 1 (T1)                                               │
                        │   │                                                                                                      │
                        │   │ The coordinator handles these (tm inbox done).                                                       │
