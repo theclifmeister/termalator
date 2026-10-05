@@ -150,17 +150,14 @@ func serverStop(e *Env, args []string) int {
 		fmt.Fprintf(e.Stdout, "killed (pid %d)\n", pid)
 		return ExitOK
 	}
-	c, p, err := connect(false)
-	if errors.Is(err, server.ErrNotRunning) {
-		fmt.Fprintln(e.Stdout, "not running")
-		return ExitOK
-	}
+	p, err := server.ResolvePaths()
 	if err != nil {
 		return e.srvFail("server stop", err)
 	}
-	defer c.Close()
-	pid := c.Server.PID
-	err = c.Call(proto.MethodServerStop, proto.ServerStopParams{Yes: *yes}, nil)
+	// Stop works whatever protocol the server speaks: restart is how a
+	// server of another version is replaced, so it must never refuse on
+	// version (docs/SPEC.md §3.3).
+	st, err := server.Stop(p, *yes)
 	var perr *proto.Error
 	if errors.As(err, &perr) && perr.Code == proto.ErrRefused && !*yes && isTTY(os.Stdin) {
 		fmt.Fprintf(e.Stderr, "%s. Stop anyway? [y/N] ", perr.Message)
@@ -168,14 +165,25 @@ func serverStop(e *Env, args []string) int {
 		if a := strings.TrimSpace(strings.ToLower(line)); a != "y" && a != "yes" {
 			return ExitRefused
 		}
-		err = c.Call(proto.MethodServerStop, proto.ServerStopParams{Yes: true}, nil)
+		st, err = server.Stop(p, true)
+	}
+	if errors.Is(err, server.ErrNotRunning) {
+		fmt.Fprintln(e.Stdout, "not running")
+		return ExitOK
 	}
 	if err != nil {
 		return e.srvFail("server stop", err)
 	}
+	pid := st.PID
+	switch {
+	case st.Signalled:
+		fmt.Fprintf(e.Stderr, "tm server stop: the server (pid %d) could not be asked; sent it SIGTERM\n", pid)
+	case st.Protocol != proto.Protocol:
+		fmt.Fprintf(e.Stderr, "tm server stop: the server speaks protocol %d, this tm %d; stopped it all the same\n", st.Protocol, proto.Protocol)
+	}
 	// The lock goes first; the process exits a moment later.
 	if !server.WaitStopped(p, server.StopGrace+5*time.Second) || !server.WaitExited(pid, 3*time.Second) {
-		fmt.Fprintf(e.Stderr, "tm server stop: pid %d still running; see %s\n", pid, p.Log)
+		fmt.Fprintf(e.Stderr, "tm server stop: pid %d still running; see %s, or tm server stop --force kills it\n", pid, p.Log)
 		return ExitIO
 	}
 	fmt.Fprintf(e.Stdout, "stopped (pid %d)\n", pid)

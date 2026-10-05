@@ -50,14 +50,17 @@ type Client struct {
 }
 
 // Dial connects to the socket and performs the handshake for kind.
-func Dial(p Paths, kind proto.Kind) (*Client, error) {
+func Dial(p Paths, kind proto.Kind) (*Client, error) { return dial(p, kind, proto.Protocol) }
+
+// dial is Dial claiming protocol, which Stop lowers to an older server's.
+func dial(p Paths, kind proto.Kind, protocol int) (*Client, error) {
 	conn, err := net.DialTimeout("unix", p.Socket, UnresponsiveTimeout)
 	if err != nil {
 		return nil, err
 	}
 	c := &Client{conn: conn, br: bufio.NewReader(conn)}
 	conn.SetDeadline(time.Now().Add(UnresponsiveTimeout))
-	hello := proto.Hello{Protocol: proto.Protocol, Version: version.Version, Build: version.BuildID(), Kind: proto.Kind(kind)}
+	hello := proto.Hello{Protocol: protocol, Version: version.Version, Build: version.BuildID(), Kind: proto.Kind(kind)}
 	if err := writeJSONLine(conn, hello); err != nil {
 		conn.Close()
 		return nil, err

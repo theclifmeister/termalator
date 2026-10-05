@@ -61,6 +61,16 @@ tm server restart         # stop, start, resume the agents
 tm server stop --force    # a hung server: SIGKILL the pid that holds the lock
 ```
 
+`tm server stop` and `tm server restart` work whatever version the running server is. When a newer `tm` meets an older server, other commands say `the running tm server is older than this tm …; run 'tm server restart'`, and that is the fix: restart stops the old server (asking it in its own protocol, or with `SIGTERM` when it can't be asked) and starts this `tm`'s, which resumes the agents. tm only ever signals the process that holds this home's server lock and runs `tm server run`.
+
+A `tm` from before this fix can't do that: it prints `tm server speaks protocol 1 …, this tm speaks 4 …; run 'tm server restart'` and the restart fails the same way. Get out once with (on Linux the pid file is in `$XDG_RUNTIME_DIR/termalator/` when that is set):
+
+```sh
+kill $(cat ~/.termalator/run/server.pid) && tm server start
+```
+
+The old server shuts down cleanly on `SIGTERM`, so the new one resumes the agents as after any restart.
+
 ### Crashes and restarts
 
 When the server stops, every session it hosts stops with it. The next server reads `state/sessions.json` and:
@@ -85,14 +95,14 @@ Any `tm` command starts the server when needed, so you don't need a service. If 
 `tm doctor` checks your installation and changes nothing:
 - the `tm` build and libghostty-vt, git and gh;
 - how `tm` was installed (Homebrew, a direct download, or built from source) and whether a newer release exists, with the command that updates it;
-- the server: running and answering, the same build as this `tm`, a previous crash, stale `tm.sock`, `server.pid` and session runtime dirs (it never starts a server);
+- the server: running and answering, the same build as this `tm` (a server of an older protocol is a warning; `tm doctor --fix` restarts it, agents are resumed), a previous crash, stale `tm.sock`, `server.pid` and session runtime dirs (it never starts a server);
 - each agent's installed version against its manifest's `tested_versions`. An untested Claude still works, but termalator stops trusting its undocumented status file and messaging socket;
 - the sandbox tools Claude needs for threads: `sandbox-exec` on macOS, `bwrap` and `socat` on Linux;
 - leftovers: worktrees under `~/.termalator/worktrees` whose thread is resolved or gone, and `tm/<project>/…` branches already merged into the default branch.
 
 It exits 1 only when a check fails; warnings don't count. `--json` prints the results for scripts.
 
-`tm doctor --fix` lists what it would remove and asks before removing anything. `--yes` skips the question, and you need it when you're not on a terminal. Worktrees with uncommitted changes and unmerged branches are always kept. A branch whose PR was squash-merged looks unmerged to git; delete it yourself with `git branch -D`.
+`tm doctor --fix` lists what it would remove or restart and asks before doing anything. `--yes` skips the question, and you need it when you're not on a terminal. Worktrees with uncommitted changes and unmerged branches are always kept. A branch whose PR was squash-merged looks unmerged to git; delete it yourself with `git branch -D`.
 
 ## Logs
 
@@ -117,7 +127,7 @@ The running server keeps the old build until it restarts, and keeps working mean
 tm server restart
 ```
 
-On a terminal the restart asks again before stopping agents that are mid-turn (`--yes` skips that).
+On a terminal the restart asks again before stopping agents that are mid-turn (`--yes` skips that). The restart works even when the server is older than the `tm` you ran `tm update` with.
 
 ## Uninstalling
 

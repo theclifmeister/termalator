@@ -3,6 +3,7 @@ package proto
 import (
 	"bytes"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -15,6 +16,11 @@ func TestCheck(t *testing.T) {
 	}
 	if err := Check(Hello{Protocol: 3, Kind: KindControl}, server); !errors.As(err, &mm) || mm.ReExec {
 		t.Fatalf("a newer client must be refused without re-exec, got %v", err)
+	}
+	// The refusal carries the server's hello (for tm server stop) and
+	// names the command that works.
+	if mm.Server.Protocol != 2 || !strings.Contains(mm.Error(), "run 'tm server restart'") {
+		t.Fatalf("mismatch: %+v", mm)
 	}
 	if err := Check(Hello{Protocol: 2, Kind: KindAttach, Build: "b1"}, server); !errors.As(err, &mm) || !mm.ReExec {
 		t.Fatalf("attach with another build must be refused with re-exec, got %v", err)
