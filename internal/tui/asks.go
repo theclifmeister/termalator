@@ -13,8 +13,8 @@ import (
 // Asking the coordinator (docs/SPEC.md §4): keys on a task in the Tasks
 // tab or the t list ask the project's coordinator to act on it. The
 // dashboard still changes no task: it drops an inbox item, which the
-// coordinator takes as the user's word. d delegates an open, ready or
-// blocked task, a accepts a task in review, x sends one back with a
+// coordinator takes as the user's word. D delegates an open, ready or
+// blocked task, A accepts a task in review, x sends one back with a
 // note; c opens the coordinator, to answer what a task is blocked on.
 
 // notDelegable is why task t can't be delegated, "" when it can: an
@@ -26,7 +26,7 @@ func notDelegable(t *tasks.Task) string {
 	case tasks.Started:
 		return t.Ref() + " is started: a thread already works on it"
 	case tasks.Review:
-		return t.Ref() + " is in review: a accepts it, x sends it back"
+		return t.Ref() + " is in review: A accepts it, x sends it back"
 	case tasks.Done:
 		return t.Ref() + " is done"
 	}
@@ -119,7 +119,7 @@ func (m *dash) askCoordinator(slug string, t *tasks.Task, kind, note, done strin
 
 // delegate asks, then has the coordinator delegate slug's task t.
 func (m *dash) delegate(slug string, t *tasks.Task) tea.Cmd {
-	if !m.canAsk(slug, t, project.KindDelegate, "d delegates open, ready and blocked tasks") {
+	if !m.canAsk(slug, t, project.KindDelegate, "D delegates open, ready and blocked tasks") {
 		return nil
 	}
 	ref := t.Ref()
@@ -133,7 +133,7 @@ func (m *dash) delegate(slug string, t *tasks.Task) tea.Cmd {
 // accept asks, then tells the coordinator the user accepts slug's task
 // t in review: it marks the task done.
 func (m *dash) accept(slug string, t *tasks.Task) tea.Cmd {
-	if !m.canAsk(slug, t, project.KindAccept, "a accepts tasks in review") {
+	if !m.canAsk(slug, t, project.KindAccept, "A accepts tasks in review") {
 		return nil
 	}
 	ref := t.Ref()
@@ -157,12 +157,13 @@ func (m *dash) sendBack(slug string, t *tasks.Task) tea.Cmd {
 	return nil
 }
 
-// taskKey runs a task key on slug's task t: d, a, x or c.
+// taskKey runs a task key on slug's task t: D, A, x or c (none of
+// them a prefix command, docs/SPEC.md §4).
 func (m *dash) taskKey(slug string, t *tasks.Task, key string) tea.Cmd {
 	switch key {
-	case "d":
+	case "D":
 		return m.delegate(slug, t)
-	case "a":
+	case "A":
 		return m.accept(slug, t)
 	case "x":
 		return m.sendBack(slug, t)
@@ -181,11 +182,11 @@ func taskKeys(t *tasks.Task) string {
 	}
 	switch t.Status {
 	case tasks.Review:
-		return "a accept · x send back"
+		return "A accept · x send back"
 	case tasks.Blocked:
 		return "c coordinator"
 	case tasks.Open, tasks.Ready:
-		return "d delegate"
+		return "D delegate"
 	}
 	return ""
 }
