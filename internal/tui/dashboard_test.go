@@ -649,3 +649,66 @@ func TestPopupMargins(t *testing.T) {
 		}
 	}
 }
+
+// TestDashboardNeedsYouTasks: a project's tasks in review or blocked are
+// rows of NEEDS YOU under the project, the sidebar hints at them and the
+// count says where to look; enter shows the task in the project popup's
+// Tasks tab, and acts on nothing.
+func TestDashboardNeedsYouTasks(t *testing.T) {
+	d := testData()
+	board := &tasks.Board{Tasks: []*tasks.Task{
+		{ID: 1, Title: "Write the README", Status: tasks.Started},
+		{ID: 3, Title: "Remove the prefix caption", Status: tasks.Review, Thread: "t-0002",
+			Steps: []tasks.Step{{N: 1, Text: "Drop it", Done: true}, {N: 2, Text: "Goldens", Done: true}}},
+		{ID: 5, Title: "Pick a licence", Status: tasks.Blocked},
+	}}
+	alpha := &d.Projects[0]
+	alpha.NeedsYou = []*tasks.Task{board.Tasks[1], board.Tasks[2]}
+	alpha.Counts = map[string]int{"needs_you": 2, "in_motion": 1}
+	src := &fakeSource{data: d, board: board}
+	m := newDash(DashOptions{Source: src, Width: 120 + sideDefault, Height: 30, State: DashState{Current: "alpha"}})
+	m.layout.Details = false
+	m.setData(src.data)
+	out := screen(m)
+	needs := strings.Index(out, "NEEDS YOU 4 ─")
+	if needs < 0 {
+		t.Fatalf("no NEEDS YOU 4:\n%s", out)
+	}
+	at := needs
+	for _, want := range []string{
+		"! alpha        coordinator ",
+		"? alpha        T3 Remove the prefix caption             ◆ review   ▰▰▰▰▰  2/2  t-0002",
+		"? alpha        T5 Pick a licence                        ▲ blocked",
+		"! s-4 ",
+		"tasks: 2 needs you (a → Tasks) · 1 in motion · 0 on deck",
+	} {
+		i := strings.Index(out[at:], want)
+		if i < 0 {
+			t.Fatalf("missing %q after the previous row in\n%s", want, out)
+		}
+		at += i
+	}
+	if side := whole(m); !strings.Contains(side, " ■ alpha            0 ◆│") {
+		t.Errorf("no sidebar hint for alpha:\n%s", side)
+	}
+
+	m.sel = "nt:alpha:5"
+	if foot := m.footKeys(); !strings.Contains(foot, "enter show") {
+		t.Errorf("footer %q", foot)
+	}
+	cmd := press(m, "enter")
+	pv, ok := m.top().(*projectView)
+	if !ok || pv.slug != "alpha" || pv.tab != tabTasks {
+		t.Fatalf("enter opened %T %+v", m.top(), m.top())
+	}
+	m.Update(cmd()) // the board
+	if pv.sel[tabTasks] != 1 || pv.tasks()[1].ID != 5 {
+		t.Errorf("selected task %d, want T5", pv.sel[tabTasks])
+	}
+	if out := screen(m); !strings.Contains(out, "T5    Pick a licence") {
+		t.Errorf("Tasks tab:\n%s", out)
+	}
+	if len(src.opened) != 0 || m.result.Attach != "" {
+		t.Errorf("enter on a task acted: opened %v, attach %q", src.opened, m.result.Attach)
+	}
+}

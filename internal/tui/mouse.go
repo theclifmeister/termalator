@@ -334,6 +334,8 @@ func (m *dash) rowMenu(x, y int) tea.Cmd {
 // rowTitle names a row in its menu's title.
 func rowTitle(r row) string {
 	switch {
+	case r.task != nil:
+		return r.project + " " + r.task.Ref()
 	case r.thread != nil:
 		return r.thread.ID
 	case strings.HasPrefix(r.key, "p:"):

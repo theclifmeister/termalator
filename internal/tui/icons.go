@@ -42,7 +42,8 @@ type iconSet struct {
 	folder, folderOpen string
 	mid, end           string
 	coord, thread      string
-	// hint marks a project one of whose threads is blocked or waiting;
+	// hint marks a project one of whose threads is blocked or waiting, or
+	// one of whose tasks needs you;
 	// current marks the current project in the slim strip; remote follows
 	// a coordinator with remote control on.
 	hint, current, remote string

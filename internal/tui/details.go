@@ -21,6 +21,8 @@ import (
 func (m *dash) details(r row, w int) []string {
 	d := &panel{w: w}
 	switch {
+	case r.task != nil:
+		taskPanel(d, r.task)
 	case r.thread != nil:
 		m.threadPanel(d, r)
 	case strings.HasPrefix(r.key, "p:"):
@@ -186,7 +188,7 @@ func (m *dash) projectPanel(d *panel, r row) {
 		d.field("session", styleFaint.Render("no coordinator; enter starts it"))
 	}
 	c := p.Counts
-	d.field("tasks", fmt.Sprintf("%d needs you · %d in motion · %d on deck", c["needs_you"], c["in_motion"], c["on_deck"]))
+	d.field("tasks", taskCounts(c))
 	d.field("threads", fmt.Sprint(len(p.Threads)))
 	if p.Unread > 0 {
 		d.field("inbox", styleWarn.Render(fmt.Sprintf("%d unhandled", p.Unread))+styleFaint.Render(" · i shows them"))

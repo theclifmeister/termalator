@@ -25,7 +25,8 @@ import (
 // The projects sidebar (docs/SPEC.md §4): a column on the left of every
 // screen, the dashboard and the attach view alike, holding the project
 // tree. Each project row has its coordinator's state glyph, a hint when
-// one of its threads is blocked or waiting, and its count of open
+// one of its threads is blocked or waiting or one of its tasks needs
+// you (review or blocked), and its count of open
 // threads. Every project is always expanded: its coordinator and open
 // threads hang under it on tree connectors (├─ └─), with their state
 // glyphs and progress in columns of their own. The current project is in
@@ -67,7 +68,7 @@ type treeRow struct {
 	pct     int  // a thread's percent, -1 for none
 	last    bool // a coordinator or thread: the last row under its project
 	current bool // a project: the current one
-	hint    bool // a project: one of its threads is blocked or waiting
+	hint    bool // a project: one of its threads is blocked or waiting, or a task needs you
 	remote  bool // a project or coordinator row: its coordinator's remote control is on
 	threads int  // a project: its open threads
 	here    bool // the row you are on
@@ -150,7 +151,8 @@ func buildTree(ps []ProjectData, sessions []proto.SessionInfo, in treeIn) []tree
 	}
 	var out []treeRow
 	for _, p := range ps {
-		pr := treeRow{kind: treeProject, slug: p.Slug, pct: -1, threads: len(p.Threads), current: p.Slug == in.current}
+		pr := treeRow{kind: treeProject, slug: p.Slug, pct: -1, threads: len(p.Threads), current: p.Slug == in.current,
+			hint: p.Counts["needs_you"] > 0}
 		for _, s := range sessions {
 			if s.Role == proto.RoleCoordinator && s.Project == p.Slug {
 				pr.session, pr.state, pr.remote = s.ID, stateWord(s), s.RemoteControl
@@ -299,7 +301,8 @@ func coordLook(state string) (string, lipgloss.Style) {
 // (icons.go). Full width, in the unicode set:
 //
 //	" ■ termilator      2 ◆"  a project: its name, its open threads, the
-//	                          hint that one of them is blocked or waiting
+//	                          hint that one of them is blocked or waiting,
+//	                          or that a task needs you
 //	" ├─ coordinator      ○"  its coordinator
 //	" ├─ Bootstrap…   40% ●"  a thread's title, its progress, its state
 //	" └─ Sidebar tree     ▲"  the last row under the project
