@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -214,7 +215,7 @@ func runGH(dir string, args ...string) ([]byte, error) {
 	cmd.Stderr = &errb
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("gh %s: %v %s", strings.Join(args, " "), err, strings.TrimSpace(errb.String()))
+		return nil, fmt.Errorf("gh %s: %w %s", strings.Join(args, " "), err, strings.TrimSpace(errb.String()))
 	}
 	return out, nil
 }
@@ -629,8 +630,12 @@ func (t *Ticker) refreshPR(p *project.Project, r *thread.Record, m *threadMemo, 
 var ghWorked = regexp.MustCompile(`(?i)no (open )?pull requests found|could not resolve to a pullrequest`)
 
 // ghRan notes how a gh call of this sweep went for a project: one that
-// only found no PR counts as working.
+// only found no PR counts as working, and a gh that isn't installed
+// doesn't count (tm doctor reports that).
 func (t *Ticker) ghRan(slug string, err error) {
+	if errors.Is(err, exec.ErrNotFound) {
+		return
+	}
 	ok := err == nil || ghWorked.MatchString(err.Error())
 	if prev, seen := t.gh[slug]; !seen || !prev {
 		t.gh[slug] = ok

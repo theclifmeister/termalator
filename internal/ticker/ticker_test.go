@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -406,6 +407,17 @@ func TestGHFailing(t *testing.T) {
 	if n := len(r.items()); n != 1 {
 		t.Fatalf("%d items: raised more than once", n)
 	}
+	// A gh that isn't installed neither counts nor clears.
+	r.ghErr = ""
+	gh := r.tk.o.GH
+	r.tk.o.GH = func(string, ...string) ([]byte, error) {
+		return nil, fmt.Errorf("gh pr view: %w", exec.ErrNotFound)
+	}
+	r.sweep(2 * time.Minute)
+	if n := len(r.items()); n != 1 || r.tk.st.Projects["demo"].GHFails != GHFailPolls+2 {
+		t.Fatalf("missing gh: %d items, %d fails", n, r.tk.st.Projects["demo"].GHFails)
+	}
+	r.tk.o.GH = gh
 	// A gh that works but finds no PR clears it.
 	r.ghErr = ""
 	r.sweep(2 * time.Minute)
