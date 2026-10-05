@@ -144,6 +144,29 @@ func TestAgentVersions(t *testing.T) {
 	}
 }
 
+func TestGHAuth(t *testing.T) {
+	d := testDeps(t)
+	d.LookPath = func(n string) (string, error) { return "/bin/" + n, nil }
+	authed := true
+	d.Run = func(dir, name string, args ...string) (string, error) {
+		if name == "/bin/gh" && strings.Join(args, " ") == "auth status" && !authed {
+			return "You are not logged into any GitHub hosts.", errors.New("gh auth status: exit status 1")
+		}
+		return "ok", nil
+	}
+	if c := find(Toolchain(d), "gh auth"); len(c) != 1 || c[0].Status != OK {
+		t.Fatalf("logged in: %+v", c)
+	}
+	authed = false
+	if c := find(Toolchain(d), "gh auth"); len(c) != 1 || c[0].Status != Warn || !strings.Contains(c[0].Detail, "gh auth login") {
+		t.Fatalf("logged out: %+v", c)
+	}
+	d.LookPath = func(n string) (string, error) { return "", exec.ErrNotFound }
+	if c := find(Toolchain(d), "gh auth"); len(c) != 0 {
+		t.Fatalf("no gh: %+v", c)
+	}
+}
+
 func TestBrokenUserManifest(t *testing.T) {
 	d := testDeps(t)
 	os.MkdirAll(d.Paths.AgentsDir(), 0o700)

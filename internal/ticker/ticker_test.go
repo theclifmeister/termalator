@@ -63,6 +63,8 @@ type rig struct {
 	ghFor func(target string) string
 	// unsaved is what closing the thread would lose.
 	unsaved string
+	// ghErr, when set, is the error of every gh call.
+	ghErr string
 }
 
 // newRig makes a project "demo" with one thread t-0001 running in
@@ -95,6 +97,10 @@ func newRigIn(t *testing.T, repo string, repos []string) *rig {
 		Now:     func() time.Time { return r.now },
 		Unsaved: func(*thread.Record, string) (string, error) { return r.unsaved, nil },
 		GH: func(dir string, args ...string) ([]byte, error) {
+			if r.ghErr != "" {
+				r.ghN++
+				return nil, fmt.Errorf("%s", r.ghErr)
+			}
 			if r.ghFor != nil {
 				if out := r.ghFor(args[2]); out != "" {
 					return []byte(out), nil
@@ -330,6 +336,41 @@ func TestPRPollFollowUpAndAutoResolve(t *testing.T) {
 	r.sweep(10 * time.Minute)
 	if r.ghN != n {
 		t.Fatal("polled a merged PR")
+	}
+}
+
+func TestGHFailing(t *testing.T) {
+	r := newRig(t)
+	r.ghErr = "gh pr view: exit status 1 To get started with GitHub CLI, please run:  gh auth login"
+	for i := 1; i < GHFailPolls; i++ {
+		r.sweep(2 * time.Minute)
+	}
+	if k := r.kinds(); k != "" {
+		t.Fatalf("raised %q after %d failed polls", k, GHFailPolls-1)
+	}
+	r.sweep(time.Minute) // no poll due: doesn't count
+	r.sweep(2 * time.Minute)
+	items := r.items()
+	if len(items) != 1 || items[0].Kind != KindGHFailing || !items[0].NeedsUser || strings.Contains(items[0].Summary, "auth login") {
+		t.Fatalf("items %+v", items)
+	}
+	r.sweep(2 * time.Minute)
+	r.sweep(2 * time.Minute)
+	if n := len(r.items()); n != 1 {
+		t.Fatalf("%d items: raised more than once", n)
+	}
+	// A gh that works but finds no PR clears it.
+	r.ghErr = ""
+	r.sweep(2 * time.Minute)
+	if k := r.kinds(); k != "" {
+		t.Fatalf("still %q after gh worked", k)
+	}
+	r.ghErr = "gh: network down"
+	for i := 0; i < GHFailPolls; i++ {
+		r.sweep(2 * time.Minute)
+	}
+	if k := r.kinds(); k != KindGHFailing {
+		t.Fatalf("second outage: %q", k)
 	}
 }
 

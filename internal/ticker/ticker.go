@@ -52,7 +52,15 @@ const (
 	// KindPRConflict: main moved and a thread's open PR now conflicts
 	// with it.
 	KindPRConflict = "pr-conflict"
+	// KindGHFailing: gh failed on GHFailPolls PR polls in a row, so PR
+	// follow-up, auto-close and complete_tasks wait. Moved to done once
+	// a poll succeeds.
+	KindGHFailing = "gh-failing"
 )
+
+// GHFailPolls is how many PR polls in a row (sweeps of a project that
+// asked gh anything) must fail before a gh-failing item is raised.
+const GHFailPolls = 3
 
 // Host is what the ticker needs from the server.
 type Host interface {
@@ -97,6 +105,9 @@ type Ticker struct {
 
 	mu sync.Mutex // one sweep at a time; guards st
 	st *state
+	// gh is what gh calls did in this sweep, by project slug: true once
+	// one worked, false while all failed; absent when none ran.
+	gh map[string]bool
 }
 
 // state is ticker.json.
@@ -132,6 +143,10 @@ type projectMemo struct {
 	// task was completed for by complete_tasks, by task ref (complete.go).
 	Merges    map[string]*mergeMemo `json:"merges,omitempty"`
 	Completed map[string]string     `json:"completed,omitempty"`
+	// GHFails counts PR polls in a row on which gh failed; GHItem is the
+	// gh-failing item raised for them, until a poll works again.
+	GHFails int    `json:"gh_fails,omitempty"`
+	GHItem  string `json:"gh_item,omitempty"`
 }
 
 // repoMemo is a repo's checkout as the last sync left it, and the PR
@@ -170,7 +185,7 @@ func New(o Options) *Ticker {
 	if o.Log == nil {
 		o.Log = log.New(os.Stderr, "", log.LstdFlags)
 	}
-	t := &Ticker{o: o, kick: make(chan struct{}, 1)}
+	t := &Ticker{o: o, kick: make(chan struct{}, 1), gh: map[string]bool{}}
 	t.st = t.load()
 	return t
 }
@@ -306,6 +321,7 @@ func (t *Ticker) Sweep() {
 			t.completeTasks(p, safety)
 		}
 		t.followMain(p, sessions, safety, now)
+		t.ghHealth(p)
 		t.nudge(p, sessions, now)
 		if prune {
 			if n, err := p.PruneDone(DoneMaxAge); err != nil {
@@ -525,6 +541,7 @@ func (t *Ticker) refreshPR(p *project.Project, r *thread.Record, m *threadMemo, 
 	}
 	m.PRPolled = now
 	out, err := t.o.GH(r.Repo, "pr", "view", target, "--json", prFields)
+	t.ghRan(p.Slug, err)
 	if err != nil {
 		return false, false // no PR yet, no gh, no network: try again next time
 	}
@@ -577,6 +594,54 @@ func (t *Ticker) refreshPR(p *project.Project, r *thread.Record, m *threadMemo, 
 	return merged, true
 }
 
+// ghWorked matches the errors of a gh that works but found no PR.
+var ghWorked = regexp.MustCompile(`(?i)no (open )?pull requests found|could not resolve to a pullrequest`)
+
+// ghRan notes how a gh call of this sweep went for a project: one that
+// only found no PR counts as working.
+func (t *Ticker) ghRan(slug string, err error) {
+	ok := err == nil || ghWorked.MatchString(err.Error())
+	if prev, seen := t.gh[slug]; !seen || !prev {
+		t.gh[slug] = ok
+	}
+	if !ok {
+		t.o.Log.Printf("ticker: %s: %v", slug, err)
+	}
+}
+
+// ghHealth raises one gh-failing item once gh failed on GHFailPolls
+// polls of a project in a row, and moves it to done once a poll works.
+// The summary is fixed text: gh's error goes to the server log only.
+func (t *Ticker) ghHealth(p *project.Project) {
+	ok, ran := t.gh[p.Slug]
+	delete(t.gh, p.Slug)
+	if !ran {
+		return
+	}
+	pm := t.projectMemo(p.Slug)
+	if ok {
+		if pm.GHItem != "" {
+			if err := p.DoneItem(pm.GHItem); err != nil {
+				t.o.Log.Printf("ticker: %s: gh-failing item: %v", p.Slug, err)
+			}
+			t.o.Log.Printf("ticker: %s: gh works again", p.Slug)
+		}
+		pm.GHFails, pm.GHItem = 0, ""
+		return
+	}
+	pm.GHFails++
+	if pm.GHFails < GHFailPolls || pm.GHItem != "" {
+		return
+	}
+	it, err := p.AddItem(KindGHFailing, "gh", fmt.Sprintf("gh failed on %d PR polls in a row, so PR follow-up, auto-close and completing tasks wait; the user checks gh auth status in a terminal (tm doctor), and the item clears once a poll works", pm.GHFails), true)
+	if err != nil {
+		t.o.Log.Printf("ticker: %s: inbox: %v", p.Slug, err)
+		return
+	}
+	pm.GHItem = it.ID
+	t.o.Log.Printf("ticker: %s: inbox %s gh", p.Slug, KindGHFailing)
+}
+
 var subjectRE = regexp.MustCompile(`^(t-[0-9]{4,}|T[0-9]{1,9})$`)
 
 // verbs are the nudge's words per item kind: fixed text.
@@ -584,7 +649,7 @@ var verbs = map[string]string{
 	"report": "reported", "thread-done": "done", "thread-resolved": "resolved", "needs-you": "waiting for the user",
 	KindBlocked: "blocked", KindIdle: "idle with a report", KindExited: "exited", KindServerRestart: "server restarted",
 	KindPROpened: "opened a PR", KindPRChecks: "PR checks failed", KindPRReview: "PR reviewed",
-	KindPRMerged: "PR merged", KindPRClosed: "PR closed", KindTaskDone: "done by the user's setting", KindPRConflict: "PR conflicts with main", KindCloseHeld: "not auto-closed", project.KindTakeover: "taken over by the user",
+	KindPRMerged: "PR merged", KindPRClosed: "PR closed", KindTaskDone: "done by the user's setting", KindPRConflict: "PR conflicts with main", KindCloseHeld: "not auto-closed", KindGHFailing: "gh failing", project.KindTakeover: "taken over by the user",
 	project.KindDelegate: "to delegate (the user's go-ahead)", project.KindAccept: "accepted by the user",
 	project.KindSendBack: "sent back by the user",
 }
