@@ -187,7 +187,8 @@ func infoLines(d *infoData, w int, now time.Time) ([]string, []infoHit) {
 			hit(from, hitPR)
 		}
 	}
-	// The last report: its first lines and its Next items.
+	// The last report: its first lines. Its Next items are the
+	// coordinator's and never show in the TUI.
 	if r := d.report; r != nil {
 		pl.gap()
 		head := "Last report"
@@ -197,12 +198,6 @@ func infoLines(d *infoData, w int, now time.Time) ([]string, []infoHit) {
 		pl.add(styleHead.Render(head))
 		for _, l := range reportHead(r.Text, 3) {
 			pl.wrap(oneLine(l))
-		}
-		if len(r.Next) > 0 {
-			pl.add(styleFaint.Render("Next"))
-			for _, n := range r.Next {
-				hang(pl, "• ", oneLine(n))
-			}
 		}
 	}
 	if len(d.attached) > 0 {

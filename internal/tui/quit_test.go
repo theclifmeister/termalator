@@ -156,8 +156,9 @@ func TestAttachPrefixQuits(t *testing.T) {
 }
 
 // TestEveryPrefixCommandListed: every key that does something after the
-// prefix in a session is in the help, the ≡ menu and the status bar's
-// list after the prefix, so none is hidden.
+// prefix in a session is in the help, the ≡ menu, the status bar's list
+// after the prefix and the dashboard's footer after the prefix, so none
+// is hidden.
 func TestEveryPrefixCommandListed(t *testing.T) {
 	var cmds []string
 	for r := rune(0x21); r < 0x7f; r++ {
@@ -184,7 +185,16 @@ func TestEveryPrefixCommandListed(t *testing.T) {
 	for _, h := range hs {
 		bar = append(bar, h.key)
 	}
+	hint := strings.Fields(prefixHint)
+	for _, k := range prefixKeysAll() {
+		if !slices.Contains(cmds, k) {
+			t.Errorf("prefix+%s works on the dashboard but not in a session", k)
+		}
+	}
 	for _, k := range cmds {
+		if !slices.Contains(hint, k) {
+			t.Errorf("prefix+%s isn't in the dashboard's footer after the prefix (prefixHint)", k)
+		}
 		if !slices.Contains(help, k) {
 			t.Errorf("prefix+%s isn't in the help (sessionKeys)", k)
 		}

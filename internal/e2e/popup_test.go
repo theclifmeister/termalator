@@ -71,7 +71,8 @@ var popupMasks = []Mask{
 
 // TestSmokeProjectPopup: a opens the project popup; its tabs switch;
 // a setting changes in place, persists and reaches the coordinator's
-// context; the Keys tab is the help's list; prefix+a opens it from a
+// context; the Keys tab is the help's list; the Memory tab shows the
+// project's memory; prefix+a opens it from a
 // session, on this console only; no screen names the settings file.
 func TestSmokeProjectPopup(t *testing.T) {
 	env := New(t)
@@ -166,6 +167,15 @@ func TestSmokeProjectPopup(t *testing.T) {
 	w.Type("5")
 	w.WaitFor("On the dashboard", wait)
 	keys := popupBody(w.Screen(), cols)
+	screens = append(screens, w.Screen())
+	// The Memory tab: the project's CONTEXT.md and MEMORY.md as text,
+	// with no file path.
+	w.Type("6")
+	w.WaitFor("Living context for this project", wait)
+	w.WaitFor("One line per memory file", wait)
+	if sc := w.Screen(); strings.Contains(sc, ".md") {
+		t.Fatalf("the Memory tab shows a file:\n%s", sc)
+	}
 	screens = append(screens, w.Screen())
 	w.Key(keyEsc)
 	w.WaitUntil("popup closed", wait, func(sc string) bool { return !strings.Contains(sc, "1 Overview") })
