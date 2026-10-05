@@ -106,12 +106,13 @@ func (d *infoData) prLine() string {
 func infoLines(d *infoData, w int, now time.Time) ([]string, []infoHit) {
 	pl := &panel{w: w}
 	var hits []infoHit
-	hit := func(h infoHit) {
+	// hit makes the lines added since line from clickable.
+	hit := func(from int, h infoHit) {
 		for len(hits) < len(pl.lines) {
 			hits = append(hits, hitNone)
 		}
-		if len(hits) > 0 {
-			hits[len(hits)-1] = h
+		for i := from; i < len(hits); i++ {
+			hits[i] = h
 		}
 	}
 	if d == nil {
@@ -124,10 +125,9 @@ func infoLines(d *infoData, w int, now time.Time) ([]string, []infoHit) {
 	switch t := d.task; {
 	case t != nil:
 		pl.wrap(styleHead.Render(oneLine(t.Ref() + " " + t.Title)))
-		hit(hitTask)
 		g, st := stateLook(string(t.Status))
-		pl.add(st.Render(strings.TrimSpace(g+" "+string(t.Status))) + styleFaint.Render(" · enter shows it"))
-		hit(hitTask)
+		pl.add(st.Render(strings.TrimSpace(g+" "+string(t.Status))) + styleFaint.Render(" · click to open"))
+		hit(0, hitTask)
 		if len(t.Steps) > 0 {
 			pl.gap()
 			pl.add(styleFaint.Render("steps ") + progressLine(thread.Progress{Percent: pctOf(t.StepsDone(), len(t.Steps)), Done: t.StepsDone(), Total: len(t.Steps)}))
@@ -177,9 +177,10 @@ func infoLines(d *infoData, w int, now time.Time) ([]string, []infoHit) {
 		case d.pr.State == "MERGED":
 			look = styleGood
 		}
-		pl.field("PR", look.Render(l))
+		from := len(pl.lines)
+		hang(pl, styleFaint.Render(fmt.Sprintf("%-9s", "PR"))+" ", look.Render(l))
 		if d.prURL() != "" {
-			hit(hitPR)
+			hit(from, hitPR)
 		}
 	}
 	// The last report: its first lines and its Next items.

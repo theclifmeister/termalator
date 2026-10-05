@@ -229,3 +229,75 @@ func TestSidebar(t *testing.T) {
 		t.Fatalf("drag to 150: %+v", l)
 	}
 }
+
+// TestInfo: the info panel beside a thread's pane takes its columns from
+// the pane, shrinks to leave the pane SideRoom, and hides when the window
+// is too narrow for InfoMin, when it is off, or beside a session that
+// isn't a thread's.
+func TestInfo(t *testing.T) {
+	v := &View{Name: Main}
+	v.Attach("a", "proj")
+	v.Normalize()
+	if v.Info.Width != InfoDefault {
+		t.Fatalf("default width %d", v.Info.Width)
+	}
+	// No thread: no panel.
+	if g := v.Lay(200, 40); g.InfoW != 0 || g.Area.W != 200-SideDefault {
+		t.Fatalf("not a thread: %+v", g)
+	}
+	v.Thread = true
+	for _, c := range []struct{ cols, side, info int }{
+		{200, SideDefault, InfoDefault},                                  // room for everything
+		{SideDefault + SideRoom + InfoDefault, SideDefault, InfoDefault}, // just room
+		{SideDefault + SideRoom + 30, SideDefault, 30},                   // shrinks
+		{SideDefault + SideRoom + InfoMin, SideDefault, InfoMin},
+		{SideDefault + SideRoom + InfoMin - 1, SideDefault, 0}, // hides
+		{80, SideSlim, 0}, // narrow: the slim strip, no panel
+	} {
+		g := v.Lay(c.cols, 30)
+		if g.SideW != c.side || g.InfoW != c.info || g.Area.W != c.cols-c.side-c.info || g.Panes["a"] != g.Area {
+			t.Errorf("%d columns: %+v, want sidebar %d, panel %d", c.cols, g, c.side, c.info)
+		}
+		if g.InfoW > 0 && g.Area.W < SideRoom {
+			t.Errorf("%d columns: the pane gets %d", c.cols, g.Area.W)
+		}
+	}
+	// Off: hidden; on again in a narrow window says why it shows nothing.
+	off, msg := v.Info.Toggle(200, SideDefault)
+	if !off.Off || msg != "" {
+		t.Fatalf("toggle off: %+v %q", off, msg)
+	}
+	v.Info = off
+	if g := v.Lay(200, 30); g.InfoW != 0 {
+		t.Fatalf("off: %+v", g)
+	}
+	on, msg := off.Toggle(80, SideSlim)
+	if on.Off || !strings.Contains(msg, "too narrow") {
+		t.Fatalf("toggle on, narrow: %+v %q", on, msg)
+	}
+	// Dragging its border: from the right edge, at least InfoMin, never
+	// past SideRoom for the pane; a wider width is kept for wider windows.
+	v.Info = Info{}.Clamp()
+	if d := v.Info.DragTo(150, 200, SideDefault); d.Width != 50 {
+		t.Fatalf("drag to 150: %+v", d)
+	}
+	if d := v.Info.DragTo(199, 200, SideDefault); d.Width != InfoMin {
+		t.Fatalf("drag to the edge: %+v", d)
+	}
+	if d := v.Info.DragTo(10, 200, SideDefault); d.Width != 200-SideDefault-SideRoom {
+		t.Fatalf("drag over the pane: %+v", d)
+	}
+	v.Info.Width = 150
+	if g := v.Lay(200, 30); g.InfoW != 200-SideDefault-SideRoom {
+		t.Fatalf("a wide panel in a narrower window: %+v", g)
+	}
+	// The dashboard and an emptied view lay out no panel.
+	v.Dashboard()
+	if g := v.Lay(200, 30); g.InfoW != 0 {
+		t.Fatalf("dashboard: %+v", g)
+	}
+	v.Remove("a")
+	if v.Thread {
+		t.Fatal("Thread stays without a session")
+	}
+}
