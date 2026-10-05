@@ -1,9 +1,11 @@
 package e2e
 
-// The parallel threads cap and auto-close (docs/SPEC.md §9, §11.2).
+// The parallel threads cap, auto-close and complete tasks (docs/SPEC.md
+// §9, §11.2).
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -105,4 +107,70 @@ cmd = 'printf "## Report\nDone.\n\n## Next\nMerge the PR\n" | "$TERMILATOR_BIN" 
 	if d := time.Since(done); d < 2*time.Second-200*time.Millisecond {
 		t.Fatalf("closed %v after tm done, before 2 days of a second", d)
 	}
+}
+
+// TestSmokeTickerCompleteOnRelease: with Complete tasks "when released",
+// a task in review whose thread's PR merged stays in review (the thread
+// closes on the merge) until a tag on origin contains the merge commit;
+// then the ticker marks it done, journals it and tells the coordinator.
+// The t list shows it under DONE, and x still sends it back.
+func TestSmokeTickerCompleteOnRelease(t *testing.T) {
+	env, projDir, _ := tickerEnv(t)
+	state := fakeGH(t, env)
+	writeConfig(t, env, "[projects.demo]\ncomplete_tasks = \"released\"\n")
+	env.MustCLI("task", "add", "Small fix", "--status", "ready", "--project", "demo")
+	env.MustCLI("thread", "start", "--task", "T1", "--project", "demo")
+	var rec struct{ Session, Repo string }
+	readTOML(t, filepath.Join(projDir, "threads", "t-0001", "thread.toml"), &rec)
+	env.WaitState(&Session{ID: rec.Session}, "idle", agentWait)
+	env.MustCLI("task", "status", "T1", "review", "--project", "demo")
+
+	// The PR merges on origin, from another clone.
+	git := func(dir string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@t"}, args...)...)
+		cmd.Dir = dir
+		b, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, b)
+		}
+		return strings.TrimSpace(string(b))
+	}
+	other := filepath.Join(t.TempDir(), "other")
+	git(rec.Repo, "clone", "-q", git(rec.Repo, "remote", "get-url", "origin"), other)
+	os.WriteFile(filepath.Join(other, "fix"), []byte("fixed\n"), 0o644)
+	git(other, "add", "fix")
+	git(other, "commit", "-q", "-m", "Merge pull request #7 from o/fix")
+	merge := git(other, "rev-parse", "HEAD")
+	git(other, "push", "-q", "origin", "HEAD:main")
+	setPR(t, state, `{"number":7,"url":"https://github.com/o/r/pull/7","state":"MERGED","mergeCommit":{"oid":"`+merge+`"},"statusCheckRollup":[]}`)
+	waitInbox(t, env, "thread-resolved: t-0001 (T1 Small fix) resolved")
+	time.Sleep(2 * time.Second) // a few syncs: merged, not released
+	if out := env.MustCLI("task", "show", "T1", "--project", "demo", "--json"); !strings.Contains(out, `"status": "review"`) {
+		t.Fatalf("done before a release:\n%s", out)
+	}
+
+	git(other, "tag", "v0.5.0")
+	git(other, "push", "-q", "origin", "v0.5.0")
+	waitInbox(t, env, "task-done: T1 Small fix is done: released in v0.5.0 (PR #7), as the user's setting says (complete tasks when released)")
+	if out := env.MustCLI("task", "show", "T1", "--project", "demo", "--json"); !strings.Contains(out, `"status": "done"`) {
+		t.Fatalf("not done:\n%s", out)
+	}
+	if j, _ := os.ReadFile(filepath.Join(projDir, "JOURNAL.md")); !strings.Contains(string(j), "ticker task.done T1 released in v0.5.0 (PR #7)") {
+		t.Fatalf("journal:\n%s", j)
+	}
+
+	w := env.Window(110, 30)
+	w.WaitFor("SESSIONS", wait)
+	w.Type("t")
+	w.WaitFor("DONE", wait)
+	w.WaitFor("x send back", wait)
+	w.Type("x")
+	w.WaitFor("Send T1 back. What should change?", wait)
+	w.Type("still broken")
+	w.Key(keyEnter)
+	waitInbox(t, env, "send-back: the user sends T1 back: still broken")
+	w.Key(keyEsc)
+	w.Quit()
+	w.WaitExit(wait)
 }

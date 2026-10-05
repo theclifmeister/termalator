@@ -63,8 +63,8 @@ func (l *settingsList) key(m *dash, k tea.KeyPressMsg) (tea.Cmd, bool) {
 	return nil, true
 }
 
-// lines draws the list w cells wide; sel is the selected row's line,
-// hits what a click on each line picks: a setting's own line is its
+// lines draws the list w cells wide; sel is the selected row's last
+// line (its help or note), so the whole setting scrolls into view, hits what a click on each line picks: a setting's own line is its
 // index, which changes it; its help is helpHit more, which selects it.
 func (l *settingsList) lines(m *dash, w int) (out []string, sel int, hits []int) {
 	sel = -1
@@ -90,7 +90,6 @@ func (l *settingsList) lines(m *dash, w int) (out []string, sel int, hits []int)
 		}
 		text := fit(r.label, lw) + "  " + value + btns
 		if i == l.sel {
-			sel = len(out)
 			out = append(out, styleSel.Render(fit(text, w)))
 		} else {
 			out = append(out, styleHead.Render(fit(r.label, lw))+"  "+styleAccent.Render(value)+styleHead.Render(btns))
@@ -98,6 +97,9 @@ func (l *settingsList) lines(m *dash, w int) (out []string, sel int, hits []int)
 		out = append(out, faintLines(r.help, w)...)
 		if r.note != nil {
 			out = append(out, r.note(m)...)
+		}
+		if i == l.sel {
+			sel = len(out) - 1
 		}
 		for len(hits) < len(out) {
 			hits = append(hits, i+helpHit)
@@ -418,6 +420,19 @@ func projectSettings(slug string) []setting {
 				}
 				return set(m, "auto_close_days", n, msg, func(x *config.Safety) { x.AutoCloseDays = n })
 			}},
+		{label: "Complete tasks", help: "By you, or on your standing acceptance: a task in review is done once a release contains its pull request, or once it merges. x sends it back.",
+			value: func(m *dash) string { return completeWords(safety(m).CompleteTasks) },
+			change: func(m *dash) tea.Cmd {
+				next := map[string]string{config.CompleteUser: config.CompleteReleased, config.CompleteReleased: config.CompleteMerged}[safety(m).CompleteTasks]
+				if next == "" {
+					next = config.CompleteUser
+				}
+				msg := "tasks of " + slug + " are done " + completeWords(next)
+				if next == config.CompleteUser {
+					msg = "tasks of " + slug + " are done when you accept them"
+				}
+				return set(m, "complete_tasks", next, msg, func(x *config.Safety) { x.CompleteTasks = next })
+			}},
 		{label: "Pull request follow-up", help: "Prompt a thread when its pull request's checks fail, a reviewer asks for changes, or main moves past it.",
 			value:  func(m *dash) string { return onOff(safety(m).PRFollowup) },
 			change: toggle("pr_followup", func(s config.Safety) bool { return s.PRFollowup }, "pull request follow-up")},
@@ -455,6 +470,17 @@ func closeWords(s config.Safety) string {
 		return days(s.AutoCloseDays) + " after it finishes"
 	}
 	return "when its pull request merges"
+}
+
+// completeWords is the complete-tasks setting as the popup shows it.
+func completeWords(v string) string {
+	switch v {
+	case config.CompleteReleased:
+		return "when released"
+	case config.CompleteMerged:
+		return "when merged"
+	}
+	return "by you"
 }
 
 func days(n int) string {

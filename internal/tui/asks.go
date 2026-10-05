@@ -15,7 +15,8 @@ import (
 // dashboard still changes no task: it drops an inbox item, which the
 // coordinator takes as the user's word. D delegates an open, ready or
 // blocked task, A accepts a task in review, x sends one back with a
-// note; c opens the coordinator, to answer what a task is blocked on.
+// note (a done one too, which the coordinator reopens); c opens the
+// coordinator, to answer what a task is blocked on.
 
 // notDelegable is why task t can't be delegated, "" when it can: an
 // open, ready or blocked task can.
@@ -33,8 +34,8 @@ func notDelegable(t *tasks.Task) string {
 	return t.Ref() + " is " + string(t.Status)
 }
 
-// notInReview is why task t can't be accepted or sent back, "" when it
-// can: only a task in review can.
+// notInReview is why task t can't be accepted, "" when it can: only a
+// task in review can.
 func notInReview(t *tasks.Task) string {
 	if t.Status == tasks.Review {
 		return ""
@@ -42,13 +43,24 @@ func notInReview(t *tasks.Task) string {
 	return t.Ref() + " is " + string(t.Status) + ", not in review"
 }
 
+// notSendable is why task t can't be sent back, "" when it can: a task
+// in review, or a done one (the coordinator reopens it), can.
+func notSendable(t *tasks.Task) string {
+	if t.Status == tasks.Review || t.Status == tasks.Done {
+		return ""
+	}
+	return t.Ref() + " is " + string(t.Status) + ", not in review or done"
+}
+
 // notAskable is why kind can't be asked for task t, "" when it can.
 func notAskable(t *tasks.Task, kind string) string {
 	switch kind {
 	case project.KindDelegate:
 		return notDelegable(t)
-	case project.KindAccept, project.KindSendBack:
+	case project.KindAccept:
 		return notInReview(t)
+	case project.KindSendBack:
+		return notSendable(t)
 	}
 	return "unknown ask " + kind
 }
@@ -145,9 +157,9 @@ func (m *dash) accept(slug string, t *tasks.Task) tea.Cmd {
 }
 
 // sendBack asks for a note, then has the coordinator send slug's task t
-// back to work with it.
+// back to work with it: one in review, or a done one, which it reopens.
 func (m *dash) sendBack(slug string, t *tasks.Task) tea.Cmd {
-	if !m.canAsk(slug, t, project.KindSendBack, "x sends back tasks in review") {
+	if !m.canAsk(slug, t, project.KindSendBack, "x sends back tasks in review or done") {
 		return nil
 	}
 	ref := t.Ref()
@@ -183,6 +195,8 @@ func taskKeys(t *tasks.Task) string {
 	switch t.Status {
 	case tasks.Review:
 		return "A accept · x send back"
+	case tasks.Done:
+		return "x send back"
 	case tasks.Blocked:
 		return "c coordinator"
 	case tasks.Open, tasks.Ready:

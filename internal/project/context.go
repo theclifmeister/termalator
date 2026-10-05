@@ -78,8 +78,8 @@ func (p *Project) Context(seen Ticked) ([]Section, error) {
 	if closeRule == config.CloseDays {
 		closeRule = fmt.Sprintf("%d days after done or merged", safety.AutoCloseDays)
 	}
-	head = append(head, fmt.Sprintf("Safety: start_threads=%s · yolo=%t · coordinator_approves=%t · parallel_threads=%d · auto_close=%s (config.toml; the human's)",
-		safety.StartThreads, safety.Yolo, safety.CoordinatorApproves, safety.ParallelThreads, closeRule))
+	head = append(head, fmt.Sprintf("Safety: start_threads=%s · yolo=%t · coordinator_approves=%t · parallel_threads=%d · auto_close=%s · complete_tasks=%s (config.toml; the human's)",
+		safety.StartThreads, safety.Yolo, safety.CoordinatorApproves, safety.ParallelThreads, closeRule, safety.CompleteTasks))
 	out = append(out, Section{Title: "Project", Lines: head})
 	out = append(out, capLines("Standing instructions (PROJECT.md)", splitLines(p.Instructions), capInstructions, "PROJECT.md"))
 

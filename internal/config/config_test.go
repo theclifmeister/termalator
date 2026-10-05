@@ -36,6 +36,7 @@ detach_key = "ctrl-\\"   # another package's setting: ignored here
 [projects.demo]
 start_threads = "auto"
 yolo = true
+complete_tasks = "released"
 
 [projects.other]
 coordinator_approves = false
@@ -48,10 +49,10 @@ fast_forward_checkout = false
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s, _ := c.Safety("demo"); s != (Safety{StartThreads: "auto", Yolo: true, CoordinatorApproves: true, ParallelThreads: 10, AutoClose: "merged", AutoCloseDays: 7, PRFollowup: true, FastForwardCheckout: true}) {
+	if s, _ := c.Safety("demo"); s != (Safety{StartThreads: "auto", Yolo: true, CoordinatorApproves: true, ParallelThreads: 10, AutoClose: "merged", AutoCloseDays: 7, PRFollowup: true, CompleteTasks: "released", FastForwardCheckout: true}) {
 		t.Fatalf("demo %+v", s)
 	}
-	if s, _ := c.Safety("other"); s != (Safety{StartThreads: "propose", ParallelThreads: 10, AutoClose: "off", AutoCloseDays: 7, CoordinatorRemoteControl: true}) {
+	if s, _ := c.Safety("other"); s != (Safety{StartThreads: "propose", ParallelThreads: 10, AutoClose: "off", AutoCloseDays: 7, CompleteTasks: "user", CoordinatorRemoteControl: true}) {
 		t.Fatalf("other %+v", s)
 	}
 }
@@ -90,6 +91,7 @@ func TestBadSettings(t *testing.T) {
 		"[projects.demo]\nparallel_threads = 0\n":          "parallel_threads must be 1 to 99",
 		"[projects.demo]\nauto_close = \"never\"\n":        "auto_close must be",
 		"[projects.demo]\nauto_close_days = 0\n":           "auto_close_days must be 1 to 365",
+		"[projects.demo]\ncomplete_tasks = \"later\"\n":    "complete_tasks must be",
 	} {
 		write(t, body)
 		if _, err := Load(); err == nil || !strings.Contains(err.Error(), want) {

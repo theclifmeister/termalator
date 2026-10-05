@@ -3,7 +3,6 @@ package tui
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -340,23 +339,10 @@ func (s *ServerSource) Review(slug string, t *tasks.Task) Review {
 	pr := ticker.PRs(ticker.StatePath(s.Paths.Sessions), slug)[t.Thread]
 	rv.PR = pr.Number
 	if rv.PR == 0 {
-		rv.PR = prNumber(reportPR)
+		rv.PR = ticker.PRNumber(reportPR)
 	}
 	rv.Ship, rv.Tag = shipped(repo, rv.PR, pr)
 	return rv
-}
-
-// prNumber is the number at the end of a pull request's URL, 0 for none.
-func prNumber(url string) int {
-	_, n, ok := strings.Cut(url, "/pull/")
-	if !ok {
-		return 0
-	}
-	v, err := strconv.Atoi(n)
-	if err != nil || v < 0 {
-		return 0
-	}
-	return v
 }
 
 // shipped is where pull request n stands (Review.Ship), from repo's
