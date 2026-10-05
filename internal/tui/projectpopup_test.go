@@ -91,7 +91,7 @@ func TestProjectPopup(t *testing.T) {
 	}
 	m.Update(cmd()) // the board
 	out := screen(m)
-	for _, want := range []string{"alpha · prefix = ctrl+b", "1 Overview", "2 Inbox 1", "5 Keys",
+	for _, want := range []string{"─ alpha ─", "1 Overview", "2 Inbox 1", "5 Keys",
 		"Project", "Alpha", "Goal", "Ship the alpha", "Repositories", "/src/alpha", "Machines", "this one",
 		"Coordinator", "claude · s-1 blocked", "1 needs you · 1 in motion"} {
 		if !strings.Contains(out, want) {
