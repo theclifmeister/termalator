@@ -341,7 +341,7 @@ func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.load()
 	case boardMsg:
 		if pv := m.projectPopupView(); pv != nil && pv.slug == msg.slug && msg.err == nil {
-			pv.board = msg.board
+			pv.setBoard(msg.board)
 		}
 		b := m.boardView()
 		if b == nil || msg.slug != b.slug {

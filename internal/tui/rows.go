@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/tasks"
 )
 
 // Rows: what the dashboard list shows, as data. Layout and styling
@@ -37,6 +38,7 @@ type row struct {
 	session string
 	project string
 	thread  *ThreadRow
+	task    *tasks.Task // a needs-you task's row in NEEDS YOU
 }
 
 func (r row) selectable() bool { return r.key != "" }
@@ -138,6 +140,7 @@ const (
 // Row markers.
 const (
 	markBlocked = " ! "
+	markNeeds   = " ? " // a task that waits on the user
 	markTop     = "  "
 )
 
@@ -177,11 +180,14 @@ func listProject(d Data, current string) string {
 // The sidebar's tree lists every project; the list shows one, project
 // (listProject): its coordinator, threads, sessions and task counts.
 // NEEDS YOU, across projects, holds only what waits on the user: blocked
-// coordinators, and blocked sessions of the user's own outside the
-// projects. Everything about threads goes to their coordinator, the
-// user's single point of contact (§4).
+// coordinators, the tasks in each project's Needs you group (review or
+// blocked) under its project, and blocked sessions of the user's own
+// outside the projects. The task rows are to see, not to act on: enter
+// shows the task in the project popup, and the coordinator accepts the
+// work. Everything about threads goes to their coordinator, the user's
+// single point of contact (§4).
 func buildRows(d Data, project string) []row {
-	var needs, projs, other []row
+	var projs, other []row
 	bySlug := map[string]bool{}
 	for _, p := range d.Projects {
 		bySlug[p.Slug] = true
@@ -191,17 +197,39 @@ func buildRows(d Data, project string) []row {
 		byID[s.ID] = s
 	}
 	now := time.Now()
+	// NEEDS YOU by project, in the projects' order, then the rest.
+	needsOf := map[string][]row{}
+	var loose []row
 	for _, s := range d.Sessions {
 		if s.State == "blocked" && s.Role != proto.RoleThread {
 			who := s.Project
 			if who == "" {
 				who = s.ID
 			}
-			needs = append(needs, row{key: "n:" + s.ID, session: s.ID, project: s.Project,
+			r := row{key: "n:" + s.ID, session: s.ID, project: s.Project,
 				mark: markBlocked, who: who, what: sessionName(s), state: "blocked", lead: oneLine(s.Reason), leadBad: true,
-				rest: progressOnly(s), pct: -1})
+				rest: progressOnly(s), pct: -1}
+			if bySlug[s.Project] {
+				needsOf[s.Project] = append(needsOf[s.Project], r)
+			} else {
+				loose = append(loose, r)
+			}
 		}
 	}
+	var needs []row
+	for _, p := range d.Projects {
+		needs = append(needs, needsOf[p.Slug]...)
+		for _, t := range p.NeedsYou {
+			r := row{key: fmt.Sprintf("nt:%s:%d", p.Slug, t.ID), project: p.Slug, task: t,
+				mark: markNeeds, who: p.Slug, what: t.Ref() + " " + oneLine(t.Title), state: string(t.Status), rest: t.Thread, pct: -1}
+			if len(t.Steps) > 0 {
+				r.pct = pctOf(t.StepsDone(), len(t.Steps))
+				r.rest = joinSp(fmt.Sprintf("%d/%d", t.StepsDone(), len(t.Steps)), t.Thread)
+			}
+			needs = append(needs, r)
+		}
+	}
+	needs = append(needs, loose...)
 	var head string
 	for _, p := range d.Projects {
 		if p.Slug != project {
@@ -285,7 +313,7 @@ func buildRows(d Data, project string) []row {
 			projs = append(projs, sr)
 		}
 		c := p.Counts
-		projs = append(projs, row{note: fmt.Sprintf("  tasks: %d needs you · %d in motion · %d on deck", c["needs_you"], c["in_motion"], c["on_deck"])})
+		projs = append(projs, row{note: "  tasks: " + taskCounts(c)})
 	}
 	home, _ := os.UserHomeDir()
 	for _, s := range d.Sessions {
@@ -326,6 +354,16 @@ func buildRows(d Data, project string) []row {
 		other = []row{{note: note}}
 	}
 	return append(rows, other...)
+}
+
+// taskCounts are a project's task counts; tasks that need the user say
+// where to see them: the project popup's Tasks tab.
+func taskCounts(c map[string]int) string {
+	needs := fmt.Sprintf("%d needs you", c["needs_you"])
+	if c["needs_you"] > 0 {
+		needs += " (a → Tasks)"
+	}
+	return fmt.Sprintf("%s · %d in motion · %d on deck", needs, c["in_motion"], c["on_deck"])
 }
 
 // sessionPct is a session's todo percent, -1 without todos.

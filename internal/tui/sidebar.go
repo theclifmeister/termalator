@@ -24,10 +24,11 @@ import (
 // The projects sidebar (docs/SPEC.md §4): a column on the left of every
 // screen, the dashboard and the attach view alike, holding the project
 // tree. Each project row has its coordinator's state glyph, a hint when
-// one of its threads is blocked or waiting, and its count of open
-// threads. Every project is always expanded: its coordinator hangs under
-// it and its open threads under the coordinator, on tree connectors
-// (├─ └─), with their state glyphs and progress in columns of their own. The current project is in
+// one of its threads is blocked or waiting or one of its tasks needs
+// you (review or blocked), and its count of open threads. Every project
+// is always expanded: its coordinator hangs under it and its open
+// threads under the coordinator, on tree connectors (├─ └─), with their
+// state glyphs and progress in columns of their own. The current project is in
 // the accent colour, and the row you are on is highlighted. A click on a project shows its dashboard, on the
 // coordinator attaches to it, on a thread watches it. Its border column
 // can be dragged, and { } b change it from the keys.
@@ -66,7 +67,7 @@ type treeRow struct {
 	pct     int  // a thread's percent, -1 for none
 	last    bool // a coordinator or thread: the last row under its parent
 	current bool // a project: the current one
-	hint    bool // a project: one of its threads is blocked or waiting
+	hint    bool // a project: one of its threads is blocked or waiting, or a task needs you
 	remote  bool // a project or coordinator row: its coordinator's remote control is on
 	threads int  // a project: its open threads
 	here    bool // the row you are on
@@ -150,7 +151,8 @@ func buildTree(ps []ProjectData, sessions []proto.SessionInfo, in treeIn) []tree
 	}
 	var out []treeRow
 	for _, p := range ps {
-		pr := treeRow{kind: treeProject, slug: p.Slug, pct: -1, threads: len(p.Threads), current: p.Slug == in.current}
+		pr := treeRow{kind: treeProject, slug: p.Slug, pct: -1, threads: len(p.Threads), current: p.Slug == in.current,
+			hint: p.Counts["needs_you"] > 0}
 		for _, s := range sessions {
 			if s.Role == proto.RoleCoordinator && s.Project == p.Slug {
 				pr.session, pr.state, pr.remote = s.ID, stateWord(s), s.RemoteControl
@@ -315,7 +317,7 @@ func treeLine(r treeRow, cw int, slim, focused bool) string {
 //
 //	" ■ termilator       2 ◆"  a project: its name, its open threads,
 //	                           the hint that one of them is blocked or
-//	                           waiting
+//	                           waiting, or that a task needs you
 //	" └─ coordinator       ○"  its coordinator
 //	"    ├─ t-0002 B…  40% ●"  a thread's id and title, its progress, its
 //	                           state, one level under the coordinator
