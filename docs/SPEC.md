@@ -221,7 +221,7 @@ After the hello the client sends `{"attach":{"session":"s-…","cols":C,"rows":R
   - **Window resizes and layout changes always resize.** When the user really resizes a console's window (`view.size` with `resize`), or changes the sidebar's width from a console (§4), that console becomes the latest and the pane the view shows is resized to its rectangle, whichever console typed last and whatever the agent. The pane's area is the window less the sidebar, the status bar and the empty row above the status bar.
   - **Coalescing.** The server resizes a session at most once per 250 ms (`TIOCSWINSZ` + `SIGWINCH`). A request inside that time waits until it is over, and later requests replace it; a request for the size the session already has is no resize. Two consoles typed into in turn, or a window being dragged, can't flood the program with SIGWINCH.
   - **Inline renderers opt out.** Inline renderers duplicate or tear rows in their scrollback on every resize. Claude's inline mode does this, while its full-screen mode, the default since 2.1.x, only repaints once. Their agents say `resize = "explicit"`.
-  - The pane is an attach connection with its own mirror and renderer. Beside the sidebar or above the status bar its renderer draws into its rectangle of the shared window and erases only up to its edge (`ECH`, never `EL` or `ED`); the client draws the sidebar and the status bar and wraps the whole frame in one mode 2026 update, ending with the pane's cursor. Alone (`tm attach` without a sidebar or status bar) the renderer has the window to itself.
+  - The pane is an attach connection with its own mirror and renderer. Every attach shows it beside the sidebar and above the status bar (`tm attach` too, on any session; user, 2026-10-05), so its renderer draws into its rectangle of the shared window and erases only up to its edge (`ECH`, never `EL` or `ED`); the client draws the sidebar and the status bar and wraps the whole frame in one mode 2026 update, ending with the pane's cursor. The renderer never has the window to itself.
 - **Rendering.**
   - The client draws dirty rows from its mirror (cell renderer, not Bubble Tea `View()` strings), capped at 120 Hz and wrapped in mode 2026.
   - It honours the app's own 2026 holds through libghostty's render-hold effect, and never paints a torn frame.
@@ -378,7 +378,7 @@ The processes die with the server, because the PTY master closes and the childre
   | `?` | help |
   | `q` | quit the client; the server keeps running |
 
-- **Attaching.** `enter` shows the selected session in the view (`view.attach`), on every console of the view. Attaching gives the whole screen to the pane, rendered from the client's mirror emulator (§3.3), with a one-line status bar at the bottom that the client draws, and one empty row between the pane and it, so a program's own footer (Claude Code's model and mode line) doesn't run into it. The projects sidebar stays on the left, and the status bar runs under the pane, right of it. The status bar shows the session, its project and role, state, progress, `remote control on` while a coordinator's is, `≡` (the session's menu) and `prefix+d dashboard`; after the prefix it lists the commands instead. There are no window buttons and no split panes: one session shows at a time (user, 2026-10-05). Each is a button for the mouse (below). The client polls `session.list` for it, and the project folders for the sidebar. Sessions started from the dashboard get the window's size less the sidebar and those two rows, so nothing is cropped. (`tm attach` and `tm project open` show the pane beside the sidebar in a view of their own; `tm attach` has the status bar on a thread's or a coordinator's pane, and none on other sessions.)
+- **Attaching.** `enter` shows the selected session in the view (`view.attach`), on every console of the view. Attaching gives the whole screen to the pane, rendered from the client's mirror emulator (§3.3), with a one-line status bar at the bottom that the client draws, and one empty row between the pane and it, so a program's own footer (Claude Code's model and mode line) doesn't run into it. The projects sidebar stays on the left, and the status bar runs under the pane, right of it. The status bar shows the session, its project and role (a plain session, outside a project, has neither: its program's name instead), state, progress, `remote control on` while a coordinator's is, `≡` (the session's menu) and `prefix+d dashboard`; after the prefix it lists the commands instead. There are no window buttons and no split panes: one session shows at a time (user, 2026-10-05). Each is a button for the mouse (below). The client polls `session.list` for it, and the project folders for the sidebar. Sessions started from the dashboard get the window's size less the sidebar and those two rows, so nothing is cropped. (`tm attach` and `tm project open` show the pane beside the sidebar in a view of their own; `tm attach` has the status bar and the empty row above it on every session's pane, a plain session's too (user, 2026-10-05; until then plain sessions had the whole window).)
 - **Prefix commands.** While attached, the prefix (Ctrl+B by default; hints write `prefix+<key>`) then:
 
   | Key | Action |
@@ -711,13 +711,15 @@ The dashboard and `tm context` show one merged line per thread. It combines:
 - the agent state (§8.4): working, blocked, idle or exited;
 - progress (§7.3): the derived percent with its source, done/total, and the current todo or step;
 - the report status: none, new (unacknowledged) or acknowledged;
-- the PR state.
+- the PR state: what the ticker last saw (§7.5), in fixed words (`#12 open, checks pass, approved`; `2 checks failed`, `checks pending`, `changes requested`, `review required`; `#12 merged`, `#12 closed`), else the report's PR URL, else nothing.
 
 For example:
 
 ```
-t-0005 T12 Fix login redirect   working  45% steps+todos  1/3 steps · 2/4 todos  ▸ Fix the redirect   report: none  PR: —
+t-0005 T12 Fix login redirect   working  45% steps+todos  1/3 steps · 2/4 todos  ▸ Fix the redirect   report: new  PR: #12 open, 1 check failed
 ```
+
+`tm thread list --json` gives the ticker's fields as `pr_state` (number, url, state, checks, failed, review) beside the report's `pr`.
 
 Threads are grouped as herdr-projects does: Waiting on you → Ready for review → Working → Idle → Resolved.
 
@@ -733,7 +735,7 @@ Threads are grouped as herdr-projects does: Waiting on you → Ready for review 
 - Kinds (M7): `report`, `thread-done`, `thread-resolved` and `needs-you` come from the `tm` commands, `takeover` from the attach client (the first input into a thread's pane during an attach, §4), `delegate` from the task list (`d`, the user's go-ahead to delegate the task named in its subject, §4); the ticker adds `blocked` (`needs_user` unless it is a permission prompt the coordinator may approve), `idle` (once per report, and not while that report's own item is unhandled), `exited`, `server-restart`, and `pr-opened`, `pr-checks-failed`, `pr-review` (approved or changes requested), `pr-merged`, `pr-closed`.
 - A summary names its thread with the task and title, e.g. `t-0003 (T10 Make needs-you tasks easy to find) opened PR #53`, so the coordinator needs no lookup (`thread.Label`: the task's title from `TASKS.md`, else the thread's own title, one printable line of at most 60 runes).
 - What the ticker already reported (per-thread state, PR fields, nudged item ids) is kept in `state/ticker.json`, so a server restart repeats nothing. `TERMILATOR_TICK_SWEEP`, `TERMILATOR_TICK_PR` and `TERMILATOR_TICK_NUDGE` shorten the intervals for tests.
-- **PR polling.** For each unresolved thread with a repo, `gh pr view <report PR URL, else the branch> --json number,url,state,reviewDecision,statusCheckRollup` in the repo, every 2 minutes, until the PR merged. Only those fields are kept, each checked against a strict pattern. A failed `gh` (no PR yet, no network) is retried at the next poll.
+- **PR polling.** For each unresolved thread with a repo, `gh pr view <report PR URL, else the branch> --json number,url,state,reviewDecision,statusCheckRollup` in the repo, every 2 minutes, until the PR merged. Only those fields are kept, each checked against a strict pattern. A failed `gh` (no PR yet, no network) is retried at the next poll. `tm thread list` and `tm context` read them from `state/ticker.json` (§7.4).
 - **PR follow-up** (built in, `pr_followup`, §11.2). When the checks start failing, or a reviewer requests changes, the thread gets one fixed prompt naming the PR number and the `gh` command to read them. No PR text is quoted.
 - **Auto-close** (`auto_close`, `auto_close_days`, §11.2, §9). Once a thread is due and its agent is idle, exited or stopped, the ticker runs `tm thread resolve` as caller `ticker`, once; resolve's own rules apply (never forced, the branch deleted only when its PR merged or the default branch has its commits). Before that it checks the worktree: with uncommitted changes or unpushed commits the thread stays open, and a `close-held` item (once per reason) tells the coordinator; it closes on a later sweep once the work is committed and pushed.
 - **Alerts.** A thread's new report, like a session becoming blocked, raises the server's alert count (`session.list`'s `alerts`); every client rings its bell when the count goes up (§4). No desktop notification is sent.
@@ -748,7 +750,7 @@ Threads are grouped as herdr-projects does: Waiting on you → Ready for review 
 2. `CONTEXT.md`
 3. the `MEMORY.md` index
 4. tasks by group
-5. threads with their merged state (§7.4): agent state, derived percent, done/total, current todo or step, report and PR state, and `## Next` lines
+5. threads with their merged state (§7.4): agent state, derived percent, done/total, current todo or step, report and PR state, and `## Next` lines (the PR state as `tm thread list` shows it, from `state/ticker.json`)
 6. unhandled inbox items
 7. the last 20 `JOURNAL.md` lines
 

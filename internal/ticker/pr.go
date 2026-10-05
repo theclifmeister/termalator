@@ -2,6 +2,7 @@ package ticker
 
 import (
 	"encoding/json"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -124,4 +125,77 @@ func (pr PR) ref() string {
 		return "PR #" + strconv.Itoa(pr.Number)
 	}
 	return "its PR"
+}
+
+// Summary is the PR's state in one line of fixed words, as tm thread
+// list and tm context show it: "#12 open, checks pass, approved",
+// "#12 merged". It is "" before the ticker has seen the PR.
+func (pr PR) Summary() string {
+	if pr.Number <= 0 {
+		return ""
+	}
+	num := "#" + strconv.Itoa(pr.Number)
+	var parts []string
+	switch pr.State {
+	case "OPEN":
+		parts = append(parts, num+" open")
+		switch pr.Checks {
+		case "pass":
+			parts = append(parts, "checks pass")
+		case "pending":
+			parts = append(parts, "checks pending")
+		case "fail":
+			if pr.Failed == 1 {
+				parts = append(parts, "1 check failed")
+			} else {
+				parts = append(parts, strconv.Itoa(pr.Failed)+" checks failed")
+			}
+		}
+		switch pr.Review {
+		case "APPROVED":
+			parts = append(parts, "approved")
+		case "CHANGES_REQUESTED":
+			parts = append(parts, "changes requested")
+		case "REVIEW_REQUIRED":
+			parts = append(parts, "review required")
+		}
+	case "MERGED":
+		parts = append(parts, num+" merged")
+	case "CLOSED":
+		parts = append(parts, num+" closed")
+	default:
+		parts = append(parts, num)
+	}
+	return strings.Join(parts, ", ")
+}
+
+// Summaries is PRs as Summary lines, for project.Context.
+func Summaries(path, slug string) map[string]string {
+	out := map[string]string{}
+	for id, pr := range PRs(path, slug) {
+		out[id] = pr.Summary()
+	}
+	return out
+}
+
+// PRs reads the PR fields the ticker keeps in its state file at path for
+// the threads of project slug, by thread id. A missing or unreadable
+// file gives none: the ticker hasn't polled yet.
+func PRs(path, slug string) map[string]PR {
+	out := map[string]PR{}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return out
+	}
+	var st state
+	if json.Unmarshal(b, &st) != nil {
+		return out
+	}
+	for k, m := range st.Threads {
+		id, ok := strings.CutPrefix(k, slug+"/")
+		if ok && m != nil && m.PR.Number > 0 && !strings.Contains(id, "/") {
+			out[id] = m.PR
+		}
+	}
+	return out
 }

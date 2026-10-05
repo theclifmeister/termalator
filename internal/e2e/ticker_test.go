@@ -161,7 +161,8 @@ func setPR(t *testing.T, path, json string) {
 }
 
 // TestSmokeTickerPRMergedAutoResolve: the thread's PR opens, its checks
-// fail (the thread is told to fix them, with no PR text), then it
+// fail (the thread is told to fix them, with no PR text, and tm thread
+// list and tm context show the PR's state), then it
 // merges, and the idle thread resolves itself: worktree removed, branch
 // deleted, journaled as the ticker.
 func TestSmokeTickerPRMergedAutoResolve(t *testing.T) {
@@ -180,6 +181,17 @@ func TestSmokeTickerPRMergedAutoResolve(t *testing.T) {
 	})
 	if strings.Contains(fix.Str("text"), "IGNORE") {
 		t.Fatalf("PR text in the follow-up: %q", fix.Str("text"))
+	}
+	// The PR's state as the ticker saw it shows in tm thread list and
+	// tm context.
+	for _, args := range [][]string{{"thread", "list"}, {"context"}} {
+		var got string
+		if !Poll(agentWait, func() bool {
+			got = env.MustCLI(append(args, "--project", "demo")...)
+			return strings.Contains(got, "PR: #7 open, 1 check failed")
+		}) {
+			t.Fatalf("tm %s lacks the PR state:\n%s", args[0], got)
+		}
 	}
 
 	setPR(t, state, `{"number":7,"url":"https://github.com/o/r/pull/7","state":"MERGED","statusCheckRollup":[]}`)

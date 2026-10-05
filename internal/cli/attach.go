@@ -75,20 +75,13 @@ func attachCmd(e *Env, args []string) int {
 			return ExitRefused
 		}
 	}
-	// A thread's pane shows its state and progress in the status bar; a
-	// coordinator's its state and remote control. Other
-	// sessions get the whole window.
-	bar := false
-	for _, s := range list.Sessions {
-		bar = bar || s.ID == id && (s.Role == proto.RoleThread || s.Role == proto.RoleCoordinator)
-	}
 	cols, rows, ok := termSize()
 	if !ok {
 		cols, rows = 80, 24
 	}
 	uiFile := uiFile()
 	side := tui.LoadLayout(uiFile).Sidebar
-	vc, err := tui.JoinView(p, proto.ViewSubscribeParams{Own: true, Bare: true, StatusBar: bar, Session: id,
+	vc, err := tui.JoinView(p, proto.ViewSubscribeParams{Own: true, Bare: true, StatusBar: true, Session: id,
 		Cols: cols, Rows: rows, Sidebar: &side})
 	if err != nil {
 		return e.srvFail("attach", err)

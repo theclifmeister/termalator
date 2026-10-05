@@ -36,7 +36,7 @@ func assertPaneSize(t *testing.T, env *Env, s *Session, cols, rows uint16) {
 }
 
 // TestSmokeAttachDetachReattach is M2's first "Try it": attach while a
-// program streams, detach with Ctrl+B d, reattach from another window at
+// program streams (the pane above the status bar), detach with Ctrl+B d, reattach from another window at
 // another size, close that window mid-stream. The pane is never resized
 // by attaching, nothing is lost, and every mirror equals the server.
 func TestSmokeAttachDetachReattach(t *testing.T) {
@@ -45,10 +45,19 @@ func TestSmokeAttachDetachReattach(t *testing.T) {
 	// second window attaches, even under the race detector.
 	s := env.Start("printer", "-lines", "3000", "-delay", "2ms")
 
-	// A window of the pane's size and the sidebar's slim strip: the
-	// first to show the pane, which then fills it without a resize.
-	w1 := env.Attach(80+uint16(SideCols(87)), 24, s.ID)
+	// A window of the pane's size, the sidebar's strip and the status
+	// bar: the first to show the pane, which then fills it without a
+	// resize.
+	w1 := env.Attach(80+uint16(SideCols(87)), 24+statusRows, s.ID)
 	w1.WaitFor("line ", wait)
+	// A plain session has the status bar too, with an empty row above
+	// it: its id, no project or role, and the way back.
+	w1.WaitUntil("the status bar", wait, func(sc string) bool {
+		return lastLine(sc, " "+s.ID+" · ") && lastLine(sc, "prefix+d dashboard")
+	})
+	if rows := strings.Split(w1.Screen(), "\n"); len(rows) != 26 || len([]rune(rows[24])) > SideCols(87) && strings.TrimSpace(string([]rune(rows[24])[SideCols(87):])) != "" {
+		t.Fatalf("the row above the status bar isn't empty:\n%s", w1.Screen())
+	}
 	env.AssertMirrorsServer(w1) // mid-stream
 	w1.Detach()
 	w1.WaitExit(wait)
@@ -73,9 +82,9 @@ func TestSmokeAttachDetachReattach(t *testing.T) {
 		t.Fatalf("the program saw a resize:\n%s", env.Screen(s))
 	}
 
-	// A window of the pane's size and the sidebar's slim strip shows
-	// exactly the server's screen beside the strip.
-	w3 := env.Attach(80+uint16(SideCols(87)), 24, s.ID)
+	// A window of the pane's size, the sidebar's strip and the status
+	// bar shows exactly the server's screen beside the strip.
+	w3 := env.Attach(80+uint16(SideCols(87)), 24+statusRows, s.ID)
 	w3.WaitFor("ready", wait)
 	w3.Quiet(200 * time.Millisecond)
 	if got, want := w3.PaneScreen(), env.Screen(s); got != want {
@@ -119,8 +128,9 @@ func TestSmokeAttachCloseWindowMidStream(t *testing.T) {
 	w2.WaitFor("stream-42", 60*time.Second)
 	env.AssertMirrorsServer(w2)
 	// Typing in the first window gave the pane its size (less the
-	// sidebar); attaching w2 didn't change it (docs/SPEC.md §3.3).
-	assertPaneSize(t, env, s, uint16(90-SideCols(90)), 30)
+	// sidebar and the status bar); attaching w2 didn't change it
+	// (docs/SPEC.md §3.3).
+	assertPaneSize(t, env, s, uint16(90-SideCols(90)), 30-statusRows)
 }
 
 // TestAttachKillClient SIGKILLs the client mid-stream: the server
@@ -148,7 +158,7 @@ func TestSmokeAttachFullscreenInput(t *testing.T) {
 	env.WaitFor(s, "fullscreen ready", wait)
 
 	side := SideCols(87)
-	w := env.Attach(80+uint16(side), 24, s.ID)
+	w := env.Attach(80+uint16(side), 24+statusRows, s.ID)
 	w.WaitFor("fullscreen ready", wait)
 	if !Poll(wait, func() bool { m := w.Modes(); return m.AnyMouse && m.Focus && m.AltScreen && m.BracketedPaste }) {
 		t.Fatalf("modes not mirrored onto the window: %+v", w.Modes())
@@ -192,12 +202,12 @@ func TestAttachResize(t *testing.T) {
 	w := env.Attach(100, 30, s.ID)
 	w.WaitFor("ready", wait)
 	// The first window to show the pane fills it.
-	waitPaneSize(t, env, s, paneCols(100), 30)
-	w.Resize(96, 20) // less the sidebar
-	resized := fmt.Sprintf("resized to %dx20", paneCols(96))
+	waitPaneSize(t, env, s, paneCols(100), 30-statusRows)
+	w.Resize(96, 20) // less the sidebar and the status bar
+	resized := fmt.Sprintf("resized to %dx%d", paneCols(96), 20-statusRows)
 	env.WaitFor(s, resized, wait)
 	w.WaitFor(resized, wait)
-	assertPaneSize(t, env, s, paneCols(96), 20)
+	assertPaneSize(t, env, s, paneCols(96), 20-statusRows)
 	env.AssertMirrorsServer(w)
 }
 
@@ -211,20 +221,21 @@ func TestSmokeAttachLatestTypistResizes(t *testing.T) {
 	env.WaitFor(s, "ready", wait)
 	w1 := env.Attach(100, 30, s.ID)
 	w1.WaitFor("ready", wait)
-	waitPaneSize(t, env, s, paneCols(100), 30)
+	waitPaneSize(t, env, s, paneCols(100), 30-statusRows)
 	w2 := env.Attach(90, 20, s.ID)
 	w2.WaitFor("ready", wait)
 	time.Sleep(time.Second) // longer than the server's resize quiet time
-	assertPaneSize(t, env, s, paneCols(100), 30)
+	assertPaneSize(t, env, s, paneCols(100), 30-statusRows)
 
-	// Each window's panes are the window less the sidebar.
-	small, big := fmt.Sprintf("resized to %dx20", paneCols(90)), fmt.Sprintf("resized to %dx30", paneCols(100))
+	// Each window's panes are the window less the sidebar and the
+	// status bar.
+	small, big := fmt.Sprintf("resized to %dx%d", paneCols(90), 20-statusRows), fmt.Sprintf("resized to %dx%d", paneCols(100), 30-statusRows)
 	w2.Type("a")
 	env.WaitFor(s, small, wait)
-	waitPaneSize(t, env, s, paneCols(90), 20)
+	waitPaneSize(t, env, s, paneCols(90), 20-statusRows)
 	w1.Type("b")
 	env.WaitFor(s, big, wait)
-	waitPaneSize(t, env, s, paneCols(100), 30)
+	waitPaneSize(t, env, s, paneCols(100), 30-statusRows)
 	w1.WaitFor(big, wait)
 	w2.WaitFor(big, wait)
 	env.AssertMirrorsServer(w1)
@@ -247,7 +258,7 @@ func TestAttachExplicitAgentKeepsSize(t *testing.T) {
 	time.Sleep(time.Second) // longer than the server's resize quiet time
 	assertPaneSize(t, env, s, 100, 30)
 	w.Resize(85, 20)
-	waitPaneSize(t, env, s, paneCols(85), 20) // less the sidebar
+	waitPaneSize(t, env, s, paneCols(85), 20-statusRows) // less the sidebar and the status bar
 }
 
 // TestAttachSlowClientResync stops a client while a firehose fills its
@@ -307,7 +318,7 @@ func TestAttachLocalScrollback(t *testing.T) {
 	env := New(t)
 	s := env.Start("printer", "-lines", "60")
 	env.WaitFor(s, "ready", wait)
-	w := env.Attach(80+uint16(SideCols(87)), 24, s.ID) // the pane's size: no resize
+	w := env.Attach(80+uint16(SideCols(87)), 24+statusRows, s.ID) // the pane's size: no resize
 	w.WaitFor("ready", wait)
 	w.Key(ShiftPageUp) // half a page
 	w.WaitUntil("the view scrolled back", wait, func(string) bool {

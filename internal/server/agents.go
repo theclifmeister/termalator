@@ -20,6 +20,7 @@ import (
 	"github.com/theclifmeister/termilator/internal/session"
 	"github.com/theclifmeister/termilator/internal/skill"
 	"github.com/theclifmeister/termilator/internal/thread"
+	"github.com/theclifmeister/termilator/internal/ticker"
 	"github.com/theclifmeister/termilator/internal/version"
 	"github.com/theclifmeister/termilator/internal/worktree"
 )
@@ -136,7 +137,7 @@ func (s *Server) accessFor(role, slug, cwd string) (agent.Access, error) {
 // compaction (docs/SPEC.md §7.8): the role's rules plus `tm context` for
 // a coordinator, the rules plus the brief for a thread, nothing for a
 // session outside a project.
-func contextFor(role, slug, threadID, brief string) func() ([]byte, error) {
+func contextFor(role, slug, threadID, brief, tickerState string) func() ([]byte, error) {
 	return func() ([]byte, error) {
 		switch role {
 		case proto.RoleCoordinator:
@@ -145,7 +146,7 @@ func contextFor(role, slug, threadID, brief string) func() ([]byte, error) {
 			if err != nil {
 				return []byte(rules), nil
 			}
-			secs, err := p.Context()
+			secs, err := p.Context(ticker.Summaries(tickerState, slug))
 			if err != nil {
 				return []byte(rules), nil
 			}
@@ -238,7 +239,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		RemoteControl: r.RemoteControl,
 		Agent: &session.AgentConfig{
 			Agent: a, AgentSID: r.AgentSessionID, Home: home,
-			Context:  contextFor(r.Role, r.Project, r.Thread, r.Brief),
+			Context:  contextFor(r.Role, r.Project, r.Thread, r.Brief, ticker.StatePath(s.opts.Paths.Sessions)),
 			OnChange: s.agentChanged,
 		},
 	})
