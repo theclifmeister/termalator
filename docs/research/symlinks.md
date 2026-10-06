@@ -1,8 +1,8 @@
 # Spike: shared state via symlinks (t-0005)
 
-> These are the findings of the `symlinks` spike. The spike's code (the scripts and paths this file names) was removed in T39; it is in git history under `spikes/symlinks/` at commit `41983d953b6d` (`git show 41983d953b6d:spikes/symlinks/`).
+> These are the findings of the `symlinks` spike. The spike's code (the scripts and paths this file names) was removed in T39; it is in git history under `spikes/symlinks/` at commit `41983d953b6d` (`git show 41983d953b6d:spikes/symlinks/`). The spike ran under the product's first name; product names and paths below are written as Terminatr.
 
-Can a Termalator thread (Claude Code in a git worktree) read shared project state through
+Can a Terminatr thread (Claude Code in a git worktree) read shared project state through
 symlinks, and write its own report somewhere the coordinator sees it, without prompts and
 without the files leaking into commits?
 
@@ -11,7 +11,7 @@ every link and checks the **real path**, so a link that leads out of the worktre
 "outside the working directory". It prompts for reads in every non-bypass mode and refuses
 writes. Grant access explicitly instead. Read-only `Read(...)` allow rules give live reads with
 no prompt, and a narrow `--add-dir` covers the thread's output folder. With those grants the
-worktree no longer needs a `.termalator/` folder, which also removes the git-hygiene and
+worktree no longer needs a `.terminatr/` folder, which also removes the git-hygiene and
 data-loss problems (see [Recommended layout](#recommended-layout)).
 
 ## Versions and setup
@@ -26,11 +26,11 @@ data-loss problems (see [Recommended layout](#recommended-layout)).
 
 Scripts (throwaway quality):
 
-- `setup.sh` builds `~/.termalator-spike/` from scratch:
+- `setup.sh` builds `~/.terminatr-spike/` from scratch:
   - a project folder `projects/demo/` (CONTEXT, TASKS, MEMORY, memory/, threads/t1/brief.md, each holding a unique token)
   - a repo `repos/demo` with a worktree `worktrees/demo-t1`
-  - the §4.3 layout: `.termalator/project -> projects/demo`, `.termalator/brief.md -> …/threads/t1/brief.md`, a real `.termalator/out/`, and `projects/demo/threads/t1/out -> <worktree>/.termalator/out`
-  - `.termalator/` added to `info/exclude`
+  - the §4.3 layout: `.terminatr/project -> projects/demo`, `.terminatr/brief.md -> …/threads/t1/brief.md`, a real `.terminatr/out/`, and `projects/demo/threads/t1/out -> <worktree>/.terminatr/out`
+  - `.terminatr/` added to `info/exclude`
 - `probe.sh` runs one `claude -p` from the worktree with:
   - `--setting-sources project,local`, so the user's own hooks and `defaultMode: auto` don't interfere
   - `--permission-prompts none`, so anything that would prompt is denied and listed in `permission_denials`
@@ -49,16 +49,16 @@ Probes, run from the worktree:
 
 | id | action |
 |---|---|
-| R1 | Read tool `.termalator/project/CONTEXT.md` (file inside a dir symlink) |
-| R2 | Read tool `.termalator/brief.md` (file symlink) |
-| R3 | Bash `cat .termalator/project/memory/prefs.md` |
+| R1 | Read tool `.terminatr/project/CONTEXT.md` (file inside a dir symlink) |
+| R2 | Read tool `.terminatr/brief.md` (file symlink) |
+| R3 | Bash `cat .terminatr/project/memory/prefs.md` |
 | R4 | Read tool, absolute real path in the project folder (control) |
-| W1 | Write tool `.termalator/out/REPORT.md` (real dir inside worktree, linked back from project) |
-| W2 | Write tool, new file `.termalator/project/w2.md` (through dir symlink, lands outside) |
-| W3 | Bash `echo … > .termalator/out/STATUS.md` |
-| W4 | Bash `echo … > .termalator/project/w4.md` (through dir symlink) |
+| W1 | Write tool `.terminatr/out/REPORT.md` (real dir inside worktree, linked back from project) |
+| W2 | Write tool, new file `.terminatr/project/w2.md` (through dir symlink, lands outside) |
+| W3 | Bash `echo … > .terminatr/out/STATUS.md` |
+| W4 | Bash `echo … > .terminatr/project/w4.md` (through dir symlink) |
 | W5 | Write tool, absolute path in the project folder (control) |
-| E1 | Read + Edit tool on `.termalator/brief.md` (file symlink, edit in place) |
+| E1 | Read + Edit tool on `.terminatr/brief.md` (file symlink, edit in place) |
 
 Results (✅ done silently, 🟡 would prompt, ⛔ hard-blocked):
 
@@ -72,7 +72,7 @@ Results (✅ done silently, 🟡 would prompt, ⛔ hard-blocked):
 | same via `--settings` `additionalDirectories` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⛔ link |
 | `--add-dir` + sandbox | ✅³ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⛔ link |
 | `acceptEdits` + `Read(/<project>/**)` | 🟡 | 🟡 | ✅ | ✅ | ✅ | 🟡 | ✅ | 🟡 | 🟡 | 🟡 read |
-| **`acceptEdits` + `Read(/<project>/**)` + `Read(/<wt>/.termalator/**)`** | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ | 🟡 | 🟡 | ⛔ link |
+| **`acceptEdits` + `Read(/<project>/**)` + `Read(/<wt>/.terminatr/**)`** | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ | 🟡 | 🟡 | ⛔ link |
 | `--dangerously-skip-permissions` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⛔ link |
 | bypass + sandbox | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⛔ OS | ✅ | ⛔ link |
 
@@ -85,12 +85,12 @@ worktree. So this row says nothing about auto mode in a live TUI. **Untested int
 What this shows:
 
 1. **Claude Code resolves symlinks before every permission check.**
-   - The denial text says so: "`.termalator/brief.md` resolves through a symlink to `…/projects/demo/threads/t1/brief.md`, which is outside the allowed working directories."
+   - The denial text says so: "`.terminatr/brief.md` resolves through a symlink to `…/projects/demo/threads/t1/brief.md`, which is outside the allowed working directories."
    - A symlink therefore buys nothing over an absolute path (R1/R2 behave like R4).
    - **Reading outside the working directories prompts**, even in `acceptEdits` mode.
 2. **A Read allow rule must match *both* the link path and its target.**
    - With only `Read(/<project>/**)`, the absolute path (R4) and Bash `cat` (R3) work, but the Read tool through the link (R1/R2) still prompts.
-   - Adding `Read(/<worktree>/.termalator/**)` fixes it.
+   - Adding `Read(/<worktree>/.terminatr/**)` fixes it.
    - The rule syntax for an absolute path is `Read(//abs/path/**)`. That is `Read(/` followed by an absolute path, as in `run-matrix.sh`.
 3. **Read-only rules keep writes gated.** W2/W4/W5 still prompt under the read-only config. This is the "agents never write project files directly" property §4.3 wants.
 4. **The Write/Edit tools never write to a file that is itself a symlink**, even in bypass mode: "Refusing to write …/brief.md: it is a symbolic link. Write to the link's target path instead." Creating a *new* file inside a symlinked *directory* works once the target dir is allowed (W2 with `--add-dir`).
@@ -103,17 +103,17 @@ What this shows:
    - Running in the project folder, reading `threads/t1/out/REPORT.md` prompts in `manual` and `acceptEdits`, because the real file is in the worktree.
    - Granting the worktrees root fixes it (`coord-adddir`).
 8. **Sandboxed Bash cannot reach a unix socket by default** (`socket.sh`):
-   - `connect()` to `~/.termalator-spike/tm.sock` fails with `PermissionError: [Errno 1] Operation not permitted`.
+   - `connect()` to `~/.terminatr-spike/tm.sock` fails with `PermissionError: [Errno 1] Operation not permitted`.
    - With `"sandbox":{"network":{"allowUnixSockets":["<sock>"]}}` it works.
    - Relevant because `tm report`/`tm task` would talk to the daemon from inside the agent's Bash.
 9. **`--add-dir` is variadic.** `claude --add-dir DIR "prompt"` takes the prompt as a second directory and fails with "Input must be provided…". Pass the prompt on stdin, put `--add-dir` before another flag, or use `--settings '{"permissions":{"additionalDirectories":[…]}}'`, which behaves the same.
 
 ## 3. Git hygiene (`git-hygiene.sh`, `results/git-hygiene.txt`)
 
-- **Exclude file.** A linked worktree has no exclude file of its own: `git rev-parse --git-path info/exclude` returns the *main repo's* `.git/info/exclude`. One `.termalator/` line there covers the main checkout and every worktree, which is fine because they all use the same name. A global `core.excludesFile` also works, but it edits the user's git config for every repo; avoid it.
-- **With the exclude**, `git status` is clean and `git add -A` picks up nothing. Without it, `git add -A` would stage `.termalator/project` as a symlink blob, plus `brief.md` and `out/REPORT.md`.
-- **`git clean -fd`** leaves `.termalator/` alone. **`git clean -fdx` deletes it**, report included. Agents do run `clean -fdx`.
-- **`git worktree remove` (no `--force`) succeeds and silently deletes ignored files, including `.termalator/out/`.**
+- **Exclude file.** A linked worktree has no exclude file of its own: `git rev-parse --git-path info/exclude` returns the *main repo's* `.git/info/exclude`. One `.terminatr/` line there covers the main checkout and every worktree, which is fine because they all use the same name. A global `core.excludesFile` also works, but it edits the user's git config for every repo; avoid it.
+- **With the exclude**, `git status` is clean and `git add -A` picks up nothing. Without it, `git add -A` would stage `.terminatr/project` as a symlink blob, plus `brief.md` and `out/REPORT.md`.
+- **`git clean -fd`** leaves `.terminatr/` alone. **`git clean -fdx` deletes it**, report included. Agents do run `clean -fdx`.
+- **`git worktree remove` (no `--force`) succeeds and silently deletes ignored files, including `.terminatr/out/`.**
   - Afterwards `projects/<slug>/threads/<id>/out` is a dangling link and **the report is gone**.
   - The shared files are untouched: git removes the symlink, not its target.
   - So with the §4.3 layout, any removal not done through `tm` (the user, herdr, `git worktree prune` after an `rm -rf`) loses the report. `tm` would have to copy `out/` home before every removal, which brings back the "copy home" step the design wanted to drop.
@@ -146,18 +146,18 @@ What this shows:
 
 ## Recommended layout
 
-Change §4.3 so that **nothing Termalator-owned lives in the worktree**, and grant access
+Change §4.3 so that **nothing Terminatr-owned lives in the worktree**, and grant access
 explicitly at launch:
 
 ```
-~/.termalator/projects/<slug>/             # coordinator cwd
+~/.terminatr/projects/<slug>/             # coordinator cwd
   PROJECT.md CONTEXT.md TASKS.md MEMORY.md memory/ JOURNAL.md inbox/
   threads/<id>/
     thread.toml  brief.md
     out/                                   # REAL dir, written by the thread
       REPORT.md  library/
     STATUS.md                              # written by the daemon from `tm report`
-~/.termalator/worktrees/<slug>/<id>/       # git worktree: pristine, no .termalator/, no exclude needed
+~/.terminatr/worktrees/<slug>/<id>/       # git worktree: pristine, no .terminatr/, no exclude needed
 ```
 
 Keep worktrees out of the project folder. Claude loads `CLAUDE.md` from parent directories, so
@@ -168,22 +168,22 @@ Claude thread launch (cwd = worktree):
 ```sh
 claude --permission-mode acceptEdits \
   --settings '{"permissions":{
-       "allow":["Read(/'"$HOME"'/.termalator/projects/<slug>/**)"],
-       "additionalDirectories":["'"$HOME"'/.termalator/projects/<slug>/threads/<id>/out"]},
-     "sandbox":{"network":{"allowUnixSockets":["'"$HOME"'/.termalator/tm.sock"]}}}' \
-  --append-system-prompt-file ~/.termalator/projects/<slug>/threads/<id>/brief.md
+       "allow":["Read(/'"$HOME"'/.terminatr/projects/<slug>/**)"],
+       "additionalDirectories":["'"$HOME"'/.terminatr/projects/<slug>/threads/<id>/out"]},
+     "sandbox":{"network":{"allowUnixSockets":["'"$HOME"'/.terminatr/tm.sock"]}}}' \
+  --append-system-prompt-file ~/.terminatr/projects/<slug>/threads/<id>/brief.md
 ```
 
 Yolo mode (`--dangerously-skip-permissions`) needs none of this, except `allowUnixSockets` if the sandbox is on.
 
 - **Shared context (live):**
-  - The brief names absolute paths (`~/.termalator/projects/<slug>/CONTEXT.md` …), and the `Read` rule makes them silent.
+  - The brief names absolute paths (`~/.terminatr/projects/<slug>/CONTEXT.md` …), and the `Read` rule makes them silent.
   - No symlinks. A link would need a second rule, and agents would see two paths for one file.
 - **Thread output:**
   - The thread writes `REPORT.md` and `library/` straight into `threads/<id>/out/`, granted by `additionalDirectories` scoped to that one folder.
   - It survives `git worktree remove`, `git clean -fdx` and a deleted worktree. The coordinator reads it in its own cwd with no rule, and the copy-home step goes away.
 - **Everything else** (status, tasks, memory) goes through `tm` over the daemon socket, so agents never write those files.
-- **Coordinator launch:** cwd = project folder, plus `Read(/<home>/.termalator/worktrees/<slug>/**)` so it can review thread code without prompts.
+- **Coordinator launch:** cwd = project folder, plus `Read(/<home>/.terminatr/worktrees/<slug>/**)` so it can review thread code without prompts.
 - **Codex:** `--sandbox workspace-write --add-dir <out> [--add-dir <repo>/.git]` (test the `.git` and socket points). **pi:** nothing needed.
 
 **Verified** by `verify-recommended.sh`, run in `acceptEdits` with the sandbox off and on:
@@ -195,7 +195,7 @@ Yolo mode (`--dangerously-skip-permissions`) needs none of this, except `allowUn
 If the user prefers §4.3 as written (output inside the worktree, linked back):
 
 - it works for Claude with the two `Read` rules above;
-- `.termalator/` goes in `<repo>/.git/info/exclude`;
+- `.terminatr/` goes in `<repo>/.git/info/exclude`;
 - `tm thread remove` **must copy `out/` into the project before `git worktree remove`**, and the dashboard must flag dangling `out` links.
 
 ## Not verified
@@ -206,4 +206,4 @@ If the user prefers §4.3 as written (output inside the worktree, linked back):
 - Codex and pi behaviour.
 - Whether interactive Claude offers to approve external `@imports`.
 
-The spike files are in `~/.termalator-spike/`. Delete with `rm -rf ~/.termalator-spike`.
+The spike files are in `~/.terminatr-spike/`. Delete with `rm -rf ~/.terminatr-spike`.

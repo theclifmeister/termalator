@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/theclifmeister/terminatr/internal/caller"
@@ -74,6 +75,17 @@ var commands = map[string]command{
 	"report":  runReport,
 	"status":  runStatus,
 	"done":    runDone,
+}
+
+// Commands returns the names of this package's commands, sorted, for
+// cmd/tm's usage line.
+func Commands() []string {
+	names := make([]string, 0, len(commands))
+	for name := range commands {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // checked are the commands whose rights depend on the caller: for them
