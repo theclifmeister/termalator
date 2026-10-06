@@ -394,10 +394,10 @@ func TestThreadModel(t *testing.T) {
 	h.expect(1, "unknown-agent", coord, "thread", "start", "Fix it", "--agent", "nope", "--model", "opus", "--project", "demo")
 	h.ok(human, "task", "add", "Fix it", "--project", "demo")
 	h.expect(1, "unknown-model", coord, "task", "delegate", "T1", "--model", "gpt-9", "--project", "demo")
-	if err := checkModel("claude", "haiku"); err != nil {
+	if err := checkModel("claude", "haiku", nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := checkModel("claude", ""); err != nil {
+	if err := checkModel("claude", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	// A user manifest can change the list.
@@ -405,15 +405,41 @@ func TestThreadModel(t *testing.T) {
 	b, _ := agentBuiltin("claude")
 	b = strings.Replace(b, "name = \"haiku\"", "name = \"tiny\"", 1)
 	os.WriteFile(filepath.Join(h.root, "agents", "claude.toml"), []byte(b), 0o600)
-	if err := checkModel("claude", "tiny"); err != nil {
+	if err := checkModel("claude", "tiny", nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := checkModel("claude", "haiku"); err == nil {
+	if err := checkModel("claude", "haiku", nil); err == nil {
 		t.Fatal("haiku still allowed")
 	}
 	out := h.ok(coord, "context", "--project", "demo")
-	if !strings.Contains(out, "Models of claude") || !strings.Contains(out, "  tiny: fastest and cheapest") {
+	if !strings.Contains(out, "Models of claude") || !strings.Contains(out, "  tiny: fastest, cheapest") {
 		t.Fatalf("context:\n%s", out)
+	}
+}
+
+// TestThreadModelAllowList: the user's models setting narrows what a
+// thread may be started with and what tm context lists.
+func TestThreadModelAllowList(t *testing.T) {
+	h := newHarness(t)
+	h.ok(human, "project", "new", "Demo")
+	h.ok(human, "task", "add", "Fix it", "--project", "demo")
+	cfg := filepath.Join(h.root, "config.toml")
+	if err := os.WriteFile(cfg, []byte("[projects.demo]\nmodels = [\"opus\", \"sonnet\"]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.expect(1, "model-not-allowed", coord, "thread", "start", "Fix it", "--model", "haiku", "--project", "demo")
+	h.expect(1, "allowed: opus, sonnet", coord, "task", "delegate", "T1", "--model", "haiku", "--project", "demo")
+	h.expect(1, "unknown-model", coord, "thread", "start", "Fix it", "--model", "gpt-9", "--project", "demo")
+	out := h.ok(coord, "context", "--project", "demo")
+	if !strings.Contains(out, "  opus: ") || !strings.Contains(out, "  sonnet: ") || strings.Contains(out, "  haiku: ") ||
+		!strings.Contains(out, "The user limits the models to: opus, sonnet") {
+		t.Fatalf("context:\n%s", out)
+	}
+	if err := checkModel("claude", "opus", []string{"opus"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkModel("claude", "", []string{"opus"}); err != nil {
+		t.Fatal("the default needs no --model")
 	}
 }
 

@@ -276,15 +276,15 @@ func (e *Env) threadStart(p *project.Project, o startOpts, asJSON bool) error {
 	if agentName == "" {
 		agentName = "claude"
 	}
-	if err := checkModel(agentName, *o.model); err != nil {
-		return err
-	}
 	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
 	safety, err := cfg.Safety(p.Slug)
 	if err != nil {
+		return err
+	}
+	if err := checkModel(agentName, *o.model, safety.Models); err != nil {
 		return err
 	}
 	if err := pausedErr(p, safety); err != nil {
@@ -389,8 +389,9 @@ func (e *Env) threadStart(p *project.Project, o startOpts, asJSON bool) error {
 }
 
 // checkModel refuses a model the agent's manifest doesn't list in its
-// [[models]] (docs/SPEC.md §8.2); "" is the agent's default.
-func checkModel(agentName, model string) error {
+// [[models]] (docs/SPEC.md §8.2), or the project's models allow-list
+// (docs/SPEC.md §11.2) leaves out; "" is the agent's default.
+func checkModel(agentName, model string, allow []string) error {
 	if model == "" {
 		return nil
 	}
@@ -410,14 +411,22 @@ func checkModel(agentName, model string) error {
 	if len(models) == 0 {
 		return &tasks.Error{Code: "unknown-model", Msg: fmt.Sprintf("agent %s lists no models; start the thread without --model", agentName)}
 	}
-	var names []string
+	var names, allowed []string
+	listed := false
 	for _, m := range models {
-		if m.Name == model {
-			return nil
-		}
+		listed = listed || m.Name == model
 		names = append(names, m.Name)
+		if len(allow) == 0 || slices.Contains(allow, m.Name) {
+			allowed = append(allowed, m.Name)
+		}
 	}
-	return &tasks.Error{Code: "unknown-model", Msg: fmt.Sprintf("%q isn't one of %s's models: %s (tm context says when each fits)", model, agentName, strings.Join(names, ", "))}
+	switch {
+	case !listed:
+		return &tasks.Error{Code: "unknown-model", Msg: fmt.Sprintf("%q isn't one of %s's models: %s (tm context says when each fits)", model, agentName, strings.Join(names, ", "))}
+	case !slices.Contains(allowed, model):
+		return &tasks.Error{Code: "model-not-allowed", Msg: fmt.Sprintf("the user's settings don't allow model %q for this project; allowed: %s (or start without --model for the agent's default)", model, cmp.Or(strings.Join(allowed, ", "), "none"))}
+	}
+	return nil
 }
 
 // pausedErr refuses to start or restart a thread of a paused project

@@ -103,6 +103,9 @@ type Source interface {
 	SetRepo(slug, path string, add bool) error
 	// Agents lists the agents tm can run.
 	Agents() []string
+	// Models lists the models the agents' manifests offer a thread (the
+	// choices of the models setting, docs/SPEC.md §11.2), each name once.
+	Models() []string
 	// Ask asks the project's coordinator to act on task id: an inbox
 	// item of kind (project.KindDelegate, KindAccept or KindSendBack,
 	// with the user's note) that is the user's word (docs/SPEC.md §4).
@@ -304,7 +307,13 @@ func (s *ServerSource) SetSetting(table, key string, value any) error {
 		return errHumanOnly
 	}
 	if table == config.DefaultsTable {
-		if err := config.SetDefaults(key, value); err != nil {
+		var err error
+		if value == nil {
+			err = config.UnsetDefaults(key)
+		} else {
+			err = config.SetDefaults(key, value)
+		}
+		if err != nil {
 			return err
 		}
 		journalAll(s.Caller, key, value)
@@ -487,6 +496,23 @@ func (s *ServerSource) Agents() []string {
 		return nil
 	}
 	return reg.Names()
+}
+
+func (s *ServerSource) Models() []string {
+	reg, _ := agent.Load(s.Paths.AgentsDir())
+	if reg == nil {
+		return nil
+	}
+	var out []string
+	for _, n := range reg.Names() {
+		a, _ := reg.Get(n)
+		for _, m := range agent.ModelsOf(a) {
+			if !slices.Contains(out, m.Name) {
+				out = append(out, m.Name)
+			}
+		}
+	}
+	return out
 }
 
 // OpenCoordinator returns the id of the project's coordinator session,
