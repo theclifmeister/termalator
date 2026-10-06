@@ -18,6 +18,7 @@ import (
 	"github.com/theclifmeister/terminatr/internal/rename"
 	"github.com/theclifmeister/terminatr/internal/server"
 	"github.com/theclifmeister/terminatr/internal/skill"
+	"github.com/theclifmeister/terminatr/internal/thread"
 	"github.com/theclifmeister/terminatr/internal/ticker"
 	"github.com/theclifmeister/terminatr/internal/tui"
 	"github.com/theclifmeister/terminatr/internal/version"
@@ -267,11 +268,23 @@ func projectList(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
-	if *asJSON {
-		if list == nil {
-			list = []project.Summary{}
+	usage := map[string]thread.Usage{}
+	for _, s := range list {
+		if p, err := project.Open(s.Slug); err == nil && s.Error == "" {
+			recs, _ := thread.List(p)
+			_, usage[s.Slug] = thread.TaskUsage(recs)
 		}
-		return e.printJSON(list)
+	}
+	if *asJSON {
+		type row struct {
+			project.Summary
+			Usage thread.Usage `json:"usage"`
+		}
+		rows := []row{}
+		for _, s := range list {
+			rows = append(rows, row{s, usage[s.Slug]})
+		}
+		return e.printJSON(rows)
 	}
 	if len(list) == 0 {
 		fmt.Fprintln(e.Stdout, "no projects; create one with tm project new <name>")
@@ -290,8 +303,12 @@ func projectList(e *Env, args []string) error {
 		} else if s.Safety != nil && s.Safety.Paused {
 			name += " (paused)"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%d needs you · %d in motion · %d on deck\t%s\n",
-			s.Slug, name, c["needs_you"], c["in_motion"], c["on_deck"], strings.TrimSpace(s.Goal))
+		used := ""
+		if u := usage[s.Slug]; !u.Zero() {
+			used = " · " + u.String()
+		}
+		fmt.Fprintf(w, "%s\t%s\t%d needs you · %d in motion · %d on deck%s\t%s\n",
+			s.Slug, name, c["needs_you"], c["in_motion"], c["on_deck"], used, strings.TrimSpace(s.Goal))
 	}
 	return w.Flush()
 }
