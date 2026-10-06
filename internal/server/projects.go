@@ -146,5 +146,5 @@ func (s *Server) adopt(p proto.SessionAdoptParams) (any, *proto.Error) {
 	}
 	s.watch.wake()
 	s.log.Printf("session %s: adopted as thread %s of %s", p.ID, p.Thread, p.Project)
-	return proto.SessionStartResult{Session: sess.Info()}, nil
+	return proto.SessionStartResult{Session: s.info(sess)}, nil
 }

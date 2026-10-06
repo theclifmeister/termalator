@@ -76,7 +76,7 @@ func (s *Server) watchState(id string) (proto.Watch, bool) {
 	if perr != nil {
 		return proto.Watch{}, false
 	}
-	return watchFunc(sess.Info(), ticker.StatePath(s.opts.Paths.Sessions)), true
+	return watchFunc(s.info(sess), ticker.StatePath(s.opts.Paths.Sessions)), true
 }
 
 // watchFunc is watchOf; tests replace it before a server starts.

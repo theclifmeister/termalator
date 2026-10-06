@@ -45,7 +45,7 @@ func running(call callFn, slug string) ([]string, error) {
 		case proto.RoleCoordinator:
 			out = append(out, "its coordinator")
 		case proto.RoleThread:
-			out = append(out, s.Thread)
+			out = append(out, threadName(s.Task, s.Thread))
 		}
 	}
 	return out, nil

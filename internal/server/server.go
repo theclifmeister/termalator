@@ -22,8 +22,10 @@ import (
 	"github.com/theclifmeister/terminatr/internal/caller"
 	"github.com/theclifmeister/terminatr/internal/emu"
 	"github.com/theclifmeister/terminatr/internal/keychain"
+	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/session"
+	"github.com/theclifmeister/terminatr/internal/thread"
 	"github.com/theclifmeister/terminatr/internal/ticker"
 	"github.com/theclifmeister/terminatr/internal/version"
 )
@@ -72,6 +74,9 @@ type Server struct {
 
 	// threadMu serialises the mirroring of thread state into files.
 	threadMu sync.Mutex
+	// taskOf caches each thread's task ref by "<project>/<thread>"
+	// (taskRef); a thread's task never changes.
+	taskOf sync.Map
 
 	mu       sync.Mutex
 	sessions map[string]*session.Session
@@ -611,10 +616,37 @@ func (s *Server) list() proto.SessionListResult {
 	s.mu.Unlock()
 	res := proto.SessionListResult{Sessions: []proto.SessionInfo{}, Alerts: s.alerts.Load()}
 	for _, sess := range sessions {
-		res.Sessions = append(res.Sessions, sess.Info())
+		res.Sessions = append(res.Sessions, s.info(sess))
 	}
 	sort.Slice(res.Sessions, func(i, j int) bool { return res.Sessions[i].Created.Before(res.Sessions[j].Created) })
 	return res
+}
+
+// info is sess's info with its thread's task.
+func (s *Server) info(sess *session.Session) proto.SessionInfo {
+	info := sess.Info()
+	if info.Role == proto.RoleThread && thread.ValidID(info.Thread) {
+		info.Task = s.taskRef(info.Project, info.Thread)
+	}
+	return info
+}
+
+// taskRef is thread id's task ref in project slug, "" for none.
+func (s *Server) taskRef(slug, id string) string {
+	key := slug + "/" + id
+	if v, ok := s.taskOf.Load(key); ok {
+		return v.(string)
+	}
+	p, err := project.Open(slug)
+	if err != nil {
+		return ""
+	}
+	rec, err := thread.Load(p, id)
+	if err != nil {
+		return ""
+	}
+	s.taskOf.Store(key, rec.Task)
+	return rec.Task
 }
 
 func (s *Server) session(id string) (*session.Session, *proto.Error) {
@@ -709,7 +741,7 @@ func (s *Server) startSession(p proto.SessionStartParams) (any, *proto.Error) {
 		if perr != nil {
 			return nil, perr
 		}
-		return proto.SessionStartResult{Session: sess.Info()}, nil
+		return proto.SessionStartResult{Session: s.info(sess)}, nil
 	}
 	env := sessionEnv(s.baseEnv(), s.terminatrEnv(rec))
 	home, _ := os.UserHomeDir()
@@ -742,7 +774,7 @@ func (s *Server) startSession(p proto.SessionStartParams) (any, *proto.Error) {
 		s.log.Printf("sessions.json: %v", err)
 	}
 	s.log.Printf("session %s: started pid %d %q in %s", id, sess.PID(), argv, cwd)
-	return proto.SessionStartResult{Session: sess.Info()}, nil
+	return proto.SessionStartResult{Session: s.info(sess)}, nil
 }
 
 func (s *Server) sessionExited(sess *session.Session) {
@@ -806,7 +838,7 @@ func (s *Server) serveAttach(c net.Conn, br *bufio.Reader) {
 		writeJSONLine(c, proto.AttachReply{Error: sessionError(req.Attach.Session, err)})
 		return
 	}
-	info := sess.Info()
+	info := s.info(sess)
 	if err := writeJSONLine(c, proto.AttachReply{Attached: &info}); err != nil {
 		sub.Detach()
 		return

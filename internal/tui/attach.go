@@ -1252,11 +1252,11 @@ func (c *client) typed(p *pane) {
 	}
 }
 
-// paneName is how the status bar names a session: its thread's id, else
-// its own.
+// paneName is how the status bar names a session: its thread's name
+// (threadName), else its own id.
 func paneName(s proto.SessionInfo) string {
 	if s.Thread != "" {
-		return s.Thread
+		return threadName(s.Task, s.Thread)
 	}
 	return s.ID
 }
