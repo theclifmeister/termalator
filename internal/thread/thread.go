@@ -65,6 +65,8 @@ type Record struct {
 	// resolve never removes, nor deletes its branch.
 	Adopted  bool `toml:"adopted,omitempty" json:"adopted,omitempty"`
 	Checkout bool `toml:"checkout,omitempty" json:"checkout,omitempty"`
+	// Usage is what the thread's turns used, summed (usage.go).
+	Usage Usage `toml:"usage" json:"usage"`
 }
 
 // ReportState is "none", "new" (unacknowledged) or "acked".

@@ -13,8 +13,10 @@ import (
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/session"
+	"github.com/theclifmeister/terminatr/internal/thread"
 )
 
 // modClient posts to a mod socket as the mod's $.http.fetch does.
@@ -91,6 +93,15 @@ func TestModChannel(t *testing.T) {
 	}
 	for _, bad := range []string{`{"state":"asleep"}`, `not json`, `{"state":"idle","reason":"` + strings.Repeat("x", 100) + `"}`} {
 		if code := postMod(t, c, "/v1/state", bad); code != http.StatusBadRequest {
+			t.Fatalf("%s: %d", bad, code)
+		}
+	}
+	// A session that is no thread's keeps no usage, but takes the report.
+	if code := postMod(t, c, "/v1/usage", `{"input":5,"output":6,"cache_read":7,"cache_creation":8,"cost_usd":0.01,"model":"m"}`); code != http.StatusNoContent {
+		t.Fatalf("usage: %d", code)
+	}
+	for _, bad := range []string{`{"input":-1}`, `{"cost_usd":-0.5}`, `{"model":"` + strings.Repeat("x", 100) + `"}`, `{"output":"many"}`} {
+		if code := postMod(t, c, "/v1/usage", bad); code != http.StatusBadRequest {
 			t.Fatalf("%s: %d", bad, code)
 		}
 	}
@@ -217,5 +228,34 @@ func TestModPrompts(t *testing.T) {
 	}
 	if st, _ := sess.AgentState(); st.Queued != 0 {
 		t.Fatalf("queued after the ack: %d", st.Queued)
+	}
+}
+
+// TestAddUsage: a thread session's turns add up in its thread's record;
+// another session's, or a replaced session's, don't.
+func TestAddUsage(t *testing.T) {
+	t.Setenv("TERMINATR_HOME", t.TempDir())
+	p, err := project.New(project.Options{Name: "demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := thread.Create(p, thread.Record{Title: "T", Session: "s-1", State: thread.Running})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{log: log.New(os.Stderr, "", 0), records: map[string]SessionRecord{
+		"s-1": {ID: "s-1", Role: proto.RoleThread, Project: p.Slug, Thread: r.ID},
+		"s-2": {ID: "s-2", Role: proto.RoleThread, Project: p.Slug, Thread: r.ID}, // an older session
+		"s-3": {ID: "s-3", Role: proto.RoleShell},
+	}}
+	u := thread.Usage{Turns: 1, Input: 1, Output: 2, CacheRead: 3, CacheCreation: 4, CostUSD: 0.5}
+	s.addUsage("s-1", u)
+	s.addUsage("s-1", u)
+	s.addUsage("s-2", u)
+	s.addUsage("s-3", u)
+	s.addUsage("s-9", u)
+	got, _ := thread.Load(p, r.ID)
+	if want := u.Add(u); got.Usage != want {
+		t.Fatalf("usage %+v, want %+v", got.Usage, want)
 	}
 }

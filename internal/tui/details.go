@@ -22,7 +22,7 @@ func (m *dash) details(r row, w int) []string {
 	d := &panel{w: w}
 	switch {
 	case r.task != nil:
-		taskPanelWith(d, r.task, nil, m.asked(r.project, r.task))
+		taskPanelWith(d, r.task, nil, m.asked(r.project, r.task), m.taskUsage(r.project, r.task.ID))
 	case r.thread != nil:
 		m.threadPanel(d, r)
 	case strings.HasPrefix(r.key, "p:"):
@@ -109,6 +109,7 @@ func (m *dash) threadPanel(d *panel, r row) {
 	d.field("project", r.project)
 	d.field("thread", t.ID)
 	d.field("session", t.Session)
+	d.field("usage", t.Usage.String())
 	if st := t.Status; st != nil {
 		d.field("progress", progressLine(st.Progress()))
 		if st.Current != "" {
@@ -141,13 +142,24 @@ func (m *dash) threadPanel(d *panel, r row) {
 	}
 }
 
+// taskUsage is what the threads of task id of project slug used.
+func (m *dash) taskUsage(slug string, id int) thread.Usage {
+	for _, p := range m.data.Projects {
+		if p.Slug == slug {
+			return p.TaskUsage[id]
+		}
+	}
+	return thread.Usage{}
+}
+
 // taskPanelWith shows a task with what the user needs to act on it:
 // what it is blocked on; for a task in review, how to check it and
 // whether its change shipped (rv, when known); and what the coordinator
 // was asked about it (asked, an item kind, "" for nothing).
-func taskPanelWith(d *panel, t *tasks.Task, rv *Review, asked string) {
+func taskPanelWith(d *panel, t *tasks.Task, rv *Review, asked string, usage thread.Usage) {
 	d.title(t.Ref()+" "+t.Title, string(t.Status))
 	d.field("thread", t.Thread)
+	d.field("usage", usage.String())
 	if len(t.Steps) > 0 {
 		d.field("steps", progressLine(thread.Progress{Percent: pctOf(t.StepsDone(), len(t.Steps)), Done: t.StepsDone(), Total: len(t.Steps)}))
 	}
@@ -208,6 +220,7 @@ func (m *dash) projectPanel(d *panel, r row) {
 	c := p.Counts
 	d.field("tasks", taskCounts(c))
 	d.field("threads", fmt.Sprint(len(p.Threads)))
+	d.field("usage", p.Usage.String())
 	if p.Unread > 0 {
 		d.field("inbox", styleWarn.Render(fmt.Sprintf("%d unhandled", p.Unread))+styleFaint.Render(" · i shows them"))
 	}
