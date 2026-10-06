@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net"
 	"net/http"
@@ -105,5 +106,93 @@ func TestModChannel(t *testing.T) {
 	s.mu.Unlock()
 	if _, err := c.Post("http://terminatr/v1/state", "application/json", strings.NewReader(`{"state":"idle"}`)); err == nil {
 		t.Fatal("the socket still answers after the session")
+	}
+}
+
+// TestModPrompts: the mod's long poll gets the head of the prompt queue
+// once it is live, and its acks move the queue on; what isn't an ack is
+// refused.
+func TestModPrompts(t *testing.T) {
+	rt, err := os.MkdirTemp("/tmp", "tmmod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(rt) })
+	b, _ := agent.Builtin("claude")
+	m, err := agent.ParseManifest(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{log: log.New(os.Stderr, "", 0), sessions: map[string]*session.Session{}}
+	s.mu.Lock()
+	sock, err := s.listenMod("s-1", rt)
+	s.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := session.Start(session.Config{
+		ID: "s-1", Role: proto.RoleThread, Argv: []string{"/bin/sh", "-c", "exec cat"}, Cwd: rt,
+		Env: []string{"PATH=/usr/bin:/bin"}, Cols: 80, Rows: 24, Logf: t.Logf,
+		Agent: &session.AgentConfig{Agent: agent.FromManifest(m), Home: rt, ModSocket: sock},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { sess.Stop(time.Second) })
+	c := modClient(sock)
+	c.Timeout = 10 * time.Second
+	poll := func(wait string) (int, session.ModPrompt) {
+		t.Helper()
+		resp, err := c.Get("http://terminatr/v1/prompts?wait=" + wait)
+		if err != nil {
+			t.Fatalf("GET: %v", err)
+		}
+		defer resp.Body.Close()
+		var p session.ModPrompt
+		if resp.StatusCode == http.StatusOK {
+			if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return resp.StatusCode, p
+	}
+
+	if code, _ := poll("0"); code != http.StatusGone {
+		t.Fatalf("no session: %d", code)
+	}
+	s.mu.Lock()
+	s.sessions["s-1"] = sess
+	s.mu.Unlock()
+	postMod(t, c, "/v1/state", `{"state":"working","event":"turn.start"}`)
+	if code, _ := poll("0"); code != http.StatusNoContent {
+		t.Fatalf("empty queue: %d", code)
+	}
+
+	// A prompt queued while the poll waits reaches it.
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		sess.Prompt("/compact keep the plan")
+	}()
+	code, p := poll("5")
+	if code != http.StatusOK || p.Kind != "command" || p.Command != "compact" || p.Args != "keep the plan" {
+		t.Fatalf("poll: %d %+v", code, p)
+	}
+	for _, c2 := range []struct {
+		path, body string
+		want       int
+	}{
+		{"/v1/prompts/" + p.ID + "/ack", `{"result":"maybe"}`, http.StatusBadRequest},
+		{"/v1/prompts/" + p.ID + "/ack", `nope`, http.StatusBadRequest},
+		{"/v1/prompts/other/ack", `{"result":"taken"}`, http.StatusNotFound},
+		{"/v1/prompts/" + p.ID + "/ack", `{"result":"taken"}`, http.StatusNoContent},
+		{"/v1/prompts/" + p.ID + "/ack", `{"result":"submitted"}`, http.StatusNoContent},
+		{"/v1/prompts/" + p.ID + "/ack", `{"result":"submitted"}`, http.StatusNotFound},
+	} {
+		if code := postMod(t, c, c2.path, c2.body); code != c2.want {
+			t.Fatalf("POST %s %s: %d, want %d", c2.path, c2.body, code, c2.want)
+		}
+	}
+	if st, _ := sess.AgentState(); st.Queued != 0 {
+		t.Fatalf("queued after the ack: %d", st.Queued)
 	}
 }

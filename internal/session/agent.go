@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -90,12 +91,21 @@ type PromptResolution struct {
 	Err    error // why the channel failed, for a drop that tried it
 }
 
-// queuedPrompt is one prompt waiting for the paste injector.
+// queuedPrompt is one prompt waiting for the mod or the paste injector.
 type queuedPrompt struct {
+	id      string
 	text    string
 	at      time.Time
 	channel bool
 	refresh func() (string, bool)
+	// The mod's side (modprompt.go): when it was last offered to the mod,
+	// whether the mod took it (stored it and handed it to Claude),
+	// whether its text was refreshed already, and whether it goes to the
+	// paste injector after all (the mod refused it or never answered).
+	offered   time.Time
+	taken     bool
+	refreshed bool
+	paste     bool
 }
 
 // Timings of the agent sources (docs/SPEC.md §8.3–8.4).
@@ -140,6 +150,8 @@ type agentRT struct {
 	liveErr    string
 	version    string
 	prompts    []queuedPrompt
+	promptSeq  uint64    // the last queued prompt's number
+	promptGen  string    // tells this agent's prompt ids from an earlier one's
 	heldSince  time.Time // the head prompt has been held while idle since
 	heldWhy    string
 	stallAt    time.Time // the queued-at of the head prompt whose stall was logged
@@ -158,7 +170,7 @@ func newAgentRT(cfg AgentConfig, pid int, observed bool) (*agentRT, error) {
 	rt := &agentRT{
 		a: cfg.Agent, src: cfg.Agent.Sources(), man: agent.ManifestOf(cfg.Agent),
 		eng: eng, tr: agent.NewTracker(nil), cfg: cfg, pid: pid, observed: observed,
-		stop: make(chan struct{}),
+		stop: make(chan struct{}), promptGen: strconv.FormatInt(time.Now().UnixNano(), 36),
 	}
 	if cfg.AgentSID != "" {
 		rt.tr.SetAgentSID(cfg.AgentSID)
@@ -610,9 +622,11 @@ func (s *Session) runAgent(rt *agentRT) {
 
 // Prompt delivers a follow-up prompt (docs/SPEC.md §8.1, §8.6). A
 // structured channel is tried first when the agent has one; otherwise,
-// or when it fails, the prompt is queued for the paste injector, which
-// pastes it once the agent is idle, no dialog is visible and the prompt
-// box is empty. It returns "channel" or "queued".
+// or when it fails, the prompt is queued. While the agent's mod is live
+// the mod takes the queue's head and hands it to the agent, which runs it
+// once idle (modprompt.go); otherwise the paste injector pastes it once
+// the agent is idle, no dialog is visible and the prompt box is empty.
+// It returns "channel" or "queued".
 func (s *Session) Prompt(text string) (string, error) {
 	return s.PromptWith(text, PromptOptions{})
 }
@@ -639,7 +653,9 @@ func (s *Session) PromptWith(text string, o PromptOptions) (string, error) {
 		s.cfg.Logf("session %s: prompt channel failed, pasting instead: %v", s.cfg.ID, err)
 	}
 	rt.mu.Lock()
-	rt.prompts = append(rt.prompts, queuedPrompt{text: text, at: time.Now(), channel: o.Channel, refresh: o.Refresh})
+	rt.promptSeq++
+	id := fmt.Sprintf("%s-%d", rt.promptGen, rt.promptSeq)
+	rt.prompts = append(rt.prompts, queuedPrompt{id: id, text: text, at: time.Now(), channel: o.Channel, refresh: o.Refresh})
 	rt.mu.Unlock()
 	return "queued", nil
 }
@@ -676,6 +692,13 @@ func (s *Session) deliverPrompts(rt *agentRT, now time.Time) {
 	idle := st.State == agent.StateIdle
 	rt.mu.Lock()
 	if len(rt.prompts) == 0 {
+		rt.heldSince, rt.heldWhy = time.Time{}, ""
+		rt.mu.Unlock()
+		return
+	}
+	if s.modDeliversLocked(rt, now) {
+		// The mod has the head; the box and dialogs are no concern of a
+		// prompt Claude queues itself.
 		rt.heldSince, rt.heldWhy = time.Time{}, ""
 		rt.mu.Unlock()
 		return

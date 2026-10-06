@@ -188,6 +188,15 @@ func (t *Tracker) Mod(s State, reason, event string) {
 	}
 }
 
+// ModLive reports whether the session runs the mod and it was heard
+// from within ModTimeout: then it, not the paste injector, delivers
+// queued prompts (docs/SPEC.md §8.6).
+func (t *Tracker) ModLive() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.mod.on && t.modLive(t.now())
+}
+
 // modLive reports whether the mod's word stands: heard from within
 // ModTimeout.
 func (t *Tracker) modLive(now time.Time) bool {

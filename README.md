@@ -13,7 +13,7 @@ Claude Code is the first supported agent. Other agents plug in through a manifes
 - projects and tasks (milestone M5): `tm project new|list|open`, `tm skill`, `tm task …`, `tm context` and `tm inbox list|done`;
 - threads (milestone M6): `tm thread start|adopt|prompt|answer|restart|resolve`, agents in git worktrees reporting through `tm`, named by their task: `tm thread show T12` is T12's open thread; `tm thread adopt` (or `T` on the dashboard) makes an agent you started yourself a thread;
 - hardening (milestone M8): agents resume after a server crash or restart, `tm doctor [--fix]`, an optional login service (`tm server service install`), signed release archives, a Homebrew formula and `tm update`;
-- mods: `tm watch [--json]` streams a session's state, task, PR and inbox counts on each change; terminatr's own mod for Claude Code (early access, off by default: Mods in the settings, `,`) reads that feed and shows a band in the agent's pane with the task, its steps, the PR and what waits for you, and reports the session's state from Claude's own turn events, so most `tm hook` processes go.
+- mods: `tm watch [--json]` streams a session's state, task, PR and inbox counts on each change; terminatr's own mod for Claude Code (early access, off by default: Mods in the settings, `,`) reads that feed and shows a band in the agent's pane with the task, its steps, the PR and what waits for you, reports the session's state from Claude's own turn events, so most `tm hook` processes go, and hands queued prompts and slash commands to Claude itself, which runs them once idle without typing over what you half-typed (paste stays the fallback).
 
 ## Install
 

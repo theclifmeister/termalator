@@ -25,6 +25,8 @@ async function start($: Engine, on: On, env: Record<string, string> = { TERMINAT
   const reports: Report[] = []
   const sockets: (string | undefined)[] = []
   on('http.fetch', async (_$, e) => {
+    // No prompts queued: polls come back empty (deliver.test.ts).
+    if (e.url.includes('/v1/prompts')) return { value: { status: 204, ok: true, headers: {}, text: '' } }
     sockets.push(e.init?.socketPath)
     reports.push(JSON.parse(e.init?.body ?? '{}') as Report)
     if (beneath.wedged) await clock.sleep(60_000)

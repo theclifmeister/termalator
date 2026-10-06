@@ -6,6 +6,15 @@
 // the beats come and falls back to its other sources when they stop.
 // The turn lives in $.state, so a reload carries on (hooks/turn.ts).
 //
+// Over the same socket it takes the prompts the server queued for the
+// session, one at a time and in order (hooks/deliver.ts): it long-polls
+// GET /v1/prompts, acks the offer "taken", keeps its id in $.state, hands
+// it to Claude ($.prompt.submit as the user's words, $.command.run for
+// a slash command; Claude runs it once idle, leaving the prompt box
+// alone), then acks "submitted", or "refused" so the server pastes it.
+// An offer whose id is the one kept was handed on before a reload: it is
+// only acked again.
+//
 // It also follows the session's `tm watch --json` feed for the session's
 // life and keeps the latest line in $.state. From it, unless [mods] band
 // is off (TERMINATR_BAND=off), it draws the band above the prompt and
@@ -23,6 +32,8 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { TerminatrTurn, TerminatrWatch } from '../types'
 import { answers, question } from './ask'
 import { drawBand } from './band'
+import { errorText, handled, offerOf } from './deliver'
+import type { Ack, Offer } from './deliver'
 import { feed } from './feed'
 import { initialTurn, stateOf, step, waitKey } from './turn'
 import type { Seen } from './turn'
@@ -31,12 +42,20 @@ import { ciToast, shows, statusText } from './view'
 const watch = atom({ plugin: 'terminatr', key: 'watch' } as const, null)
 const band = atom({ plugin: 'terminatr', key: 'band' } as const, true)
 const turn = atom({ plugin: 'terminatr', key: 'turn' } as const, initialTurn)
+const delivering = atom({ plugin: 'terminatr', key: 'delivering' } as const, '')
+const deliverer = atom({ plugin: 'terminatr', key: 'deliverer' } as const, 0)
 
 // BEAT_MS is the heartbeat: the server's ModBeat (internal/agent).
 const BEAT_MS = 10_000
 
 // END_WAIT_MS bounds the wait for the exited report at session.end.
 const END_WAIT_MS = 500
+
+// POLL_S is how long the server holds a poll for a prompt; POLL_GAP_MS
+// spaces polls that came back empty, RETRY_MS failed ones.
+const POLL_S = 20
+const POLL_GAP_MS = 250
+const RETRY_MS = 5_000
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
@@ -158,6 +177,7 @@ let socket = ''
 let sending: Promise<void> | null = null
 let pending: string | null = null
 let last = ''
+let loops = 0
 
 // startReports opens the channel, in a terminatr session with the mod's
 // socket: it reports the state the turn is in (a reload carries on),
@@ -172,6 +192,82 @@ async function startReports($: EngineInterface) {
   $.clock.every(BEAT_MS, () => {
     void read($, turn).then(t => report($, t, 'beat'))
   })
+  // An unload ends the loop mid-call: nothing to report.
+  deliver($).catch(() => {})
+}
+
+// deliver takes the server's prompts until the session is gone. A
+// reload starts a new loop; the old one stops at its next turn round.
+async function deliver($: EngineInterface) {
+  const me = (await $.clock.now()) * 1000 + (++loops % 1000)
+  await update($, deliverer, () => me)
+  for (;;) {
+    if ((await read($, deliverer)) !== me) return
+    let r
+    try {
+      r = await $.http.fetch(`http://terminatr/v1/prompts?wait=${POLL_S}`, { socketPath: socket })
+    } catch (err) {
+      $.ui.log(`terminatr: prompts: ${String(err)}`, { to: 'debug' })
+      await $.clock.sleep(RETRY_MS)
+      continue
+    }
+    if (r.status === 410) return
+    if (r.status === 204) {
+      await $.clock.sleep(POLL_GAP_MS)
+      continue
+    }
+    const offer = r.ok ? offerOf(r.text) : null
+    if (!offer) {
+      $.ui.log(`terminatr: prompts: ${r.status} ${r.text}`, { to: 'debug' })
+      await $.clock.sleep(RETRY_MS)
+      continue
+    }
+    if ((await read($, deliverer)) !== me) return
+    if (handled(offer, await read($, delivering))) {
+      if (!(await ack($, offer.id, { result: 'submitted' }))) await $.clock.sleep(POLL_GAP_MS)
+      continue
+    }
+    // Hand on only what the server let us take, and keep its id first,
+    // so a reload from here on doesn't hand it on again.
+    if (!(await ack($, offer.id, { result: 'taken' }))) {
+      await $.clock.sleep(POLL_GAP_MS)
+      continue
+    }
+    await update($, delivering, () => offer.id)
+    const done = await handOn($, offer)
+    // Claude didn't take it: offered again, it is handed on again.
+    if (done.result === 'refused') await update($, delivering, () => '')
+    await ack($, offer.id, done)
+  }
+}
+
+// handOn gives Claude the offer: queued, it runs once the session is
+// idle; the prompt box keeps whatever is typed in it.
+async function handOn($: EngineInterface, offer: Offer): Promise<Ack> {
+  try {
+    if (offer.kind === 'command') {
+      await $.command.run({ command: offer.command, args: offer.args })
+      return { result: 'submitted' }
+    }
+    const r = await $.prompt.submit({ text: offer.text, asUser: true })
+    return r.drop === undefined ? { result: 'submitted' } : { result: 'refused', error: r.drop }
+  } catch (err) {
+    return { result: 'refused', error: errorText(err) }
+  }
+}
+
+// ack tells the server what became of prompt id; true when it took it.
+async function ack($: EngineInterface, id: string, a: Ack): Promise<boolean> {
+  try {
+    const r = await $.http.fetch(`http://terminatr/v1/prompts/${encodeURIComponent(id)}/ack`, {
+      method: 'POST', socketPath: socket, headers: { 'content-type': 'application/json' }, body: JSON.stringify(a),
+    })
+    if (!r.ok) $.ui.log(`terminatr: prompt ${id} ${a.result}: ${r.status} ${r.text}`, { to: 'debug' })
+    return r.ok
+  } catch (err) {
+    $.ui.log(`terminatr: prompt ${id} ${a.result}: ${String(err)}`, { to: 'debug' })
+    return false
+  }
 }
 
 // saw moves the turn on and reports where it got to, without waiting
