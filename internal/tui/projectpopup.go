@@ -61,7 +61,13 @@ type projectView struct {
 	memErr error
 	// pick is the task to select once the board loads, 0 for none.
 	pick int
+	// doneAll lists every done task on the Tasks tab, not the newest
+	// doneShown (m).
+	doneAll bool
 }
+
+// doneShown is how many done tasks the Tasks tab lists until m shows all.
+const doneShown = 10
 
 func (m *dash) projectPopup(string) tea.Cmd {
 	slug := m.needProject()
@@ -123,6 +129,11 @@ func (pv *projectView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 			case "D", "A", "x", "c":
 				return m.taskKey(pv.slug, t, k.String())
 			}
+		}
+		if k.String() == "m" && (pv.doneAll || pv.hiddenDone() > 0) {
+			pv.doneAll = !pv.doneAll
+			pv.sel[tabTasks] = min(pv.sel[tabTasks], max(len(pv.tasks())-1, 0))
+			return nil
 		}
 	}
 	switch s := k.String(); s {
@@ -245,23 +256,53 @@ func absPath(p, cwd string) string {
 	return filepath.Clean(p)
 }
 
-// tasks are the live tasks in board order: needs you, in motion, on deck.
+// tasks are the live tasks the Tasks tab lists, in board order: needs
+// you, in motion, on deck, then the newest done ones (all of them after m).
 func (pv *projectView) tasks() []*tasks.Task {
 	if pv.board == nil {
 		return nil
 	}
-	return listed(pv.board)
+	all := listed(pv.board)
+	if pv.doneAll {
+		return all
+	}
+	var out []*tasks.Task
+	done := 0
+	for _, t := range all {
+		if t.Status == tasks.Done {
+			if done++; done > doneShown {
+				continue
+			}
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
+// hiddenDone is how many done tasks the Tasks tab leaves out.
+func (pv *projectView) hiddenDone() int {
+	if pv.board == nil || pv.doneAll {
+		return 0
+	}
+	return len(listed(pv.board)) - len(pv.tasks())
 }
 
 // listed are a board's tasks as the task lists show them, by group:
-// done ones last, so x can still send one back.
+// done ones last, newest first (by updated date, then id), so x can
+// still send one back.
 func listed(b *tasks.Board) []*tasks.Task {
 	var out []*tasks.Task
 	for _, g := range tasks.Groups {
+		start := len(out)
 		for _, t := range b.Tasks {
 			if tasks.GroupOf(t.Status) == g {
 				out = append(out, t)
 			}
+		}
+		if g == tasks.DoneG {
+			slices.SortStableFunc(out[start:], func(a, b *tasks.Task) int {
+				return cmp.Or(-strings.Compare(a.Updated, b.Updated), b.ID-a.ID)
+			})
 		}
 	}
 	return out
@@ -294,7 +335,14 @@ func (pv *projectView) box(m *dash) box {
 	case tabTasks:
 		body, sel, hits = pv.taskLines(m, w)
 		// Short, so the task's keys fit beside a 32-column sidebar.
-		keys = joinKeys(taskKeys(pv.selTask()), "enter show · esc close")
+		more := ""
+		switch {
+		case pv.doneAll:
+			more = "m fewer"
+		case pv.hiddenDone() > 0:
+			more = "m more"
+		}
+		keys = joinKeys(taskKeys(pv.selTask()), more, "enter show · esc close")
 	case tabSettings:
 		body, sel, hits = pv.settings.lines(m, w)
 		keys = "enter change · + - number · ↑ ↓ move · " + keys
@@ -516,7 +564,9 @@ func (pv *projectView) coordinatorLine(m *dash, p ProjectData) string {
 	return config.DefaultAgent(DefaultAgent) + styleFaint.Render(" · not running; enter on the project starts it")
 }
 
-// taskLines are the live tasks, grouped, each with its steps.
+// taskLines are the live tasks, grouped; only the selected task that
+// isn't done lists its steps (the others show n/n), and the done group
+// ends in how many older ones are left out.
 func (pv *projectView) taskLines(m *dash, w int) ([]string, int, []int) {
 	if pv.board == nil {
 		return []string{styleFaint.Render("loading…")}, -1, nil
@@ -561,7 +611,11 @@ func (pv *projectView) taskLines(m *dash, w int) ([]string, int, []int) {
 				tail += " · " + x
 			}
 		}
-		for j := range 1 + len(t.Steps) {
+		steps := t.Steps
+		if i != pv.sel[tabTasks] || t.Status == tasks.Done {
+			steps = nil
+		}
+		for j := range 1 + len(steps) {
 			taskAt[len(out)+j] = i
 		}
 		if i == pv.sel[tabTasks] {
@@ -570,9 +624,12 @@ func (pv *projectView) taskLines(m *dash, w int) ([]string, int, []int) {
 		} else {
 			out = append(out, fit(head+"  "+styleFaint.Render(tail), w))
 		}
-		for _, s := range t.Steps {
+		for _, s := range steps {
 			out = append(out, fit("      "+todoGlyph(map[bool]string{true: "done"}[s.Done])+" "+oneLine(s.Text), w))
 		}
+	}
+	if n := pv.hiddenDone(); n > 0 {
+		out = append(out, styleFaint.Render(fmt.Sprintf("… %d more done (m shows them)", n)))
 	}
 	if len(out) == 0 {
 		out = append(out, styleFaint.Render("no tasks"))
