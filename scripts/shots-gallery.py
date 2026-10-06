@@ -90,6 +90,13 @@ def parse_sgr(args):
             bg = n - 40
         elif 100 <= n <= 107:
             bg = n - 100 + 8
+        elif n in (38, 48) and j + 4 < len(ps) and ps[j + 1] == "2":
+            v = "#%02x%02x%02x" % (int(ps[j + 2] or 0), int(ps[j + 3] or 0), int(ps[j + 4] or 0))
+            if n == 38:
+                fg = v
+            else:
+                bg = v
+            j += 4
         elif n in (38, 48) and j + 2 < len(ps) and ps[j + 1] == "5":
             v = int(ps[j + 2])
             if n == 38:
@@ -99,6 +106,15 @@ def parse_sgr(args):
             j += 2
         j += 1
     return tuple(sorted(out)) + (("fg", fg), ("bg", bg))
+
+
+def x256(n):
+    if n >= 232:
+        v = 8 + (n - 232) * 10
+        return "#%02x%02x%02x" % (v, v, v)
+    n -= 16
+    steps = [0, 95, 135, 175, 215, 255]
+    return "#%02x%02x%02x" % (steps[n // 36], steps[(n // 6) % 6], steps[n % 6])
 
 
 def classes(st):
@@ -117,11 +133,21 @@ def classes(st):
     if "r" in cls:
         cls.remove("r")
         fg, bg = (bg if bg is not None else "bg"), (fg if fg is not None else "fg")
-    if fg is not None:
+    style = []
+    if isinstance(fg, str) and fg.startswith("#"):
+        style.append("color:" + fg)
+    elif isinstance(fg, int) and fg > 15:
+        style.append("color:" + x256(fg))
+    elif fg is not None:
         cls.append("f%s" % fg)
-    if bg is not None:
+    if isinstance(bg, str) and bg.startswith("#"):
+        style.append("background:" + bg)
+    elif isinstance(bg, int) and bg > 15:
+        style.append("background:" + x256(bg))
+    elif bg is not None:
         cls.append("b%s" % bg)
-    return " ".join(cls)
+    out = " ".join(cls)
+    return out + ("|" + ";".join(style) if style else "")
 
 
 def render(grid):
@@ -144,7 +170,10 @@ def render(grid):
 
 def span(c, text):
     t = html.escape(text)
-    return '<span class="%s">%s</span>' % (c, t) if c else t
+    if not c:
+        return t
+    cls, _, style = c.partition("|")
+    return '<span class="%s"%s>%s</span>' % (cls, ' style="%s"' % style if style else "", t)
 
 
 DARK = ["#1d1f21", "#cc6666", "#b5bd68", "#f0c674", "#81a2be", "#b294bb", "#8abeb7", "#c5c8c6",
