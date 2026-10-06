@@ -14,7 +14,7 @@ type Sidebar struct {
 const (
 	SideDefault = 32 // a full sidebar's width: room for a thread's id and a few words of its title
 	SideMin     = 14 // no maximum: only the window bounds it (SideRoom)
-	SideSlim    = 7  // the slim strip: a marker, a glyph, 3 letters, a blank, the border
+	SideSlim    = 10 // the slim strip: the gutter, a glyph, a blank, 5 letters (or 4 and …), a blank, the border
 	SideRoom    = 60 // a full sidebar leaves the panes at least this many columns
 	SideStep    = 2  // { and } change the width this much
 )

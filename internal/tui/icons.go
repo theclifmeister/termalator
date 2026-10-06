@@ -56,8 +56,8 @@ var unicodeIcons = iconSet{
 	name:   IconsUnicode,
 	folder: "■", folderOpen: "■",
 	mid: "├─", end: "└─",
-	hint: "◆", current: "▸", remote: "⌁", paused: "∥",
-	working: "●", blocked: "▲", idle: "○", starting: "◌", running: "●", review: "◆", done: "✓", other: "·", none: "·",
+	hint: "⚑", current: "▸", remote: "⌁", paused: "∥",
+	working: "●", blocked: "▲", idle: "○", starting: "◌", running: "▷", review: "◆", done: "✓", other: "·", none: "·",
 	todoDone: "✓", todoNow: "◐", todoOpen: "○",
 	barOn: "▰", barOff: "▱",
 }
@@ -81,7 +81,7 @@ var asciiIcons = iconSet{
 	folder: "+", folderOpen: "+",
 	mid: "|-", end: "`-",
 	hint: "?", current: ">", remote: "@", paused: "=",
-	working: "*", blocked: "!", idle: "o", starting: "~", running: "*", review: "#", done: "v", other: "-", none: ".",
+	working: "*", blocked: "!", idle: "o", starting: "~", running: ":", review: "#", done: "v", other: "-", none: ".",
 	todoDone: "x", todoNow: "~", todoOpen: "o",
 	barOn: "#", barOff: "-",
 }

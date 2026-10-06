@@ -161,7 +161,16 @@ func TestNumberSettingButtons(t *testing.T) {
 				t.Fatalf("%s lacks %s: %q", r.label, b, line)
 			}
 			before := len(src.settings)
-			mouseAt(m, tea.MouseLeft, m.sideW()+ansi.StringWidth(line[:i+j]), y)
+			x := m.sideW() + ansi.StringWidth(line[:i+j])
+			if pv.settings.rows[pv.settings.sel].label != r.label {
+				// The first click on a setting selects it, and changes
+				// nothing.
+				mouseAt(m, tea.MouseLeft, x, y)
+				if len(src.settings) != before || pv.settings.rows[pv.settings.sel].label != r.label {
+					t.Fatalf("the first click on %s's %s: settings %v, selected %d", r.label, b, src.settings, pv.settings.sel)
+				}
+			}
+			mouseAt(m, tea.MouseLeft, x, y)
 			if len(src.settings) != before+1 {
 				t.Fatalf("a click on %s's %s changed nothing (%v)", r.label, b, src.settings)
 			}
@@ -281,7 +290,7 @@ func TestDashboardMenus(t *testing.T) {
 	// A thread's menu attaches it, with nothing to take over.
 	m.current = "beta"
 	m.rebuild()
-	x, y = at(t, m, "t-0005")
+	x, y = at(t, m, "T4 Write docs")
 	mouseAt(m, tea.MouseRight, x, y)
 	mv = m.top().(*menuView)
 	if slices.ContainsFunc(mv.items, func(it menuItem) bool { return strings.Contains(it.label, "take over") }) {
@@ -321,6 +330,11 @@ func TestPopupClicks(t *testing.T) {
 		t.Fatalf("click on a task selected %d", pv.sel[tabTasks])
 	}
 	clickOn(t, m, "4 Settings")
+	// A click selects a setting; a second click changes it.
+	clickOn(t, m, "Coordinator approves")
+	if pv.settings.sel != 2 || len(src.settings) != 0 {
+		t.Fatalf("first click on a setting: sel %d, settings %v", pv.settings.sel, src.settings)
+	}
 	clickOn(t, m, "Coordinator approves")
 	if pv.settings.sel != 2 || len(src.settings) != 1 || !strings.HasPrefix(src.settings[0], "projects.alpha.coordinator_approves=") {
 		t.Fatalf("click on a setting: sel %d, settings %v", pv.settings.sel, src.settings)
@@ -363,8 +377,8 @@ func TestDetailsWheel(t *testing.T) {
 // TestHints: a key list's buttons, a hint naming several keys has one
 // per key, and the status bar's buttons sit where they show.
 func TestHints(t *testing.T) {
-	hs := hints("enter attach · p ] [ projects · ↑ ↓ scroll · y yes · any other key no", 1)
-	want := []hint{{1, 13, "enter"}, {16, 17, "p"}, {18, 19, "]"}, {20, 21, "["}, {22, 30, "p"}, {46, 51, "y"}, {54, 70, "n"}}
+	hs := hints("enter attach · p ] [ projects · ↑ ↓ scroll · y yes · n no · esc cancel", 1)
+	want := []hint{{1, 13, "enter"}, {16, 17, "p"}, {18, 19, "]"}, {20, 21, "["}, {22, 30, "p"}, {46, 51, "y"}, {54, 58, "n"}, {61, 71, "esc"}}
 	if !slices.Equal(hs, want) {
 		t.Fatalf("hints %v, want %v", hs, want)
 	}
@@ -375,7 +389,7 @@ func TestHints(t *testing.T) {
 	for _, h := range hits {
 		got[h.key] = string(plain[h.x0:min(h.x1, len(plain))])
 	}
-	for key, text := range map[string]string{"menu": "≡ ", "d": "prefix+d dashboard"} {
+	for key, text := range map[string]string{"menu": "≡ menu", "d": "prefix+d dashboard"} {
 		if got[key] != text {
 			t.Errorf("status button %s shows %q, want %q", key, got[key], text)
 		}

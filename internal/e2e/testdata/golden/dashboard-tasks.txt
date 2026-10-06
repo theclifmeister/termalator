@@ -1,16 +1,17 @@
  PROJECTS                    1 │ tm dashboard                                ● server ok · 1 session
- ■ demo                    0 ◆ │ NEEDS YOU 1 ───────────────────────────────────────────────────────
- └─ coordinator              · │ ? demo         T1 Write the README  ◆ review   ▱▱▱▱▱  0/2
+ ■ demo                    0 ⚑ │ NEEDS YOU 1 ───────────────────────────────────────────────────────
+ └─ coordinator              · │  demo          T1 Write the README   ◆ review    ▱▱▱▱▱  0/2
                                │ demo ──────────────────────────────────────────────────────────────
-                               │  coordinator              —          enter starts the coordinator
-                               │  tasks: 1 needs you (a → Tasks) · 1 in motion · 0 on deck
-                               │ OTHER SESSIONS 1 ──────────────────────────────────────────────────
-                               │  <session>          /bin/sh              ● running  <duration>  /
-                               │ ╭─ demo tasks ───────────────────────────────────────────────────╮
-                               │ │  NEEDS YOU ─────────────────────────────────────────────────   │
-                               │ │ T1    Write the README     ◆ review   ▱▱▱▱▱  0/2               │
-                               │ │  IN MOTION ─────────────────────────────────────────────────   │
-                               │ │ T2    Ship it              ● started                           │
+                               │  coordinator               —           not running; enter starts it
+                               │  tasks: 1 needs you (t lists them) · 1 in motion · 0 on deck
+                               │ ╭─ Tasks · demo ─────────────────────────────────────────────────╮
+                               │ │ NEEDS YOU ──────────────────────────────────────────────────── │
+                               │ │ T1     Write the README      ◆ review    ▱▱▱▱▱  0/2            │
+                               │ │                                                                │
+                               │ │ IN MOTION ──────────────────────────────────────────────────── │
+                               │ │ T2     Ship it               ● started                         │
+                               │ │                                                                │
+                               │ │ enter show · A accept · x send back · esc close                │
                                │ ╰────────────────────────────────────────────────────────────────╯
                                │
                                │
@@ -18,7 +19,6 @@
                                │
                                │
                                │
-                               │
                                │────────────────────────────────────────────────────────────────────
-                               │ enter show · A accept · x send back · esc back
+                               │
                                │

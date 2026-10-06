@@ -63,7 +63,7 @@ func TestSmokeProjectOpenAndSwitch(t *testing.T) {
 	// Prefix then [: the previous project, alpha, straight from the
 	// session; then prefix ]: beta again.
 	w.Prefix("[")
-	w.WaitUntil("attached to alpha", wait, func(sc string) bool { return lastLine(sc, id+" · "+alpha+" coordinator") })
+	w.WaitUntil("attached to alpha", wait, func(sc string) bool { return lastLine(sc, alpha+" coordinator") && lastLine(sc, " · "+id+" ") })
 	w.Prefix("]")
 	w.WaitUntil("attached to beta", wait, func(sc string) bool { return lastLine(sc, beta+" coordinator") })
 	// Prefix p: the switcher, over the dashboard.
@@ -180,12 +180,12 @@ func TestSmokeSidebar(t *testing.T) {
 		t.Fatalf("ui.json after the drag: %s", readFile(env.Home, "ui.json"))
 	}
 
-	// A narrow window: the slim strip of projects, 7 columns, never
-	// nothing; beta, the focused pane's, is marked.
+	// A narrow window: the slim strip of projects, 10 columns, never
+	// nothing; beta, the focused pane's, in the accent colour.
 	w.Resize(70, 30)
-	waitPaneSize(t, env, b, besidePanel(70, 7), 28)
-	w.WaitFor("▸○bet │", wait)
-	w.WaitFor(" ·dem │", wait)
+	waitPaneSize(t, env, b, besidePanel(70, SideCols(70)), 28)
+	w.WaitFor(" ○ beta  │", wait)
+	w.WaitFor(" · demo  │", wait)
 	w.Resize(120, 30)
 	w.Detach()
 	for _, x := range both {

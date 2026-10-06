@@ -141,7 +141,7 @@ func TestSmokeCoordinatorRemoteControl(t *testing.T) {
 	w.WaitUntil("status bar marker", agentWait, func(sc string) bool { return lastLine(sc, "remote control on") })
 	w.WaitUntil("sidebar marker", wait, func(sc string) bool { return remoteMarked(sc, alpha) }) // the attached view's sidebar
 	w.Prefix("r")
-	w.WaitFor("turn remote control off for "+alpha+"?", wait)
+	w.WaitFor("Turn remote control off for "+alpha+"?", wait)
 	w.Type("y")
 	w.WaitFor("Remote Control disconnected.", agentWait)
 	w.WaitUntil("marker gone", wait, func(sc string) bool {
@@ -156,7 +156,7 @@ func TestSmokeCoordinatorRemoteControl(t *testing.T) {
 	// tm attach on the coordinator has the status bar too: its state
 	// and remote control show there.
 	a := env.Attach(120, 30, coord.ID)
-	a.WaitUntil("tm attach status bar", agentWait, func(sc string) bool { return lastLine(sc, coord.ID+" · "+alpha+" coordinator") })
+	a.WaitUntil("tm attach status bar", agentWait, func(sc string) bool { return lastLine(sc, alpha+" coordinator") && lastLine(sc, " · "+coord.ID+" ") })
 	a.Detach()
 	a.WaitExit(wait)
 
@@ -199,7 +199,7 @@ func TestSmokeRemoteControlRestart(t *testing.T) {
 	clickCoordinator(t, w, alpha)
 	w.WaitUntil("attached", agentWait, func(sc string) bool { return lastLine(sc, alpha+" coordinator") })
 	w.Prefix("r")
-	w.WaitFor("turn remote control on for "+alpha, wait)
+	w.WaitFor("Turn remote control on for "+alpha, wait)
 	w.Type("y")
 	w.WaitFor(coord.ID+" is back", agentWait)
 	w.WaitUntil("markers", wait, func(sc string) bool {

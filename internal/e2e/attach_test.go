@@ -420,7 +420,7 @@ func TestRunScriptLoginShellQueries(t *testing.T) {
 	}
 	s := &Session{ID: list[0].ID, PID: list[0].PID}
 	env.track(s.PID, "session "+s.ID)
-	assertPaneSize(t, env, s, 69, 51) // 76 is narrow: the sidebar is its slim strip of 7
+	assertPaneSize(t, env, s, uint16(76-SideCols(76)), 51) // 76 is narrow: the sidebar is its slim strip
 	// mirrored: w runs tm attach itself (not run.sh), so it can be asked
 	// for a digest check.
 	check := func(w *Window, marker string, mirrored bool) {

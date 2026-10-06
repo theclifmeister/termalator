@@ -51,13 +51,13 @@ func RemoteMessage(slug string, res proto.SessionRemoteResult) string {
 	return fmt.Sprintf("remote control off for %s; until the coordinator is started anew", slug)
 }
 
-// remoteQuestion asks, in the status bar, before prefix+r changes a
+// remoteQuestion asks, in a dialog, before prefix+r changes a
 // coordinator's remote control.
 func remoteQuestion(s proto.SessionInfo) string {
 	if s.RemoteControl {
-		return "turn remote control off for " + s.Project + "?"
+		return "Turn remote control off for " + s.Project + "?"
 	}
-	return "turn remote control on for " + s.Project + ", so it can be continued from another device?"
+	return "Turn remote control on for " + s.Project + ", so it can be continued from another device?"
 }
 
 // askRemote asks whether to turn the focused coordinator's remote control
@@ -68,6 +68,7 @@ func (c *client) askRemote() {
 	}
 	if c.focus.info.Role == proto.RoleCoordinator {
 		c.confirmRemote = c.focus
+		c.openDialog("Remote control", remoteQuestion(c.focus.info))
 	} else {
 		c.flash = "remote control is for coordinators"
 	}
@@ -80,6 +81,7 @@ func (c *client) askRemote() {
 // released here.
 func (c *client) answerRemote(p *pane, yes bool) {
 	c.confirmRemote = nil
+	c.closeMenu()
 	yes = yes && !p.gone
 	on, slug := !p.info.RemoteControl, p.info.Project
 	if !yes {

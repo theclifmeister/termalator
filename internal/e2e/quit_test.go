@@ -32,12 +32,12 @@ func TestSmokePrefixQuit(t *testing.T) {
 		{"the list", "", "SESSIONS"},
 		{"the project popup", "a", "1 Overview"},
 		{"the keys tab", "a5", "On the dashboard"},
-		{"the inbox", "i", alpha + " inbox"},
-		{"the tasks", "t", alpha + " tasks"},
+		{"the inbox", "i", "Inbox · " + alpha},
+		{"the tasks", "t", "Tasks · " + alpha},
 		{"the settings", ",", "enter change"},
-		{"the help", "?", "↑ ↓ scroll · esc back"},
+		{"the help", "?", "↑ ↓ scroll · esc close"},
 		{"the switcher", "p", "enter open its coordinator"},
-		{"a prompt", "n", "new project name"},
+		{"a prompt", "n", "New project"},
 		{"the sidebar", "\t", "sidebar: ↑ ↓ move"},
 	} {
 		w := env.Window(100, 30)
@@ -73,7 +73,7 @@ func TestSmokePrefixQuit(t *testing.T) {
 	clickCoordinator(t, w, alpha)
 	attached := func(w *Window) {
 		t.Helper()
-		w.WaitUntil("attached to "+alpha, agentWait, func(sc string) bool { return lastLine(sc, id+" · "+alpha+" coordinator") })
+		w.WaitUntil("attached to "+alpha, agentWait, func(sc string) bool { return lastLine(sc, alpha+" coordinator") && lastLine(sc, " · "+id+" ") })
 	}
 	attached(w)
 	w.Quit()
@@ -84,10 +84,10 @@ func TestSmokePrefixQuit(t *testing.T) {
 		open  func(w *Window)
 		shows string
 	}{
-		{"a popup over the session", func(w *Window) { w.Prefix("i") }, alpha + " inbox"},
+		{"a popup over the session", func(w *Window) { w.Prefix("i") }, "Inbox · " + alpha},
 		{"the sidebar", func(w *Window) { w.Key(CtrlB); w.Key(tab) }, "sidebar: ↑"},
 		{"the menu", func(w *Window) { w.ClickText("≡", 29) }, "send the prefix key"},
-		{"the question", func(w *Window) { w.Prefix("r") }, "turn remote control"},
+		{"the question", func(w *Window) { w.Prefix("r") }, "Turn remote control"},
 	} {
 		w := env.Window(100, 30)
 		attached(w) // the view kept the session

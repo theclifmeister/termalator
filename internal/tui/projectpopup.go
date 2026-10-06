@@ -12,7 +12,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/project"
@@ -212,7 +211,7 @@ func (pv *projectView) repoKey(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	slug, repos := pv.slug, pv.data(m).Repos
 	switch k.String() {
 	case "+":
-		m.prompt("add a repository (its directory): ", m.cwd, func(path string) tea.Cmd {
+		m.prompt("Add a repository", "Its directory:", m.cwd, func(path string) tea.Cmd {
 			path = absPath(path, m.cwd)
 			return m.setRepo(slug, path, true, "added "+path)
 		})
@@ -222,7 +221,7 @@ func (pv *projectView) repoKey(m *dash, k tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		path := repos[i]
-		m.confirm("Remove "+path+" from "+slug+"'s repositories? The directory itself stays.", func() tea.Cmd {
+		m.confirm("Remove a repository", "Remove "+path+" from "+slug+"'s repositories? The directory itself stays.", func() tea.Cmd {
 			return m.setRepo(slug, path, false, "removed "+path)
 		})
 	}
@@ -314,7 +313,7 @@ func (pv *projectView) render(m *dash) string { return m.popup(pv.box(m)) }
 // content) in a window w×h: from the window alone, never from a tab's
 // content, so switching tabs doesn't move or resize it.
 func projectSize(w, h int) (int, int) {
-	return min(max(w*9/10, 72), 120), min(max(h*9/10, 14), 48)
+	return viewWidth, min(max(h*9/10, 14), 48)
 }
 
 func (pv *projectView) box(m *dash) box {
@@ -363,7 +362,11 @@ func (pv *projectView) box(m *dash) box {
 	for len(all) < len(head)+len(body) {
 		all = append(all, noHit)
 	}
-	b := box{title: pv.slug, head: head, body: body, sel: -1, hits: all, keys: keys, width: width, height: height}
+	title := p.Name
+	if title == "" {
+		title = pv.slug
+	}
+	b := box{title: title, head: head, body: body, sel: -1, hits: all, keys: keys, width: width, height: height}
 	b.scroll = pv.scroll(m.boxRows(b)-len(head), sel, len(body))
 	return b
 }
@@ -526,9 +529,9 @@ func (pv *projectView) overview(m *dash, p ProjectData, w int) ([]string, int, [
 	}
 	out = append(out, field("")+styleFaint.Render(strings.Join(modes, " · ")+" (Settings tab)"))
 	c := p.Counts
-	needs := fmt.Sprintf("%d needs you", c["needs_you"])
+	needs := needsYouWords(c["needs_you"])
 	if c["needs_you"] > 0 {
-		needs += " (3 → Tasks)"
+		needs += " (Tasks tab)"
 	}
 	out = append(out, "", field("Tasks")+fmt.Sprintf("%s · %d in motion · %d on deck · %d done", needs, c["in_motion"], c["on_deck"], c["done"]))
 	if p.Err != "" {
@@ -578,38 +581,11 @@ func (pv *projectView) taskLines(m *dash, w int) ([]string, int, []int) {
 	for i, t := range pv.tasks() {
 		if g := tasks.GroupOf(t.Status); g != group {
 			group = g
-			st := styleTitle
-			if g == tasks.NeedsYou {
-				st = styleWarn.Bold(true)
-			}
 			if len(out) > 0 {
 				out = append(out, "")
 			}
-			out = append(out, st.Render(strings.ToUpper(string(g))))
-		}
-		head := fmt.Sprintf("%-5s %s", t.Ref(), oneLine(t.Title))
-		tail := string(t.Status)
-		var more []string
-		if len(t.Steps) > 0 {
-			more = append(more, fmt.Sprintf("%d/%d", t.StepsDone(), len(t.Steps)))
-		}
-		if t.Thread != "" {
-			more = append(more, t.Thread)
-		}
-		if m.asked(pv.slug, t) != "" {
-			// Right after the status, and the title gives way, so it
-			// shows whole; the steps and thread follow if they fit.
-			tail += " · " + delegateWaiting
-			head = ansi.Truncate(head, max(w-2-ansi.StringWidth(tail), 12), "…")
-			for _, x := range more {
-				if ansi.StringWidth(head+"  "+tail+" · "+x) <= w {
-					tail += " · " + x
-				}
-			}
-		} else {
-			for _, x := range more {
-				tail += " · " + x
-			}
+			title := strings.ToUpper(string(g))
+			out = append(out, sectionRule(title, sectionStyle(title), w))
 		}
 		steps := t.Steps
 		if i != pv.sel[tabTasks] || t.Status == tasks.Done {
@@ -620,12 +596,11 @@ func (pv *projectView) taskLines(m *dash, w int) ([]string, int, []int) {
 		}
 		if i == pv.sel[tabTasks] {
 			sel = len(out)
-			out = append(out, styleSel.Render(fit(head+"  "+tail, w)))
-		} else {
-			out = append(out, fit(head+"  "+styleFaint.Render(tail), w))
 		}
+		out = append(out, line(taskRow(t, m.asked(pv.slug, t) != ""), w, i == pv.sel[tabTasks]))
+		// The selected task's steps, under its title.
 		for _, s := range steps {
-			out = append(out, fit("      "+todoGlyph(map[bool]string{true: "done"}[s.Done])+" "+oneLine(s.Text), w))
+			out = append(out, fit(strings.Repeat(" ", taskTitleCol)+todoGlyph(map[bool]string{true: "done"}[s.Done])+" "+oneLine(s.Text), w))
 		}
 	}
 	if n := pv.hiddenDone(); n > 0 {
@@ -640,6 +615,31 @@ func (pv *projectView) taskLines(m *dash, w int) ([]string, int, []int) {
 
 // kindStyle is the style of an inbox item's kind: red for what went
 // wrong, green for what finished, yellow for the rest.
+// kindWords are the inbox kinds in words, where the kind's own name is a
+// code (docs/STYLE.md T3).
+var kindWords = map[string]string{
+	"thread-resolved":  "resolved",
+	"takeover":         "you typed",
+	"server-restart":   "server restart",
+	"pr-opened":        "PR opened",
+	"pr-checks-failed": "checks failed",
+	"pr-review":        "PR review",
+	"pr-merged":        "PR merged",
+	"pr-closed":        "PR closed",
+	"pr-conflict":      "PR conflict",
+	"close-held":       "kept open",
+	"gh-failing":       "gh failing",
+	"guard":            "guard refused",
+}
+
+// kindWord is an inbox kind (or an ask, "send-back") in words.
+func kindWord(kind string) string {
+	if w, ok := kindWords[kind]; ok {
+		return w
+	}
+	return strings.ReplaceAll(kind, "-", " ")
+}
+
 func kindStyle(kind string) lipgloss.Style {
 	switch kind {
 	case "pr-checks-failed", "pr-conflict", "exited", "gh-failing", "blocked", "needs-you", "guard":
@@ -661,11 +661,13 @@ func inboxLines(items []project.Item, sel, w int) ([]string, int, []int) {
 	now := time.Now()
 	rows := project.Rows(items)
 	for i, r := range rows {
-		kind := fit(r.Kind, 16)
-		when := fmt.Sprintf("%-6s", age(now.Sub(r.Created)))
+		// Columns two cells apart (docs/STYLE.md S2): kind, age, then
+		// what happened.
+		kind := fit(kindWord(r.Kind), 14)
+		when := fmt.Sprintf("%-4s", age(now.Sub(r.Created)))
 		rest := oneLine(strings.TrimSpace(strings.Join([]string{r.Task, r.What}, " ")))
 		if r.Count > 1 {
-			rest = fmt.Sprintf("x%d %s", r.Count, rest)
+			rest = fmt.Sprintf("×%d %s", r.Count, rest)
 		}
 		hits = append(hits, i)
 		if i == sel {
@@ -673,13 +675,13 @@ func inboxLines(items []project.Item, sel, w int) ([]string, int, []int) {
 			if r.Title != "" {
 				rest += " " + oneLine(r.Title)
 			}
-			lines = append(lines, styleSel.Render(fit(kind+" "+when+" "+rest, w)))
+			lines = append(lines, styleSel.Render(fit(kind+"  "+when+"  "+rest, w)))
 			continue
 		}
 		if r.Title != "" {
 			rest += " " + styleFaint.Render(oneLine(r.Title))
 		}
-		lines = append(lines, fit(kindStyle(r.Kind).Render(kind)+" "+styleFaint.Render(when)+" "+rest, w)+reset)
+		lines = append(lines, fit(kindStyle(r.Kind).Render(kind)+"  "+styleFaint.Render(when)+"  "+rest, w)+reset)
 	}
 	if len(rows) == 0 {
 		lines = append(lines, styleFaint.Render("inbox empty"))
@@ -704,7 +706,7 @@ func (pv *projectView) memoryLines(m *dash, w int) []string {
 		if len(out) > 0 {
 			out = append(out, "")
 		}
-		out = append(out, m.ruleIn(title, styleTitle, w))
+		out = append(out, sectionRule(title, sectionStyle(title), w))
 		if lines := mdLines(text, w); len(lines) > 0 {
 			out = append(out, lines...)
 		} else {

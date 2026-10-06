@@ -166,7 +166,7 @@ func TestPrefixRemote(t *testing.T) {
 	m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
 	keyPress(m, "r")
 	cv, ok := m.top().(*confirmView)
-	if !ok || !strings.HasPrefix(cv.question, "turn remote control on for alpha") {
+	if !ok || !strings.HasPrefix(cv.question, "Turn remote control on for alpha") {
 		t.Fatalf("prefix+r: %T", m.top())
 	}
 	act(m, src, "y")

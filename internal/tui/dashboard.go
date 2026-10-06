@@ -172,6 +172,7 @@ type dash struct {
 	busy     bool                    // an action is running
 	queued   []func(m *dash) tea.Cmd // settings keys pressed while it runs, in order
 	stack    []overlay               // views open on top of the list, topmost last
+	under    overlay                 // the popup the topmost draws over, while it draws
 	geo      *boxGeo                 // where the topmost was drawn, for the mouse
 	// lastClick is the last left click, for double-clicks; detailTop is
 	// the details panel's first line, scrolled with the wheel, for the
@@ -813,6 +814,11 @@ func (m *dash) key(k tea.KeyPressMsg) tea.Cmd {
 	if k.String() == "ctrl+c" {
 		return tea.Quit
 	}
+	// A message is about the last key: the next one clears it
+	// (docs/STYLE.md D5).
+	if !m.prefixed {
+		m.msg, m.errMsg = "", ""
+	}
 	if cv, ok := m.top().(*captureView); ok {
 		// Any key, the prefix too, is the new prefix.
 		m.prefixed = false
@@ -931,13 +937,29 @@ func (m *dash) cycleProject(next bool) tea.Cmd {
 // rule is a section header drawn across the width: "NEEDS YOU ───…".
 func (m *dash) rule(title string) string { return m.ruleIn(title, styleTitle, m.w) }
 
-// ruleIn is a rule w cells wide with the title in st.
+// ruleIn is a rule w cells wide with the title in st, a cell in: the
+// dashboard's gutter.
 func (m *dash) ruleIn(title string, st lipgloss.Style, w int) string {
 	if title == "" {
 		return styleFaint.Render(strings.Repeat("─", w))
 	}
-	t := " " + title + " "
-	return st.Render(t) + styleFaint.Render(strings.Repeat("─", max(w-len([]rune(t)), 0)))
+	return " " + sectionRule(title, st, w-1)
+}
+
+// sectionRule is a section heading w cells wide: the title in st, then
+// a faint rule to the edge (docs/STYLE.md, Section).
+func sectionRule(title string, st lipgloss.Style, w int) string {
+	t := title + " "
+	return st.Render(title) + " " + styleFaint.Render(strings.Repeat("─", max(w-len([]rune(t)), 0)))
+}
+
+// sectionStyle is how a section heading is drawn: bold, in the warn
+// colour for NEEDS YOU, else uncoloured (docs/STYLE.md C2).
+func sectionStyle(title string) lipgloss.Style {
+	if strings.HasPrefix(title, "NEEDS YOU") {
+		return styleWarn.Bold(true)
+	}
+	return styleHead
 }
 
 func (m *dash) View() tea.View {
@@ -952,7 +974,13 @@ func (m *dash) View() tea.View {
 func (m *dash) render() string {
 	m.geo = nil
 	var s string
-	if o := m.top(); o != nil {
+	o := m.top()
+	if o != nil {
+		// The popup under it, if any, is what it draws over.
+		m.under = nil
+		if n := len(m.stack); n > 1 {
+			m.under = m.stack[n-2]
+		}
 		s = o.render(m)
 	} else {
 		s = m.renderList()
@@ -963,6 +991,10 @@ func (m *dash) render() string {
 		var l string
 		if i < len(lines) {
 			l = lines[i]
+		}
+		if o != nil {
+			// Under a popup the whole scene dims, the sidebar too.
+			side[i] = styleFaint.Render(ansi.Strip(side[i]))
 		}
 		side[i] += fit(l, m.w) + reset
 	}
@@ -985,6 +1017,17 @@ func (m *dash) overDone() bool {
 // base is what a popup draws over: the list, or the session's screen
 // under the header.
 func (m *dash) base() []string {
+	if u := m.under; u != nil {
+		m.under = nil
+		lines := strings.Split(u.render(m), "\n")
+		body := make([]string, m.bodyRows())
+		for i := range body {
+			if i+1 < len(lines) {
+				body[i] = lines[i+1]
+			}
+		}
+		return body
+	}
 	if m.over == nil {
 		return m.listBody()
 	}
@@ -1051,9 +1094,10 @@ func (m *dash) listLines(w int, inline bool) (lines, keys []string, sel int) {
 	}
 	for _, r := range m.rows {
 		switch {
-		case r.head == "NEEDS YOU":
-			add(m.ruleIn(countLabel(r.head, r.count), styleWarn.Bold(true), w), "")
+		case r.head == "NEEDS YOU" || r.head == "OTHER SESSIONS":
+			add(m.ruleIn(countLabel(r.head, r.count), sectionStyle(r.head), w), "")
 		case r.head != "":
+			// A project's own section is headed by its name.
 			add(m.ruleIn(countLabel(r.head, r.count), styleTitle, w), "")
 		case r.key != "" && r.key == m.sel:
 			sel = len(lines)
@@ -1108,7 +1152,7 @@ func (m *dash) frame(title string, body []string, sel int, keys string) string {
 	}
 	// The app, not a project: the project's own section is headed by its
 	// slug, which may well be "terminatr".
-	left := styleTitle.Render(" tm") + styleFaint.Render(" dashboard")
+	left := styleTitle.Render(" tm dashboard")
 	if m.over != nil {
 		left = styleTitle.Render(" tm") + styleFaint.Render(" "+oneLine(m.over.Title))
 	}

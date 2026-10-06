@@ -237,7 +237,7 @@ func TestDashboardRows(t *testing.T) {
 	if needs < 0 || !(needs < proj && proj < sess) {
 		t.Fatalf("sections out of order:\n%s", out)
 	}
-	if strings.Contains(out, "s-5 ") || strings.Contains(out, "PROJECTS") || strings.Contains(out[needs:], "  alpha") {
+	if strings.Contains(out, "s-5 ") || strings.Contains(out, "PROJECTS") || strings.Contains(out[needs:], " alpha ─") {
 		t.Errorf("a thread's session, a PROJECTS section or another project listed:\n%s", out)
 	}
 	// NEEDS YOU: the blocked coordinator and the user's own blocked
@@ -245,13 +245,13 @@ func TestDashboardRows(t *testing.T) {
 	// question), which are their coordinator's.
 	for _, want := range []string{
 		"NEEDS YOU 2 ─",
-		"! alpha        coordinator                              ▲ blocked  question",
-		"! s-4          claude                                   ▲ blocked  permission",
-		"  coordinator                              —          enter starts the coordinator",
-		"  T4 Write docs                            ● working  report new  ▰▰▰▱▱  (t-0005)  60% 3/5 ▸ Draft §2  PR #7",
-		"  t-0006 Old work                          · stopped",
-		"  tasks: 0 needs you · 0 in motion · 0 on deck",
-		"  s-3          /bin/zsh -l                              ● running",
+		"  alpha         coordinator                               ▲ blocked   question",
+		"  s-4           claude                                    ▲ blocked   permission",
+		"  coordinator                               —           not running; enter starts it",
+		"  T4 Write docs                             ● working   report new  ▰▰▰▱▱  60% 3/5 ▸ Draft §2  PR #7  t-0005",
+		"  t-0006 Old work                           · stopped",
+		"  tasks: 0 need you · 0 in motion · 0 on deck",
+		"  s-3           /bin/zsh -l                               ▷ running",
 		"● server ok · 5 sessions",
 	} {
 		if !strings.Contains(out, want) {
@@ -288,7 +288,7 @@ func TestDashboardDoneThread(t *testing.T) {
 	src := &fakeSource{data: d}
 	m := newDash(DashOptions{Source: src, Width: 82 + sideDefault, Height: 30, State: DashState{Current: "beta"}})
 	m.setData(src.data)
-	if out := screen(m); !strings.Contains(out, "t-0006 Old work                 ✓ done     report new") {
+	if out := screen(m); !strings.Contains(out, "t-0006 Old work                 ✓ done      report new") {
 		t.Fatalf("done thread:\n%s", out)
 	}
 }
@@ -373,7 +373,7 @@ func TestDashboardThreadRow(t *testing.T) {
 	m.setData(src.data)
 	m.sel = "th:beta:t-0005"
 	out := screen(m)
-	for _, want := range []string{"✓ Outline", "◐ Draft §2", "T4 steps:", "✓ 1 Plan", "○ 2 Write",
+	for _, want := range []string{"✓ Outline", "◐ Draft §2", "steps 1/2", "✓ 1 Plan", "○ 2 Write",
 		"report new · for the coordinator"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("thread detail lacks %q:\n%s", want, out)
@@ -408,8 +408,8 @@ func TestStatusLine(t *testing.T) {
 	info := proto.SessionInfo{ID: "s-4", Role: proto.RoleCoordinator, Project: "terminatr", Agent: "claude",
 		State: "working", TodosDone: 2, TodosTotal: 5, Current: "Write §8"}
 	got := statusLine(info, nil, false, 100, "")
-	want := "\x1b[7m s-4 · terminatr coordinator · working 40% 2/5 ▸ Write §8"
-	if !strings.HasPrefix(got, want) || !strings.HasSuffix(got, ` ≡  prefix+d dashboard `+"\x1b[27m") {
+	want := "\x1b[7m terminatr coordinator · working 40% 2/5 ▸ Write §8 · s-4"
+	if !strings.HasPrefix(got, want) || !strings.HasSuffix(got, ` ≡ menu · prefix+d dashboard `+"\x1b[27m") {
 		t.Fatalf("status line %q", got)
 	}
 	if w := len([]rune(strings.TrimSuffix(strings.TrimPrefix(got, "\x1b[7m"), "\x1b[27m"))); w != 100 {
@@ -445,7 +445,7 @@ func TestDashboardOverlays(t *testing.T) {
 	}
 	m.Update(boardMsg{slug: "alpha", board: &tasks.Board{Tasks: []*tasks.Task{{ID: 1, Title: "One", Status: tasks.Review}}}})
 	press(m, "enter")
-	if !b.open || !strings.Contains(screen(m), "alpha T1") {
+	if !b.open || !strings.Contains(screen(m), "Task · alpha") {
 		t.Fatalf("enter on the board:\n%s", screen(m))
 	}
 	press(m, "?") // the board takes its own keys; ? isn't one
@@ -502,7 +502,7 @@ func TestDashboardSplit(t *testing.T) {
 	out := screen(m)
 	for _, want := range []string{"│ T4 Write docs", "● working", "thread    t-0005", "progress  ▰▰▰▱▱ 60% 3/5",
 		"PR        https://github.com/o/r/pull/7", "report    1, new · for the coordinator", "✓ Outline",
-		"enter attaches it; the coordinator acts on it"} {
+		"enter attach"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("details lack %q:\n%s", want, out)
 		}
@@ -510,11 +510,11 @@ func TestDashboardSplit(t *testing.T) {
 	if strings.Contains(out, "Merge the PR") {
 		t.Errorf("details show the report's Next lines:\n%s", out)
 	}
-	if strings.Contains(out, "        todos:") {
+	if strings.Contains(out, "        todos") {
 		t.Errorf("details shown under the row as well as beside it:\n%s", out)
 	}
 	m.sel = "p:beta"
-	if out := screen(m); !strings.Contains(out, "no coordinator; enter starts it") {
+	if out := screen(m); !strings.Contains(out, "not running; enter starts it") {
 		t.Errorf("project details:\n%s", out)
 	}
 
@@ -622,7 +622,7 @@ func TestDashboardOver(t *testing.T) {
 		t.Fatalf("over: overlay %T %+v", m.top(), m.top())
 	}
 	out := screen(m)
-	for _, want := range []string{"tm s-5 · beta t-0005", "the session's second row", "alpha inbox"} {
+	for _, want := range []string{"tm s-5 · beta t-0005", "the session's second row", "Inbox · alpha"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("over lacks %q:\n%s", want, out)
 		}
@@ -689,7 +689,7 @@ func TestDashboardPopups(t *testing.T) {
 
 	press(m, "i")
 	out := screen(m)
-	for _, want := range []string{"╭─ alpha inbox ─", "│ ", "t-0002 handed in report 1", "╰─", "esc back",
+	for _, want := range []string{"╭─ Inbox · alpha ─", "│ ", "t-0002 handed in report 1", "╰─", "esc close",
 		"NEEDS YOU 2"} { // the list stays in view behind the box
 		if !strings.Contains(out, want) {
 			t.Errorf("inbox popup lacks %q:\n%s", want, out)
@@ -704,7 +704,7 @@ func TestDashboardPopups(t *testing.T) {
 
 	press(m, ",")
 	out = screen(m)
-	for _, want := range []string{"settings", "Prefix key", "ctrl+b", "Default agent", "Details panel", "List width", "Sidebar"} {
+	for _, want := range []string{"Settings", "Prefix key", "ctrl+b", "Default agent", "Details panel", "List width", "Sidebar"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("settings lack %q:\n%s", want, out)
 		}
@@ -738,7 +738,7 @@ func TestPromptWraps(t *testing.T) {
 	m.setData(src.data)
 	press(m, "n")
 	m.top().(*inputView).text = long
-	if out := screen(m); !strings.Contains(out, "new project name: /var/folders") {
+	if out := screen(m); !strings.Contains(out, "Its name:") || !strings.Contains(out, "│ /var/folders") {
 		t.Fatalf("prompt:\n%s", out)
 	}
 }
@@ -797,11 +797,11 @@ func TestDashboardNeedsYouTasks(t *testing.T) {
 	}
 	at := needs
 	for _, want := range []string{
-		"! alpha        coordinator ",
-		"? alpha        T3 Remove the prefix caption             ◆ review   ▰▰▰▰▰  2/2  t-0002",
-		"? alpha        T5 Pick a licence                        ▲ blocked",
-		"! s-4 ",
-		"tasks: 2 needs you (a → Tasks) · 1 in motion · 0 on deck",
+		"  alpha         coordinator ",
+		"  alpha         T3 Remove the prefix caption              ◆ review    ▰▰▰▰▰  2/2  t-0002",
+		"  alpha         T5 Pick a licence                         ▲ blocked",
+		"  s-4 ",
+		"tasks: 2 need you (t lists them) · 1 in motion · 0 on deck",
 	} {
 		i := strings.Index(out[at:], want)
 		if i < 0 {
@@ -809,7 +809,7 @@ func TestDashboardNeedsYouTasks(t *testing.T) {
 		}
 		at += i
 	}
-	if side := whole(m); !strings.Contains(side, " ■ alpha                   0 ◆ │") {
+	if side := whole(m); !strings.Contains(side, " ■ alpha                   0 ⚑ │") {
 		t.Errorf("no sidebar hint for alpha:\n%s", side)
 	}
 
@@ -826,7 +826,7 @@ func TestDashboardNeedsYouTasks(t *testing.T) {
 	if pv.sel[tabTasks] != 1 || pv.tasks()[1].ID != 5 {
 		t.Errorf("selected task %d, want T5", pv.sel[tabTasks])
 	}
-	if out := screen(m); !strings.Contains(out, "T5    Pick a licence") {
+	if out := screen(m); !strings.Contains(out, "T5     Pick a licence") {
 		t.Errorf("Tasks tab:\n%s", out)
 	}
 	if len(src.opened) != 0 || m.result.Attach != "" {
@@ -846,7 +846,7 @@ func TestInboxLinesRows(t *testing.T) {
 		t.Fatalf("lines %q hits %v", lines, hits)
 	}
 	got := ansi.Strip(lines[0])
-	if !strings.HasPrefix(got, "report") || !strings.Contains(got, "x2 T1 handed in report 2 Fix the login") {
+	if !strings.HasPrefix(got, "report") || !strings.Contains(got, "×2 T1 handed in report 2 Fix the login") {
 		t.Errorf("row %q", got)
 	}
 	if narrow, _, _ := inboxLines(items, -1, 50); strings.Contains(ansi.Strip(narrow[0]), "login") || !strings.Contains(ansi.Strip(narrow[0]), "report 2") {

@@ -67,11 +67,11 @@ func TestCoordLines(t *testing.T) {
 	text := strings.Join(plain, "\n")
 	order := []string{
 		"demo", "3 need you · 2 in inbox · 3 threads", "context 84k / 200k · 42%", "consider /clear",
-		"Needs you", "s-9 stuck 1 queued prompt", "tm agent explain s-9", "T63 review Dashboard pane", "#121 open, checks passed",
-		"asked the coordinator: accept", "T64 asks Mod tools", "“Which key?”",
-		"Inbox", "idle x3 T64 idle Mod tools", "pr-checks-failed T65 checks failed Feed",
-		"Threads", "t-0059 T63", "idle 5/5", "t-0060 T64", "2/4", "▸ Write the tests", "t-0061", "stopped",
-		"On deck", "T70 ready One", "T71 open Two · asked: delegate", "T74 open Five", "and 1 more",
+		"NEEDS YOU", "s-9 ▲ prompts held 1 queued prompt", "tm agent explain s-9", "T63 ◆ in review Dashboard pane", "#121 open, checks passed",
+		"asked the coordinator: accept", "T64 ▲ asks you Mod tools", "“Which key?”",
+		"INBOX", "idle ×3 T64 idle Mod tools", "checks failed T65 checks failed Feed",
+		"THREADS", "t-0059 T63", "idle 5/5", "t-0060 T64", "2/4", "▸ Write the tests", "t-0061", "stopped",
+		"ON DECK", "T70 ○ ready One", "T71 ○ open Two · asked the coordinator:", "delegate", "T74 ○ open Five", "and 1 more",
 	}
 	at := 0
 	for _, want := range order {
@@ -98,14 +98,14 @@ func TestCoordLines(t *testing.T) {
 		line string
 		want infoHit
 	}{
-		{"T63 review", infoHit{kind: hitTask, task: 63}},
+		{"T63 ◆ in review", infoHit{kind: hitTask, task: 63}},
 		{"“Which key?”", infoHit{kind: hitTask, task: 64}},
-		{"idle x3", infoHit{kind: hitTask, task: 64}},
+		{"idle ×3", infoHit{kind: hitTask, task: 64}},
 		{"t-0059 T63", infoHit{kind: hitSession, session: "s-5"}},
 		{"▸ Write the tests", infoHit{kind: hitSession, session: "s-6"}},
 		{"t-0061", infoHit{}},
-		{"T70 ready", infoHit{kind: hitTask, task: 70}},
-		{"Needs you", infoHit{}},
+		{"T70 ○ ready", infoHit{kind: hitTask, task: 70}},
+		{"NEEDS YOU", infoHit{}},
 		{"tm agent explain", infoHit{}},
 	} {
 		if got := find(tc.line); got != tc.want {
@@ -189,7 +189,7 @@ func TestCoordPanelLayout(t *testing.T) {
 		}
 		c.infoLayout()
 		b, _ := c.appendInfo(nil, false)
-		if s := ansi.Strip(string(b)); !strings.Contains(s, "Needs you") {
+		if s := ansi.Strip(string(b)); !strings.Contains(s, "NEEDS YOU") {
 			t.Errorf("%d columns: the coordinator's panel isn't drawn: %q", tc.cols, s)
 		}
 	}

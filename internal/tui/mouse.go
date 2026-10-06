@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -90,8 +91,6 @@ func hints(keys string, x int) []hint {
 // hintKey is the key a hint's first word names, "" for none.
 func hintKey(k string) string {
 	switch k {
-	case "any": // "any other key no"
-		return "n"
 	case "enter", "esc", "tab", "shift+tab", "space", "ctrl+u", menuButton:
 		return k
 	case "↑", "↓":
@@ -270,6 +269,9 @@ func (m *dash) popupClick(o overlay, btn tea.MouseButton, x, y int, double bool)
 	}
 	if !g.inside(x, y) {
 		return o.key(m, keyMsg("esc"))
+	}
+	if key := g.action(x, y); key != "" {
+		return m.pressKey(key)
 	}
 	c, ok := o.(clicker)
 	li := g.line(y)
@@ -525,17 +527,24 @@ func (mv *menuView) box() box {
 		w += 2 + kw
 	}
 	w = max(w, ansi.StringWidth(mv.title)+2)
+	const keys = "enter pick · esc close"
+	w = max(w, ansi.StringWidth(keys))
 	lines := make([]string, len(mv.items))
 	hits := make([]int, len(mv.items))
 	for i, it := range mv.items {
 		hits[i] = i
-		key := fit(it.key, kw)
+		// The keys right-aligned, in the accent colour: what the menu
+		// teaches.
+		key := fmt.Sprintf("%*s", kw, it.key)
 		if i == mv.sel {
-			lines[i] = styleSel.Render(fit(fit(it.label, lw)+"  "+key, w))
+			lines[i] = styleSel.Render(fit(fit(it.label, w-kw)+key, w))
 			continue
 		}
-		lines[i] = fit(it.label, lw) + "  " + styleFaint.Render(key)
+		lines[i] = fit(it.label, w-kw) + styleAccent.Render(key)
 	}
-	return box{title: mv.title, body: lines, sel: mv.sel, hits: hits, at: &mv.at,
-		keys: "enter pick · esc close", width: w + 4}
+	title := mv.title
+	if title == "" {
+		title = "Menu"
+	}
+	return box{title: title, body: lines, sel: mv.sel, hits: hits, at: &mv.at, keys: keys, width: w + 4}
 }

@@ -30,7 +30,7 @@ func TestSmokeCoordinatorPanel(t *testing.T) {
 	w.WaitFor("Fake Claude Code", agentWait)
 	coord := coordinatorOf(t, env, "demo")
 	shown := func(sc string) bool {
-		return strings.Contains(sc, "│ Needs you") && strings.Contains(sc, "│ On deck")
+		return strings.Contains(sc, "│ NEEDS YOU") && strings.Contains(sc, "│ ON DECK")
 	}
 	w.WaitUntil("the panel", wait, shown)
 	waitPaneSize(t, env, coord, threadCols(cols), 28)
@@ -74,14 +74,18 @@ func TestSmokeCoordinatorPanel(t *testing.T) {
 	// again to the session.
 	w.Click(4, treeRow(w.Screen(), "demo", "coordinator"))
 	w.WaitUntil("the coordinator's panel", wait, shown)
-	w.ClickText("T2 open", 0)
+	w.ClickText("T2 ○ open", 0)
 	w.WaitUntil("the task view", wait, func(sc string) bool {
-		return strings.Contains(sc, "tm "+coord.ID) && strings.Contains(sc, "╭─ demo T2 ")
+		return strings.Contains(sc, "tm "+coord.ID) && strings.Contains(sc, "╭─ Task · demo ")
 	})
 	w.Key(keyEsc)
-	w.WaitFor("╭─ demo tasks ", wait)
+	w.WaitFor("╭─ Tasks · demo ", wait)
 	w.Key(keyEsc)
-	w.WaitUntil("back on the coordinator", wait, shown)
+	// The panel shows beside the popup too: back means the popup and
+	// the dashboard's header are gone.
+	w.WaitUntil("back on the coordinator", wait, func(sc string) bool {
+		return shown(sc) && !strings.Contains(sc, "╭─") && !strings.Contains(sc, "tm "+coord.ID)
+	})
 	w.Quit()
 	w.WaitExit(wait)
 }

@@ -27,14 +27,14 @@ func TestSmokeMouseDashboard(t *testing.T) {
 	w.WaitFor("≡ menu", wait)
 
 	w.ClickText("? help", 28)
-	w.WaitFor("─ keys · prefix = ", wait)
+	w.WaitFor("─ Help ─", wait)
 	w.WaitFor("On the dashboard", wait)
 	// The wheel scrolls the help.
 	top := w.Screen()
 	w.Wheel(false, 80, 10)
 	w.WaitUntil("the help scrolled", wait, func(sc string) bool { return sc != top })
 	w.Click(SideCols(140), 10) // beside the box, which leaves a column each side
-	w.WaitUntil("the help closed", wait, func(sc string) bool { return !strings.Contains(sc, "─ keys · prefix") })
+	w.WaitUntil("the help closed", wait, func(sc string) bool { return !strings.Contains(sc, "─ Help ─") })
 
 	w.ClickText("≡ menu", 28)
 	w.WaitFor("switch project", wait)
@@ -44,8 +44,8 @@ func TestSmokeMouseDashboard(t *testing.T) {
 
 	x, y := w.TextAt(s1.ID+" ", 1)
 	w.RightClick(x, y)
-	w.WaitFor("attach  enter", wait)
-	w.ClickText("attach  enter", 1)
+	w.WaitFor("─ "+s1.ID+" ─", wait)
+	w.ClickText("attach", 1)
 	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, "prefix+d dashboard") })
 
 	w.ClickText("prefix+d dashboard", 29)
@@ -55,7 +55,7 @@ func TestSmokeMouseDashboard(t *testing.T) {
 	w.DoubleClick(x, y)
 	w.WaitUntil("attached by a double-click", wait, func(sc string) bool { return lastLine(sc, "prefix+d dashboard") })
 
-	w.ClickText("≡  prefix+d", 29)
+	w.ClickText("≡ menu · prefix+d", 29)
 	w.WaitFor("keyboard to the sidebar", wait)
 	w.ClickText("dashboard", 1) // the menu's first item, above the status bar
 	w.WaitFor("OTHER SESSIONS", wait)
@@ -75,7 +75,7 @@ func TestSmokeMouseStatusBar(t *testing.T) {
 	w := env.Window(120, 30)
 	w.WaitFor(s1.ID+" ", wait)
 	w.Key(Enter)
-	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, "≡  prefix+d dashboard") })
+	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, "≡ menu · prefix+d dashboard") })
 	waitPaneSize(t, env, s1, paneCols(120), 28)
 
 	w.DoubleClick(40, 5)
@@ -95,7 +95,7 @@ func TestSmokeMouseStatusBar(t *testing.T) {
 	w.WaitUntil("the menu closed", wait, func(sc string) bool { return !strings.Contains(sc, "narrower sidebar") })
 
 	// ≡, then "keyboard to the sidebar"; a click on the pane takes it back.
-	w.ClickText("≡  prefix+d", 29)
+	w.ClickText("≡ menu · prefix+d", 29)
 	w.WaitFor("keyboard to the sidebar", wait)
 	w.ClickText("keyboard to the sidebar", 1)
 	w.WaitUntil("sidebar focused", wait, func(sc string) bool { return lastLine(sc, "sidebar: ↑ ↓ move") })
@@ -134,7 +134,8 @@ func TestSmokeMousePopupsAndAttach(t *testing.T) {
 	w.WaitFor("Coordinator approves", wait)
 	_, y := w.TextAt("Coordinator approves", 1)
 	before := strings.Split(w.Screen(), "\n")[y]
-	w.ClickText("Coordinator approves", 1)
+	w.ClickText("Coordinator approves", 1) // selects it
+	w.ClickText("Coordinator approves", 1) // changes it
 	saved(w, "the setting changed", func(sc string) bool { return strings.Split(sc, "\n")[y] != before })
 	w.Click(40, 1) // above the popup, which takes the dashboard's width
 	w.WaitUntil("the popup closed", wait, func(sc string) bool { return !strings.Contains(sc, "1 Overview") })
@@ -174,7 +175,7 @@ func TestSmokeDragCopies(t *testing.T) {
 	w := env.Window(120, 30)
 	w.WaitFor(s1.ID+" ", wait)
 	w.Key(Enter)
-	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, "≡  prefix+d dashboard") })
+	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, "≡ menu · prefix+d dashboard") })
 	waitPaneSize(t, env, s1, paneCols(120), 28)
 
 	env.Keys(s1, "printf 'mark%s\\n' er\r")

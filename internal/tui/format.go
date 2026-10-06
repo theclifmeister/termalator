@@ -179,11 +179,17 @@ const pendingHead = " prefix ▸ "
 // returns the line and its buttons, by column: after the prefix each
 // command; else the ≡ menu and "prefix+d dashboard".
 func statusBar(s proto.SessionInfo, ts *thread.Status, pending bool, cols int, where string) (string, []hint) {
-	parts := []string{" " + s.ID}
+	// The session, its state, then what the keyboard does when it is
+	// away from the pane. A project's session is named by its project
+	// and role, its id last: a handle, not news; one of the user's own
+	// has only its id and command to go by, id first.
+	var parts []string
+	id := ""
 	if s.Project != "" {
 		parts = append(parts, s.Project+" "+sessionName(s))
+		id = s.ID
 	} else {
-		parts = append(parts, sessionName(s))
+		parts = append(parts, s.ID, sessionName(s))
 	}
 	st := stateWord(s)
 	if p := progress(s, ts); p != "" {
@@ -196,7 +202,11 @@ func statusBar(s proto.SessionInfo, ts *thread.Status, pending bool, cols int, w
 	if where != "" {
 		parts = append(parts, where)
 	}
-	left := strings.Join(parts, " · ")
+	if id != "" && where == "" {
+		// A note in passing takes the id's place.
+		parts = append(parts, id)
+	}
+	left := " " + strings.Join(parts, " · ")
 	if pending {
 		left = pendingHead + `d dashboard · q quit · a project · p ] [ projects · i t , ? · { } b sidebar · | info · tab sidebar keys · r remote control`
 	}
@@ -223,7 +233,7 @@ func statusRight(pending bool) (string, []hint) {
 	if pending {
 		return "prefix again sends it ", []hint{{0, 21, "prefix"}}
 	}
-	return menuButton + "  prefix+d dashboard ", []hint{{0, 2, "menu"}, {3, 3 + len("prefix+d dashboard"), "d"}}
+	return menuButton + " menu · prefix+d dashboard ", []hint{{0, 6, "menu"}, {9, 9 + len("prefix+d dashboard"), "d"}}
 }
 
 // sessionProgress is a session's progress from its own todos.

@@ -158,7 +158,7 @@ func TestSmokeTickerCompleteOnMerge(t *testing.T) {
 	w.WaitFor("DONE", wait)
 	w.WaitFor("x send back", wait)
 	w.Type("x")
-	w.WaitFor("Send T1 back. What should change?", wait)
+	w.WaitFor("What should change?", wait)
 	w.Type("still broken")
 	w.Key(keyEnter)
 	waitInbox(t, env, "send-back: the user sends T1 back: still broken")

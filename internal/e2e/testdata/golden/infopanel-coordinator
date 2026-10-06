@@ -1,15 +1,15 @@
 │ demo
 │ 1 needs you · 1 thread
 │
-│ Needs you
-│ T3 blocked Get the keys
+│ NEEDS YOU ───────────────────────────
+│ T3 ▲ blocked Get the keys
 │
-│ Threads
+│ THREADS ─────────────────────────────
 │ t-0001 T1 ○ idle 1/2
 │   ▸ Fix it
 │
-│ On deck
-│ T2 open Write the docs
+│ ON DECK ─────────────────────────────
+│ T2 ○ open Write the docs
 │
 │
 │
@@ -27,4 +27,4 @@
 │
 │
 │
-                  ≡  prefix+d dashboard
+            ≡ menu · prefix+d dashboard

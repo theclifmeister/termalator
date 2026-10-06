@@ -56,16 +56,16 @@ func (r row) widths(w int) (who, what, state int) {
 	if r.who != "" {
 		who = cmp.Or(r.whoW, colWho)
 	}
-	room := w - len([]rune(r.mark)) - state - 1
+	room := w - len([]rune(r.mark)) - state - colGap
 	if who > 0 {
-		room -= who + 1
+		room -= who + colGap
 	}
 	what = min(max(room*9/20, colWhatMin), colWhatMax)
 	if lead := ansi.StringWidth(r.lead); lead > 0 {
 		// The lead (a block's reason, waiting on the coordinator) shows
 		// whole, and the "…" of a cut rest after it: what gives way,
 		// down to its minimum.
-		what = max(min(what, room-1-lead-2), cmp.Or(r.whatMin, colWhatMin))
+		what = max(min(what, room-colGap-lead-2), cmp.Or(r.whatMin, colWhatMin))
 	}
 	return who, what, state
 }
@@ -82,11 +82,12 @@ func (r row) text(w int) string {
 // who, 2 what, 3 state, 4 lead, 5 bar, 6 rest).
 func (r row) line(w int, withBar bool, paint func(col int, s string) string) string {
 	who, what, state := r.widths(w)
+	gap := strings.Repeat(" ", colGap)
 	out := paint(0, r.mark)
 	if who > 0 {
-		out += paint(1, fit(r.who, who)) + " "
+		out += paint(1, fit(r.who, who)) + gap
 	}
-	out += paint(2, fit(r.what, what)) + " " + paint(3, fit(stateText(r.state), state)) + " "
+	out += paint(2, fit(r.what, what)) + gap + paint(3, fit(stateText(r.state), state)) + gap
 	var rest []string
 	if r.lead != "" {
 		rest = append(rest, paint(4, r.lead))
@@ -147,12 +148,15 @@ const (
 	colWhatMin = 20 // coordinator, thread, command: at least,
 	colWhatMax = 40 // and at most
 	colState   = 10 // a glyph, a space and the word
+	colGap     = 2  // between columns (docs/STYLE.md S2)
 )
 
-// Row markers.
+// Row markers: none but the gutter. A row's section and its state word
+// say why it shows (NEEDS YOU, ▲ blocked), so every section's rows share
+// one column grid.
 const (
-	markBlocked = " ! "
-	markNeeds   = " ? " // a task that waits on the user
+	markBlocked = markTop
+	markNeeds   = markTop // a task that waits on the user
 	markTop     = "  "
 )
 
@@ -271,7 +275,7 @@ func buildRows(d Data, project string) []row {
 			members = append(members, s)
 		}
 		r := row{key: "p:" + p.Slug, project: p.Slug, mark: markTop, what: "coordinator", state: "—",
-			rest: "enter starts the coordinator", pct: -1}
+			rest: "not running; enter starts it", pct: -1}
 		if coord != nil {
 			r.session, r.pct, r.state = coord.ID, sessionPct(*coord), stateWord(*coord)
 			if coord.State == "blocked" {
@@ -302,17 +306,17 @@ func buildRows(d Data, project string) []row {
 			case t.ReportState() == "new":
 				tr.lead = "report new"
 			}
-			// A thread leads with its task; its own id follows in
-			// brackets (threadName).
+			// A thread leads with its task: its progress and step first,
+			// so a narrow row cuts its own id (threadName), last.
 			rest := threadProgress(t.Status)
-			if t.Task != "" {
-				rest = joinSp("("+t.ID+")", rest)
-			}
 			if t.Status != nil && !t.Status.Updated.IsZero() {
 				rest = joinSp(rest, age(now.Sub(t.Status.Updated)))
 			}
 			if t.Report != nil && t.Report.PR != "" {
 				rest = joinSp(rest, "PR "+prRef(t.Report.PR))
+			}
+			if t.Task != "" {
+				rest = joinSp(rest, t.ID)
 			}
 			tr.what, tr.rest = threadName(t.Task, t.ID)+" "+oneLine(t.Title), rest
 			projs = append(projs, tr)
@@ -371,13 +375,21 @@ func buildRows(d Data, project string) []row {
 }
 
 // taskCounts are a project's task counts; tasks that need the user say
-// where to see them: the project popup's Tasks tab.
+// where to see them: the task list (t).
 func taskCounts(c map[string]int) string {
-	needs := fmt.Sprintf("%d needs you", c["needs_you"])
+	needs := needsYouWords(c["needs_you"])
 	if c["needs_you"] > 0 {
-		needs += " (a → Tasks)"
+		needs += " (t lists them)"
 	}
 	return fmt.Sprintf("%s · %d in motion · %d on deck", needs, c["in_motion"], c["on_deck"])
+}
+
+// needsYouWords is "1 needs you", "2 need you".
+func needsYouWords(n int) string {
+	if n == 1 {
+		return "1 needs you"
+	}
+	return fmt.Sprintf("%d need you", n)
 }
 
 // sessionPct is a session's todo percent, -1 without todos.
@@ -416,13 +428,13 @@ func prRef(url string) string {
 func threadDetail(t *ThreadRow, ind string, report bool) []string {
 	var out []string
 	if t.Status != nil && len(t.Status.Todos) > 0 {
-		out = append(out, ind+styleFaint.Render("todos:"))
+		out = append(out, ind+styleFaint.Render("todos"))
 		for _, td := range t.Status.Todos {
 			out = append(out, ind+"  "+todoGlyph(string(td.Status))+" "+oneLine(td.Text))
 		}
 	}
 	if t.TaskRec != nil && len(t.TaskRec.Steps) > 0 {
-		out = append(out, ind+styleFaint.Render(t.TaskRec.Ref()+" steps:"))
+		out = append(out, ind+styleFaint.Render(fmt.Sprintf("steps %d/%d", t.TaskRec.StepsDone(), len(t.TaskRec.Steps))))
 		for _, st := range t.TaskRec.Steps {
 			out = append(out, fmt.Sprintf("%s  %s %d %s", ind, todoGlyph(map[bool]string{true: "done"}[st.Done]), st.N, oneLine(st.Text)))
 		}
