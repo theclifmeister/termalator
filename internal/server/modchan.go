@@ -30,6 +30,7 @@ import (
 
 	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/session"
+	"github.com/theclifmeister/terminatr/internal/thread"
 )
 
 // envModSocket names the mod's socket in the session's environment.
@@ -59,6 +60,18 @@ type ModReport struct {
 	State  agent.State `json:"state"`
 	Reason string      `json:"reason,omitempty"`
 	Event  string      `json:"event,omitempty"`
+}
+
+// ModUsage is the body of POST /v1/usage: what one turn used, numbers
+// and the model's id only.
+type ModUsage struct {
+	Turn          string  `json:"turn,omitempty"`
+	Model         string  `json:"model,omitempty"`
+	Input         int64   `json:"input"`
+	Output        int64   `json:"output"`
+	CacheRead     int64   `json:"cache_read"`
+	CacheCreation int64   `json:"cache_creation"`
+	CostUSD       float64 `json:"cost_usd"`
 }
 
 // listenMod opens session id's mod socket in its runtime dir rt; s.mu
@@ -128,6 +141,27 @@ func (s *Server) modHandler(id string) http.Handler {
 			http.Error(w, err.Error(), code)
 			return
 		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	// What a turn used, added to its thread's totals.
+	mux.HandleFunc("POST /v1/usage", func(w http.ResponseWriter, r *http.Request) {
+		var u ModUsage
+		b, err := io.ReadAll(io.LimitReader(r.Body, maxModReport))
+		if err == nil {
+			err = json.Unmarshal(b, &u)
+		}
+		if err == nil {
+			err = checkModUsage(u)
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if s.modSession(w, id) == nil {
+			return
+		}
+		s.addUsage(id, thread.Usage{Turns: 1, Input: u.Input, Output: u.Output,
+			CacheRead: u.CacheRead, CacheCreation: u.CacheCreation, CostUSD: u.CostUSD})
 		w.WriteHeader(http.StatusNoContent)
 	})
 	// The head of the prompt queue once the mod delivers it, or 204 after
@@ -221,6 +255,24 @@ func checkModReport(r ModReport) error {
 	}
 	if len(r.Reason) > 64 || len(r.Event) > 64 {
 		return errors.New("reason and event are short words")
+	}
+	return nil
+}
+
+// maxModTokens bounds a count: a turn can't use more than a model reads.
+const maxModTokens = 1 << 40
+
+func checkModUsage(u ModUsage) error {
+	for _, n := range []int64{u.Input, u.Output, u.CacheRead, u.CacheCreation} {
+		if n < 0 || n > maxModTokens {
+			return errors.New("token counts are small non-negative numbers")
+		}
+	}
+	if u.CostUSD < 0 || u.CostUSD > 1e6 || u.CostUSD != u.CostUSD {
+		return errors.New("cost_usd is a small non-negative number")
+	}
+	if len(u.Turn) > 128 || len(u.Model) > 64 {
+		return errors.New("turn and model are short words")
 	}
 	return nil
 }
