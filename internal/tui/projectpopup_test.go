@@ -60,7 +60,7 @@ func act(m *dash, src *fakeSource, name string) {
 
 func popupData(t *testing.T) (*fakeSource, *dash) {
 	t.Helper()
-	t.Setenv("TERMILATOR_HOME", t.TempDir())
+	t.Setenv("TERMINATR_HOME", t.TempDir())
 	src := &fakeSource{data: testData(), agents: []string{"claude", "pi"}}
 	alpha := &src.data.Projects[0]
 	alpha.Name, alpha.Goal, alpha.Repos = "Alpha", "Ship the alpha", []string{"/src/alpha"}

@@ -19,7 +19,7 @@ import (
 
 // callerOf tells who is calling from the peer pid: a process that
 // descends from a coordinator or thread session is that agent; anything
-// else (a shell outside termilator, a shell session) is the human. This
+// else (a shell outside terminatr, a shell session) is the human. This
 // is soft, as the spec says: an agent can start a process outside its
 // tree. File access rules are the second layer (§5.2).
 func (s *Server) callerOf(pid int) caller.Caller {

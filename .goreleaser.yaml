@@ -105,6 +105,6 @@ release:
     name: termilator
   # Created as a draft; the release workflow publishes it once the
   # uploaded archives pass scripts/release/check.sh --signed, then bumps
-  # Formula/termilator.rb.
+  # Formula/terminatr.rb.
   draft: true
   prerelease: auto

@@ -27,11 +27,11 @@ A click on the projects sidebar switches to that shared view.`
 
 // reexecEnv marks a tm that was re-executed as the server's binary, so a
 // build mismatch that survives the re-exec fails instead of looping.
-const reexecEnv = "TERMILATOR_REEXEC"
+const reexecEnv = "TERMINATR_REEXEC"
 
 // attachLogEnv names a file for the attach client's diagnostics (digest
 // checks, key encodings). Tests read it.
-const attachLogEnv = "TERMILATOR_ATTACH_LOG"
+const attachLogEnv = "TERMINATR_ATTACH_LOG"
 
 func init() { commands["attach"] = runAttach }
 

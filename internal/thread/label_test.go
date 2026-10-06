@@ -10,7 +10,7 @@ import (
 )
 
 func TestLabel(t *testing.T) {
-	t.Setenv("TERMILATOR_HOME", t.TempDir())
+	t.Setenv("TERMINATR_HOME", t.TempDir())
 	p, err := project.New(project.Options{Name: "demo"})
 	if err != nil {
 		t.Fatal(err)

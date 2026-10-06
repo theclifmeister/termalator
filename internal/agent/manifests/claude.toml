@@ -50,14 +50,14 @@ unset_env = [
 ]
 
 [launch.env]
-TERMILATOR_SESSION = "{{.SessionID}}"
-TERMILATOR_SOCKET = "{{.Socket}}"
-TERMILATOR_BIN = "{{.TMBin}}"
+TERMINATR_SESSION = "{{.SessionID}}"
+TERMINATR_SOCKET = "{{.Socket}}"
+TERMINATR_BIN = "{{.TMBin}}"
 
 [[launch.files]]
 path = "claude-plugin/.claude-plugin/plugin.json"
 template = '''
-{"name": "termilator", "description": "termilator session hooks", "version": "0.1.0"}
+{"name": "terminatr", "description": "terminatr session hooks", "version": "0.1.0"}
 '''
 
 # Every event goes to `tm hook --agent claude`: a command hook (an http hook

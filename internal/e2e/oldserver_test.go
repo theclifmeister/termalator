@@ -3,7 +3,7 @@ package e2e
 // Replacing a server of another version (docs/SPEC.md §3.3, Stopping
 // across protocols): restart is how a server is upgraded, so stop and
 // restart must work whatever the running server speaks. The server's
-// TERMILATOR_TEST_HELLO hook plays the old server: "protocol=1" claims an
+// TERMINATR_TEST_HELLO hook plays the old server: "protocol=1" claims an
 // older protocol, "deaf" answers no hello at all.
 
 import (
@@ -80,7 +80,7 @@ func TestSmokeReplaceOldServer(t *testing.T) {
 			// Swap in the "old" server; it resumes the agent like any.
 			env.MustCLI("server", "stop", "--yes")
 			cmd := exec.Command(env.Bin, "server", "run", "--detached")
-			cmd.Env = append(append([]string{}, env.Vars...), "TERMILATOR_TEST_HELLO="+c.hello)
+			cmd.Env = append(append([]string{}, env.Vars...), "TERMINATR_TEST_HELLO="+c.hello)
 			if out, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("old server: %v\n%s", err, out)
 			}

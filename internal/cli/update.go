@@ -226,7 +226,7 @@ func updateCmd(e *Env, args []string, u *updater) int {
 }
 
 // brewBin is the tm Homebrew links into its prefix's bin, which names
-// the newest keg after an upgrade: .../Cellar/termilator/0.2.0/bin/tm
+// the newest keg after an upgrade: .../Cellar/terminatr/0.2.0/bin/tm
 // becomes .../bin/tm.
 func brewBin(keg string) string {
 	if prefix, _, ok := strings.Cut(keg, "/Cellar/"); ok {

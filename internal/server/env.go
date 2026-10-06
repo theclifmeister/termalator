@@ -16,11 +16,11 @@ var terminalEnv = []string{
 	"WT_SESSION", "VTE_VERSION", "TERM_PROGRAM", "TERM_PROGRAM_VERSION",
 	"ZELLIJ", "ZELLIJ_SESSION_NAME", "ZELLIJ_PANE_ID",
 	"COLUMNS", "LINES",
-	"TERMILATOR_*", "HERDR_*",
+	"TERMINATR_*", "HERDR_*",
 }
 
 // sessionEnv builds a session's environment from base (the server's own)
-// plus set, the termilator variables.
+// plus set, the terminatr variables.
 func sessionEnv(base []string, set map[string]string) []string {
 	env := agent.FilterEnv(base, append(append([]string{}, terminalEnv...), agent.BuiltinUnsetEnv()...))
 	out := env[:0]

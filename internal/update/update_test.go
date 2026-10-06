@@ -42,7 +42,7 @@ func TestNewer(t *testing.T) {
 
 func TestDetect(t *testing.T) {
 	dir := t.TempDir()
-	keg := filepath.Join(dir, "Cellar", "termilator", "0.2.0", "bin")
+	keg := filepath.Join(dir, "Cellar", "terminatr", "0.2.0", "bin")
 	os.MkdirAll(keg, 0o755)
 	os.WriteFile(filepath.Join(keg, "tm"), nil, 0o755)
 	os.MkdirAll(filepath.Join(dir, "bin"), 0o755)
@@ -50,7 +50,7 @@ func TestDetect(t *testing.T) {
 	os.Symlink(filepath.Join(keg, "tm"), link)
 	plain := filepath.Join(dir, "local", "tm")
 
-	if in := Detect(link, "release"); in.Method != Homebrew || !strings.HasSuffix(in.Path, "/Cellar/termilator/0.2.0/bin/tm") || in.Upgrade != "brew upgrade termilator" {
+	if in := Detect(link, "release"); in.Method != Homebrew || !strings.HasSuffix(in.Path, "/Cellar/terminatr/0.2.0/bin/tm") || in.Upgrade != "brew upgrade terminatr" {
 		t.Errorf("brew symlink: %+v", in)
 	}
 	if in := Detect(plain, "release"); in.Method != Direct || in.Path != plain {

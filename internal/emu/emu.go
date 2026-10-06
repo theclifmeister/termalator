@@ -1,5 +1,5 @@
 // Package emu wraps libghostty-vt, the terminal emulator the server keeps for
-// every pane. The rest of termilator talks to this package, never to the
+// every pane. The rest of terminatr talks to this package, never to the
 // bindings directly, so a binding API change stays in one place.
 //
 // The server's emulator is authoritative: it is the only one that answers

@@ -99,7 +99,7 @@ func TestSyncCheckout(t *testing.T) {
 	}
 
 	gitT(t, repo, "checkout", "-q", "--", "f")
-	os.WriteFile(filepath.Join(os.Getenv("TERMILATOR_HOME"), "config.toml"), []byte("[projects.demo]\nfast_forward_checkout = false\n"), 0o600)
+	os.WriteFile(filepath.Join(os.Getenv("TERMINATR_HOME"), "config.toml"), []byte("[projects.demo]\nfast_forward_checkout = false\n"), 0o600)
 	r.sweep(2 * time.Minute)
 	if c := Checkouts(r.tk.o.State, "demo"); c[repo] != "local main is 1 behind origin (fast-forward is off)" {
 		t.Fatalf("notes %v", c)

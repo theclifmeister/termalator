@@ -35,12 +35,12 @@ type Method string
 
 const (
 	Dev      Method = "source"   // built from source (make, go build)
-	Homebrew Method = "homebrew" // the termilator formula
+	Homebrew Method = "homebrew" // the terminatr formula
 	Direct   Method = "direct"   // a release archive, unpacked by hand or by tm update
 )
 
-// Formula is the Homebrew formula's name (Formula/termilator.rb).
-const Formula = "termilator"
+// Formula is the Homebrew formula's name (Formula/terminatr.rb).
+const Formula = "terminatr"
 
 // Install says how the running tm was installed.
 type Install struct {
@@ -96,8 +96,8 @@ func (r Release) asset(name string) (Asset, bool) {
 }
 
 const (
-	// DefaultAPI is the release API of the termilator repository.
-	DefaultAPI = "https://api.github.com/repos/theclifmeister/termilator"
+	// DefaultAPI is the release API of the terminatr repository.
+	DefaultAPI = "https://api.github.com/repos/theclifmeister/terminatr"
 	// DefaultWeb is the repository's web address, whose releases/latest
 	// redirects to the latest release's tag.
 	DefaultWeb = "https://github.com/theclifmeister/termilator"
@@ -105,7 +105,7 @@ const (
 
 // EnvAPI overrides DefaultAPI (tests point it at a local server); "off"
 // disables every network check, so `tm doctor` makes no request.
-const EnvAPI = "TERMILATOR_UPDATE_URL"
+const EnvAPI = "TERMINATR_UPDATE_URL"
 
 // ErrOff says EnvAPI turned update checks off.
 var ErrOff = errors.New("update checks are off (" + EnvAPI + "=off)")

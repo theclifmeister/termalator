@@ -1,4 +1,4 @@
-# Operating termilator
+# Operating terminatr
 
 How to install, run, check, upgrade and remove `tm`. The design behind all of this is in [SPEC.md](SPEC.md) §3 (server) and §5 (files).
 
@@ -9,13 +9,13 @@ On macOS 13+ or Linux with glibc 2.28+, on arm64 or x86_64.
 **Homebrew** (macOS and Linux):
 
 ```sh
-brew tap theclifmeister/termilator https://github.com/theclifmeister/termilator
-brew trust --formula theclifmeister/termilator/termilator
-brew install termilator
+brew tap theclifmeister/terminatr https://github.com/theclifmeister/termilator
+brew trust --formula theclifmeister/terminatr/terminatr
+brew install terminatr
 tm doctor
 ```
 
-The two-argument `brew tap` is needed because the formula lives in this repository (`Formula/termilator.rb`), not in a `homebrew-termilator` one. Newer Homebrew refuses to install from a tap it doesn't trust, hence `brew trust --formula` once after tapping. `brew upgrade termilator` (or `tm update`, which suggests it) picks up new releases.
+The two-argument `brew tap` is needed because the formula lives in this repository (`Formula/terminatr.rb`), not in a `homebrew-terminatr` one. Newer Homebrew refuses to install from a tap it doesn't trust, hence `brew trust --formula` once after tapping. `brew upgrade terminatr` (or `tm update`, which suggests it) picks up new releases.
 
 **Direct download.** Release archives are on the [releases page](https://github.com/theclifmeister/termilator/releases). Each holds one static `tm` binary (plus this file, the README and the licence); `checksums.txt` lists their sha256. To install the latest into `~/.local/bin`:
 
@@ -34,7 +34,7 @@ To build from source instead, see the [README](../README.md#build). How releases
 
 ## Where state lives
 
-Everything is under `~/.termilator`, or `$TERMILATOR_HOME` when that is set. Nothing termilator-owned is written into your repositories or thread worktrees.
+Everything is under `~/.terminatr`, or `$TERMINATR_HOME` when that is set. Nothing terminatr-owned is written into your repositories or thread worktrees.
 
 | Path | What |
 |---|---|
@@ -47,7 +47,7 @@ Everything is under `~/.termilator`, or `$TERMILATOR_HOME` when that is set. Not
 | `logs/service.log` | output of a server started by launchd (macOS service only) |
 | `run/` | `tm.sock`, `server.lock`, `server.pid` and per-session runtime dirs (`s/<id>/`) |
 
-The run directory is `$XDG_RUNTIME_DIR/termilator` on Linux when that variable is set (and `TERMILATOR_HOME` isn't), and falls back to `/tmp/termilator-<uid>-<hash>` when the path to the socket would be too long. `tm server status` and `tm doctor` print the one in use. `$TERMILATOR_SOCKET` overrides the socket path.
+The run directory is `$XDG_RUNTIME_DIR/terminatr` on Linux when that variable is set (and `TERMINATR_HOME` isn't), and falls back to `/tmp/terminatr-<uid>-<hash>` when the path to the socket would be too long. `tm server status` and `tm doctor` print the one in use. `$TERMINATR_SOCKET` overrides the socket path.
 
 Agents keep their own files too: Claude Code stores conversations under `~/.claude/`, which is what resume uses.
 
@@ -74,10 +74,10 @@ tm: warning: the server was started over SSH, so its sessions can't use the keyc
 
 `tm server stop` and `tm server restart` work whatever version the running server is. When a newer `tm` meets an older server, other commands say `the running tm server is older than this tm …; run 'tm server restart'`, and that is the fix: restart stops the old server (asking it in its own protocol, or with `SIGTERM` when it can't be asked) and starts this `tm`'s, which resumes the agents. tm only ever signals the process that holds this home's server lock and runs `tm server run`.
 
-A `tm` from before this fix can't do that: it prints `tm server speaks protocol 1 …, this tm speaks 4 …; run 'tm server restart'` and the restart fails the same way. Get out once with (on Linux the pid file is in `$XDG_RUNTIME_DIR/termilator/` when that is set):
+A `tm` from before this fix can't do that: it prints `tm server speaks protocol 1 …, this tm speaks 4 …; run 'tm server restart'` and the restart fails the same way. Get out once with (on Linux the pid file is in `$XDG_RUNTIME_DIR/terminatr/` when that is set):
 
 ```sh
-kill $(cat ~/.termilator/run/server.pid) && tm server start
+kill $(cat ~/.terminatr/run/server.pid) && tm server start
 ```
 
 The old server shuts down cleanly on `SIGTERM`, so the new one resumes the agents as after any restart.
@@ -94,9 +94,9 @@ Turns that were running are lost; resumed agents are idle. Each affected project
 ### Start at login (optional)
 
 Any `tm` command starts the server when needed, so you don't need a service. If you want the server up from login:
-- `tm server service install` writes `~/Library/LaunchAgents/dev.termilator.server.plist` and loads it with launchd on macOS (`RunAtLoad`, no `KeepAlive`). On Linux it writes `~/.config/systemd/user/termilator.service` and enables it with `systemctl --user enable --now`.
+- `tm server service install` writes `~/Library/LaunchAgents/dev.terminatr.server.plist` and loads it with launchd on macOS (`RunAtLoad`, no `KeepAlive`). On Linux it writes `~/.config/systemd/user/terminatr.service` and enables it with `systemctl --user enable --now`.
 - The service runs `tm server run` with the `PATH` of the shell you installed it from, so `claude` and `git` are found. Re-run install after moving `tm` or changing `PATH`.
-- On macOS the service's own output goes to `~/.termilator/logs/service.log`; the server still logs to `server.log`.
+- On macOS the service's own output goes to `~/.terminatr/logs/service.log`; the server still logs to `server.log`.
 - `tm server service uninstall` unloads and removes the file. That cleanly stops a server the service started, so the next server resumes its agents.
 - `--print` shows the file without installing anything.
 - On Linux a user service stops at logout unless lingering is on (`loginctl enable-linger`).
@@ -107,9 +107,9 @@ Any `tm` command starts the server when needed, so you don't need a service. If 
 - the `tm` build and libghostty-vt, git and gh;
 - how `tm` was installed (Homebrew, a direct download, or built from source) and whether a newer release exists, with the command that updates it;
 - the server: running and answering, the same build as this `tm` (a server of an older protocol is a warning; `tm doctor --fix` restarts it, agents are resumed), on macOS whether its sessions can reach the keychain (not when it was started over SSH; see [Over SSH](#over-ssh-macos)), a previous crash, stale `tm.sock`, `server.pid` and session runtime dirs (it never starts a server);
-- each agent's installed version against its manifest's `tested_versions`. An untested Claude still works, but termilator stops trusting its undocumented status file and messaging socket;
+- each agent's installed version against its manifest's `tested_versions`. An untested Claude still works, but terminatr stops trusting its undocumented status file and messaging socket;
 - the sandbox tools Claude needs for threads: `sandbox-exec` on macOS, `bwrap` and `socat` on Linux;
-- leftovers: worktrees under `~/.termilator/worktrees` whose thread is resolved or gone, and `tm/<project>/…` branches already merged into the default branch;
+- leftovers: worktrees under `~/.terminatr/worktrees` whose thread is resolved or gone, and `tm/<project>/…` branches already merged into the default branch;
 - settings in `config.toml` that tm no longer has: a project's (or All projects') Complete tasks still set to the removed "when released" (it now means by you; pick again in Settings).
 
 It exits 1 only when a check fails; warnings don't count. `--json` prints the results for scripts.
@@ -118,7 +118,7 @@ It exits 1 only when a check fails; warnings don't count. `--json` prints the re
 
 ## Logs
 
-- `~/.termilator/logs/server.log`: the server's log: starts and stops, sessions, agent state changes, resumes. Start here when something looks wrong.
+- `~/.terminatr/logs/server.log`: the server's log: starts and stops, sessions, agent state changes, resumes. Start here when something looks wrong.
 - `tm agent explain <session>`: why an agent session is in its current state (which signal decided it).
 - A server started in the foreground (`tm server run`) logs to stderr instead.
 
@@ -130,10 +130,10 @@ tm update --check    # only says whether there is one
 ```
 
 - **Direct install:** `tm update` downloads the archive for your platform, checks it against `checksums.txt` and, on macOS, checks its Developer ID signature with `codesign`, then replaces `tm` in one rename. It needs to write to the directory `tm` is in. `--yes` skips the question (and is needed without a terminal).
-- **Homebrew:** `tm update` never touches Homebrew's files: it shows `brew upgrade termilator` and runs it if you say yes.
+- **Homebrew:** `tm update` never touches Homebrew's files: it shows `brew upgrade terminatr` and runs it if you say yes.
 - **Built from source:** `tm update` refuses; `git pull && make`.
 
-The running server keeps the old build until it restarts, and keeps working meanwhile: it runs from its own copy of its binary (`~/.termilator/server-bin/`), so attaching and agent hooks are unaffected. Restarting switches it to the new build but stops every session: agents are resumed and lose only the turn they are in, shells are lost. So `tm update` asks before restarting (or restarts with `--restart`), and otherwise leaves it to you:
+The running server keeps the old build until it restarts, and keeps working meanwhile: it runs from its own copy of its binary (`~/.terminatr/server-bin/`), so attaching and agent hooks are unaffected. Restarting switches it to the new build but stops every session: agents are resumed and lose only the turn they are in, shells are lost. So `tm update` asks before restarting (or restarts with `--restart`), and otherwise leaves it to you:
 
 ```sh
 tm server restart
@@ -143,9 +143,19 @@ On a terminal the restart asks again before stopping agents that are mid-turn (`
 
 On macOS, upgrade and restart from a terminal on the Mac, not over SSH: a server restarted from an SSH login leaves its sessions without the keychain, so gh and `git push` over https fail in every agent ([Over SSH](#over-ssh-macos)). If you upgraded over SSH, `brew upgrade` is fine; leave the restart for when you are at the Mac, or redo it there.
 
+### Upgrading from Termilator
+
+Terminatr was called Termilator up to v0.6.1 (`brew install termilator`, state in `~/.termilator`). Nothing moves such an install over; by hand, with the old `tm`:
+
+1. `tm server service uninstall` if you installed the login service, then `tm server stop --yes`.
+2. Homebrew: `brew uninstall termilator`, `brew untap theclifmeister/termilator`, then install Terminatr as above.
+3. `mv ~/.termilator ~/.terminatr`, and edit the paths that still name `~/.termilator` by hand: in `~/.terminatr/config.toml` and in the files under `~/.terminatr/projects/`.
+4. `git worktree repair` in each thread worktree (under `~/.terminatr/worktrees/`), and rename `TERMILATOR_*` variables to `TERMINATR_*`.
+5. `tm server start` (and `tm server service install` again if you use it).
+
 ### Upgrading from Termalator
 
-Termilator was called Termalator up to v0.1.0 (`brew install termalator`, state in `~/.termalator`). Termilator v0.2.0 to v0.5.2 moved such an install over by themselves; later releases don't. To upgrade from Termalator by hand: stop its server (`tm server stop` with the old `tm`), `brew uninstall termalator`, install Termilator as above, `mv ~/.termalator ~/.termilator`, run `git worktree repair` in each thread worktree, and rename `TERMALATOR_*` variables to `TERMILATOR_*`. Or install the v0.5.2 release archive first, run `tm server restart` with it, then upgrade.
+Termilator was called Termalator up to v0.1.0 (`brew install termalator`, state in `~/.termalator`). Termilator v0.2.0 to v0.5.2 moved such an install over by themselves; later releases don't. To upgrade from Termalator by hand: stop its server (`tm server stop` with the old `tm`), `brew uninstall termalator`, install Terminatr as above, `mv ~/.termalator ~/.terminatr` (editing the paths in it as for Termilator), run `git worktree repair` in each thread worktree, and rename `TERMALATOR_*` variables to `TERMINATR_*`. Or install the v0.5.2 release archive first, run `tm server restart` with it, then upgrade from Termilator as above.
 
 ## Uninstalling
 
@@ -153,7 +163,7 @@ Termilator was called Termalator up to v0.1.0 (`brew install termalator`, state 
 tm server service uninstall   # only if you installed the service
 tm server stop --yes
 rm "$(command -v tm)"
-rm -rf ~/.termilator          # all projects, tasks, reports and thread worktrees: keep a copy if you want them
+rm -rf ~/.terminatr          # all projects, tasks, reports and thread worktrees: keep a copy if you want them
 ```
 
 Thread branches (`tm/<project>/…`) live in your repositories and are not removed by this; `tm doctor --fix` before uninstalling deletes the merged ones.
@@ -166,7 +176,7 @@ Push a `v*` tag (`git tag v0.2.0 && git push origin v0.2.0`). `.github/workflows
 2. builds and checks a snapshot (`make release-snapshot`, `scripts/release/check.sh`), unsigned;
 3. runs goreleaser (`make release`): every target cross-compiled with `zig cc`, each darwin binary signed (hardened runtime) and notarised by `scripts/release/sign.sh`, archives and `checksums.txt` uploaded to a draft release;
 4. checks the archives again with `--signed` (Developer ID, hardened runtime, Gatekeeper says `Notarized Developer ID`), and only then publishes the release;
-5. rewrites `Formula/termilator.rb` from `checksums.txt` (`scripts/release/formula.sh`) and merges it through a pull request. Prereleases (`v1.2.0-rc1`) skip this step.
+5. rewrites `Formula/terminatr.rb` from `checksums.txt` (`scripts/release/formula.sh`) and merges it through a pull request. Prereleases (`v1.2.0-rc1`) skip this step.
 
 `make release-snapshot` runs the same build locally without a tag, signing nothing: `sign: TM_SIGN_IDENTITY not set; … stays ad-hoc signed` in the log. To try signing locally, set `TM_SIGN_IDENTITY` to a Developer ID identity in your keychain, by its SHA-1 hash from `security find-identity -v -p codesigning` (codesign refuses a name that two certificates share, as after a renewal); add `TM_NOTARY_KEY` (path to the .p8), `TM_NOTARY_KEY_ID` and `TM_NOTARY_ISSUER` to notarise.
 

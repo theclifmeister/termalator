@@ -105,7 +105,7 @@ func TestEmbeddedScriptsParse(t *testing.T) {
 }
 
 func TestProjectDirName(t *testing.T) {
-	if got := projectDirName("/Users/me/.termilator/w.1"); got != "-Users-me--termilator-w-1" {
+	if got := projectDirName("/Users/me/.terminatr/w.1"); got != "-Users-me--terminatr-w-1" {
 		t.Fatal(got)
 	}
 }

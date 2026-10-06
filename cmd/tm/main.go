@@ -1,4 +1,4 @@
-// Command tm is termilator: an agent session host, a dashboard and the CLI
+// Command tm is terminatr: an agent session host, a dashboard and the CLI
 // that coordinator and thread agents call. This is a placeholder; the
 // commands are specified in docs/SPEC.md.
 package main

@@ -26,7 +26,7 @@ import (
 	"github.com/theclifmeister/termilator/internal/worktree"
 )
 
-// AgentsDir is where user manifests live, under TERMILATOR_HOME.
+// AgentsDir is where user manifests live, under TERMINATR_HOME.
 func (p Paths) AgentsDir() string { return filepath.Join(p.Home, "agents") }
 
 // loadAgents (re)reads the registry. Broken user manifests are logged
@@ -119,7 +119,7 @@ func realPath(p string) string {
 }
 
 // ownWorktree reports whether dir is a worktree tm created: one level
-// below a project's folder in ~/.termilator/worktrees.
+// below a project's folder in ~/.terminatr/worktrees.
 func (s *Server) ownWorktree(dir string) bool {
 	root := realPath(filepath.Join(s.opts.Paths.Home, "worktrees"))
 	rel, err := filepath.Rel(root, realPath(dir))
@@ -251,7 +251,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		os.RemoveAll(rt)
 		return nil, proto.Errorf(proto.ErrInternal, "%v", err)
 	}
-	set := s.termilatorEnv(r)
+	set := s.terminatrEnv(r)
 	for _, kv := range launch.Env {
 		k, v, _ := strings.Cut(kv, "=")
 		set[k] = v
@@ -270,7 +270,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 	sess, err := session.Start(session.Config{
 		ID: r.ID, Role: r.Role, Project: r.Project, Thread: r.Thread, Argv: launch.Argv, Cwd: r.Cwd, Env: env,
 		Cols: l.cols, Rows: l.rows, Created: r.Created,
-		Xtversion: "termilator " + version.Version,
+		Xtversion: "terminatr " + version.Version,
 		Scheme:    s.scheme,
 		Logf:      s.log.Printf,
 		OnExit:    s.sessionExited,
@@ -300,25 +300,25 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 	return sess, nil
 }
 
-// termilatorEnv is the session environment of docs/SPEC.md §3.4.
-func (s *Server) termilatorEnv(r SessionRecord) map[string]string {
+// terminatrEnv is the session environment of docs/SPEC.md §3.4.
+func (s *Server) terminatrEnv(r SessionRecord) map[string]string {
 	set := map[string]string{
 		"TERM":                 "xterm-256color",
 		"COLORTERM":            "truecolor",
-		"TERM_PROGRAM":         "termilator",
+		"TERM_PROGRAM":         "terminatr",
 		"TERM_PROGRAM_VERSION": version.Version,
-		"TERMILATOR":           "1",
-		"TERMILATOR_SESSION":   r.ID,
-		"TERMILATOR_SOCKET":    s.opts.Paths.Socket,
-		"TERMILATOR_HOME":      s.opts.Paths.Home,
-		"TERMILATOR_BIN":       s.opts.Bin,
-		"TERMILATOR_ROLE":      r.Role,
+		"TERMINATR":            "1",
+		"TERMINATR_SESSION":    r.ID,
+		"TERMINATR_SOCKET":     s.opts.Paths.Socket,
+		"TERMINATR_HOME":       s.opts.Paths.Home,
+		"TERMINATR_BIN":        s.opts.Bin,
+		"TERMINATR_ROLE":       r.Role,
 	}
 	if r.Project != "" {
-		set["TERMILATOR_PROJECT"] = r.Project
+		set["TERMINATR_PROJECT"] = r.Project
 	}
 	if r.Thread != "" {
-		set["TERMILATOR_THREAD"] = r.Thread
+		set["TERMINATR_THREAD"] = r.Thread
 	}
 	return set
 }

@@ -45,7 +45,7 @@ func runHook(e *Env, args []string) error {
 			name = a[8:]
 		}
 	}
-	session := e.Getenv("TERMILATOR_SESSION")
+	session := e.Getenv("TERMINATR_SESSION")
 	data, _ := io.ReadAll(io.LimitReader(e.Stdin, maxHookPayload))
 	if name == "" || session == "" {
 		return nil

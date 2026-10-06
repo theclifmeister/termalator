@@ -352,7 +352,7 @@ func TestSmokeAgentThreadAccess(t *testing.T) {
 
 // TestAgentIdentifyByProcess: claude started by hand in a shell session
 // gets agent state while it runs in the foreground (from its status file
-// and the screen; it has no termilator hooks), and loses it after.
+// and the screen; it has no terminatr hooks), and loses it after.
 func TestAgentIdentifyByProcess(t *testing.T) {
 	env := New(t)
 	env.FakeClaude()

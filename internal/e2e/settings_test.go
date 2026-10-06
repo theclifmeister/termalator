@@ -86,12 +86,12 @@ func TestSmokeTickerAutoCloseKeepsUnsavedWork(t *testing.T) {
 func TestTickerAutoCloseDays(t *testing.T) {
 	env, projDir, out := tickerEnv(t)
 	fakeGH(t, env)
-	env.Setenv("TERMILATOR_TICK_DAY", "1s")
+	env.Setenv("TERMINATR_TICK_DAY", "1s")
 	writeConfig(t, env, "[projects.demo]\nauto_close = \"days\"\nauto_close_days = 2\n")
 	os.WriteFile(filepath.Join(env.scriptsDir(), "thread-finish.toml"), []byte(`
 [[step]]
 do = "run"
-cmd = 'printf "## Report\nDone.\n\n## Next\nMerge the PR\n" | "$TERMILATOR_BIN" report && "$TERMILATOR_BIN" done > "$OUT/done" 2>&1; echo "exit $?" >> "$OUT/done"'
+cmd = 'printf "## Report\nDone.\n\n## Next\nMerge the PR\n" | "$TERMINATR_BIN" report && "$TERMINATR_BIN" done > "$OUT/done" 2>&1; echo "exit $?" >> "$OUT/done"'
 `), 0o644)
 	th := startThread(t, env, projDir)
 	time.Sleep(3 * time.Second) // idle, not done: nothing closes

@@ -394,11 +394,11 @@ func TestSidebarDefaultKeepsSavedWidth(t *testing.T) {
 func TestTreeHighlightRunsToBorder(t *testing.T) {
 	defer setIcons(IconsUnicode)
 	rows := []treeRow{
-		{kind: treeProject, slug: "termilator", state: "idle", hint: true, threads: 1, current: true},
+		{kind: treeProject, slug: "terminatr", state: "idle", hint: true, threads: 1, current: true},
 		{kind: treeProject, slug: "todo", state: "", threads: 0},
-		{kind: treeCoordinator, slug: "termilator", state: "idle", last: true},
-		{kind: treeCoordinator, slug: "termilator", state: "working", remote: true, last: true},
-		{kind: treeThread, slug: "termilator", thread: "t-0008", title: "Small follow-ups", state: "working", pct: 65, last: true},
+		{kind: treeCoordinator, slug: "terminatr", state: "idle", last: true},
+		{kind: treeCoordinator, slug: "terminatr", state: "working", remote: true, last: true},
+		{kind: treeThread, slug: "terminatr", thread: "t-0008", title: "Small follow-ups", state: "working", pct: 65, last: true},
 	}
 	reverse := func(line string, w int) []bool {
 		buf := uv.NewScreenBuffer(w, 1)
@@ -452,7 +452,7 @@ func TestTreeHighlightRunsToBorder(t *testing.T) {
 	}
 	// The bell is the project row's last glyph, right before the blank.
 	setIcons(IconsNerd)
-	l := []rune(ansi.Strip(treeLine(treeRow{kind: treeProject, slug: "termilator", hint: true, threads: 1, here: true}, sideDefault-1, false, false)))
+	l := []rune(ansi.Strip(treeLine(treeRow{kind: treeProject, slug: "terminatr", hint: true, threads: 1, here: true}, sideDefault-1, false, false)))
 	if string(l[len(l)-2:]) != nerdIcons.hint+" " {
 		t.Errorf("project row %q doesn't end in the bell and the blank", string(l))
 	}

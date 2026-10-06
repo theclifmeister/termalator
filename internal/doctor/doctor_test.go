@@ -24,7 +24,7 @@ import (
 func testDeps(t *testing.T) Deps {
 	t.Helper()
 	h := t.TempDir()
-	t.Setenv("TERMILATOR_HOME", h)
+	t.Setenv("TERMINATR_HOME", h)
 	run, err := os.MkdirTemp("/tmp", "tmdoc-")
 	if err != nil {
 		t.Fatal(err)
@@ -322,11 +322,11 @@ func TestInstall(t *testing.T) {
 	if got := Install(d); got != nil {
 		t.Fatalf("no install info: %+v", got)
 	}
-	d.Install = &update.Install{Method: update.Homebrew, Path: "/opt/homebrew/Cellar/termilator/0.1.0/bin/tm", Upgrade: "brew upgrade termilator"}
+	d.Install = &update.Install{Method: update.Homebrew, Path: "/opt/homebrew/Cellar/terminatr/0.1.0/bin/tm", Upgrade: "brew upgrade terminatr"}
 	d.Latest = func() (string, error) { return "v0.2.0", nil }
 	got := Install(d)
-	if len(got) != 2 || got[0].Detail != "homebrew, /opt/homebrew/Cellar/termilator/0.1.0/bin/tm" ||
-		got[1].Status != Warn || got[1].Detail != "v0.2.0 is available: brew upgrade termilator" {
+	if len(got) != 2 || got[0].Detail != "homebrew, /opt/homebrew/Cellar/terminatr/0.1.0/bin/tm" ||
+		got[1].Status != Warn || got[1].Detail != "v0.2.0 is available: brew upgrade terminatr" {
 		t.Fatalf("newer release: %+v", got)
 	}
 	d.Latest = func() (string, error) { return "v0.1.0", nil }
@@ -434,12 +434,12 @@ func TestSettingsUnknownKeys(t *testing.T) {
 func TestQueueChecks(t *testing.T) {
 	now := time.Now()
 	sessions := []proto.SessionInfo{
-		{ID: "s-28", Role: proto.RoleCoordinator, Project: "termilator", Queued: 1, QueueHeld: "prompt box not empty", QueueHeldSince: now.Add(-9 * time.Hour)},
+		{ID: "s-28", Role: proto.RoleCoordinator, Project: "terminatr", Queued: 1, QueueHeld: "prompt box not empty", QueueHeldSince: now.Add(-9 * time.Hour)},
 		{ID: "s-30", Role: proto.RoleCoordinator, Project: "todo", Queued: 1, QueueHeld: "prompt box not empty", QueueHeldSince: now.Add(-10 * time.Second)},
 		{ID: "s-31", Role: proto.RoleThread, Project: "todo", Thread: "t-0001", Queued: 2},
 	}
 	got := queueChecks(sessions, now)
-	if len(got) != 1 || got[0].Status != Warn || !strings.Contains(got[0].Detail, "s-28 (termilator coordinator): 1 queued prompt(s), held 9h0m0s: prompt box not empty") {
+	if len(got) != 1 || got[0].Status != Warn || !strings.Contains(got[0].Detail, "s-28 (terminatr coordinator): 1 queued prompt(s), held 9h0m0s: prompt box not empty") {
 		t.Fatalf("checks %+v", got)
 	}
 }

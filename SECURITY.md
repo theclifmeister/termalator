@@ -8,7 +8,7 @@ Include what you found, how to reproduce it, and which version or commit you tes
 
 ## Supported versions
 
-termilator is pre-alpha. Only the latest release, and `main`, get security fixes.
+terminatr is pre-alpha. Only the latest release, and `main`, get security fixes.
 
 ## Scope
 

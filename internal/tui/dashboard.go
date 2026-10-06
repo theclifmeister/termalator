@@ -936,7 +936,7 @@ func (m *dash) View() tea.View {
 	v := tea.NewView(m.render())
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
-	v.WindowTitle = "termilator"
+	v.WindowTitle = "terminatr"
 	return v
 }
 
@@ -1099,7 +1099,7 @@ func (m *dash) frame(title string, body []string, sel int, keys string) string {
 		right = styleGood.Render(ic().working) + " server ok" + styleFaint.Render(fmt.Sprintf(" · %d session%s", n, map[bool]string{true: "s"}[n != 1]))
 	}
 	// The app, not a project: the project's own section is headed by its
-	// slug, which may well be "termilator".
+	// slug, which may well be "terminatr".
 	left := styleTitle.Render(" tm") + styleFaint.Render(" dashboard")
 	if m.over != nil {
 		left = styleTitle.Render(" tm") + styleFaint.Render(" "+oneLine(m.over.Title))

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # Written by scripts/release/formula.sh for each release; don't edit by hand.
-class Termilator < Formula
+class Terminatr < Formula
   desc "Terminal workspace where coding agents work through a project's tasks"
   homepage "https://github.com/theclifmeister/termilator"
   version "0.6.0"

@@ -26,7 +26,7 @@ type Meta struct {
 	Created time.Time `toml:"created"`
 }
 
-// Project is one project folder, ~/.termilator/projects/<slug>/.
+// Project is one project folder, ~/.terminatr/projects/<slug>/.
 type Project struct {
 	Slug string
 	Dir  string
@@ -289,7 +289,7 @@ func GroupKey(g tasks.Group) string {
 }
 
 // Resolve picks the project for a command (§6.3): the --project flag,
-// then $TERMILATOR_PROJECT, then the project whose folder or thread
+// then $TERMINATR_PROJECT, then the project whose folder or thread
 // worktree contains cwd. It returns "" when none applies.
 func Resolve(flag string, getenv func(string) string, cwd string) (string, error) {
 	if flag != "" {

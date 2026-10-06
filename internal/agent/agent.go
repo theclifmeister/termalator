@@ -26,7 +26,7 @@ const RoleThread Role = "thread"
 // LaunchSpec is what the core asks an agent to start. All paths are absolute.
 type LaunchSpec struct {
 	Role       Role
-	SessionID  string // termilator session id, exported as TERMILATOR_SESSION
+	SessionID  string // terminatr session id, exported as TERMINATR_SESSION
 	AgentSID   string // agent's own session id, pre-assigned when the agent allows it
 	Cwd        string
 	RuntimeDir string // per-session scratch dir owned by the server; generated files go here

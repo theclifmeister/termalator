@@ -235,9 +235,9 @@ func TestSmokeRemoteControlRestart(t *testing.T) {
 func TestSmokeTickerKeepsRemoteOn(t *testing.T) {
 	env := New(t)
 	env.FakeClaude()
-	env.Setenv("TERMILATOR_TICK_SWEEP", "300ms")
-	env.Setenv("TERMILATOR_TICK_REMOTE", "1s")
-	env.Setenv("TERMILATOR_TICK_REMOTE_GRACE", "1s")
+	env.Setenv("TERMINATR_TICK_SWEEP", "300ms")
+	env.Setenv("TERMINATR_TICK_REMOTE", "1s")
+	env.Setenv("TERMINATR_TICK_REMOTE_GRACE", "1s")
 	slug, dir := newProject(env, "Alpha")
 	env.Trust(dir)
 	id := strings.TrimSpace(env.MustCLI("project", "open", slug))

@@ -17,8 +17,8 @@ import (
 
 // Names of the service.
 const (
-	Label    = "dev.termilator.server"
-	UnitName = "termilator.service"
+	Label    = "dev.terminatr.server"
+	UnitName = "terminatr.service"
 )
 
 // Config is what a service file is rendered from.
@@ -29,7 +29,7 @@ type Config struct {
 	UserHome string
 	// Bin is the absolute path of tm.
 	Bin string
-	// Home is TERMILATOR_HOME when set explicitly, else "".
+	// Home is TERMINATR_HOME when set explicitly, else "".
 	Home string
 	// LogDir is where launchd writes the server's stdout and stderr.
 	LogDir string
@@ -114,7 +114,7 @@ func (c Config) plist() []byte {
 func (c Config) unit() []byte {
 	var b bytes.Buffer
 	b.WriteString(`[Unit]
-Description=termilator server (agent sessions)
+Description=terminatr server (agent sessions)
 Documentation=https://github.com/theclifmeister/termilator
 
 [Service]
@@ -142,7 +142,7 @@ func (c Config) env() [][2]string {
 		out = append(out, [2]string{"PATH", c.Path})
 	}
 	if c.Home != "" {
-		out = append(out, [2]string{"TERMILATOR_HOME", c.Home})
+		out = append(out, [2]string{"TERMINATR_HOME", c.Home})
 	}
 	return out
 }

@@ -53,7 +53,7 @@ func (e *Env) WindowCmd(cols, rows uint16, argv ...string) *Window {
 	term, err := emu.NewWith(emu.Options{
 		Cols: cols, Rows: rows, Scrollback: 1000,
 		WritePty:  func(b []byte) { w.ptmx.Write(b) },
-		Xtversion: "termilator-e2e",
+		Xtversion: "terminatr-e2e",
 		// Like a terminal on a dark desktop, it answers CSI ? 996 n.
 		ColorScheme: func() (emu.Scheme, bool) { return emu.SchemeDark, true },
 	})

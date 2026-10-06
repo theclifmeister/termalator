@@ -43,12 +43,12 @@ func (c Caller) String() string {
 }
 
 // Environment variables set by the server on hosted sessions (§3.4).
-// TERMILATOR_ROLE is the session's role: coordinator, thread or shell.
+// TERMINATR_ROLE is the session's role: coordinator, thread or shell.
 const (
-	EnvSession = "TERMILATOR_SESSION"
-	EnvRole    = "TERMILATOR_ROLE"
-	EnvProject = "TERMILATOR_PROJECT"
-	EnvThread  = "TERMILATOR_THREAD"
+	EnvSession = "TERMINATR_SESSION"
+	EnvRole    = "TERMINATR_ROLE"
+	EnvProject = "TERMINATR_PROJECT"
+	EnvThread  = "TERMINATR_THREAD"
 )
 
 // FromEnv derives the caller from the environment. Outside a hosted

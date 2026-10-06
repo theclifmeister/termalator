@@ -1,5 +1,5 @@
-// Package home locates termilator's state directory, ~/.termilator by
-// default (docs/SPEC.md §5.1). TERMILATOR_HOME moves all of it, which is
+// Package home locates terminatr's state directory, ~/.terminatr by
+// default (docs/SPEC.md §5.1). TERMINATR_HOME moves all of it, which is
 // how tests run without touching the real home.
 package home
 
@@ -10,10 +10,10 @@ import (
 )
 
 // Env is the variable that overrides the state directory.
-const Env = "TERMILATOR_HOME"
+const Env = "TERMINATR_HOME"
 
-// Dir returns the absolute state directory: $TERMILATOR_HOME, or
-// ~/.termilator. It does not create it.
+// Dir returns the absolute state directory: $TERMINATR_HOME, or
+// ~/.terminatr. It does not create it.
 func Dir() (string, error) {
 	if d := os.Getenv(Env); d != "" {
 		return filepath.Abs(d)
@@ -25,7 +25,7 @@ func Dir() (string, error) {
 	if h == "" {
 		return "", errors.New("no home directory; set " + Env)
 	}
-	return filepath.Join(h, ".termilator"), nil
+	return filepath.Join(h, ".terminatr"), nil
 }
 
 // ProjectsDir is <home>/projects.
