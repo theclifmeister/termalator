@@ -70,7 +70,14 @@ var GuardRules = []string{"force-push", "push-default", "worktree-only", "delete
 const (
 	MaxParallelThreads = 99
 	MaxAutoCloseDays   = 365
+	MaxArchiveDays     = 365
 )
+
+// ArchiveKeys are the retention settings (docs/SPEC.md §7.6): how many
+// days the ticker keeps done tasks on the board, resolved threads'
+// folders, handled inbox items as loose files, and lines in JOURNAL.md
+// before it moves them to their archives.
+var ArchiveKeys = []string{"archive_tasks_days", "archive_threads_days", "archive_inbox_days", "archive_journal_days"}
 
 // Safety is one project's resolved safety settings.
 type Safety struct {
@@ -119,13 +126,52 @@ type Safety struct {
 	// GuardRules it leaves out. Only the human sets them, here.
 	Guard    bool     `json:"guard"`
 	GuardOff []string `json:"guard_off,omitempty"`
+	// The retention ages in days (ArchiveKeys): after them the ticker
+	// moves done tasks to the task archive, packs resolved threads'
+	// folders, and bundles handled inbox items and journal lines into
+	// compressed monthly files.
+	ArchiveTasksDays   int `json:"archive_tasks_days"`
+	ArchiveThreadsDays int `json:"archive_threads_days"`
+	ArchiveInboxDays   int `json:"archive_inbox_days"`
+	ArchiveJournalDays int `json:"archive_journal_days"`
+}
+
+// ArchiveDays is the retention setting key names (ArchiveKeys), 0 for
+// another key.
+func (s Safety) ArchiveDays(key string) int {
+	switch key {
+	case "archive_tasks_days":
+		return s.ArchiveTasksDays
+	case "archive_threads_days":
+		return s.ArchiveThreadsDays
+	case "archive_inbox_days":
+		return s.ArchiveInboxDays
+	case "archive_journal_days":
+		return s.ArchiveJournalDays
+	}
+	return 0
+}
+
+// SetArchiveDays sets the retention setting key names (ArchiveKeys).
+func (s *Safety) SetArchiveDays(key string, n int) {
+	switch key {
+	case "archive_tasks_days":
+		s.ArchiveTasksDays = n
+	case "archive_threads_days":
+		s.ArchiveThreadsDays = n
+	case "archive_inbox_days":
+		s.ArchiveInboxDays = n
+	case "archive_journal_days":
+		s.ArchiveJournalDays = n
+	}
 }
 
 // Defaults are the settings of a project that neither its own table nor
 // [defaults] (all projects) name.
 var Defaults = Safety{StartThreads: StartPropose, Yolo: false, CoordinatorApproves: true,
 	ParallelThreads: 10, AutoClose: CloseMerged, AutoCloseDays: 7, PRFollowup: true,
-	CompleteTasks: CompleteUser, FastForwardCheckout: true, Merge: MergeCoordinator, Guard: true}
+	CompleteTasks: CompleteUser, FastForwardCheckout: true, Merge: MergeCoordinator, Guard: true,
+	ArchiveTasksDays: 30, ArchiveThreadsDays: 30, ArchiveInboxDays: 30, ArchiveJournalDays: 30}
 
 type rawSafety struct {
 	StartThreads        *string `toml:"start_threads"`
@@ -136,17 +182,21 @@ type rawSafety struct {
 	AutoCloseDays       *int    `toml:"auto_close_days"`
 	// AutoResolve is auto_close's older form: true is "merged", false
 	// "off"; auto_close wins when both are set.
-	AutoResolve   *bool     `toml:"auto_resolve"`
-	PRFollowup    *bool     `toml:"pr_followup"`
-	CompleteTasks *string   `toml:"complete_tasks"`
-	CoordinatorRC *bool     `toml:"coordinator_remote_control"`
-	FastForward   *bool     `toml:"fast_forward_checkout"`
-	Models        *[]string `toml:"models"`
-	Paused        *bool     `toml:"paused"`
-	Archived      *bool     `toml:"archived"`
-	Merge         *string   `toml:"merge"`
-	Guard         *bool     `toml:"guard"`
-	GuardOff      *[]string `toml:"guard_off"`
+	AutoResolve    *bool     `toml:"auto_resolve"`
+	PRFollowup     *bool     `toml:"pr_followup"`
+	CompleteTasks  *string   `toml:"complete_tasks"`
+	CoordinatorRC  *bool     `toml:"coordinator_remote_control"`
+	FastForward    *bool     `toml:"fast_forward_checkout"`
+	Models         *[]string `toml:"models"`
+	Paused         *bool     `toml:"paused"`
+	Archived       *bool     `toml:"archived"`
+	Merge          *string   `toml:"merge"`
+	Guard          *bool     `toml:"guard"`
+	GuardOff       *[]string `toml:"guard_off"`
+	ArchiveTasks   *int      `toml:"archive_tasks_days"`
+	ArchiveThreads *int      `toml:"archive_threads_days"`
+	ArchiveInbox   *int      `toml:"archive_inbox_days"`
+	ArchiveJournal *int      `toml:"archive_journal_days"`
 }
 
 // CheckModels checks a models allow-list's shape: at least one name,
@@ -316,7 +366,8 @@ func (c *Config) Own(slug string) []string {
 		"auto_close": r.AutoClose != nil || r.AutoResolve != nil, "auto_close_days": r.AutoCloseDays != nil,
 		"pr_followup": r.PRFollowup != nil, "complete_tasks": r.CompleteTasks != nil,
 		"coordinator_remote_control": r.CoordinatorRC != nil, "fast_forward_checkout": r.FastForward != nil,
-		"models": r.Models != nil,
+		"models": r.Models != nil, "archive_tasks_days": r.ArchiveTasks != nil, "archive_threads_days": r.ArchiveThreads != nil,
+		"archive_inbox_days": r.ArchiveInbox != nil, "archive_journal_days": r.ArchiveJournal != nil,
 	}
 	var out []string
 	for _, k := range ProjectKeys {
@@ -416,6 +467,18 @@ func (r rawSafety) apply(s *Safety, path, table string) error {
 			}
 		}
 		s.GuardOff = slices.Clone(*r.GuardOff)
+	}
+	for _, a := range []struct {
+		key string
+		v   *int
+	}{{"archive_tasks_days", r.ArchiveTasks}, {"archive_threads_days", r.ArchiveThreads}, {"archive_inbox_days", r.ArchiveInbox}, {"archive_journal_days", r.ArchiveJournal}} {
+		if a.v == nil {
+			continue
+		}
+		if n := *a.v; n < 1 || n > MaxArchiveDays {
+			return fmt.Errorf("%s: %s.%s must be 1 to %d, not %d", path, table, a.key, MaxArchiveDays, n)
+		}
+		s.SetArchiveDays(a.key, *a.v)
 	}
 	return nil
 }

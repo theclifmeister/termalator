@@ -1,6 +1,9 @@
 package project
 
 import (
+	"archive/tar"
+	"compress/gzip"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -183,6 +186,11 @@ func TestContextDeterministicAndCapped(t *testing.T) {
 	os.MkdirAll(p.Path("threads", "t-0002"), 0o755)
 	os.WriteFile(p.Path("threads", "t-0002", "thread.toml"), []byte("title = \"Docs\"\n"), 0o644)
 	os.WriteFile(p.Path("threads", "t-0002", "REPORT.md"), []byte("PR: https://github.com/o/r/pull/9\n## Report\nok\n\n## Next\nReview it\n"), 0o644)
+	os.MkdirAll(p.Path("threads", "t-0003"), 0o755)
+	os.WriteFile(p.Path("threads", "t-0003", "thread.toml"), []byte("title = \"Old\"\nstate = \"resolved\"\n"), 0o644)
+	os.WriteFile(p.Path("threads", "t-0003", "REPORT.md"), []byte("## Report\nok\n\n## Next\nStale next line\n"), 0o644)
+	os.MkdirAll(p.Path("threads", "archive"), 0o755)
+	os.WriteFile(p.Path("threads", "archive", "t-0000.tar.gz"), nil, 0o644)
 	prs := map[string]string{"t-0001": "#8 open, checks pass"}
 	p.AddItem("thread-done", "t-0001", "t-0001 reported", false)
 
@@ -209,10 +217,14 @@ func TestContextDeterministicAndCapped(t *testing.T) {
 		"t-0002  Docs  report: yes  PR: https://github.com/o/r/pull/9\n    next: Review it",
 		"thread-done: t-0001 reported",
 		"human task.add T16 Fix login",
+		"2 resolved threads not shown (tm thread list --all)",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("context lacks %q", want)
 		}
+	}
+	if strings.Contains(out, "Stale next line") || strings.Contains(out, "archive") {
+		t.Error("a resolved or archived thread is listed")
 	}
 	if strings.Contains(out, "done a ") {
 		t.Error("oldest done task not capped")
@@ -241,23 +253,102 @@ func FuzzParseItem(f *testing.F) {
 	})
 }
 
-func TestPruneDone(t *testing.T) {
-	t.Setenv("TERMINATR_HOME", t.TempDir())
+// TestArchiveInbox: handled items older than the age move into their
+// creation month's tarball, which keeps what it held; fresh ones stay
+// loose, and unhandled ones aren't touched.
+func TestArchiveInbox(t *testing.T) {
+	setup(t)
 	p, err := New(Options{Name: "Prune"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	old, _ := p.AddItem("report", "t-0001", "old", false)
+	older, _ := p.AddItem("report", "t-0003", "older", false)
 	fresh, _ := p.AddItem("report", "t-0002", "fresh", false)
-	p.DoneItem(old.ID)
-	p.DoneItem(fresh.ID)
-	past := time.Now().Add(-31 * 24 * time.Hour)
-	os.Chtimes(p.Path("inbox", "done", old.ID+".md"), past, past)
-	if n, err := p.PruneDone(30 * 24 * time.Hour); err != nil || n != 1 {
-		t.Fatalf("pruned %d, %v", n, err)
+	open, _ := p.AddItem("report", "t-0004", "open", false)
+	for _, it := range []*Item{old, older, fresh} {
+		p.DoneItem(it.ID)
 	}
-	if _, err := os.Stat(p.Path("inbox", "done", fresh.ID+".md")); err != nil {
-		t.Fatal("fresh item pruned")
+	at := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+	past := at.Add(-31 * 24 * time.Hour)
+	os.Chtimes(p.Path("inbox", "done", old.ID+".md"), past, past)
+	if n, err := p.ArchiveInbox(at, 30*24*time.Hour); err != nil || n != 1 {
+		t.Fatalf("bundled %d, %v", n, err)
+	}
+	os.Chtimes(p.Path("inbox", "done", older.ID+".md"), past, past)
+	if n, err := p.ArchiveInbox(at, 30*24*time.Hour); err != nil || n != 1 {
+		t.Fatalf("second run bundled %d, %v", n, err)
+	}
+	for _, f := range []string{"inbox/done/" + fresh.ID + ".md", "inbox/" + open.ID + ".md"} {
+		if _, err := os.Stat(p.Path(f)); err != nil {
+			t.Errorf("%s moved: %v", f, err)
+		}
+	}
+	// The items' ids say they were created 2026-10-04: that month's file.
+	names := map[string]string{}
+	f, err := os.Open(p.Path("inbox", "done", "2026-10.tar.gz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	zr, _ := gzip.NewReader(f)
+	tr := tar.NewReader(zr)
+	for {
+		h, err := tr.Next()
+		if err != nil {
+			break
+		}
+		b, _ := io.ReadAll(tr)
+		names[h.Name] = string(b)
+	}
+	if len(names) != 2 || !strings.Contains(names[old.ID+".md"], `summary = "old"`) || !strings.Contains(names[older.ID+".md"], `summary = "older"`) {
+		t.Fatalf("tarball: %v", names)
+	}
+	if items, _ := p.Inbox(); len(items) != 1 || items[0].ID != open.ID {
+		t.Fatalf("inbox: %+v", items)
+	}
+}
+
+// TestArchiveJournal: journal lines older than the age go to their
+// month's gzip file, appended; the heading and newer lines stay.
+func TestArchiveJournal(t *testing.T) {
+	setup(t)
+	p, _ := New(Options{Name: "demo"})
+	os.WriteFile(p.Path("JOURNAL.md"), []byte("# Journal\n\n"+
+		"2026-08-30T10:00:00Z human a\n2026-09-02T10:00:00Z human b\n2026-09-20T10:00:00Z human c\n2026-10-03T10:00:00Z human d\n"), 0o644)
+	at := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+	if n, err := p.ArchiveJournal(at, 20*24*time.Hour); err != nil || n != 2 {
+		t.Fatalf("moved %d, %v", n, err)
+	}
+	if n, err := p.ArchiveJournal(at, 10*24*time.Hour); err != nil || n != 1 {
+		t.Fatalf("second run moved %d, %v", n, err)
+	}
+	if n, _ := p.ArchiveJournal(at, 10*24*time.Hour); n != 0 {
+		t.Fatalf("third run moved %d", n)
+	}
+	got, _ := os.ReadFile(p.Path("JOURNAL.md"))
+	if string(got) != "# Journal\n\n2026-10-03T10:00:00Z human d\n" {
+		t.Fatalf("JOURNAL.md:\n%s", got)
+	}
+	read := func(name string) string {
+		f, err := os.Open(p.Path("journal", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		zr, err := gzip.NewReader(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(zr)
+		return string(b)
+	}
+	if a, s := read("2026-08.md.gz"), read("2026-09.md.gz"); a != "2026-08-30T10:00:00Z human a\n" ||
+		s != "2026-09-02T10:00:00Z human b\n2026-09-20T10:00:00Z human c\n" {
+		t.Fatalf("archives: %q %q", a, s)
+	}
+	if lines, total, _ := p.JournalTail(5); total != 1 || lines[0] != "2026-10-03T10:00:00Z human d" {
+		t.Fatalf("tail: %v %d", lines, total)
 	}
 }
 
@@ -337,7 +428,7 @@ func TestAskAcceptSendBack(t *testing.T) {
 
 // TestUpkeep: context files over their budget are named in tm context's
 // Upkeep section (and only then); done tasks leave the board after
-// ArchiveDoneAfter, journaled as the caller's.
+// the given age, journaled as the caller's.
 func TestUpkeep(t *testing.T) {
 	setup(t)
 	p, _ := New(Options{Name: "demo app"})
@@ -374,6 +465,7 @@ func TestUpkeep(t *testing.T) {
 	s.SetStatus(human, 1, tasks.Done, "")
 	day := now()
 	ticker := caller.Caller{Kind: caller.Ticker}
+	const ArchiveDoneAfter = 30 * 24 * time.Hour
 	if ids, err := p.ArchiveOldDone(ticker, day.Add(ArchiveDoneAfter-24*time.Hour), ArchiveDoneAfter); err != nil || len(ids) != 0 {
 		t.Fatalf("archived too early: %v %v", ids, err)
 	}

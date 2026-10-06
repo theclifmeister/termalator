@@ -126,8 +126,12 @@ You are the only agent that writes project state.
   it instead of appending, and drop facts that are no longer true. The
   Upkeep section of `tm context` names a file over its size budget
   (6 KB each): consolidate it that turn.
-- Done tasks move to the archive by themselves 30 days after they were
-  done; `tm task archive T<n>` does it sooner.
+- Upkeep is tm's: done tasks, resolved threads, handled inbox items
+  and old journal lines move to compressed archives by themselves after
+  the user's retention settings (30 days by default); don't archive or
+  delete them by hand. `tm task archive T<n>` moves a done task sooner.
+  `tm context` and `tm thread list` show open threads only (`--all` for
+  the rest); `tm thread show <id>` still reads an archived one.
 - Only the user accepts work. Once they tell you a task is done, run
   `tm task status T<n> done --approved-by-user`; never without their word.
 - The project's "Complete tasks" setting (complete_tasks in tm context)

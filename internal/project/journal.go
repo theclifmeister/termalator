@@ -243,33 +243,6 @@ func ParseItem(id string, data []byte) (Item, error) {
 	return it, nil
 }
 
-// PruneDone deletes handled items older than maxAge (§7.5: 30 days),
-// judged by the file's modification time, which DoneItem's rename keeps
-// from the item's creation.
-func (p *Project) PruneDone(maxAge time.Duration) (int, error) {
-	dir := p.Path("inbox", "done")
-	entries, err := os.ReadDir(dir)
-	if errors.Is(err, fs.ErrNotExist) {
-		return 0, nil
-	}
-	if err != nil {
-		return 0, err
-	}
-	n := 0
-	cutoff := now().Add(-maxAge)
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-			continue
-		}
-		if fi, err := e.Info(); err == nil && fi.ModTime().Before(cutoff) {
-			if os.Remove(filepath.Join(dir, e.Name())) == nil {
-				n++
-			}
-		}
-	}
-	return n, nil
-}
-
 // DoneItem moves an item to inbox/done/. An item already done is fine.
 func (p *Project) DoneItem(id string) error {
 	if id == "" || strings.ContainsAny(id, "/\\") || strings.HasPrefix(id, ".") {

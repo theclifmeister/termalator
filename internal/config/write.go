@@ -120,6 +120,9 @@ func setSafety(table, key string, value any) error {
 	if n, ok := value.(int); key == "auto_close_days" && (!ok || n < 1 || n > MaxAutoCloseDays) {
 		return fmt.Errorf("auto-close days must be 1 to %d", MaxAutoCloseDays)
 	}
+	if n, ok := value.(int); slices.Contains(ArchiveKeys, key) && (!ok || n < 1 || n > MaxArchiveDays) {
+		return fmt.Errorf("archive days must be 1 to %d", MaxArchiveDays)
+	}
 	if v, ok := value.([]string); key == "models" && (!ok || CheckModels(v) != nil) {
 		if ok {
 			return fmt.Errorf("models %w", CheckModels(v))
@@ -152,7 +155,8 @@ func validKey(key string) bool {
 
 // ProjectKeys are the settings of a [projects.<slug>] table; all but
 // ProjectOnly are also those of [defaults].
-var ProjectKeys = []string{"start_threads", "yolo", "coordinator_approves", "parallel_threads", "auto_close", "auto_close_days", "auto_resolve", "pr_followup", "complete_tasks", "coordinator_remote_control", "fast_forward_checkout", "models", "paused", "archived"}
+var ProjectKeys = []string{"start_threads", "yolo", "coordinator_approves", "parallel_threads", "auto_close", "auto_close_days", "auto_resolve", "pr_followup", "complete_tasks", "coordinator_remote_control", "fast_forward_checkout", "models", "paused", "archived",
+	"archive_tasks_days", "archive_threads_days", "archive_inbox_days", "archive_journal_days"}
 
 // ProjectOnly are a project's own state, never all projects': a paused
 // or archived [defaults] would stop or hide every project.
