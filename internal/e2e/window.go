@@ -30,7 +30,18 @@ type Window struct {
 	raw    []byte
 	last   time.Time // when output last arrived
 	screen string    // last screen, kept after CloseWindow
+	// Inside the program's mode-2026 synchronized update a terminal keeps
+	// showing the last complete frame (heldScreen, from heldAt), as tm's
+	// own attach does (internal/tui/attach.go): Screen never shows a torn
+	// one.
+	held       bool
+	heldAt     time.Time
+	heldScreen string
 }
+
+// maxHold is how long Screen shows the held frame of a program that never
+// ends its synchronized update, as tm's attach does.
+const maxHold = time.Second
 
 // Window opens a window of the given size running `tm args…`.
 func (e *Env) Window(cols, rows uint16, args ...string) *Window {
@@ -61,6 +72,14 @@ func (e *Env) WindowCmd(cols, rows uint16, argv ...string) *Window {
 		e.T.Fatal(err)
 	}
 	w.term = term
+	// Runs inside term.Write, w.mu held: at hold start the terminal still
+	// shows the last complete frame.
+	term.OnRenderHold(func(held bool) {
+		if held && !w.held {
+			w.heldScreen, w.heldAt = w.liveScreen(), time.Now()
+		}
+		w.held = held
+	})
 	env := append(append([]string(nil), e.Vars...), "TERM=xterm-256color")
 	// internal/pty gives a non-blocking master, so closing it really hangs
 	// up the window.
@@ -131,6 +150,14 @@ func (w *Window) Screen() string {
 	if w.term == nil {
 		return w.screen
 	}
+	if w.held && time.Since(w.heldAt) < maxHold {
+		return w.heldScreen
+	}
+	return w.liveScreen()
+}
+
+// liveScreen is what the emulator holds now, w.mu held.
+func (w *Window) liveScreen() string {
 	s, err := w.term.Screen()
 	if err != nil {
 		return "<" + err.Error() + ">"
