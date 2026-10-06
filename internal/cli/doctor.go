@@ -68,6 +68,11 @@ func doctorCmd(e *Env, args []string) int {
 		c, err := server.LaunchdConfig(p)
 		return err == nil && c.HasConsole()
 	}
+	if service.Wanted(runtime.GOOS, e.Getenv) {
+		if c, err := server.LaunchdConfig(p); err == nil {
+			d.Strays, d.Bootout = c.Strays, c.Bootout
+		}
+	}
 	checks := doctor.Run(d)
 	fixes := doctor.Fixes(checks)
 	code := ExitOK

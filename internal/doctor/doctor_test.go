@@ -14,6 +14,7 @@ import (
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/server"
+	"github.com/theclifmeister/terminatr/internal/service"
 	"github.com/theclifmeister/terminatr/internal/thread"
 	"github.com/theclifmeister/terminatr/internal/update"
 	"github.com/theclifmeister/terminatr/internal/worktree"
@@ -490,5 +491,35 @@ func TestPlugins(t *testing.T) {
 	d.LookPath = func(n string) (string, error) { return "", exec.ErrNotFound }
 	if cs := Plugins(d); len(cs) != 0 {
 		t.Fatalf("no claude: %+v", cs)
+	}
+}
+
+// TestLaunchdStrays: stray jobs are a warning with a fix that boots each
+// one out; none, or no launchd, is quiet.
+func TestLaunchdStrays(t *testing.T) {
+	d := testDeps(t)
+	if cs := Launchd(d); len(cs) != 0 {
+		t.Fatalf("no launchd: %+v", cs)
+	}
+	var booted []string
+	d.Strays = func() ([]service.Stray, error) { return nil, nil }
+	d.Bootout = func(l string) error { booted = append(booted, l); return nil }
+	if cs := Launchd(d); len(cs) != 1 || cs[0].Status != OK || cs[0].Fix != nil {
+		t.Fatalf("none: %+v", cs)
+	}
+	d.Strays = func() ([]service.Stray, error) {
+		return []service.Stray{{Label: "dev.terminatr.server.aaaa", Reason: "its plist is gone"}, {Label: "dev.terminatr.server.bbbb", Reason: "x"}}, nil
+	}
+	cs := Launchd(d)
+	if len(cs) != 2 || cs[0].Status != Warn || !strings.Contains(cs[0].Detail, "dev.terminatr.server.aaaa") || cs[0].Fix == nil {
+		t.Fatalf("strays: %+v", cs)
+	}
+	for _, f := range Fixes(cs) {
+		if err := f.Apply(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if strings.Join(booted, " ") != "dev.terminatr.server.aaaa dev.terminatr.server.bbbb" {
+		t.Fatalf("booted: %v", booted)
 	}
 }

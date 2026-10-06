@@ -148,3 +148,84 @@ func TestStart(t *testing.T) {
 		t.Fatal("linux")
 	}
 }
+
+func TestUnload(t *testing.T) {
+	c, f := config(t, "darwin")
+	job := "gui/501/" + c.JobLabel()
+	onDemand := filepath.Join(c.RunDir, c.JobLabel()+".plist")
+	os.MkdirAll(c.RunDir, 0o700)
+	os.WriteFile(onDemand, []byte("x"), 0o644)
+	if err := c.Unload(); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(f.calls, "\n") != "launchctl bootout "+job {
+		t.Fatalf("calls: %v", f.calls)
+	}
+	if _, err := os.Stat(onDemand); err == nil {
+		t.Fatal("plist kept")
+	}
+	// The default home's job, and an installed login service, stay.
+	f.calls = nil
+	d := c
+	d.Home = ""
+	d.Unload()
+	installed, _ := c.File()
+	os.MkdirAll(filepath.Dir(installed), 0o755)
+	os.WriteFile(installed, []byte("x"), 0o644)
+	c.Unload()
+	if len(f.calls) != 0 {
+		t.Fatalf("calls: %v", f.calls)
+	}
+}
+
+func TestStrays(t *testing.T) {
+	c, _ := config(t, "darwin")
+	// A real home isn't in a temp dir: use one under the package.
+	dir, err := os.MkdirTemp(".", "strays-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, _ = filepath.Abs(dir)
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	live := filepath.Join(dir, "live.plist")
+	os.WriteFile(live, nil, 0o644)
+	bin := filepath.Join(dir, "tm")
+	os.WriteFile(bin, nil, 0o755)
+	gone := "/nonexistent/dev.terminatr.server.aaaa.plist"
+	temp := filepath.Join(os.TempDir(), "x", "run", "b.plist")
+	// A temp plist that exists is flagged by where it is.
+	os.MkdirAll(filepath.Dir(temp), 0o755)
+	os.WriteFile(temp, nil, 0o644)
+	defer os.RemoveAll(filepath.Dir(filepath.Dir(temp)))
+	list := "PID\tStatus\tLabel\n" +
+		"-\t0\t" + c.JobLabel() + "\n" + // this home's
+		"-\t0\tdev.terminatr.server.aaaa\n" +
+		"-\t0\tdev.terminatr.server.bbbb\n" +
+		"123\t0\tdev.terminatr.server.cccc\n" + // running
+		"-\t0\tdev.terminatr.server.dddd\n" + // a real home's
+		"-\t0\tdev.terminatr.server.eeee\n" + // its tm is gone
+		"-\t0\tcom.apple.other\n"
+	prints := map[string]string{
+		"dev.terminatr.server.aaaa": "path = " + gone + "\n",
+		"dev.terminatr.server.bbbb": "path = " + temp + "\n",
+		"dev.terminatr.server.dddd": "path = " + live + "\nprogram = " + bin + "\n",
+		"dev.terminatr.server.eeee": "path = " + live + "\nprogram = /nonexistent/tm\n",
+	}
+	c.Output = func(name string, args ...string) (string, error) {
+		if args[0] == "list" {
+			return list, nil
+		}
+		return prints[strings.TrimPrefix(args[1], "gui/501/")], nil
+	}
+	got, err := c.Strays()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var labels []string
+	for _, s := range got {
+		labels = append(labels, s.Label)
+	}
+	if strings.Join(labels, " ") != "dev.terminatr.server.aaaa dev.terminatr.server.bbbb dev.terminatr.server.eeee" {
+		t.Fatalf("strays: %+v", got)
+	}
+}
