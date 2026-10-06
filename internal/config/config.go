@@ -102,6 +102,10 @@ type Safety struct {
 	// checkout of a project repo to origin's default branch when that
 	// branch is checked out, clean and only behind (§7.5).
 	FastForwardCheckout bool `json:"fast_forward_checkout"`
+	// Models is the allow-list of the models the coordinator may pick for
+	// a thread (tm thread start --model, §8.2): names from the agents'
+	// manifests. nil allows every model the manifest lists.
+	Models []string `json:"models,omitempty"`
 	// Paused stops the ticker's prompts (nudges, PR follow-up) and new
 	// threads of the project; state polling goes on (§7.5, §11.2).
 	Paused bool `json:"paused"`
@@ -137,11 +141,39 @@ type rawSafety struct {
 	CompleteTasks *string   `toml:"complete_tasks"`
 	CoordinatorRC *bool     `toml:"coordinator_remote_control"`
 	FastForward   *bool     `toml:"fast_forward_checkout"`
+	Models        *[]string `toml:"models"`
 	Paused        *bool     `toml:"paused"`
 	Archived      *bool     `toml:"archived"`
 	Merge         *string   `toml:"merge"`
 	Guard         *bool     `toml:"guard"`
 	GuardOff      *[]string `toml:"guard_off"`
+}
+
+// CheckModels checks a models allow-list's shape: at least one name,
+// each one word, none twice. Whether an agent lists them is checked where
+// they are used (AllowsModel's callers), since config doesn't read the
+// manifests.
+func CheckModels(names []string) error {
+	if len(names) == 0 {
+		return errors.New("must name at least one model (leave it out to allow every model)")
+	}
+	seen := map[string]bool{}
+	for _, n := range names {
+		if n == "" || strings.ContainsAny(n, " \t\n\r\"\\") {
+			return fmt.Errorf("must be one-word model names, not %q", n)
+		}
+		if seen[n] {
+			return fmt.Errorf("lists %q twice", n)
+		}
+		seen[n] = true
+	}
+	return nil
+}
+
+// AllowsModel reports whether the allow-list takes model; an empty
+// (unset) list takes every model.
+func (s Safety) AllowsModel(model string) bool {
+	return len(s.Models) == 0 || slices.Contains(s.Models, model)
 }
 
 // Config is the parsed file.
@@ -284,6 +316,7 @@ func (c *Config) Own(slug string) []string {
 		"auto_close": r.AutoClose != nil || r.AutoResolve != nil, "auto_close_days": r.AutoCloseDays != nil,
 		"pr_followup": r.PRFollowup != nil, "complete_tasks": r.CompleteTasks != nil,
 		"coordinator_remote_control": r.CoordinatorRC != nil, "fast_forward_checkout": r.FastForward != nil,
+		"models": r.Models != nil,
 	}
 	var out []string
 	for _, k := range ProjectKeys {
@@ -352,6 +385,12 @@ func (r rawSafety) apply(s *Safety, path, table string) error {
 	}
 	if r.FastForward != nil {
 		s.FastForwardCheckout = *r.FastForward
+	}
+	if r.Models != nil {
+		if err := CheckModels(*r.Models); err != nil {
+			return fmt.Errorf("%s: %s.models %w", path, table, err)
+		}
+		s.Models = slices.Clone(*r.Models)
 	}
 	if r.Paused != nil {
 		s.Paused = *r.Paused

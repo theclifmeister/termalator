@@ -165,7 +165,7 @@ func threadState(t *ThreadRow, byID map[string]proto.SessionInfo) (state, reason
 	if s, ok := byID[t.Session]; ok && t.Session != "" {
 		session, state = s.ID, stateWord(s)
 		if s.State == "blocked" {
-			reason = s.Reason
+			reason = blockReason(s)
 		}
 	}
 	if (t.Done || t.Status != nil && t.Status.Done) && state != "blocked" && state != "working" {

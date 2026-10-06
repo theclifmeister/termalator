@@ -156,6 +156,11 @@ func (s *Server) serveWatch(c net.Conn, br *bufio.Reader, req proto.Request) {
 		writeJSONLine(c, resp)
 		return
 	}
+	// Read before the answer: once it is out, the caller may change it.
+	poll := envDuration(envWatchPoll)
+	if poll <= 0 {
+		poll = defaultWatchPoll
+	}
 	// Join before the first read, so no change between them is missed.
 	wake := s.watch.add()
 	defer s.watch.remove(wake)
@@ -166,6 +171,10 @@ func (s *Server) serveWatch(c net.Conn, br *bufio.Reader, req proto.Request) {
 		return
 	}
 	resp.Result, _ = json.Marshal(w)
+	poll := envDuration(envWatchPoll)
+	if poll <= 0 {
+		poll = defaultWatchPoll
+	}
 	if err := writeJSONLine(c, resp); err != nil {
 		return
 	}
@@ -176,10 +185,6 @@ func (s *Server) serveWatch(c net.Conn, br *bufio.Reader, req proto.Request) {
 		io.Copy(io.Discard, br)
 		close(gone)
 	}()
-	poll := envDuration(envWatchPoll)
-	if poll <= 0 {
-		poll = defaultWatchPoll
-	}
 	t := time.NewTicker(poll)
 	defer t.Stop()
 	for {

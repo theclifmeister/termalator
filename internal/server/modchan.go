@@ -14,6 +14,9 @@ package server
 // with POST /v1/prompts/{id}/ack (session/modprompt.go). It fetches the
 // guard's rules with GET /v1/rules and reports each refusal with POST
 // /v1/denied (guard.go).
+//
+// In a thread session the mod's tools call POST /v1/tools/{name}
+// (modtools.go).
 
 import (
 	"context"
@@ -216,6 +219,9 @@ func (s *Server) modHandler(id string) http.Handler {
 	})
 	// The guard's rules and refusals (guard.go).
 	s.guardRoutes(mux, id)
+	mux.HandleFunc("POST /v1/tools/{name}", func(w http.ResponseWriter, r *http.Request) {
+		s.modTool(w, r, id)
+	})
 	return mux
 }
 
