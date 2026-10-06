@@ -185,12 +185,35 @@ type SessionInfo struct {
 	TodosTotal   int    `json:"todos_total,omitempty"`
 	Current      string `json:"current,omitempty"` // the in-progress todo
 	Queued       int    `json:"queued_prompts,omitempty"`
+	// QueuedSince is when the oldest queued prompt was queued.
+	QueuedSince time.Time `json:"queued_since,omitzero"`
+	// QueueHeld says why the next queued prompt isn't pasted although the
+	// agent is idle ("prompt box not empty", "dialog on screen"), since
+	// QueueHeldSince. The server resolves a prompt held for its bound
+	// (docs/SPEC.md §8.6), so this never lasts.
+	QueueHeld      string    `json:"queue_held,omitempty"`
+	QueueHeldSince time.Time `json:"queue_held_since,omitzero"`
 	// RemoteControl: the agent is reachable from another device.
 	RemoteControl bool `json:"remote_control,omitempty"`
 	// RemoteHeld: the user turned the coordinator's remote control off
 	// (session.remote); the ticker doesn't turn it back on until the
 	// coordinator is started anew.
 	RemoteHeld bool `json:"remote_held,omitempty"`
+}
+
+// QueueNotice is how long a queued prompt must be held while its agent is
+// idle before listings, tm doctor and tm context call it out: shorter
+// holds are a box being typed into or a screen not yet re-read.
+const QueueNotice = time.Minute
+
+// QueueNote says why the session's next queued prompt is held, e.g.
+// "held 12m: prompt box not empty", once it has been for QueueNotice;
+// "" otherwise.
+func (s SessionInfo) QueueNote(now time.Time) string {
+	if s.Queued == 0 || s.QueueHeld == "" || now.Sub(s.QueueHeldSince) < QueueNotice {
+		return ""
+	}
+	return fmt.Sprintf("held %s: %s", now.Sub(s.QueueHeldSince).Truncate(time.Second), s.QueueHeld)
 }
 
 // SessionStartParams are the params of session.start.

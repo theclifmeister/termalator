@@ -186,7 +186,8 @@ func TestContextDeterministicAndCapped(t *testing.T) {
 	prs := map[string]string{"t-0001": "#8 open, checks pass"}
 	p.AddItem("thread-done", "t-0001", "t-0001 reported", false)
 
-	seen := Ticked{PRs: prs, Checkouts: map[string]string{p.Meta.Repos[0]: "local main is 3 behind origin (uncommitted changes)"}}
+	seen := Ticked{PRs: prs, Checkouts: map[string]string{p.Meta.Repos[0]: "local main is 3 behind origin (uncommitted changes)"},
+		Queues: []HeldQueue{{Session: "s-28", Role: "coordinator", Queued: 1, Why: "prompt box not empty", Since: time.Date(2026, 10, 5, 19, 45, 49, 0, time.UTC)}}}
 	sec1, err := p.Context(seen)
 	if err != nil {
 		t.Fatal(err)
@@ -202,6 +203,7 @@ func TestContextDeterministicAndCapped(t *testing.T) {
 		"[… 80 more lines in CONTEXT.md]",
 		"In motion (1)\n  T16  started  Fix login  0/2",
 		"Done (15)",
+		"Prompt queue: s-28 (coordinator) has 1 prompt(s) held since 2026-10-05 19:45 UTC (prompt box not empty)",
 		"[… 5 done tasks not shown (tm task list)]",
 		"t-0001  T16  Fix login  report: yes  PR: #8 open, checks pass\n    next: Merge the PR",
 		"t-0002  Docs  report: yes  PR: https://github.com/o/r/pull/9\n    next: Review it",

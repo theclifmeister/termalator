@@ -341,6 +341,14 @@ func TestStatusFile(t *testing.T) {
 		}
 	}
 
+	// "shell": idle at the prompt with a background shell running (seen
+	// on the termilator coordinator, T43). Unknown, it distrusted the
+	// whole file, the socket and remote control with it.
+	r, err = f.Read([]byte(`{"status":"shell","version":"2.1.289","messagingSocketPath":"/tmp/x.sock","bridgeSessionId":"session_01"}`), src)
+	if err != nil || r.Signal.State != StateIdle || r.Fields[rc] == "" {
+		t.Fatalf("shell: %+v %v", r, err)
+	}
+
 	_, err = f.Read([]byte(`{"status":"idle","version":"3.0.0"}`), src)
 	if !errors.Is(err, ErrUntestedVersion) {
 		t.Fatalf("an untested version must be refused, got %v", err)

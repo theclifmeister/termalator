@@ -166,7 +166,9 @@ fields = ["tool_input"]
 [status_file]
 path = "{{.Home}}/.claude/sessions/{{.PID}}.json"
 state_field = "status"
-state_map = { idle = "idle", busy = "working", waiting = "blocked" }
+# "shell" (2.1.289, t-0034): idle at the prompt while a background shell
+# runs ("1 shell still running"). Unknown values distrust the whole file.
+state_map = { idle = "idle", shell = "idle", busy = "working", waiting = "blocked" }
 reason_field = "waitingFor"
 reason_map = { "permission prompt" = "permission", "input needed" = "question" }
 session_field = "sessionId"

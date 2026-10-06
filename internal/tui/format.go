@@ -55,7 +55,11 @@ func progress(s proto.SessionInfo, st *thread.Status) string {
 		}
 	}
 	if s.Queued > 0 {
-		parts = append(parts, fmt.Sprintf("%d queued", s.Queued))
+		q := fmt.Sprintf("%d queued", s.Queued)
+		if s.QueueNote(time.Now()) != "" {
+			q += " (held)"
+		}
+		parts = append(parts, q)
 	}
 	return strings.Join(parts, " ")
 }

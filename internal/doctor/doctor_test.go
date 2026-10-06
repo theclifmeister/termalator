@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/sys/unix"
 
@@ -405,5 +406,21 @@ func TestSettingsUnknownKeys(t *testing.T) {
 	cs := Settings(d)
 	if len(cs) != 1 || cs[0].Status != Warn || cs[0].Detail != "unknown setting ui.icon, ignored" {
 		t.Fatalf("%+v", cs)
+	}
+}
+
+// TestQueueChecks: a prompt held while its agent is idle shows once it
+// has been held for proto.QueueNotice (T43); a fresh hold, or a queue
+// waiting on a working agent, doesn't.
+func TestQueueChecks(t *testing.T) {
+	now := time.Now()
+	sessions := []proto.SessionInfo{
+		{ID: "s-28", Role: proto.RoleCoordinator, Project: "termilator", Queued: 1, QueueHeld: "prompt box not empty", QueueHeldSince: now.Add(-9 * time.Hour)},
+		{ID: "s-30", Role: proto.RoleCoordinator, Project: "todo", Queued: 1, QueueHeld: "prompt box not empty", QueueHeldSince: now.Add(-10 * time.Second)},
+		{ID: "s-31", Role: proto.RoleThread, Project: "todo", Thread: "t-0001", Queued: 2},
+	}
+	got := queueChecks(sessions, now)
+	if len(got) != 1 || got[0].Status != Warn || !strings.Contains(got[0].Detail, "s-28 (termilator coordinator): 1 queued prompt(s), held 9h0m0s: prompt box not empty") {
+		t.Fatalf("checks %+v", got)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/theclifmeister/termilator/internal/caller"
 	"github.com/theclifmeister/termilator/internal/config"
@@ -231,7 +232,9 @@ func runContext(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
-	sections, err := p.Context(ticker.Seen(tickerState(), p.Slug))
+	seen := ticker.Seen(tickerState(), p.Slug)
+	seen.Queues = heldQueues(p.Slug)
+	sections, err := p.Context(seen)
 	if err != nil {
 		return err
 	}
@@ -240,6 +243,27 @@ func runContext(e *Env, args []string) error {
 	}
 	_, err = fmt.Fprint(e.Stdout, project.RenderContext(sections))
 	return err
+}
+
+// heldQueues asks a running server (it starts none) for the project's
+// sessions whose queued prompts are held while the agent is idle.
+func heldQueues(slug string) []project.HeldQueue {
+	c, _, err := connect(false)
+	if err != nil {
+		return nil
+	}
+	defer c.Close()
+	var res proto.SessionListResult
+	if c.Call(proto.MethodSessionList, nil, &res) != nil {
+		return nil
+	}
+	var out []project.HeldQueue
+	for _, s := range res.Sessions {
+		if s.Project == slug && s.QueueNote(time.Now()) != "" {
+			out = append(out, project.HeldQueue{Session: s.ID, Role: s.Role, Thread: s.Thread, Queued: s.Queued, Why: s.QueueHeld, Since: s.QueueHeldSince})
+		}
+	}
+	return out
 }
 
 const inboxUsage = `usage: tm inbox list [--project <slug>] [--json]
