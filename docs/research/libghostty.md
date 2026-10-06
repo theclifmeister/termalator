@@ -1,8 +1,8 @@
 # Spike: libghostty-vt from Go (client/server pane host)
 
-> These are the findings of the `libghostty` spike. The spike's code (the scripts and paths this file names) was removed in T39; it is in git history under `spikes/libghostty/` at commit `41983d953b6d` (`git show 41983d953b6d:spikes/libghostty/`).
+> These are the findings of the `libghostty` spike. The spike's code (the scripts and paths this file names) was removed in T39; it is in git history under `spikes/libghostty/` at commit `41983d953b6d` (`git show 41983d953b6d:spikes/libghostty/`). The spike ran under the product's first name; product names and paths below are written as Terminatr.
 
-Spike for Termalator thread t-0003, written 2026-10-04. This is throwaway-quality
+Spike for Terminatr thread t-0003, written 2026-10-04. This is throwaway-quality
 code. The point is the findings.
 
 **Verdict: go ahead with libghostty-vt via cgo.** The client/server shape that
@@ -121,7 +121,7 @@ The Claude runs used `claude --model haiku --tools "" --strict-mcp-config`, in a
 - The emulator reproduces those bytes faithfully: the mirror and server digests match.
 - With the same window size on reattach (`-samesize`), there are **0 duplicates and 0 missing rows** out of 300.
 
-Two consequences for Termalator:
+Two consequences for Terminatr:
 
 - Don't resize the PTY on every attach. Keep the pane at a stable size, and only resize when the user really changes it.
 - Full-screen mode, which is now the default, doesn't have this problem.
@@ -151,7 +151,7 @@ These steps ran mid-stream while Claude printed 300 lines, in all three Claude v
 
 - **Only the server's emulator may answer terminal queries.** Wire the write-pty effect only on the server; leave it unset on mirrors. Otherwise DA, DSR and kitty queries are answered once per client.
 - **Bind the socket before spawning the agent.** Otherwise a bind failure leaves an unreachable agent running.
-- **macOS limits a unix socket path to 104 bytes.** A path under a long `~/.termalator/projects/<slug>/` can exceed that. Keep sockets in a short runtime directory (for example `$TMPDIR/termalator-$UID/<id>.sock`) and check the length.
+- **macOS limits a unix socket path to 104 bytes.** A path under a long `~/.terminatr/projects/<slug>/` can exceed that. Keep sockets in a short runtime directory (for example `$TMPDIR/terminatr-$UID/<id>.sock`) and check the length.
 - **Strip inherited Claude session variables** from the agent environment. Without this, a Claude launched from inside another Claude believes it is a child session (for example, transcript saving is turned off). herdr does the same. Strip `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_MESSAGING_*`, `CLAUDE_CODE_ENTRYPOINT` and similar.
 - **Never let a slow client block or drop.** The first version used an 8192-message channel per client. macOS PTYs deliver about 68-byte reads, so the queue overflowed in 1.4 s under load. The fix: per-client byte-bounded queues (4 MB), with adjacent output frames merged, and past the limit the backlog is replaced by a fresh snapshot (resync).
 - **The client must treat SIGHUP and stdin EOF or EIO as detach.** It must also paint the snapshot right away, even when the pane is idle. I found that bug on a same-size reattach to an idle pane.

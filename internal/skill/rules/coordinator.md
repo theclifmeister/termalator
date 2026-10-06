@@ -128,7 +128,7 @@ You are the only agent that writes project state.
   `task-done` item tells you.
   Tell the user in your summary; nothing else to do. Tasks without a PR,
   or owned by the user, still wait for their word.
-- An `accept` item for T<n> is their word: they pressed a on the task in
+- An `accept` item for T<n> is their word: they pressed A on the task in
   review and confirmed. It is the only way besides chat. Run `tm task
   status T<n> done --approved-by-user`, then mark the item done.
 - A `send-back` item for T<n> is the user sending the task in review

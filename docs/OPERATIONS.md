@@ -38,14 +38,19 @@ Everything is under `~/.terminatr`, or `$TERMINATR_HOME` when that is set. Nothi
 
 | Path | What |
 |---|---|
-| `config.toml` | your settings: default agent, keys, safety for all projects (`[defaults]`) and per project (`[projects.<slug>]`, which wins) |
+| `config.toml` | your settings: the default agent, the prefix key (`[keys]`), the icons (`[ui]`), terminatr's mod for Claude (`[mods] enabled`, `band`), and the project settings for all projects (`[defaults]`) and per project (`[projects.<slug>]`, which wins key by key). The settings popups (`,` and a project's Settings tab) write it; so do `tm project pause`, `archive` and `delete` |
+| `ui.json` | this console's layout: the details panel, the list width, and the sidebar and info panel widths new views start with |
 | `agents/<name>.toml` | your own agent manifests (they override the built-in ones) |
-| `projects/<slug>/` | one folder per project: `PROJECT.md`, `TASKS.md`, `JOURNAL.md`, `inbox/`, `threads/<id>/` (brief, reports, status), memory |
+| `projects/<slug>/` | one folder per project: `PROJECT.md`, `CONTEXT.md`, `MEMORY.md` and `memory/`, `TASKS.md`, `JOURNAL.md`, `inbox/`, `threads/<id>/` (brief, reports, status, attached files), `uploads/` |
+| `.trash/<slug>-<time>/` | projects removed with `tm project delete`; tm never empties it |
 | `worktrees/<slug>/<id>-…/` | thread worktrees: plain git checkouts of the project's repos |
 | `state/sessions.json` | the sessions the server runs, rewritten on every change; the next server resumes agents from it |
+| `state/views.json` | what the shared consoles show (screen, session, sidebar), restored after a restart |
+| `state/ticker.json` | what the ticker already reported (thread states, PRs, nudges, checkout syncs), so a restart repeats nothing |
+| `server-bin/` | the running server's own copy of its binary (`tm-<build>`), so `tm update` or `brew upgrade` can't pull it from under the server |
 | `logs/server.log` | the server log, rotated at 10 MB (`server.log.1` … `.3` kept) |
 | `logs/service.log` | output of a server started by launchd (macOS service only) |
-| `run/` | `tm.sock`, `server.lock`, `server.pid` and per-session runtime dirs (`s/<id>/`) |
+| `run/` | `tm.sock`, `server.lock`, `server.pid` and per-session runtime dirs (`s/<id>/`: the agent's generated settings and plugin, with terminatr's mod when it is on) |
 
 The run directory is `$XDG_RUNTIME_DIR/terminatr` on Linux when that variable is set (and `TERMINATR_HOME` isn't), and falls back to `/tmp/terminatr-<uid>-<hash>` when the path to the socket would be too long. `tm server status` and `tm doctor` print the one in use. `$TERMINATR_SOCKET` overrides the socket path.
 
@@ -109,8 +114,11 @@ Any `tm` command starts the server when needed, so you don't need a service. If 
 - the server: running and answering, the same build as this `tm` (a server of an older protocol is a warning; `tm doctor --fix` restarts it, agents are resumed), on macOS whether its sessions can reach the keychain (not when it was started over SSH; see [Over SSH](#over-ssh-macos)), a previous crash, stale `tm.sock`, `server.pid` and session runtime dirs (it never starts a server);
 - each agent's installed version against its manifest's `tested_versions`. An untested Claude still works, but terminatr stops trusting its undocumented status file and messaging socket;
 - the sandbox tools Claude needs for threads: `sandbox-exec` on macOS, `bwrap` and `socat` on Linux;
+- Claude plugins you have enabled that are known to be unsafe in terminatr's sessions (from `claude plugin list --json`), each with the reason and the `claude plugin disable` command; today `worktrees@supermods`, whose "Remove N finished" removes a fresh thread's clean worktree. A warning only: doctor never disables a plugin;
+- a session whose queued prompts are held while its agent is idle (`prompt queue`: text left in its prompt box, or a dialog), which also holds a coordinator's nudges;
 - leftovers: worktrees under `~/.terminatr/worktrees` whose thread is resolved or gone, and `tm/<project>/…` branches already merged into the default branch;
-- settings in `config.toml` that tm no longer has: a project's (or All projects') Complete tasks still set to the removed "when released" (it now means by you; pick again in Settings).
+- upkeep: a project's `CONTEXT.md`, `MEMORY.md` or memory file over its size budget (the coordinator consolidates it);
+- settings in `config.toml`: keys tm doesn't know under `[keys]`, `[ui]` or `[mods]` (ignored), and a project's (or All projects') Complete tasks still set to the removed "when released" (it now means by you; pick again in Settings).
 
 It exits 1 only when a check fails; warnings don't count. `--json` prints the results for scripts.
 

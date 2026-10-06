@@ -1,8 +1,8 @@
 # Spike t-0004: Claude Code integration — findings
 
-> These are the findings of the `claude` spike. The spike's code (the scripts and paths this file names) was removed in T39; it is in git history under `spikes/claude/` at commit `41983d953b6d` (`git show 41983d953b6d:spikes/claude/`).
+> These are the findings of the `claude` spike. The spike's code (the scripts and paths this file names) was removed in T39; it is in git history under `spikes/claude/` at commit `41983d953b6d` (`git show 41983d953b6d:spikes/claude/`). The spike ran under the product's first name; product names and paths below are written as Terminatr.
 
-Tested 2026-10-04 against **Claude Code 2.1.289** (native build, `~/.local/bin/claude`), model Haiku 4.5, on macOS 27.0.1 (arm64), Go 1.27.1. Sessions ran in a private tmux server (3.7c), standing in for Termalator's PTY host. Every claim below comes from a scripted run in `scripts/`, unless it is marked **(untested)** or **(inferred)**. Linux was not tested.
+Tested 2026-10-04 against **Claude Code 2.1.289** (native build, `~/.local/bin/claude`), model Haiku 4.5, on macOS 27.0.1 (arm64), Go 1.27.1. Sessions ran in a private tmux server (3.7c), standing in for Terminatr's PTY host. Every claim below comes from a scripted run in `scripts/`, unless it is marked **(untested)** or **(inferred)**. Linux was not tested.
 
 ## TL;DR
 
@@ -25,7 +25,7 @@ Tested 2026-10-04 against **Claude Code 2.1.289** (native build, `~/.local/bin/c
 spikes/claude/
   cmd/tmhook/      hook command: stdin JSON → envelope → unix socket; prints SessionStart additionalContext
   cmd/tmd/         stand-in daemon: logs events (JSONL), serves context, accepts http hooks
-  plugin/termalator/   --plugin-dir plugin subscribing to ~24 events, all calling tmhook <Event>
+  plugin/terminatr/   --plugin-dir plugin subscribing to ~24 events, all calling tmhook <Event>
   scripts/lib.sh   tmux driver: clean env (env -i), trust handling, paste, screen capture, waits
   scripts/sampler.py   every 100 ms: herdr-style screen classification + ~/.claude/sessions/<pid>.json
   scripts/events.py    merged timeline: hooks + screen + session file, with a naive hook-only state
@@ -67,12 +67,12 @@ Result of s02. Every row fired once per event:
 | same + `--setting-sources project,local` | all four | **no** (the user scope was dropped) |
 
 - **Additive everywhere.** The settings doc's "lists merge" holds for `hooks`.
-- **A project-level `.claude/settings.json` in a worktree** loads like any other (it is just the cwd's `.claude/`). We don't need it, though, and SPEC §9 rightly keeps worktrees free of anything owned by termalator.
+- **A project-level `.claude/settings.json` in a worktree** loads like any other (it is just the cwd's `.claude/`). We don't need it, though, and SPEC §9 rightly keeps worktrees free of anything owned by terminatr.
 - **Workspace trust gates every hook**, ours included. The debug log says `Skipping SessionEnd:other hook execution - workspace trust not accepted`. The trust dialog defaults to **"No, exit"**, and keys sent within about 0.5 s of it painting are dropped. A **new git worktree of an already-trusted repo shows no trust dialog** (s19). Trust is stored per path in `~/.claude.json`.
 - `--dangerously-skip-permissions` shows a **bypass warning** on first use, which also defaults to "No, exit". Setting `skipDangerousModePermissionPrompt` in `--settings` might suppress it **(untested)**.
 - `--settings` also **replaces** single-valued keys such as `statusLine`. In s11 our statusline replaced the user's ccstatusline. So pass only hooks, permissions and sandbox through `--settings`, never `statusLine`.
 - Claude itself warned that a `Write(path)` deny rule "is not matched by file permission checks — only Edit(path) rules are". **Use `Edit(//abs/**)` deny rules**: they cover Write, Edit and NotebookEdit. SPEC §8.6's example lists both. Drop the `Write(...)` rule.
-- `TERMALATOR_*` env set on the claude process **reaches hook processes** (s01: the `pane` field arrived). So does `CLAUDECODE=1`, plus `CLAUDE_CODE_MESSAGING_SOCKET` and `CLAUDE_CODE_MESSAGING_TOKEN`.
+- `TERMINATR_*` env set on the claude process **reaches hook processes** (s01: the `pane` field arrived). So does `CLAUDECODE=1`, plus `CLAUDE_CODE_MESSAGING_SOCKET` and `CLAUDE_CODE_MESSAGING_TOKEN`.
 
 **A broken hook is visible to the user.** A missing hook binary or an `http` hook pointing at a dead port puts red `UserPromptSubmit hook error … ECONNREFUSED` / `No such file or directory` lines into the transcript UI (s11). Claude carries on, because these are non-blocking errors. So:
 - The hook must be a `command` hook that always exists (the `tm` binary itself).
@@ -123,7 +123,7 @@ Never observed: `PermissionDenied` (manual mode; it probably needs auto mode's c
 | Background agent after `Stop` | idle (debatable) | working (title spinner) | `busy` |
 | `/clear` | ✔ with session-id rotation | brief spinner | ✔ |
 
-The session file updated within one 100 ms sample of the screen in every case. It is written atomically by Claude, and it also carries `sessionId` (it follows `/clear`), `messagingSocketPath`, `name`, `version`, `statusUpdatedAt` and `peerFeatures`. **Termalator knows the pid** because it spawned the process. The native `claude` binary is the PTY child (`env` exec'd it, so tmux's `pane_pid` was claude). If a wrapper is ever used, match on `sessionId`.
+The session file updated within one 100 ms sample of the screen in every case. It is written atomically by Claude, and it also carries `sessionId` (it follows `/clear`), `messagingSocketPath`, `name`, `version`, `statusUpdatedAt` and `peerFeatures`. **Terminatr knows the pid** because it spawned the process. The native `claude` binary is the PTY child (`env` exec'd it, so tmux's `pane_pid` was claude). If a wrapper is ever used, match on `sessionId`.
 
 ### Screen strings in 2.1.289 (for the rules)
 
@@ -160,7 +160,7 @@ Signals in priority order. Each one names the stale case it covers.
    - Trust and bypass screens give blocked/trust (no other source can see them).
    - Idle after an Esc is confirmed by the prompt box plus the session file or transcript, rather than by a 700 ms debounce alone.
 
-Whether hooks lead (SPEC §8.6 open point 3): **hooks alone are not enough for Claude.** If Termalator accepts the session-file dependency, Claude needs no screen-scraped *state* at all, only the trust/bypass screens and a blocker sanity check. If not, screen rules plus the transcript are mandatory, as in herdr.
+Whether hooks lead (SPEC §8.6 open point 3): **hooks alone are not enough for Claude.** If Terminatr accepts the session-file dependency, Claude needs no screen-scraped *state* at all, only the trust/bypass screens and a blocker sanity check. If not, screen rules plus the transcript are mandatory, as in herdr.
 
 ## 3. Delivering hook events to a daemon
 
@@ -408,7 +408,7 @@ Everything else is data.
 | 7 | `SessionStart` `clear`/`compact` ✔, `additionalContext` honoured and fetched fresh each time ✔, `--append-system-prompt-file` survives `/clear` ✔ |
 | 8 | Hooks are unreliable for Esc cases (three cases with no closing event). Use the session file, then the transcript, then the screen (section 2) |
 | 9 | Screen strings in section 2. herdr's permission rules don't match this version. Paste + separate Enter ✔ |
-| 10 | `TERMALATOR_*` reaches hooks ✔ |
+| 10 | `TERMINATR_*` reaches hooks ✔ |
 | 11 | No `TodoWrite`. `TaskCreate`/`TaskUpdate` diffs plus the `TaskCreated`/`TaskCompleted` events. Hooks fire in manual and yolo modes. Mapping in section 6 |
 | 12 | Interactive matches `-p`: silent read, write refused by the deny rule (no dialog), Bash refused by the sandbox |
 | 13 | Holds under yolo on macOS (Edit deny + sandbox). Drop `Write(...)` rules. Linux is still open |
