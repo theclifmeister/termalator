@@ -16,13 +16,16 @@ import (
 
 // threadIndex is every thread record of every project.
 type threadIndex struct {
-	byKey  map[string]*thread.Record // "<slug>/<id>"
-	active map[string]bool           // worktree paths of unresolved threads
-	repos  []string
+	byKey map[string]*thread.Record // "<slug>/<id>"
+	// byBranch: a renamed project's threads keep their tm/<old slug>/
+	// branches (tm project rename), so a branch is looked up by name too.
+	byBranch map[string]*thread.Record
+	active   map[string]bool // worktree paths of unresolved threads
+	repos    []string
 }
 
 func loadThreads() (*threadIndex, []Check) {
-	ix := &threadIndex{byKey: map[string]*thread.Record{}, active: map[string]bool{}}
+	ix := &threadIndex{byKey: map[string]*thread.Record{}, byBranch: map[string]*thread.Record{}, active: map[string]bool{}}
 	var warns []Check
 	projects, err := project.List()
 	if err != nil {
@@ -48,6 +51,9 @@ func loadThreads() (*threadIndex, []Check) {
 		}
 		for _, r := range recs {
 			ix.byKey[s.Slug+"/"+r.ID] = r
+			if r.Branch != "" {
+				ix.byBranch[r.Branch] = r
+			}
 			if r.Repo != "" {
 				repos[r.Repo] = true
 			}
@@ -235,6 +241,9 @@ func leftoverBranches(d Deps, ix *threadIndex, removable map[string]bool) []Chec
 				continue
 			}
 			unused, reason := ix.why(parts[1], parts[2])
+			if r, ok := ix.byBranch[br]; ok {
+				unused, reason = r.State == thread.Resolved, "thread "+r.ID+" is resolved"
+			}
 			if !unused {
 				continue
 			}

@@ -325,6 +325,24 @@ func Resolve(flag string, getenv func(string) string, cwd string) (string, error
 	return "", nil
 }
 
+// SetName changes the project's display name in PROJECT.md.
+func (p *Project) SetName(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" || strings.ContainsAny(name, "\r\n") {
+		return refuse("invalid-name", "the name must be one non-empty line")
+	}
+	return mdfile.Update(p.Path("PROJECT.md"), func(old []byte) ([]byte, error) {
+		var m Meta
+		body, err := mdfile.Decode(old, &m)
+		if err != nil {
+			return nil, err
+		}
+		m.Name = name
+		p.Meta = m
+		return mdfile.Join(m, body)
+	})
+}
+
 // SetRepo adds (or removes) a repo in PROJECT.md's repo list. An added
 // path must be a directory. changed is false when it was already so.
 func (p *Project) SetRepo(path string, add bool) (changed bool, err error) {

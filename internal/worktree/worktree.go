@@ -97,9 +97,16 @@ func Restore(repo, dir, branch string) error {
 // ErrDirty means a worktree has changes and was kept.
 var ErrDirty = errors.New("worktree has uncommitted changes")
 
+// ErrNoRepo means the repository folder is gone (moved or deleted).
+var ErrNoRepo = errors.New("repository folder is gone")
+
 // Remove removes a worktree without force: a dirty one is kept and
-// reported with ErrDirty. A worktree that is already gone is pruned.
+// reported with ErrDirty. A worktree that is already gone is pruned. A
+// repo that is gone gives ErrNoRepo, and nothing is touched.
 func Remove(repo, dir string) error {
+	if _, err := os.Stat(repo); errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("%s: %w", repo, ErrNoRepo)
+	}
 	if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
 		_, err := git(repo, "worktree", "prune")
 		return err
@@ -108,6 +115,25 @@ func Remove(repo, dir string) error {
 		return ErrDirty
 	}
 	_, err := git(repo, "worktree", "remove", dir)
+	return err
+}
+
+// Repair reconnects repo with its linked worktrees at dirs after either
+// side moved (git worktree repair): the worktrees' .git files and the
+// repo's records of them then name each other's current paths.
+func Repair(repo string, dirs ...string) error {
+	if len(dirs) == 0 {
+		return nil
+	}
+	_, err := git(repo, append([]string{"worktree", "repair"}, dirs...)...)
+	return err
+}
+
+// Reconnect tells the repo of the linked worktree at dir that the
+// worktree now lives at dir, after the worktree alone moved (git
+// worktree repair, run in it).
+func Reconnect(dir string) error {
+	_, err := git(dir, "worktree", "repair")
 	return err
 }
 

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -294,6 +295,32 @@ func (vs *views) sessionGone(id string) {
 	for _, lv := range vs.byName {
 		if lv.v.Remove(id) {
 			vs.fill(lv)
+			vs.changedLocked(lv)
+		}
+	}
+}
+
+// renameProject follows a renamed project in every view's current
+// project and selected rows (tm project rename).
+func (vs *views) renameProject(from, to string) {
+	key := func(k string) string {
+		for _, pre := range []string{"p:", "c:", "t:"} {
+			if rest, ok := strings.CutPrefix(k, pre+from); ok && (rest == "" || rest[0] == '/') {
+				return pre + to + rest
+			}
+		}
+		return k
+	}
+	vs.mu.Lock()
+	defer vs.mu.Unlock()
+	for _, lv := range vs.byName {
+		v := &lv.v
+		cur, sel, side := v.Current, key(v.Selected), key(v.SideSel)
+		if cur == from {
+			cur = to
+		}
+		if cur != v.Current || sel != v.Selected || side != v.SideSel {
+			v.Current, v.Selected, v.SideSel = cur, sel, side
 			vs.changedLocked(lv)
 		}
 	}

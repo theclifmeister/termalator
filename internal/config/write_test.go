@@ -226,3 +226,33 @@ func TestUnsetOtherForm(t *testing.T) {
 		t.Fatalf("err %v, want ErrForm", err)
 	}
 }
+
+func TestRenameTable(t *testing.T) {
+	in := "# top\n[projects.demo] # mine\npaused = true\n\n[projects.demo.extra]\nx = 1\n\n[projects.other]\nyolo = true\n"
+	got, err := RenameTable([]byte(in), "demo", "demo2")
+	want := "# top\n[projects.demo2] # mine\npaused = true\n\n[projects.demo2.extra]\nx = 1\n\n[projects.other]\nyolo = true\n"
+	if err != nil || string(got) != want {
+		t.Fatalf("got %q %v\nwant %q", got, err, want)
+	}
+	// Quoted names are read too; the new header is plain.
+	if got, err := RenameTable([]byte("[ projects.\"demo\" ]\npaused = true\n"), "demo", "d2"); err != nil || string(got) != "[ projects.d2 ]\npaused = true\n" {
+		t.Fatalf("quoted: %q %v", got, err)
+	}
+	// No settings for it: unchanged.
+	if got, err := RenameTable([]byte(in), "nope", "x"); err != nil || string(got) != in {
+		t.Fatalf("absent: %q %v", got, err)
+	}
+	if _, err := RenameTable([]byte(in), "demo", "other"); !errors.Is(err, ErrProjectSet) {
+		t.Fatalf("taken: %v", err)
+	}
+	// Forms the line editor doesn't rename.
+	for _, form := range []string{
+		"projects.demo.paused = true\n",
+		"[projects]\ndemo = { paused = true }\n",
+		"[projects.demo]\npaused = true\n[projects]\ndemo.yolo = true\n",
+	} {
+		if _, err := RenameTable([]byte(form), "demo", "demo2"); !errors.Is(err, ErrForm) {
+			t.Errorf("%q: %v, want ErrForm", form, err)
+		}
+	}
+}
