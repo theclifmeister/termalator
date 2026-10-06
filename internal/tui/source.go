@@ -32,10 +32,11 @@ type Data struct {
 	// Defaults are the all-projects settings, which a project follows
 	// for each one it doesn't set; nil when they can't be read.
 	Defaults *config.Safety
-	// Mods and ModsBand are the settings popup's Mods and Mods band
-	// (docs/SPEC.md §8.6); the band is on unless set off.
-	Mods, ModsBand bool
-	Err            string // why the poll failed, shown in the header
+	// Mods, ModsBand and ModsPane are the settings popup's Mods, Mods
+	// band and Mods pane (docs/SPEC.md §8.6); the band and the pane are
+	// on unless set off.
+	Mods, ModsBand, ModsPane bool
+	Err                      string // why the poll failed, shown in the header
 }
 
 // ProjectData is one project's rows.
@@ -193,7 +194,7 @@ func (s *ServerSource) Close() {
 }
 
 func (s *ServerSource) Load() Data {
-	d := Data{ModsBand: true}
+	d := Data{ModsBand: true, ModsPane: true}
 	var res proto.SessionListResult
 	if err := s.call(proto.MethodSessionList, nil, &res); err != nil {
 		d.Err = err.Error()
@@ -201,7 +202,7 @@ func (s *ServerSource) Load() Data {
 		d.ServerOK, d.Sessions, d.Alerts = true, res.Sessions, res.Alerts
 	}
 	if cfg, err := config.Load(); err == nil {
-		d.Mods, d.ModsBand = cfg.Mods, cfg.ModsBand
+		d.Mods, d.ModsBand, d.ModsPane = cfg.Mods, cfg.ModsBand, cfg.ModsPane
 		if all, err := cfg.AllProjects(); err == nil {
 			d.Defaults = &all
 		}

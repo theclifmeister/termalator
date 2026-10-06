@@ -318,6 +318,19 @@ func globalSettings() []setting {
 				m.data.ModsBand = on
 				return m.setSetting("mods", "band", on, "mods band "+onOff(on)+"; sessions launched from now on follow it")
 			}},
+		{label: "Mods pane", help: "Open the /tm dashboard pane beside the coordinator when it starts, where it docks as a sidebar (fullscreen, 144+ columns). /tm opens or closes it either way. Only matters while Mods is on. Applies to coordinators launched after the change.",
+			value: func(m *dash) string { return onOff(m.data.ModsPane) },
+			from: func(m *dash) string {
+				if !m.data.Mods {
+					return "needs Mods on"
+				}
+				return ""
+			},
+			change: func(m *dash) tea.Cmd {
+				on := !m.data.ModsPane
+				m.data.ModsPane = on
+				return m.setSetting("mods", "pane", on, "mods pane "+onOff(on)+"; coordinators launched from now on follow it")
+			}},
 	}
 }
 

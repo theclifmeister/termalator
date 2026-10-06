@@ -36,6 +36,9 @@
 // answers it with what `tm thread answer` gave, unless the user answers
 // in the pane first.
 //
+// In a coordinator it also keeps the project's dashboard pane, /tm
+// (hooks/pane.tsx).
+//
 // Its guard refuses tool calls that break the standing rules the server
 // sends (hooks/guarded.ts, hooks/guard.ts).
 
@@ -50,6 +53,7 @@ import { errorText, handled, offerOf } from './deliver'
 import type { Ack, Offer } from './deliver'
 import { feed } from './feed'
 import { guard } from './guarded'
+import { registerPane, sawViewport } from './pane'
 import { answer, body, toolName, TOOLS } from './tools'
 import { initialTurn, stateOf, step, waitKey } from './turn'
 import { initialUsage, reportOf } from './usage'
@@ -168,6 +172,7 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    sawViewport(e.viewport)
     const w = await read($, watch)
     if (e.props.hasSurvey || !(await read($, band)) || !bandShows(w)) return next(e)
     return drawBand($.ui.resolve(e), e.props.bodyColumns, w)
@@ -239,6 +244,8 @@ export const register: Register = on => {
     await Promise.race([sent, $.clock.sleep(END_WAIT_MS)])
     return next(e)
   })
+
+  registerPane(on)
 }
 
 // spent sends what the turn cost, numbers only, a subagent's turns
