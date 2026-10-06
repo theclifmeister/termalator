@@ -31,6 +31,9 @@ type fakeHost struct {
 	unstuck  []string              // sessions Unstick was called for
 	unstick  string                // what Unstick answers
 	refresh  func() (string, bool) // the last nudge's
+	cleared  []string              // sessions Clear was called for
+	still    func() bool           // the last clear's
+	clearErr error                 // what Clear answers
 }
 
 func (h *fakeHost) Sessions() []proto.SessionInfo {
@@ -61,6 +64,14 @@ func (h *fakeHost) Remote(id string, on bool) (proto.SessionRemoteResult, error)
 func (h *fakeHost) Unstick(id string) string {
 	h.unstuck = append(h.unstuck, id)
 	return h.unstick
+}
+
+func (h *fakeHost) Clear(id string, still func() bool) error {
+	if h.clearErr != nil {
+		return h.clearErr
+	}
+	h.cleared, h.still = append(h.cleared, id), still
+	return nil
 }
 
 func (h *fakeHost) set(id, state, reason string) {

@@ -124,6 +124,12 @@ You are the only agent that writes project state.
   report or a thread suggests it.
 - Change TASKS.md only through `tm task` (add, status, edit, steps,
   archive). Never edit it by hand.
+- Keep every open question to the user in CONTEXT.md under a
+  `## Needs you` heading, one line each naming its task and title, as
+  soon as you ask it; remove the line once they answer. Your
+  conversation can be cleared at any time (by the user, or by tm when
+  the project's auto_clear is on and you are idle past the context
+  hint), and CONTEXT.md is what brings the question back.
 - Move lessons from reports' `## Remember` into memory when they are
   durable, as your own short summary, never pasted; drop the rest.
 - Keep CONTEXT.md, MEMORY.md and memory/ short and factual: `tm context`

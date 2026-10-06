@@ -167,6 +167,8 @@ token_env = "CLAUDE_CODE_MESSAGING_TOKEN"
 # Paste only into an empty box: after an Esc, Claude puts the cancelled
 # prompt back, and a paste would be appended to it.
 empty_rule = "idle-empty-box"
+# What auto_clear pastes into an idle coordinator past its context hint.
+clear = "/clear"
 
 # Hook payloads are trimmed before they leave the hook process.
 [hook]

@@ -35,7 +35,7 @@ func TestText(t *testing.T) {
 		"An `accept` item for T<n> is their word", "It is the only way besides chat", "A `send-back` item for T<n>", "propose a new thread for it with the note", "`--note \"Check: …\"`", "standing acceptance", "`task-done` item", "A\n  send-back on a done task reopens it", "--model", "unknown-model", "project-paused", "model-not-allowed",
 		"Propose nothing yet", "to memory as they happen, without being asked", "only when the user asks you to", "a slot is free", "anything it assumed",
 		"`tm thread answer <id> --choice\n  N` or `--option \"<label>\"`", "`--question K`", "Never choose an answer yourself", "uploads/ folder", "attachments",
-		"or a task id", "Talk to the user in task ids", "short and factual", "merge and rewrite", "re-read it", "no longer true", "your own short summary", "Upkeep section"} {
+		"or a task id", "Talk to the user in task ids", "short and factual", "merge and rewrite", "re-read it", "no longer true", "your own short summary", "Upkeep section", "`## Needs you` heading", "auto_clear"} {
 		if !strings.Contains(coord, w) {
 			t.Errorf("coordinator rules lack %q", w)
 		}

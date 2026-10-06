@@ -22,10 +22,17 @@ export type UsageReport = {
   cache_read: number
   cache_creation: number
   cost_usd: number
-  // What the turn read as context: input plus both cache counts, the
-  // size of the conversation then, not a running total.
+  // What the session's last request read as context and the model's
+  // window, as $.session.usage().context gives them (the status line's
+  // figures); 0 when unknown. Never the turn's usage: that sums every
+  // request of the turn, so a turn of ten tool calls would read ten
+  // times its context.
   context: number
+  context_window: number
 }
+
+// What $.session.usage().context carries, as far as it is used.
+export type ContextIn = { tokens?: number; window?: number }
 
 export const initialUsage: TerminatrUsage = { usd: 0 }
 
@@ -35,7 +42,7 @@ const count = (n: unknown): number => (typeof n === 'number' && Number.isFinite(
 // the ledger as it stands now, to carry to the next turn. A ledger that
 // went down (a new session under the same state) costs nothing.
 export function reportOf(
-  turn: string, u: TurnUsageIn | undefined, ledger: number | undefined, before: TerminatrUsage,
+  turn: string, u: TurnUsageIn | undefined, ledger: number | undefined, before: TerminatrUsage, ctx?: ContextIn,
 ): { report: UsageReport | null; now: TerminatrUsage } {
   const usd = typeof ledger === 'number' && Number.isFinite(ledger) && ledger >= 0 ? ledger : before.usd
   const now = { usd }
@@ -50,7 +57,8 @@ export function reportOf(
     output: count(u.output_tokens),
     cache_read: cacheRead,
     cache_creation: cacheCreation,
-    context: input + cacheRead + cacheCreation,
+    context: count(ctx?.tokens),
+    context_window: count(ctx?.window),
     cost_usd: Math.max(0, Math.round((usd - before.usd) * 1e6) / 1e6),
   }
   return { report, now }

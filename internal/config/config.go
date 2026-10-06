@@ -110,6 +110,10 @@ type Safety struct {
 	// the project (§8.2 [remote_control]). The prefix key and tm project
 	// remote change only the running session.
 	CoordinatorRemoteControl bool `json:"coordinator_remote_control"`
+	// AutoClear lets the ticker clear the coordinator's conversation once
+	// its context reaches [ui] context_hint, only while nothing waits on
+	// it (§7.5): the project's state lives in files, so nothing is lost.
+	AutoClear bool `json:"auto_clear"`
 	// FastForwardCheckout lets the ticker fast-forward the user's own
 	// checkout of a project repo to origin's default branch when that
 	// branch is checked out, clean and only behind (§7.5).
@@ -191,6 +195,7 @@ type rawSafety struct {
 	PRFollowup     *bool     `toml:"pr_followup"`
 	CompleteTasks  *string   `toml:"complete_tasks"`
 	CoordinatorRC  *bool     `toml:"coordinator_remote_control"`
+	AutoClear      *bool     `toml:"auto_clear"`
 	FastForward    *bool     `toml:"fast_forward_checkout"`
 	Models         *[]string `toml:"models"`
 	Paused         *bool     `toml:"paused"`
@@ -383,7 +388,7 @@ func (c *Config) Own(slug string) []string {
 		"coordinator_approves": r.CoordinatorApproves != nil, "parallel_threads": r.ParallelThreads != nil,
 		"auto_close": r.AutoClose != nil || r.AutoResolve != nil, "auto_close_days": r.AutoCloseDays != nil,
 		"pr_followup": r.PRFollowup != nil, "complete_tasks": r.CompleteTasks != nil,
-		"coordinator_remote_control": r.CoordinatorRC != nil, "fast_forward_checkout": r.FastForward != nil,
+		"coordinator_remote_control": r.CoordinatorRC != nil, "auto_clear": r.AutoClear != nil, "fast_forward_checkout": r.FastForward != nil,
 		"models": r.Models != nil, "archive_tasks_days": r.ArchiveTasks != nil, "archive_threads_days": r.ArchiveThreads != nil,
 		"archive_inbox_days": r.ArchiveInbox != nil, "archive_journal_days": r.ArchiveJournal != nil,
 	}
@@ -451,6 +456,9 @@ func (r rawSafety) apply(s *Safety, path, table string) error {
 	}
 	if r.CoordinatorRC != nil {
 		s.CoordinatorRemoteControl = *r.CoordinatorRC
+	}
+	if r.AutoClear != nil {
+		s.AutoClear = *r.AutoClear
 	}
 	if r.FastForward != nil {
 		s.FastForwardCheckout = *r.FastForward
