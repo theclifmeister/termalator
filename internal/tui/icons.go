@@ -56,8 +56,8 @@ var unicodeIcons = iconSet{
 	name:   IconsUnicode,
 	folder: "■", folderOpen: "■",
 	mid: "├─", end: "└─",
-	hint: "◆", current: "▸", remote: "⌁", paused: "∥",
-	working: "●", blocked: "▲", idle: "○", starting: "◌", running: "●", review: "◆", done: "✓", other: "·", none: "·",
+	hint: "⚑", current: "▸", remote: "⌁", paused: "∥",
+	working: "●", blocked: "▲", idle: "○", starting: "◌", running: "▷", review: "◆", done: "✓", other: "·", none: "·",
 	todoDone: "✓", todoNow: "◐", todoOpen: "○",
 	barOn: "▰", barOff: "▱",
 }

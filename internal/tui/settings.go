@@ -161,15 +161,20 @@ const helpHit = 1 << 16
 // adjustButtons follow a number's value: a click on − or + is - or +.
 const adjustButtons = "  −  +"
 
-// click selects the clicked setting; a click on its own line changes it,
-// as enter does, and on a number's − or + (col is the column in the
-// line) as - or + do.
+// click selects the clicked setting; a click on the selected setting's
+// own line changes it, as enter does, and on a number's − or + (col is
+// the column in the line) as - or + do (docs/SPEC.md §4).
 func (l *settingsList) click(m *dash, item, col int) tea.Cmd {
 	if item >= helpHit {
 		l.sel = moveSel(item-helpHit, 0, len(l.rows))
 		return nil
 	}
-	l.sel = moveSel(item, 0, len(l.rows))
+	// A click selects a setting; a click on the selected one changes it,
+	// as enter does (or steps a number with its − +).
+	if i := moveSel(item, 0, len(l.rows)); i != l.sel {
+		l.sel = i
+		return nil
+	}
 	key := "enter"
 	if r := l.rows[l.sel]; r.adjust != nil {
 		lw := 0
@@ -375,15 +380,15 @@ func (sv *settingsView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 }
 
 func (sv *settingsView) render(m *dash) string {
-	w := m.inner(settingsWidth)
+	w := m.inner(viewWidth)
 	lines, sel, hits := sv.tabs[sv.tab].lines(m, w)
 	lines = append(lines, "")
-	keys := "enter change · ↑ ↓ move · ← → tabs · esc back"
+	keys := "enter change · ↑ ↓ move · ← → tabs · esc close"
 	if sv.tab == 0 {
 		lines = append(lines, faintLines("A project's own settings (starting threads, yolo mode, remote control, …) are in its popup: a on the dashboard, prefix+a in a session.", w)...)
 	} else {
 		lines = append(lines, faintLines("Every project follows these, a new one too, unless it sets its own in its popup (a on the dashboard, prefix+a in a session); x there makes it follow these again.", w)...)
-		keys = "enter change · + - number · ↑ ↓ move · ← → tabs · esc back"
+		keys = "enter change · + - number · ↑ ↓ move · ← → tabs · esc close"
 	}
 	head := []string{sv.tabBar(), ""}
 	all := append([]int{tabHit, noHit}, hits...)
@@ -396,7 +401,7 @@ func (sv *settingsView) render(m *dash) string {
 		l, _, _ := sv.tabs[i].lines(m, w)
 		height = max(height, len(head)+len(l)+3)
 	}
-	b := box{title: "settings", head: head, body: lines, sel: -1, hits: all, keys: keys, width: settingsWidth, height: height}
+	b := box{title: "Settings", head: head, body: lines, sel: -1, hits: all, keys: keys, width: viewWidth, height: height}
 	b.scroll = sv.scroll(m.boxRows(b)-len(head), sel, len(lines))
 	return m.popup(b)
 }
@@ -444,8 +449,6 @@ func (sv *settingsView) click(m *dash, item, col int, _ bool) tea.Cmd {
 
 func (sv *settingsView) wheel(m *dash, d int) { sv.tabs[sv.tab].key(m, arrow(d)) }
 
-const settingsWidth = 88
-
 // captureView takes the next ctrl+<key> as the new prefix key.
 type captureView struct{ err string }
 
@@ -470,37 +473,44 @@ func (cv *captureView) render(m *dash) string {
 	if cv.err != "" {
 		lines = append(lines, styleBad.Render(cv.err))
 	}
-	return m.popup(box{title: "prefix key", body: lines, sel: -1, keys: "esc cancel", width: 64})
+	return m.popup(box{title: "Prefix key", body: lines, sel: -1, keys: "esc cancel", width: dialogWidth})
 }
 
-// confirmView asks a yes/no question: y runs yes, any other key cancels.
+// confirmView asks a yes/no question: y runs yes, n or esc says no, and
+// no other key does anything (enter included: it is no answer).
 type confirmView struct {
-	question string
-	yes      func() tea.Cmd
-	// no is the footer message on any other key.
+	title, question string
+	yes             func() tea.Cmd
+	// no is the footer message on n or esc.
 	no string
 }
 
-func (m *dash) confirm(question string, yes func() tea.Cmd) {
-	m.confirmNo(question, "unchanged", yes)
+// confirmKeys are a yes/no question's action row, the same everywhere.
+const confirmKeys = "y yes · n no · esc cancel"
+
+func (m *dash) confirm(title, question string, yes func() tea.Cmd) {
+	m.confirmNo(title, question, "unchanged", yes)
 }
 
-// confirmNo is confirm, saying no in the footer on any other key.
-func (m *dash) confirmNo(question, no string, yes func() tea.Cmd) {
-	m.push(&confirmView{question: question, yes: yes, no: no})
+// confirmNo is confirm, saying no in the footer on n or esc.
+func (m *dash) confirmNo(title, question, no string, yes func() tea.Cmd) {
+	m.push(&confirmView{title: title, question: question, yes: yes, no: no})
 }
 
 func (cv *confirmView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
-	m.pop()
-	if k.String() == "y" {
+	switch k.String() {
+	case "y":
+		m.pop()
 		return cv.yes()
+	case "n", "esc":
+		m.pop()
+		m.msg = cv.no
 	}
-	m.msg = cv.no
 	return nil
 }
 
 func (cv *confirmView) render(m *dash) string {
-	return m.popup(box{body: wrapLines(cv.question, m.inner(promptWidth)), sel: -1, keys: "y yes · any other key no", width: promptWidth})
+	return m.popup(box{title: cv.title, body: wrapLines(cv.question, m.inner(dialogWidth)), sel: -1, keys: confirmKeys, width: dialogWidth})
 }
 
 // projectSettings are a project's own settings (§11.2), for its popup.
@@ -622,7 +632,7 @@ func safetySettings(slug string) []setting {
 				if all {
 					q = "Turn yolo mode on for all projects? Threads started from now on skip the agent's permission prompts in " + followers(m, []string{"yolo"}) + " (the file rules and the sandbox still hold)."
 				}
-				m.confirm(q, func() tea.Cmd {
+				m.confirm("Turn on yolo mode", q, func() tea.Cmd {
 					return set(m, "yolo", true, "yolo mode on "+forWho+": new threads skip permission prompts", func(s *config.Safety) { s.Yolo = true })
 				})
 				return nil
@@ -782,7 +792,7 @@ func safetySettings(slug string) []setting {
 		{label: "Archive", help: "Hide the project from the sidebar and the switcher, and stop all background work for it; tm project unarchive brings it back. Not while its coordinator or threads run. Asks first.",
 			value: func(m *dash) string { return "enter archives" },
 			change: func(m *dash) tea.Cmd {
-				m.confirmNo("Archive "+slug+"? It leaves the sidebar and the switcher, and nothing runs for it until tm project unarchive "+slug+".", "not archived", func() tea.Cmd {
+				m.confirmNo("Archive "+slug, "Archive "+slug+"? It leaves the sidebar and the switcher, and nothing runs for it until tm project unarchive "+slug+".", "not archived", func() tea.Cmd {
 					m.pop() // the project popup
 					return m.lifecycle(slug, "archive")
 				})
@@ -791,7 +801,7 @@ func safetySettings(slug string) []setting {
 		{label: "Delete", help: "Move the project's folder to the trash; its worktrees and branches stay. Not while its coordinator or threads run. Asks first.",
 			value: func(m *dash) string { return "enter deletes" },
 			change: func(m *dash) tea.Cmd {
-				m.confirmNo("Delete "+slug+"? Its folder (tasks, memory, threads' reports) moves to the trash; its worktrees and branches stay.", "not deleted", func() tea.Cmd {
+				m.confirmNo("Delete "+slug, "Delete "+slug+"? Its folder (tasks, memory, threads' reports) moves to the trash; its worktrees and branches stay.", "not deleted", func() tea.Cmd {
 					m.pop() // the project popup
 					return m.lifecycle(slug, "delete")
 				})
@@ -938,15 +948,16 @@ func (v *modelsView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 }
 
 func (v *modelsView) render(m *dash) string {
-	var lines []string
+	lines := []string{styleFaint.Render("The models the coordinator may pick for a thread.")}
+	w := m.inner(dialogWidth)
 	for i, n := range v.all {
-		box := "[ ] "
+		mark, word := ic().todoOpen, "left out"
 		if v.allowed(n) {
-			box = "[x] "
+			mark, word = ic().todoDone, "allowed"
 		}
-		l := box + n
+		l := fit(mark+" "+n, 16) + "  " + styleFaint.Render(word)
 		if i == v.sel {
-			l = styleSel.Render(l)
+			l = styleSel.Render(fit(ansi.Strip(l), w))
 		}
 		lines = append(lines, l)
 	}
@@ -956,7 +967,7 @@ func (v *modelsView) render(m *dash) string {
 	if v.err != "" {
 		lines = append(lines, "", styleBad.Render(v.err))
 	}
-	return m.popup(box{title: "models a thread may use", body: lines, sel: -1, keys: "enter allow or leave out · ↑ ↓ move · esc back", width: 64})
+	return m.popup(box{title: "Thread models", body: lines, sel: -1, keys: "enter allow or leave out · ↑ ↓ move · esc back", width: dialogWidth})
 }
 
 // archiveAges are the retention settings, as Keep history lists them.
@@ -997,12 +1008,12 @@ func (v *historyView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 }
 
 func (v *historyView) render(m *dash) string {
-	lines, sel, hits := v.list.lines(m, m.inner(settingsWidth))
+	lines, sel, hits := v.list.lines(m, m.inner(viewWidth))
 	keys := "enter step · + - a day · x follow all projects · ↑ ↓ move · esc back"
 	if v.all {
 		keys = "enter step · + - a day · ↑ ↓ move · esc back"
 	}
-	b := box{title: v.title, body: lines, sel: sel, hits: hits, keys: keys, width: settingsWidth}
+	b := box{title: v.title, body: lines, sel: sel, hits: hits, keys: keys, width: viewWidth}
 	return m.popup(b)
 }
 

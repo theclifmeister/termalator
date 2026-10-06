@@ -21,10 +21,10 @@ func TestLay(t *testing.T) {
 	if v.Focus != "a" || v.Current != "proj" || v.Mode != ModeLayout {
 		t.Fatalf("view %+v", v)
 	}
-	// Every view has the sidebar: here the 7-column slim strip; a bare
+	// Every view has the sidebar: here the 10-column slim strip; a bare
 	// view has no status bar.
 	g := v.Lay(88, 24)
-	if g.Pane != "a" || g.Area != (Rect{7, 0, 81, 24}) {
+	if g.Pane != "a" || g.Area != (Rect{10, 0, 78, 24}) {
 		t.Fatalf("geometry %+v", g)
 	}
 

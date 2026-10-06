@@ -58,10 +58,25 @@ func (d *panel) gap() {
 	}
 }
 
-// title is the panel's first line, bold, and the state under it.
+// section starts a section: a blank row, then its heading, meta faint
+// after it (docs/STYLE.md, Section).
+func (d *panel) section(title, meta string) {
+	d.gap()
+	st := sectionStyle(title)
+	w := max(d.w-2, 1)
+	if meta == "" {
+		d.add(sectionRule(title, st, w))
+		return
+	}
+	t := title + " " + meta + " "
+	d.add(st.Render(title) + " " + styleFaint.Render(meta+" "+strings.Repeat("─", max(w-ansi.StringWidth(t), 0))))
+}
+
+// title is the panel's first line, bold in the accent colour, and the
+// state under it.
 func (d *panel) title(text, state string) {
-	d.add(styleHead.Render(oneLine(text)))
-	if state != "" {
+	d.add(styleTitle.Render(oneLine(text)))
+	if state != "" && state != "—" {
 		g, st := stateLook(state)
 		d.add(st.Render(strings.TrimSpace(g + " " + state)))
 	}
@@ -133,8 +148,7 @@ func (m *dash) threadPanel(d *panel, r row) {
 		d.field("report", reportState(t, true))
 	}
 	if q != nil {
-		d.gap()
-		d.add(styleHead.Render("Question open"))
+		d.section("QUESTION OPEN", "")
 		for _, l := range questionLines(q) {
 			d.wrap(l)
 		}
@@ -145,9 +159,7 @@ func (m *dash) threadPanel(d *panel, r row) {
 	}
 	d.gap()
 	if r.session != "" {
-		d.add(styleFaint.Render("enter attaches it; the coordinator acts on it"))
-	} else {
-		d.add(styleFaint.Render("the coordinator acts on it"))
+		d.add(keysLine("enter attach"))
 	}
 }
 
@@ -169,9 +181,6 @@ func taskPanelWith(d *panel, t *tasks.Task, rv *Review, asked string, usage thre
 	d.title(t.Ref()+" "+t.Title, string(t.Status))
 	d.field("thread", t.Thread)
 	d.field("usage", usage.String())
-	if len(t.Steps) > 0 {
-		d.field("steps", progressLine(thread.Progress{Percent: pctOf(t.StepsDone(), len(t.Steps)), Done: t.StepsDone(), Total: len(t.Steps)}))
-	}
 	if asked != "" {
 		d.gap()
 		d.wrap(styleWarn.Render(waitingFor(asked)))
@@ -187,16 +196,17 @@ func taskPanelWith(d *panel, t *tasks.Task, rv *Review, asked string, usage thre
 	if rv != nil && t.Status == tasks.Review {
 		reviewLines(d, t, *rv)
 	}
-	if notes := strings.TrimSpace(t.Notes); notes != "" {
-		d.gap()
-		for _, l := range strings.Split(notes, "\n") {
-			d.wrap(oneLine(l))
-		}
-	}
 	if len(t.Steps) > 0 {
-		d.gap()
+		d.section("STEPS", "")
+		d.add(progressLine(thread.Progress{Percent: pctOf(t.StepsDone(), len(t.Steps)), Done: t.StepsDone(), Total: len(t.Steps)}))
 		for _, s := range t.Steps {
 			d.add(fmt.Sprintf("%s %d %s", todoGlyph(map[bool]string{true: "done"}[s.Done]), s.N, oneLine(s.Text)))
+		}
+	}
+	if notes := strings.TrimSpace(t.Notes); notes != "" {
+		d.section("NOTES", "")
+		for _, l := range strings.Split(notes, "\n") {
+			d.wrap(oneLine(l))
 		}
 	}
 }
@@ -224,7 +234,7 @@ func (m *dash) projectPanel(d *panel, r row) {
 			d.field("now", "▸ "+oneLine(s.Current))
 		}
 	} else {
-		d.field("session", styleFaint.Render("no coordinator; enter starts it"))
+		d.field("session", styleFaint.Render("not running; enter starts it"))
 	}
 	c := p.Counts
 	d.field("tasks", taskCounts(c))
@@ -238,7 +248,7 @@ func (m *dash) projectPanel(d *panel, r row) {
 		d.wrap(styleBad.Render("error: " + oneLine(p.Err)))
 	}
 	d.gap()
-	d.add(styleFaint.Render("enter opens the coordinator · t tasks · i inbox"))
+	d.add(keysLine("enter open the coordinator · t tasks · i inbox"))
 }
 
 func sessionPanel(d *panel, s proto.SessionInfo) {
@@ -255,8 +265,7 @@ func sessionPanel(d *panel, s proto.SessionInfo) {
 	d.field("agent", s.Agent)
 	d.field("progress", progressLine(sessionProgress(s)))
 	if s.Question != nil {
-		d.gap()
-		d.add(styleHead.Render("Question open"))
+		d.section("QUESTION OPEN", "")
 		for _, l := range questionLines(s.Question) {
 			d.wrap(l)
 		}
@@ -284,7 +293,7 @@ func sessionPanel(d *panel, s proto.SessionInfo) {
 		d.field("started", age(time.Since(s.Created))+" ago")
 	}
 	d.gap()
-	d.add(styleFaint.Render("enter attaches"))
+	d.add(keysLine("enter attach"))
 }
 
 // reviewLines are a task in review's ship state and how to check it.
@@ -294,11 +303,11 @@ func reviewLines(d *panel, t *tasks.Task, rv Review) {
 		d.wrap(s)
 	}
 	checks := append(append([]string(nil), rv.Check...), noteChecks(t)...)
+	d.section("HOW TO CHECK", "")
 	if len(checks) == 0 {
-		d.wrap(styleFaint.Render("How to check: the report doesn't say; c opens the coordinator to ask"))
+		d.wrap(styleFaint.Render("The report doesn't say; c opens the coordinator to ask."))
 		return
 	}
-	d.add(styleHead.Render("How to check"))
 	for _, c := range checks {
 		d.wrap("• " + oneLine(c))
 	}

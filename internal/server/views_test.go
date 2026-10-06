@@ -229,7 +229,7 @@ func TestViewsFirstShowFills(t *testing.T) {
 	}
 	// After that, typing claims as before: B types into the coordinator.
 	mustDo(t, vs, proto.MethodViewInput, proto.ViewParams{Client: b.id, Session: "co"})
-	if r := h.takeResizes(); !slices.Equal(r, []string{"co 73×22"}) {
+	if r := h.takeResizes(); !slices.Equal(r, []string{"co 70×22"}) {
 		t.Fatalf("B's claim resized %v", r)
 	}
 }

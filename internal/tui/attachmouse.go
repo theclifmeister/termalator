@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 	"unicode/utf8"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -72,13 +71,41 @@ func (c *client) command(name string) {
 	c.run(prefixStep(c.prefix, true, cmdKey(name), c.dashboard))
 }
 
-// amenu is a menu drawn over the window.
+// amenu is a menu, or a dialog (text and no items), drawn over the
+// window: the same box as the dashboard's popups, its keys in its own
+// action row.
 type amenu struct {
 	title string
 	items []aitem
+	// text is a dialog's question, wrapped to its width w.
+	text  []string
+	w     int
 	sel   int
 	x, y  int  // its top left cell
 	drawn bool // on screen as it is
+}
+
+// menuActs are a menu's keys, in its action row.
+const menuActs = "enter pick · esc close"
+
+// acts are the box's action rows.
+func (mn *amenu) acts() []string {
+	if len(mn.text) > 0 {
+		return actionRows(confirmKeys, mn.w-4)
+	}
+	lw, kw := mn.widths()
+	return actionRows(menuActs, max(lw+2+kw, ansi.StringWidth(menuActs)))
+}
+
+// action is the key of the action row's button at window cell (x, y),
+// "" for none.
+func (mn *amenu) action(x, y int) string {
+	n := len(mn.items) + len(mn.text)
+	r := y - mn.y - 1 - n - 1
+	if acts := mn.acts(); r >= 0 && r < len(acts) {
+		return hintAt(hints(acts[r], mn.x+2), x)
+	}
+	return ""
 }
 
 // aitem is a menu line: its label, the keys that do the same, and what
@@ -88,15 +115,19 @@ type aitem struct {
 	run        func()
 }
 
-// size is the menu's box: its width and height.
+// size is the box: its width and height.
 func (mn *amenu) size() (int, int) {
+	h := len(mn.items) + len(mn.text) + 2 + 1 + len(mn.acts())
+	if len(mn.text) > 0 {
+		return mn.w, h
+	}
 	lw, kw := mn.widths()
 	w := lw
 	if kw > 0 {
 		w += 2 + kw
 	}
-	w = max(w, ansi.StringWidth(mn.title)+2)
-	return w + 4, len(mn.items) + 2
+	w = max(w, ansi.StringWidth(mn.title)+2, ansi.StringWidth(menuActs))
+	return w + 4, h
 }
 
 func (mn *amenu) widths() (lw, kw int) {
@@ -106,25 +137,29 @@ func (mn *amenu) widths() (lw, kw int) {
 	return lw, kw
 }
 
-// lines draws the menu as a bordered box.
+// lines draws the box: the items (the keys right-aligned, in the accent
+// colour) or the text, then the action row.
 func (mn *amenu) lines() []string {
 	bw, _ := mn.size()
-	lw, kw := mn.widths()
+	if len(mn.text) > 0 {
+		return drawBox(mn.title, bw, mn.text, mn.acts(), "")
+	}
+	_, kw := mn.widths()
 	inner := bw - 4
-	title := ""
-	if mn.title != "" {
-		title = " " + styleHead.Render(oneLine(mn.title)) + " "
-	}
-	out := []string{styleAccent.Render("╭─") + title + styleAccent.Render(strings.Repeat("─", max(bw-3-ansi.StringWidth(title), 0))+"╮")}
+	var rows []string
 	for i, it := range mn.items {
-		text := fit(it.label, lw) + "  " + fit(it.key, kw)
-		l := fit(it.label, lw) + "  " + styleFaint.Render(fit(it.key, kw))
+		key := fmt.Sprintf("%*s", kw, it.key)
+		l := fit(it.label, inner-kw) + styleAccent.Render(key)
 		if i == mn.sel {
-			l = styleSel.Render(fit(text, inner))
+			l = styleSel.Render(fit(it.label, inner-kw) + key)
 		}
-		out = append(out, styleAccent.Render("│")+" "+fit(l, inner)+reset+" "+styleAccent.Render("│"))
+		rows = append(rows, l)
 	}
-	return append(out, styleAccent.Render("╰"+strings.Repeat("─", bw-2)+"╯"))
+	title := mn.title
+	if title == "" {
+		title = "Menu"
+	}
+	return drawBox(title, bw, rows, mn.acts(), "")
 }
 
 // at is the item at window cell (x, y): -1 on the border; in is false
@@ -157,10 +192,11 @@ func (c *client) openMenu(title string, items []aitem, x, y int, above bool) {
 	c.menu = mn
 }
 
-// closeMenu takes the menu away: everything under it is drawn again.
-// c.mu held.
+// closeMenu takes the menu, or the dialog, away: everything under it is
+// drawn again. c.mu held.
 func (c *client) closeMenu() {
 	c.menu = nil
+	c.dialog = nil
 	c.full = true
 	for _, p := range c.shown() {
 		p.r.Invalidate()
@@ -169,8 +205,7 @@ func (c *client) closeMenu() {
 
 // appendMenu draws the menu over the frame, the cursor hidden meanwhile.
 // c.mu held.
-func (c *client) appendMenu(b []byte) []byte {
-	mn := c.menu
+func (c *client) appendMenu(b []byte, mn *amenu) []byte {
 	b = append(b, "\x1b[?2026h"...)
 	for i, l := range mn.lines() {
 		b = append(b, fmt.Sprintf("\x1b[%d;%dH\x1b[0m", mn.y+i+1, mn.x+1)...)
@@ -218,7 +253,15 @@ func (c *client) menuMouse(m emu.Mouse) {
 	default:
 		i, in := mn.at(m.X, m.Y)
 		if in && i < 0 {
-			break // the border
+			// The action row's buttons; elsewhere the border.
+			switch mn.action(m.X, m.Y) {
+			case "enter":
+				run = mn.items[mn.sel].run
+				c.closeMenu()
+			case "esc":
+				c.closeMenu()
+			}
+			break
 		}
 		if in && m.Button == emu.MouseLeft {
 			run = mn.items[i].run
@@ -348,13 +391,15 @@ func (c *client) statusMouse(m emu.Mouse) {
 	c.poke()
 }
 
-// questionHits are the buttons of a question in the status bar: y yes,
-// and any other key no.
-func questionHits(line string) []hint {
-	plain := ansi.Strip(line)
-	i := strings.Index(plain, "y yes")
-	if i < 0 {
-		return nil
-	}
-	return hints(plain[i:], ansi.StringWidth(plain[:i]))
+// openDialog opens a yes/no dialog over the session: title, question
+// and the confirm keys in its action row, centred right of the sidebar.
+// c.mu held.
+func (c *client) openDialog(title, question string) {
+	area := max(c.cols-c.sideW, 12)
+	w := min(dialogWidth, area-2)
+	d := &amenu{title: title, text: wrapLines(question, max(w-4, 4)), w: w}
+	_, h := d.size()
+	d.x = c.sideW + max((area-w)/2, 0)
+	d.y = max((c.rows-1-h)/2, 0)
+	c.dialog = d
 }

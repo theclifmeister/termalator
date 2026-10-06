@@ -48,7 +48,7 @@ func TestDashboardPrefixQuits(t *testing.T) {
 		"the keys tab":      func(m *dash) { press(m, "a", "5") },
 		"a prompt":          func(m *dash) { press(m, "n") },
 		"a question": func(m *dash) {
-			m.confirm("sure?", func() tea.Cmd { return nil })
+			m.confirm("Sure", "sure?", func() tea.Cmd { return nil })
 		},
 		"the menu":    func(m *dash) { m.openMenu("", m.dashItems(), 0, m.bodyRows()) },
 		"the sidebar": func(m *dash) { m.focus = areaSide },

@@ -1,8 +1,8 @@
  PROJECTS                    1 │ tm dashboard                                                                                                        ● server ok · 1 session
  ■ demo                    1   │ demo ─────────────────────────────────────────────────────────────────────────────────────│ T1 Fix the login
- └─ coordinator              · │  coordinator                         —          enter starts the coordinator  1 inbox     │ ○ idle
-    └─ T1 Fix the login  50% ○ │  T1 Fix the login                    ○ idle     report new  (t-0001)  50% 1/2 ▸ Fix  <duration>  …│ ──────────────────────────────────────────────
-                               │  tasks: 0 needs you · 1 in motion · 0 on deck                                             │ project   demo
+ └─ coordinator              · │  coordinator                         —           not running; enter starts it  1 inbox    │ ○ idle
+    └─ T1 Fix the login  50% ○ │  T1 Fix the login                    ○ idle      report new  50% 1/2 ▸ Fix  <duration>  PR #7  t-…│ ──────────────────────────────────────────────
+                               │  tasks: 0 need you · 1 in motion · 0 on deck                                              │ project   demo
                                │ OTHER SESSIONS ───────────────────────────────────────────────────────────────────────────│ thread    t-0001
                                │  none outside the projects (1 in them); s starts a shell                                  │ session   <session>
                                │                                                                                           │ progress  ▰▰▰▱▱ 50% 1/2
@@ -11,11 +11,11 @@
                                │                                                                                           │ PR        https://github.com/o/r/pull/7
                                │                                                                                           │ report    1, new · for the coordinator
                                │                                                                                           │
-                               │                                                                                           │ T1 steps:
+                               │                                                                                           │ steps 1/2
                                │                                                                                           │   ✓ 1 Reproduce
                                │                                                                                           │   ○ 2 Fix
                                │                                                                                           │
-                               │                                                                                           │ enter attaches it; the coordinator acts on it
+                               │                                                                                           │ enter attach
                                │                                                                                           │
                                │                                                                                           │
                                │                                                                                           │

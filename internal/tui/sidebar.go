@@ -285,11 +285,11 @@ func sidebarLines(all []treeRow, w, h int) []string {
 }
 
 // sideHead is the sidebar's header, cw cells wide: " PROJECTS", its
-// count of projects in the state column on the right; "PRJ 3" in the
-// slim strip.
+// count of projects in the state column on the right; in the slim strip
+// the word alone, cut with "…".
 func sideHead(n, cw int, slim bool) string {
 	if slim {
-		return styleTitle.Render(fit(countLabel("PRJ", n), cw))
+		return styleTitle.Render(fit(" PROJECTS", cw))
 	}
 	count := ""
 	if n > 0 {
@@ -360,8 +360,9 @@ func treeSel(r treeRow, focused bool) (bool, lipgloss.Style) {
 // bold, the current one in the accent colour; the
 // connectors are faint.
 //
-// The slim strip shows projects alone, "▸●ter", the current one marked
-// and its coordinator's glyph (or the hint) after it.
+// The slim strip shows projects alone, "● term…": its coordinator's
+// glyph (or the hint), then its name, cut with "…"; the current one's
+// name in the accent colour, as in the full sidebar.
 // A coordinator with remote control on gets "⌁" in its row's count
 // column, one blank before its state glyph (two in the Nerd set, whose
 // icon draws wide); never on the project's row, so
@@ -379,20 +380,19 @@ func treeCells(r treeRow, cw int, slim, focused bool) string {
 		pz = i.paused
 	}
 	if slim {
-		mark := " "
-		if r.current {
-			mark = i.current
-		}
 		g, st := coordLook(r.state)
 		if r.hint && r.state != "blocked" {
 			g, st = i.hint, styleWarn
 		}
-		name := []rune(r.slug)
-		name = name[:min(len(name), max(cw-2-len([]rune(pz)), 0))]
+		name := ansi.Truncate(r.slug, max(cw-3-ansi.StringWidth(pz), 0), "…") + pz
 		if r.here {
-			return sel.Render(fit(mark+g+string(name)+pz, cw))
+			return " " + sel.Render(fit(g+" "+name, cw-1))
 		}
-		return fit(mark+st.Render(g)+string(name)+pz, cw)
+		look := styleHead
+		if r.current {
+			look = styleTitle
+		}
+		return fit(" "+st.Render(g)+" "+look.Render(name), cw)
 	}
 	// The right-hand columns: a count or percent, then a glyph.
 	right := func(num string, g string, st lipgloss.Style, hl bool) string {

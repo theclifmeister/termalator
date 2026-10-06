@@ -59,11 +59,11 @@ func TestInfoLines(t *testing.T) {
 	}
 	text := strings.Join(plain, "\n")
 	for _, want := range []string{
-		"T26 Info panel on thread panes", "started", "steps", "2/4",
+		"T26 Info panel on thread panes", "started", "STEPS", "2/4",
 		ic().todoDone + " Layout", ic().todoNow + " Toggle", ic().todoOpen + " Clicks",
 		"thread    t-0002", "working", "model     sonnet", "now       ▸ Write the tests", "needs you Which key toggles it?",
 		"PR        #70 open, checks pending,\n           behind main",
-		"Last report · 5m ago", "Layout done.", "Tests next.",
+		"LAST REPORT 5m ago", "Layout done.", "Tests next.",
 		"attached  chart.png, plan.md",
 		"branch    tm/demo/t-0002-info", "worktree  /tmp/wt/t-0002", "active    2m ago",
 	} {
@@ -354,7 +354,7 @@ func TestInfoLinesQuestion(t *testing.T) {
 		plain = append(plain, strings.TrimRight(ansi.Strip(l), " "))
 	}
 	text := strings.Join(plain, "\n")
-	for _, want := range []string{"blocked question open", "Question open", "1. [Color] Which color?", "1. Blue — calm", "2. Red", "3. (the user's own words)"} {
+	for _, want := range []string{"blocked question open", "QUESTION OPEN", "1. [Color] Which color?", "1. Blue — calm", "2. Red", "3. (the user's own words)"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("panel lacks %q:\n%s", want, text)
 		}

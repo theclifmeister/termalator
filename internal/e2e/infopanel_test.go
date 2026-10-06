@@ -80,7 +80,7 @@ func TestSmokeInfoPanel(t *testing.T) {
 	// back to it.
 	w.ClickText("T1 Fix the login", 0)
 	w.WaitUntil("the task view", wait, func(sc string) bool {
-		return strings.Contains(sc, "tm "+th.ID) && strings.Contains(sc, "╭─ demo T1 ") && strings.Contains(sc, "○ 2 Fix it")
+		return strings.Contains(sc, "tm "+th.ID) && strings.Contains(sc, "╭─ Task · demo ") && strings.Contains(sc, "○ 2 Fix it")
 	})
 	w.Key(keyEsc)
 	w.WaitFor("│ T1 Fix the login", wait)

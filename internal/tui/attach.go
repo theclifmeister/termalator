@@ -291,7 +291,10 @@ type client struct {
 	// confirmRemote: asking whether to turn this coordinator's remote
 	// control on or off.
 	confirmRemote *pane
-	takeover      func(proto.SessionInfo) error
+	// dialog is the yes/no dialog drawn over the panes while one asks
+	// (confirmRemote), nil otherwise.
+	dialog   *amenu
+	takeover func(proto.SessionInfo) error
 	// told are the threads' sessions whose coordinator this attach has
 	// told of a takeover.
 	told map[string]bool
@@ -1013,7 +1016,7 @@ func (c *client) key(k uv.Key) {
 	if !c.pending && c.prefix.match(k) && (c.menu != nil || c.confirmRemote != nil) {
 		// The prefix works from a menu or a question too: it closes the
 		// menu, or answers no, and starts a command.
-		if c.menu != nil {
+		if c.menu != nil || c.dialog != nil {
 			c.closeMenu()
 		}
 		c.confirmRemote = nil
@@ -1023,7 +1026,15 @@ func (c *client) key(k uv.Key) {
 		return
 	}
 	if p := c.confirmRemote; p != nil {
-		c.answerRemote(p, keyName(k) == "y")
+		// y says yes, n or esc no; no other key answers.
+		switch keyName(k) {
+		case "y":
+			c.answerRemote(p, true)
+		case "n", "esc":
+			c.answerRemote(p, false)
+		default:
+			c.mu.Unlock()
+		}
 		return
 	}
 	pending := c.pending
@@ -1280,14 +1291,6 @@ func (c *client) status() {
 	if !c.statusBar || c.focus == nil {
 		return
 	}
-	if p := c.confirmRemote; p != nil {
-		line := "\x1b[7m" + fit(" "+remoteQuestion(p.info)+" y yes · any other key no", c.cols-c.sideW) + "\x1b[27m"
-		if c.single {
-			c.focus.r.SetStatus(line)
-		}
-		c.statusText, c.statusHits = line, questionHits(line)
-		return
-	}
 	where := ""
 	switch {
 	case c.kb == areaSide:
@@ -1380,9 +1383,25 @@ func (c *client) mouse(ev uv.Event) {
 		c.mu.Unlock()
 		return
 	case press && c.confirmRemote != nil:
-		// A click on y yes says yes; any other click, no.
-		yes := status && m.Button == emu.MouseLeft && hintAt(c.statusHits, m.X-c.sideW) == "y"
-		c.answerRemote(c.confirmRemote, yes)
+		// The dialog's buttons answer; a click outside it says no, as
+		// a click outside a popup closes it.
+		d := c.dialog
+		key := ""
+		if d != nil && m.Button == emu.MouseLeft {
+			key = d.action(m.X, m.Y)
+		}
+		w, h := 0, 0
+		if d != nil {
+			w, h = d.size()
+		}
+		switch {
+		case key == "y":
+			c.answerRemote(c.confirmRemote, true)
+		case key == "n", key == "esc", d == nil, m.X < d.x || m.X >= d.x+w || m.Y < d.y || m.Y >= d.y+h:
+			c.answerRemote(c.confirmRemote, false)
+		default:
+			c.mu.Unlock()
+		}
 		return
 	case c.side != nil && (m.X < c.sideW || c.side.drag):
 		if press && m.Button == emu.MouseRight && !c.side.drag {
@@ -1566,7 +1585,10 @@ func (c *client) renderLoop(out io.Writer) Result {
 			b, err = c.frameSplit(vis)
 		}
 		if err == nil && c.menu != nil && (len(b) > 0 || !c.menu.drawn) {
-			b = c.appendMenu(b)
+			b = c.appendMenu(b, c.menu)
+		}
+		if err == nil && c.dialog != nil && (len(b) > 0 || !c.dialog.drawn) {
+			b = c.appendMenu(b, c.dialog)
 		}
 		if err == nil {
 			b = append(c.outerModes(), b...)

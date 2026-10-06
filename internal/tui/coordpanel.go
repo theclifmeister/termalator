@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
@@ -47,10 +48,19 @@ func loadCoordInfo(paths server.Paths, s proto.SessionInfo, sessions []proto.Ses
 
 // whyWords say why a need waits, short, as /tm says it.
 var whyWords = map[string]string{
-	proto.WhyQueue:    "stuck",
+	proto.WhyQueue:    "prompts held",
+	proto.WhyReview:   "in review",
+	proto.WhyQuestion: "asks you",
+	proto.WhyCI:       "checks failed",
+	proto.WhyBlocked:  "blocked",
+}
+
+// whyState is the state whose glyph a need's words get.
+var whyState = map[string]string{
+	proto.WhyQueue:    "blocked",
 	proto.WhyReview:   "review",
-	proto.WhyQuestion: "asks",
-	proto.WhyCI:       "red CI",
+	proto.WhyQuestion: "blocked",
+	proto.WhyCI:       "blocked",
 	proto.WhyBlocked:  "blocked",
 }
 
@@ -73,6 +83,19 @@ func coordLines(pw *proto.ProjectWatch, w int) ([]string, []infoHit) {
 			hits = append(hits, h)
 		}
 	}
+	// item adds an item's text wrapped, its lines after the first
+	// indented as its detail lines are (docs/STYLE.md S3), all doing h.
+	item := func(text string, h infoHit) {
+		for i, l := range strings.Split(ansi.Wordwrap(text, max(pl.w-4, 8), ""), "\n") {
+			if i > 0 {
+				l = "  " + l
+			}
+			pl.add(l)
+		}
+		for len(hits) < len(pl.lines) {
+			hits = append(hits, h)
+		}
+	}
 	gap := func() {
 		pl.gap()
 		for len(hits) < len(pl.lines) {
@@ -80,7 +103,7 @@ func coordLines(pw *proto.ProjectWatch, w int) ([]string, []infoHit) {
 		}
 	}
 
-	line(styleHead.Render(oneLine(pw.Project)), infoHit{})
+	line(styleTitle.Render(oneLine(pw.Project)), infoHit{})
 	line(styleFaint.Render(coordSummary(pw)), infoHit{})
 	if c := pw.Context; c != nil {
 		text, look, hint := contextWords(c)
@@ -91,11 +114,18 @@ func coordLines(pw *proto.ProjectWatch, w int) ([]string, []infoHit) {
 	}
 
 	// What waits for the user.
-	gap()
+	// heading starts a section.
+	heading := func(title string) {
+		pl.section(title, "")
+		for len(hits) < len(pl.lines) {
+			hits = append(hits, infoHit{})
+		}
+	}
 	if len(pw.NeedsYou) == 0 {
+		gap()
 		line(styleFaint.Render("Nothing waits for you."), infoHit{})
 	} else {
-		line(styleWarn.Bold(true).Render("Needs you"), infoHit{})
+		heading("NEEDS YOU")
 	}
 	for _, n := range pw.NeedsYou {
 		h := taskHit(n.Task)
@@ -110,7 +140,8 @@ func coordLines(pw *proto.ProjectWatch, w int) ([]string, []infoHit) {
 		if ref == "" {
 			ref = n.Session
 		}
-		wrapped("", styleHead.Render(ref)+" "+look.Render(whyWords[n.Why])+" "+oneLine(n.Title), h)
+		g, _ := stateLook(whyState[n.Why])
+		item(styleHead.Render(ref)+" "+look.Render(strings.TrimSpace(g+" "+whyWords[n.Why]))+" "+oneLine(n.Title), h)
 		switch {
 		case n.Why == proto.WhyQueue:
 			what := "the coordinator hears of nothing"
@@ -132,41 +163,39 @@ func coordLines(pw *proto.ProjectWatch, w int) ([]string, []infoHit) {
 			wrapped("  ", look.Render(n.PR), ph)
 		}
 		if n.Asked != "" {
-			line(styleFaint.Render("  asked the coordinator: "+strings.ReplaceAll(n.Asked, "-", " ")), h)
+			line(styleFaint.Render("  asked the coordinator: "+kindWord(n.Asked)), h)
 		}
 	}
 
 	// The inbox, a row per kind per subject.
 	if len(pw.Inbox) > 0 {
-		gap()
-		line(styleHead.Render("Inbox"), infoHit{})
+		heading("INBOX")
 	}
 	for _, it := range pw.Inbox {
 		var parts []string
 		if it.Count > 1 {
-			parts = append(parts, "x"+strconv.Itoa(it.Count))
+			parts = append(parts, "×"+strconv.Itoa(it.Count))
 		}
 		for _, s := range []string{it.Task, oneLine(it.What)} {
 			if s != "" {
 				parts = append(parts, s)
 			}
 		}
-		text := kindStyle(it.Kind).Render(it.Kind) + " " + strings.Join(parts, " ")
+		text := strings.Join(parts, " ")
 		if it.Title != "" {
 			text += styleFaint.Render(" " + oneLine(it.Title))
 		}
-		line(text, taskHit(it.Task))
+		line(kindStyle(it.Kind).Render(kindWord(it.Kind))+" "+text, taskHit(it.Task))
 	}
 
 	// The threads, compact: a click on a running one shows its pane.
 	if len(pw.Threads) > 0 {
-		gap()
-		line(styleHead.Render("Threads"), infoHit{})
+		heading("THREADS")
 	}
 	for _, t := range pw.Threads {
 		state := watchThreadState(t)
 		g, st := stateLook(state)
-		if state == "asks" {
+		if state == "asks you" {
 			g, st = stateLook("blocked")
 		}
 		text := t.ID
@@ -207,19 +236,19 @@ func coordLines(pw *proto.ProjectWatch, w int) ([]string, []infoHit) {
 
 	// The tasks on deck.
 	if len(pw.Ready) > 0 {
-		gap()
-		line(styleHead.Render("On deck"), infoHit{})
+		heading("ON DECK")
 	}
 	for i, t := range pw.Ready {
 		if i == coordReady {
 			line(styleFaint.Render(fmt.Sprintf("  and %d more", len(pw.Ready)-coordReady)), infoHit{})
 			break
 		}
-		text := t.Task + " " + styleFaint.Render(t.Status) + " " + oneLine(t.Title)
+		g, st := stateLook(t.Status)
+		text := st.Render(strings.TrimSpace(g+" "+t.Status)) + " " + oneLine(t.Title)
 		if t.Asked != "" {
-			text += styleFaint.Render(" · asked: " + strings.ReplaceAll(t.Asked, "-", " "))
+			text += styleFaint.Render(" · asked the coordinator: " + kindWord(t.Asked))
 		}
-		line(text, taskHit(t.Task))
+		item(styleHead.Render(t.Task)+" "+text, taskHit(t.Task))
 	}
 	for len(hits) < len(pl.lines) {
 		hits = append(hits, infoHit{})
@@ -286,7 +315,7 @@ func watchThreadState(t proto.WatchThread) string {
 	case t.Session == "":
 		return "stopped"
 	case t.State == "blocked" && t.Reason == "question":
-		return "asks"
+		return "asks you"
 	case t.State != "":
 		return t.State
 	}

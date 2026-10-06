@@ -86,7 +86,7 @@ func (m *dash) askRemote() tea.Cmd {
 			continue
 		}
 		on := !s.RemoteControl
-		m.confirmNo(remoteQuestion(s), "remote control unchanged", func() tea.Cmd {
+		m.confirmNo("Remote control", remoteQuestion(s), "remote control unchanged", func() tea.Cmd {
 			return m.act(func() actionMsg {
 				msg, err := m.src.SetRemote(slug, on)
 				return actionMsg{msg: msg, err: err}

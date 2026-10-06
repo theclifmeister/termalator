@@ -37,8 +37,10 @@ func TestModsSettings(t *testing.T) {
 	m.setData(src.data)
 	press(m, ",")
 	out := screen(m)
+	// The help text wraps to the box's width: its words, one space apart.
+	words := strings.Join(strings.Fields(strings.ReplaceAll(out, "│", " ")), " ")
 	for _, want := range []string{"Mods  ", "Mods band", "early access", "Claude Code 2.1.289", "after the change", "the feed still runs", "needs Mods on"} {
-		if !strings.Contains(out, want) {
+		if !strings.Contains(out, want) && !strings.Contains(words, want) {
 			t.Errorf("settings lack %q:\n%s", want, out)
 		}
 	}

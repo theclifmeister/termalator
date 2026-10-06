@@ -153,13 +153,13 @@ func infoLines(d *infoData, w int, now time.Time) ([]string, []infoHit) {
 	// The task, with its steps; the one under way marked.
 	switch t := d.task; {
 	case t != nil:
-		pl.wrap(styleHead.Render(oneLine(t.Ref() + " " + t.Title)))
+		pl.wrap(styleTitle.Render(oneLine(t.Ref() + " " + t.Title)))
 		g, st := stateLook(string(t.Status))
 		pl.add(st.Render(strings.TrimSpace(g+" "+string(t.Status))) + styleFaint.Render(" · click to open"))
 		hit(0, infoHit{kind: hitTask, task: t.ID})
 		if len(t.Steps) > 0 {
-			pl.gap()
-			pl.add(styleFaint.Render("steps ") + progressLine(thread.Progress{Percent: pctOf(t.StepsDone(), len(t.Steps)), Done: t.StepsDone(), Total: len(t.Steps)}))
+			pl.section("STEPS", "")
+			pl.add(progressLine(thread.Progress{Percent: pctOf(t.StepsDone(), len(t.Steps)), Done: t.StepsDone(), Total: len(t.Steps)}))
 			cur := true
 			for _, step := range t.Steps {
 				glyph, text := todoGlyph("pending"), oneLine(step.Text)
@@ -174,11 +174,11 @@ func infoLines(d *infoData, w int, now time.Time) ([]string, []infoHit) {
 			}
 		}
 	case d.rec != nil:
-		pl.wrap(styleHead.Render(oneLine(d.rec.Title)))
+		pl.wrap(styleTitle.Render(oneLine(d.rec.Title)))
 		pl.add(styleFaint.Render("no task"))
 	}
 	// The thread: its state, progress, what it does now, what it waits on.
-	pl.gap()
+	pl.section("THREAD", "")
 	state := stateWord(s)
 	if s.State == "blocked" && s.Reason != "" {
 		state += " " + blockReason(s)
@@ -192,7 +192,10 @@ func infoLines(d *infoData, w int, now time.Time) ([]string, []infoHit) {
 		pl.field("usage", d.rec.Usage.String())
 	}
 	if ts := d.status; ts != nil {
-		pl.field("progress", progressLine(ts.Progress()))
+		if d.task == nil || len(d.task.Steps) == 0 {
+			// A task with steps shows its progress above, once.
+			pl.field("progress", progressLine(ts.Progress()))
+		}
 		switch {
 		case ts.Current != "":
 			pl.field("now", "▸ "+oneLine(ts.Current))
@@ -204,8 +207,7 @@ func infoLines(d *infoData, w int, now time.Time) ([]string, []infoHit) {
 		}
 	}
 	if q := s.Question; q != nil {
-		pl.gap()
-		pl.add(styleHead.Render("Question open") + styleFaint.Render(" · "+age(now.Sub(q.Since))+" ago"))
+		pl.section("QUESTION OPEN", age(now.Sub(q.Since))+" ago")
 		for _, l := range questionLines(q) {
 			pl.wrap(l)
 		}
@@ -229,12 +231,11 @@ func infoLines(d *infoData, w int, now time.Time) ([]string, []infoHit) {
 	// The last report: its first lines. Its Next items are the
 	// coordinator's and never show in the TUI.
 	if r := d.report; r != nil {
-		pl.gap()
-		head := "Last report"
+		when := ""
 		if d.rec != nil && !d.rec.ReportAt.IsZero() {
-			head += styleFaint.Render(" · " + age(now.Sub(d.rec.ReportAt)) + " ago")
+			when = age(now.Sub(d.rec.ReportAt)) + " ago"
 		}
-		pl.add(styleHead.Render(head))
+		pl.section("LAST REPORT", when)
 		for _, l := range reportHead(r.Text, 3) {
 			pl.wrap(oneLine(l))
 		}

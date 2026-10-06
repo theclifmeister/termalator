@@ -95,9 +95,9 @@ func TestProjectPopup(t *testing.T) {
 	}
 	m.Update(cmd()) // the board
 	out := screen(m)
-	for _, want := range []string{"─ alpha ─", "1 Overview", "2 Inbox 1", "5 Keys",
+	for _, want := range []string{"─ Alpha ─", "1 Overview", "2 Inbox 1", "5 Keys",
 		"Project", "Alpha", "Goal", "Ship the alpha", "Repositories", "/src/alpha", "local main is 3 behind origin (uncommitted changes)", "Machines", "this one",
-		"Coordinator", "claude · s-1 blocked", "1 needs you (3 → Tasks) · 1 in motion"} {
+		"Coordinator", "claude · s-1 blocked", "1 needs you (Tasks tab) · 1 in motion"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("overview lacks %q:\n%s", want, out)
 		}
@@ -109,7 +109,7 @@ func TestProjectPopup(t *testing.T) {
 	}
 	keyPress(m, "right")
 	out = screen(m)
-	for _, want := range []string{"IN MOTION", "T1    Write the README", "started · 1/2 · t-0002", "✓ Draft", "Review", "ON DECK", "T2    Ship it", "the coordinator changes tasks", "enter show · esc close"} {
+	for _, want := range []string{"IN MOTION", "T1     Write the README", "● started   ▰▰▰▱▱  1/2  t-0002", "✓ Draft", "Review", "ON DECK", "T2     Ship it", "the coordinator changes tasks", "enter show · esc close"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("tasks tab lacks %q:\n%s", want, out)
 		}
@@ -396,7 +396,7 @@ func TestDelegateTask(t *testing.T) {
 		t.Fatalf("delegated %v", src.delegated)
 	}
 	out := screen(m)
-	if !strings.Contains(out, "ready · waiting on the coordinator") || !strings.Contains(out, "asked the coordinator to delegate T2") {
+	if !strings.Contains(out, "○ ready     asked the coordinator") || !strings.Contains(out, "asked the coordinator to delegate T2") {
 		t.Fatalf("after y:\n%s", out)
 	}
 	keyPress(m, "D")
@@ -427,11 +427,11 @@ func TestDelegateFromBoard(t *testing.T) {
 	if len(src.delegated) != 1 || src.delegated[0] != "alpha T2" {
 		t.Fatalf("delegated %v", src.delegated)
 	}
-	if out := screen(m); !strings.Contains(out, "waiting on the coordinator") {
+	if out := screen(m); !strings.Contains(out, "asked the coordinator") {
 		t.Fatalf("shown task:\n%s", out)
 	}
 	keyPress(m, "esc")
-	if out := screen(m); !strings.Contains(out, "waiting on coordinator") || !strings.Contains(out, "D delegate") {
+	if out := screen(m); !strings.Contains(out, "asked the coordinator") || !strings.Contains(out, "D delegate") {
 		t.Fatalf("board:\n%s", out)
 	}
 }
@@ -450,7 +450,7 @@ func TestKeysParity(t *testing.T) {
 	if want := keyLines(m.inner(b.width)); strings.Join(b.body, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("keys tab isn't the keys:\n%s", strings.Join(b.body, "\n"))
 	}
-	if want := keyLines(m.inner(m.w)); strings.Join(help, "\n") != strings.Join(want, "\n") {
+	if want := helpLines(m.prefix, m.inner(m.w)); strings.Join(help, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("help isn't the keys:\n%s", strings.Join(help, "\n"))
 	}
 	text := ansi.Strip(strings.Join(help, "\n"))
@@ -683,7 +683,7 @@ func TestAcceptTask(t *testing.T) {
 		t.Fatalf("asked %v", src.asked)
 	}
 	out := screen(m)
-	if !strings.Contains(out, "review · waiting on the coordinator · t-0008") || !strings.Contains(out, "told the coordinator you accept T3; it marks it done") {
+	if !strings.Contains(out, "◆ review    asked the coordinator") || !strings.Contains(out, "told the coordinator you accept T3; it marks it done") {
 		t.Fatalf("after y:\n%s", out)
 	}
 	for _, k := range []string{"A", "x"} {
@@ -726,7 +726,7 @@ func TestSendBack(t *testing.T) {
 		t.Fatalf("empty note: %q, %v", m.msg, src.asked)
 	}
 	keyPress(m, "x")
-	if out := screen(m); !strings.Contains(out, "Send T3 back. What should change?") || !strings.Contains(out, "0/200") {
+	if out := screen(m); !strings.Contains(out, "Send T3 back") || !strings.Contains(out, "What should change?") || strings.Contains(out, "/200") {
 		t.Fatalf("prompt:\n%s", out)
 	}
 	for _, r := range "bell cut" {
@@ -737,7 +737,7 @@ func TestSendBack(t *testing.T) {
 	if len(src.asked) != 1 || src.asked[0] != "send-back alpha T3 bell cut" || m.msg != "sent T3 back with your note; the coordinator passes it on" {
 		t.Fatalf("asked %v, %q", src.asked, m.msg)
 	}
-	if out := screen(m); !strings.Contains(out, "waiting on coordinator") {
+	if out := screen(m); !strings.Contains(out, "asked the coordinator") {
 		t.Fatalf("row:\n%s", out)
 	}
 	// x on a task not in review or done only says why.
@@ -756,13 +756,13 @@ func TestSendBackDone(t *testing.T) {
 		Notes: "done (2026-10-05): merged (PR #70), by the project's setting"})
 	m.Update(keyPress(m, "t")())
 	out := screen(m)
-	if !strings.Contains(out, "DONE") || !strings.Contains(out, "T5    Shipped") {
+	if !strings.Contains(out, "DONE") || !strings.Contains(out, "T5     Shipped") {
 		t.Fatalf("no done task:\n%s", out)
 	}
 	for range 10 {
 		keyPress(m, "down")
 	}
-	if out := screen(m); !strings.Contains(out, "enter show · x send back · esc back") {
+	if out := screen(m); !strings.Contains(out, "enter show · x send back · esc close") {
 		t.Fatalf("done keys:\n%s", out)
 	}
 	keyPress(m, "A")
@@ -770,7 +770,7 @@ func TestSendBackDone(t *testing.T) {
 		t.Fatalf("A on done: %q", m.msg)
 	}
 	keyPress(m, "x")
-	if out := screen(m); !strings.Contains(out, "Send T5 back. What should change?") {
+	if out := screen(m); !strings.Contains(out, "Send T5 back") || !strings.Contains(out, "What should change?") {
 		t.Fatalf("prompt:\n%s", out)
 	}
 	for _, r := range "still broken" {
@@ -791,7 +791,7 @@ func TestReviewDetail(t *testing.T) {
 	keyPress(m, "enter")
 	out := screen(m)
 	for _, want := range []string{"PR #61 merged",
-		"How to check", "• Run tm, press t", "• the bell shows whole", "A accept · x send back · esc back"} {
+		"HOW TO CHECK", "• Run tm, press t", "• the bell shows whole", "A accept · x send back · esc back"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("review detail lacks %q:\n%s", want, out)
 		}
@@ -834,7 +834,7 @@ func TestBlockedTask(t *testing.T) {
 	src, m := needsYouData(t, 86+sideDefault)
 	m.Update(keyPress(m, "t")())
 	keyPress(m, "down")
-	if out := screen(m); !strings.Contains(out, "enter show · c coordinator · D delegate · esc back") {
+	if out := screen(m); !strings.Contains(out, "enter show · c coordinator · D delegate · esc close") {
 		t.Fatalf("blocked keys:\n%s", out)
 	}
 	keyPress(m, "enter")
@@ -860,16 +860,14 @@ func TestNeedsYouNarrow(t *testing.T) {
 		t.Fatalf("sidebar %d", m.sideW())
 	}
 	m.Update(keyPress(m, "t")())
-	foot := func() string {
-		lines := strings.Split(screen(m), "\n")
-		return strings.Join(lines[len(lines)-3:], "\n")
-	}
-	if f := foot(); !strings.Contains(f, "enter show · A accept · x send back · esc back") {
+	// The keys are the popup's action row, inside its frame.
+	foot := func() string { return screen(m) }
+	if f := foot(); !strings.Contains(f, "enter show · A accept · x send back · esc close") {
 		t.Fatalf("t list keys:\n%s", f)
 	}
 	keyPress(m, "A")
 	act(m, src, "y")
-	if out := screen(m); !strings.Contains(out, "waiting on coordinator") {
+	if out := screen(m); !strings.Contains(out, "asked the coordinator") {
 		t.Fatalf("t list row:\n%s", out)
 	}
 	keyPress(m, "enter")
@@ -878,7 +876,7 @@ func TestNeedsYouNarrow(t *testing.T) {
 	}
 	keyPress(m, "esc")
 	keyPress(m, "down")
-	if f := foot(); !strings.Contains(f, "enter show · c coordinator · D delegate · esc back") {
+	if f := foot(); !strings.Contains(f, "enter show · c coordinator · D delegate · esc close") {
 		t.Fatalf("blocked keys:\n%s", f)
 	}
 	keyPress(m, "enter")
@@ -892,7 +890,7 @@ func TestNeedsYouNarrow(t *testing.T) {
 	if f := foot(); !strings.Contains(f, "A accept · x send back · enter show · esc close") {
 		t.Fatalf("Tasks tab keys:\n%s", f)
 	}
-	if out := screen(m); !strings.Contains(out, "review · waiting on the coordinator ") {
+	if out := screen(m); !strings.Contains(out, "◆ review    asked the coordinator") {
 		t.Fatalf("Tasks tab row:\n%s", out)
 	}
 }
@@ -937,7 +935,7 @@ func TestAllProjectsSettings(t *testing.T) {
 		t.Fatalf("project follows all projects:\n%s", out)
 	}
 	act(m, src, "-")
-	if out := screen(m); !strings.Contains(out, "14 · 1 working now  −  +") || strings.Contains(out, "+ · all projects") || !strings.Contains(out, "x follow all projects") {
+	if out := screen(m); !strings.Contains(out, "14 · 1 working now  −  +") || strings.Contains(lineWith(out, "Parallel threads"), "all projects") || !strings.Contains(out, "x follow all projects") {
 		t.Fatalf("project's own value:\n%s", out)
 	}
 	if cfg, _ := config.Load(); must(cfg.Safety("alpha")).ParallelThreads != 14 || must(cfg.Safety("beta")).ParallelThreads != 15 {
@@ -1015,8 +1013,12 @@ func TestMemoryTab(t *testing.T) {
 		t.Fatalf("6: tab %d", pv.tab)
 	}
 	out := screen(m)
+	// A wrapped list item hangs under its text.
+	if !regexp.MustCompile(`│   (a long )?item`).MatchString(out) {
+		t.Errorf("memory tab: a wrapped item doesn't hang:\n%s", out)
+	}
 	for _, want := range []string{"6 Memory", "CONTEXT", "The plan, see the doc.", "Where things stand", "- a long item",
-		"  a long item", "MEMORY", "- Decisions: host choices", "NOTES", "- Design decisions", "Read-only", "↑ ↓ scroll"} {
+		"MEMORY", "- Decisions: host choices", "NOTES", "- Design decisions", "Read-only", "↑ ↓ scroll"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("memory tab lacks %q:\n%s", want, out)
 		}
@@ -1111,7 +1113,7 @@ func TestListsPage(t *testing.T) {
 func TestHelpNamesPrefix(t *testing.T) {
 	_, m := popupData(t)
 	keyPress(m, "?")
-	if out := screen(m); !strings.Contains(out, "keys · prefix = ctrl+b") {
+	if out := screen(m); !strings.Contains(out, "─ Help ─") || !strings.Contains(out, "The prefix key is ctrl+b") {
 		t.Fatalf("help header:\n%s", out)
 	}
 }
@@ -1273,7 +1275,7 @@ func TestTasksTabCompact(t *testing.T) {
 	if !strings.Contains(out, "✓ Draft") || strings.Contains(out, "Other step") || strings.Contains(out, "Finished step") {
 		t.Fatalf("steps only under the selected active task:\n%s", out)
 	}
-	if !strings.Contains(out, "ready · 0/1") || !strings.Contains(out, "done · 1/1") {
+	if !strings.Contains(out, "○ ready     ▱▱▱▱▱  0/1") || !strings.Contains(out, "✓ done      ▰▰▰▰▰  1/1") {
 		t.Fatalf("rows keep n/n:\n%s", out)
 	}
 	if !strings.Contains(out, "… 2 more done") || strings.Contains(out, "Old job 20 ") || !strings.Contains(out, "Old job 31") {
@@ -1294,4 +1296,14 @@ func TestTasksTabCompact(t *testing.T) {
 	if pv.doneAll || len(pv.tasks()) != 12 {
 		t.Fatalf("m again: doneAll %v, %d tasks", pv.doneAll, len(pv.tasks()))
 	}
+}
+
+// lineWith is the first line of out that contains s, "" for none.
+func lineWith(out, s string) string {
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, s) {
+			return l
+		}
+	}
+	return ""
 }

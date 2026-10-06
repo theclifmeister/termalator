@@ -51,12 +51,12 @@ func TestSmokeDashboard(t *testing.T) {
 	env.MustCLI("task", "status", "T2", "started", "--project", slug)
 	s := env.Start("shell")
 	env.WaitFor(s, "$", wait)
-	w.WaitFor("0 needs you · 1 in motion · 1 on deck", wait)
+	w.WaitFor("0 need you · 1 in motion · 1 on deck", wait)
 	w.WaitFor(s.ID+" ", wait)
 	w.Golden("dashboard-sessions.txt", dashMasks...)
 
 	env.MustCLI("task", "status", "T1", "review", "--project", slug)
-	w.WaitFor("1 needs you (a → Tasks)", wait)
+	w.WaitFor("1 needs you (t lists them)", wait)
 	w.WaitFor("T1 Write the README", wait)
 	if !strings.Contains(w.Screen(), "NEEDS YOU 1") {
 		t.Fatalf("a task in review is not in NEEDS YOU:\n%s", w.Screen())
@@ -79,7 +79,7 @@ func TestSmokeDashboard(t *testing.T) {
 
 	// The task view: T1 first (needs you); it only shows.
 	w.Type("t")
-	w.WaitFor("demo tasks", wait)
+	w.WaitFor("Tasks · demo", wait)
 	w.WaitFor("T1", wait)
 	w.Golden("dashboard-tasks.txt", dashMasks...)
 	w.Type("D")
@@ -123,7 +123,7 @@ func TestSmokeFirstLocalRun(t *testing.T) {
 	// Back to the dashboard: the session needs you.
 	w.Detach()
 	w.WaitFor("NEEDS YOU", wait)
-	w.WaitFor("▲ blocked  permission", wait)
+	w.WaitFor("▲ blocked   permission", wait)
 	env.AssertAlive(s)
 
 	// Attach again (the session's row is still selected) and approve.

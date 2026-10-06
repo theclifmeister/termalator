@@ -193,8 +193,15 @@ func TestSmokeProjectPopup(t *testing.T) {
 	w.Key(keyEsc)
 	w.WaitUntil("popup closed", wait, func(sc string) bool { return !strings.Contains(sc, "1 Overview") })
 	w.Type("?")
-	w.WaitFor("↑ ↓ scroll · esc back", wait)
+	w.WaitFor("↑ ↓ scroll · esc close", wait)
 	help := popupBody(w.Screen(), cols)
+	// The help leads with the prefix key, then the same keys; each box
+	// ends with its own action row, which is no key line.
+	for len(help) > 0 && !strings.Contains(help[0], "On the dashboard") {
+		help = help[1:]
+	}
+	help = help[:max(len(help)-1, 0)]
+	keys = keys[:max(len(keys)-1, 0)]
 	screens = append(screens, w.Screen())
 	// Each wraps to its own box's width and shows what fits: word for
 	// word, the shorter is where the longer starts.
@@ -203,7 +210,7 @@ func TestSmokeProjectPopup(t *testing.T) {
 		t.Fatalf("keys tab and help differ:\n%s\n----\n%s", strings.Join(keys, "\n"), strings.Join(help, "\n"))
 	}
 	w.Key(keyEsc)
-	w.WaitUntil("help closed", wait, func(sc string) bool { return !strings.Contains(sc, "↑ ↓ scroll · esc back") })
+	w.WaitUntil("help closed", wait, func(sc string) bool { return !strings.Contains(sc, "↑ ↓ scroll · esc close") })
 
 	// , has the settings of every project.
 	w.Type(",")
@@ -245,11 +252,11 @@ func TestSmokeProjectPopup(t *testing.T) {
 	})
 	// prefix+? the same; prefix+d from the popup goes to the dashboard.
 	w.Prefix("?")
-	w.WaitFor("↑ ↓ scroll · esc back", wait)
+	w.WaitFor("↑ ↓ scroll · esc close", wait)
 	w.Prefix("d")
 	w.WaitFor("SESSIONS", wait)
 	w2.WaitFor("SESSIONS", wait)
-	if strings.Contains(w.Screen(), "↑ ↓ scroll · esc back") {
+	if strings.Contains(w.Screen(), "↑ ↓ scroll · esc close") {
 		t.Fatalf("prefix d left the help open:\n%s", w.Screen())
 	}
 	for _, sc := range screens {

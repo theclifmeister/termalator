@@ -1,9 +1,9 @@
  PROJECTS                    1 │ tm dashboard                                ● server ok · 1 session
  ■ demo                    0   │ demo ──────────────────────────────────────────────────────────────
- └─ coordinator              · │  coordinator              —          enter starts the coordinator
-                               │  tasks: 0 needs you · 1 in motion · 1 on deck
+ └─ coordinator              · │  coordinator               —           not running; enter starts it
+                               │  tasks: 0 need you · 1 in motion · 1 on deck
                                │ OTHER SESSIONS 1 ──────────────────────────────────────────────────
-                               │  <session>          /bin/sh              ● running  <duration>  /
+                               │  <session>           /bin/sh               ▷ running   <duration>  /
                                │
                                │
                                │

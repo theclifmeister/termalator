@@ -35,9 +35,9 @@ func TestDashboardSidebar(t *testing.T) {
 	m.setData(src.data)
 	want := []string{
 		" PROJECTS                    2 │ tm dashboard",
-		" ■ alpha                   0 ◆ │", // a task needs you; a blank column before the border
+		" ■ alpha                   0 ⚑ │", // a task needs you; a blank column before the border
 		" └─ coordinator              ▲ │",
-		" ■ beta                    2 ◆ │", // t-0005 waits on a question
+		" ■ beta                    2 ⚑ │", // t-0005 waits on a question
 		" └─ coordinator              · │",
 		"    ├─ T4 Write docs     60% ● │", // threads hang under the coordinator, task id and title
 		"    └─ t-0006 Old work       · │", // a thread without a task: its own id
@@ -101,7 +101,7 @@ func TestDashboardSidebar(t *testing.T) {
 	// A narrow window: the slim strip of projects, never nothing. alpha
 	// is current; beta's glyph is the hint.
 	m.Update(tea.WindowSizeMsg{Width: 70, Height: 30})
-	if out := whole(m); m.sideW() != sideSlim || !strings.Contains(out, "▸▲alp │") || !strings.Contains(out, " ◆bet │") || !strings.HasPrefix(strings.Split(out, "\n")[3], "      │") {
+	if out := whole(m); m.sideW() != sideSlim || !strings.Contains(out, " ▲ alpha │") || !strings.Contains(out, " ⚑ beta  │") || !strings.HasPrefix(strings.Split(out, "\n")[3], "         │") {
 		t.Fatalf("narrow window, sidebar %d:\n%s", m.sideW(), out)
 	}
 	// A click on a project in the strip shows its dashboard.

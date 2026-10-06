@@ -102,6 +102,43 @@ func keyGroups() []keyGroup {
 	}
 }
 
+// helpLines are the help's lines w cells wide: the prefix key, every key
+// (keyLines), then the symbols.
+func helpLines(prefix string, w int) []string {
+	out := faintLines("The prefix key is "+prefix+": prefix+d means "+prefix+", then d. Change it in the settings (,).", w)
+	out = append(out, "")
+	out = append(out, keyLines(w)...)
+	out = append(out, "")
+	return append(out, symbolLines(w)...)
+}
+
+// symbolLines lists every glyph tm draws with its one meaning, in this
+// console's icon set (docs/STYLE.md, glyphs).
+func symbolLines(w int) []string {
+	i := ic()
+	syms := []keyHelp{
+		{i.working, "working: a session at work, a task started"},
+		{i.idle, "idle: waiting for a prompt; an open or ready task"},
+		{i.blocked, "blocked: waits on a permission prompt, a question or a task it needs"},
+		{i.review, "in review: done by its thread, waits for you to accept it"},
+		{i.starting, "starting"},
+		{i.running, "running: a shell or another program"},
+		{i.done, "done"},
+		{i.other, "stopped, exited or resolved"},
+		{i.hint, "in the sidebar: something in this project needs you"},
+		{i.remote, "remote control is on for this coordinator"},
+		{i.paused, "the project is paused"},
+		{i.todoDone + " " + i.todoNow + " " + i.todoOpen, "a step done, under way, to do"},
+		{i.current, "the step under way"},
+		{strings.Repeat(i.barOn, 2) + strings.Repeat(i.barOff, 3), "progress, always beside its count (2/5)"},
+	}
+	out := []string{styleHead.Render("Symbols")}
+	for _, s := range syms {
+		out = append(out, keyLine(s, w)...)
+	}
+	return out
+}
+
 // keyCol is the width of the keys column.
 const keyCol = 19
 

@@ -33,7 +33,7 @@ func TestAdoptSession(t *testing.T) {
 	}
 	press(m, "T")
 	cv, ok := m.top().(*confirmView)
-	if !ok || !strings.HasPrefix(cv.question, "Adopt s-4 (claude in /y) as a thread of beta?") {
+	if !ok || cv.title != "Adopt s-4" || !strings.HasPrefix(cv.question, "Adopt s-4 as a thread of beta?") || !strings.HasSuffix(cv.question, "claude in /y") {
 		t.Fatalf("T opened %T %+v", m.top(), cv)
 	}
 	press(m, "n")

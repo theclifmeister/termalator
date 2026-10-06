@@ -71,8 +71,9 @@ func notAskable(t *tasks.Task, kind string) string {
 // coordinator something about it.
 const delegateWaiting = "waiting on the coordinator"
 
-// delegateWaitingRow is delegateWaiting for the t list's narrow row.
-const delegateWaitingRow = "waiting on coordinator"
+// askedRow is what a task's row says while an item asks the
+// coordinator something about it, in the words the panels use.
+const askedRow = "asked the coordinator"
 
 // waitingFor says what the coordinator is asked, for kind's item.
 func waitingFor(kind string) string {
@@ -138,7 +139,7 @@ func (m *dash) delegate(slug string, t *tasks.Task) tea.Cmd {
 	}
 	ref := t.Ref()
 	question := "Delegate " + ref + " to the coordinator? It starts a thread for " + ref + " " + oneLine(t.Title) + "."
-	m.confirmNo(question, ref+" not delegated", func() tea.Cmd {
+	m.confirmNo("Delegate "+ref, question, ref+" not delegated", func() tea.Cmd {
 		return m.askCoordinator(slug, t, project.KindDelegate, "", "asked the coordinator to delegate "+ref+"; it starts a thread for it")
 	})
 	return nil
@@ -152,7 +153,7 @@ func (m *dash) accept(slug string, t *tasks.Task) tea.Cmd {
 	}
 	ref := t.Ref()
 	question := "Accept " + ref + "? The coordinator marks " + ref + " " + oneLine(t.Title) + " done."
-	m.confirmNo(question, ref+" not accepted", func() tea.Cmd {
+	m.confirmNo("Accept "+ref, question, ref+" not accepted", func() tea.Cmd {
 		return m.askCoordinator(slug, t, project.KindAccept, "", "told the coordinator you accept "+ref+"; it marks it done")
 	})
 	return nil
@@ -165,7 +166,7 @@ func (m *dash) sendBack(slug string, t *tasks.Task) tea.Cmd {
 		return nil
 	}
 	ref := t.Ref()
-	m.promptNo("Send "+ref+" back. What should change? ", ref+" not sent back", project.MaxSendBackNote, func(note string) tea.Cmd {
+	m.promptNo("Send "+ref+" back", "What should change? The coordinator passes your note on.", ref+" not sent back", project.MaxSendBackNote, func(note string) tea.Cmd {
 		return m.askCoordinator(slug, t, project.KindSendBack, note, "sent "+ref+" back with your note; the coordinator passes it on")
 	})
 	return nil
@@ -280,8 +281,8 @@ func (m *dash) adopt(string) tea.Cmd {
 	}
 	slug, src := m.projectHere(), m.src
 	home, _ := os.UserHomeDir()
-	question := "Adopt " + s.ID + " (" + adoptWhere(s, home) + ") as a thread of " + slug + "? The coordinator links it to a task and briefs it."
-	m.confirmNo(question, s.ID+" not adopted", func() tea.Cmd {
+	question := "Adopt " + s.ID + " as a thread of " + slug + "? The coordinator links it to a task and briefs it.\n\n" + adoptWhere(s, home)
+	m.confirmNo("Adopt "+s.ID, question, s.ID+" not adopted", func() tea.Cmd {
 		return m.act(func() actionMsg {
 			asked, err := src.AskAdopt(slug, s)
 			if err != nil {

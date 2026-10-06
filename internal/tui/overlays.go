@@ -69,24 +69,13 @@ func line(r row, w int, selected bool) string {
 // moveSel moves a list selection by d within n items.
 func moveSel(sel, d, n int) int { return min(max(sel+d, 0), max(n-1, 0)) }
 
-// popupWidth is the width of the list-like popups.
-const popupWidth = 104
-
-// inner is the text width inside a popup of the given width.
-func (m *dash) inner(width int) int {
-	if m.w < 44 {
-		return max(m.w-4, 4)
-	}
-	return max(min(width, m.w-4)-4, 4)
-}
-
 // helpView lists the keys (keymap.go) as wide as the window; the arrows
 // scroll, esc closes it.
 type helpView struct{ scroll int }
 
 func (h *helpView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	if d, ok := scrollKeys[k.String()]; ok {
-		h.scroll = clampScroll(h.scroll+d, len(keyLines(m.inner(m.w))))
+		h.scroll = clampScroll(h.scroll+d, len(helpLines(m.prefix, m.inner(m.w))))
 		return nil
 	}
 	if k.String() == "esc" {
@@ -96,8 +85,8 @@ func (h *helpView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 }
 
 func (h *helpView) box(m *dash) box {
-	return box{title: "keys · prefix = " + m.prefix, body: keyLines(m.inner(m.w)), sel: -1, scroll: h.scroll,
-		keys: "↑ ↓ scroll · esc back", width: m.w}
+	return box{title: "Help", body: helpLines(m.prefix, m.inner(m.w)), sel: -1, scroll: h.scroll,
+		keys: "↑ ↓ scroll · esc close", width: m.w}
 }
 
 func (h *helpView) render(m *dash) string { return m.popup(h.box(m)) }
@@ -110,8 +99,10 @@ var scrollKeys = map[string]int{"up": -1, "k": -1, "down": 1, "j": 1, "pgup": -1
 
 func clampScroll(s, n int) int { return min(max(s, 0), max(n-1, 0)) }
 
-// inputView reads a line of text.
+// inputView reads a line of text: its title names what for, its label
+// asks for it.
 type inputView struct {
+	title       string
 	label, text string
 	submit      func(string) tea.Cmd
 	// cancel is the footer message on esc or an empty line; max is the
@@ -120,14 +111,14 @@ type inputView struct {
 	max    int
 }
 
-func (m *dash) prompt(label, initial string, submit func(string) tea.Cmd) {
-	m.push(&inputView{label: label, text: initial, submit: submit})
+func (m *dash) prompt(title, label, initial string, submit func(string) tea.Cmd) {
+	m.push(&inputView{title: title, label: label, text: initial, submit: submit})
 }
 
 // promptNo is prompt with an empty start, saying cancel in the footer
 // when it is cancelled, and taking at most max runes.
-func (m *dash) promptNo(label, cancel string, max int, submit func(string) tea.Cmd) {
-	m.push(&inputView{label: label, submit: submit, cancel: cancel, max: max})
+func (m *dash) promptNo(title, label, cancel string, max int, submit func(string) tea.Cmd) {
+	m.push(&inputView{title: title, label: label, submit: submit, cancel: cancel, max: max})
 }
 
 func (in *inputView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
@@ -165,16 +156,17 @@ func (in *inputView) cancelled(m *dash) {
 }
 
 func (in *inputView) render(m *dash) string {
-	// A long text wraps onto more lines, so all of it shows.
-	body := wrapInput(in.label, in.text+"█", m.inner(promptWidth))
-	if in.max > 0 {
-		body = append(body, styleFaint.Render(fmt.Sprintf("%d/%d", len([]rune(in.text)), in.max)))
+	// The label above the field; a long text wraps onto more lines, so
+	// all of it shows.
+	w := m.inner(dialogWidth)
+	body := wrapLines(in.label, w)
+	body = append(body, wrapInput("", in.text+"█", w)...)
+	if n := len([]rune(in.text)); in.max > 0 && n*10 >= in.max*8 {
+		// Near the limit: how much is left.
+		body = append(body, styleFaint.Render(fmt.Sprintf("%d of at most %d characters", n, in.max)))
 	}
-	return m.popup(box{body: body, sel: -1, keys: "enter ok · ctrl+u clear · esc cancel", width: promptWidth})
+	return m.popup(box{title: in.title, body: body, sel: -1, keys: "enter ok · ctrl+u clear · esc cancel", width: dialogWidth})
 }
-
-// promptWidth is the prompt popup's width when the window has room.
-const promptWidth = 96
 
 // wrapInput lays out a prompt's label and text in lines of w cells,
 // breaking anywhere (a path has no spaces to break at); the label is in
@@ -265,64 +257,76 @@ func (b *boardView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 }
 
 func (b *boardView) render(m *dash) string {
-	title := b.slug + " tasks"
+	title := "Tasks · " + b.slug
 	if b.board == nil {
-		return m.popup(box{title: title, body: []string{styleFaint.Render("loading…")}, sel: -1, keys: "esc back", width: popupWidth})
+		return m.popup(box{title: title, body: []string{styleFaint.Render("loading…")}, sel: -1, keys: "esc close", width: viewWidth})
 	}
 	if b.open && b.sel < len(b.list) {
 		t := b.list[b.sel]
-		d := &panel{w: m.inner(88) + 1} // panel lines start with a space
+		d := &panel{w: m.inner(viewWidth) + 2} // panel lines start with a space, and keep one at the end
 		var rv *Review
 		if r, ok := b.reviews[t.ID]; ok {
 			rv = &r
 		}
 		taskPanelWith(d, t, rv, m.asked(b.slug, t), m.taskUsage(b.slug, t.ID))
 		for i, l := range d.lines {
-			d.lines[i] = strings.TrimPrefix(l, " ")
+			// The box has its own gutters.
+			d.lines[i] = strings.TrimRight(strings.TrimSuffix(strings.TrimPrefix(l, " "), reset), " ") + reset
 		}
 		keys := joinKeys(taskKeys(t), "esc back")
-		return m.popup(box{title: b.slug + " " + t.Ref(), body: d.lines, sel: -1, keys: keys, width: 88})
+		return m.popup(box{title: "Task · " + b.slug, body: d.lines, sel: -1, keys: keys, width: viewWidth})
 	}
-	w := m.inner(popupWidth)
+	w := m.inner(viewWidth)
 	var lines []string
 	var hits []int
 	sel := -1
 	var group tasks.Group
 	for i, t := range b.list {
 		if g := tasks.GroupOf(t.Status); g != group {
-			group = g
-			st := styleTitle
-			if g == tasks.NeedsYou {
-				st = styleWarn.Bold(true)
+			if group != "" {
+				lines = append(lines, "")
+				hits = append(hits, noHit)
 			}
-			lines = append(lines, m.ruleIn(strings.ToUpper(string(g)), st, w))
+			group = g
+			title := strings.ToUpper(string(g))
+			lines = append(lines, sectionRule(title, sectionStyle(title), w))
 			hits = append(hits, noHit)
 		}
 		hits = append(hits, i)
-		r := row{who: t.Ref(), what: oneLine(t.Title), state: string(t.Status), rest: t.Thread, pct: -1, whoW: 5, whatMin: 10}
-		if len(t.Steps) > 0 {
-			r.pct = pctOf(t.StepsDone(), len(t.Steps))
-			r.rest = joinSp(fmt.Sprintf("%d/%d", t.StepsDone(), len(t.Steps)), t.Thread)
-		}
-		if m.asked(b.slug, t) != "" {
-			r.lead = delegateWaitingRow // first, so it is never cut
-		}
 		if i == b.sel {
 			sel = len(lines)
 		}
-		lines = append(lines, line(r, w, i == b.sel))
+		lines = append(lines, line(taskRow(t, m.asked(b.slug, t) != ""), w, i == b.sel))
 	}
 	if len(b.list) == 0 {
 		lines = append(lines, styleFaint.Render("no tasks"))
 	}
-	keys := "esc back"
+	keys := "esc close"
 	if b.sel < len(b.list) {
 		keys = joinKeys("enter show", taskKeys(b.list[b.sel]), keys)
 	}
-	return m.popup(box{title: title, body: lines, sel: sel, hits: hits, keys: keys, width: popupWidth})
+	return m.popup(box{title: title, body: lines, sel: sel, hits: hits, keys: keys, width: viewWidth})
 }
 
-// joinKeys joins footer key lists, skipping empty ones.
+// taskTitleCol is where a task row's title starts: after its id and
+// the gap (taskRow).
+const taskTitleCol = 5 + colGap
+
+// taskRow is a task as every task list draws it (the t list, the
+// project popup's Tasks tab): id, title, state, progress, thread.
+func taskRow(t *tasks.Task, asked bool) row {
+	r := row{who: t.Ref(), what: oneLine(t.Title), state: string(t.Status), rest: t.Thread, pct: -1, whoW: 5, whatMin: 10}
+	if len(t.Steps) > 0 {
+		r.pct = pctOf(t.StepsDone(), len(t.Steps))
+		r.rest = joinSp(fmt.Sprintf("%d/%d", t.StepsDone(), len(t.Steps)), t.Thread)
+	}
+	if asked {
+		r.lead = askedRow // first, so it is never cut
+	}
+	return r
+}
+
+// joinKeys joins key lists, skipping empty ones.
 func joinKeys(keys ...string) string {
 	var out []string
 	for _, k := range keys {
@@ -370,12 +374,12 @@ func (sw *switchView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 }
 
 func (sw *switchView) render(m *dash) string {
-	w := m.inner(popupWidth)
+	w := m.inner(viewWidth)
 	var lines []string
 	var hits []int
 	for i, p := range m.data.Projects {
 		hits = append(hits, i)
-		r := row{key: "p:" + p.Slug, mark: "  ", who: p.Slug, what: oneLine(p.Name), state: "—", rest: "no coordinator", pct: -1}
+		r := row{key: "p:" + p.Slug, who: p.Slug, what: oneLine(p.Name), state: "—", rest: "no coordinator running", pct: -1}
 		for _, s := range m.data.Sessions {
 			if s.Role == proto.RoleCoordinator && s.Project == p.Slug {
 				r.state, r.rest, r.pct = stateWord(s), progress(s, nil), sessionPct(s)
@@ -383,11 +387,11 @@ func (sw *switchView) render(m *dash) string {
 			}
 		}
 		if p.Slug == m.current {
-			r.mark = "* "
+			r.rest = joinSp(r.rest, "· the current project")
 		}
 		lines = append(lines, line(r, w, i == sw.sel))
 	}
-	return m.popup(box{title: "projects", body: lines, sel: sw.sel, hits: hits, keys: "enter open its coordinator · esc back", width: popupWidth})
+	return m.popup(box{title: "Project switcher", body: lines, sel: sw.sel, hits: hits, keys: "enter open its coordinator · esc close", width: viewWidth})
 }
 
 // click selects a project; a double-click opens its coordinator.
@@ -428,9 +432,9 @@ func (in *inboxView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 }
 
 func (in *inboxView) render(m *dash) string {
-	lines, sel, hits := inboxLines(in.items(m), in.sel, m.inner(popupWidth))
+	lines, sel, hits := inboxLines(in.items(m), in.sel, m.inner(viewWidth))
 	lines = append(lines, "", styleFaint.Render("The coordinator handles these (tm inbox done)."))
-	return m.popup(box{title: in.slug + " inbox", body: lines, sel: sel, hits: hits, keys: "esc back", width: popupWidth})
+	return m.popup(box{title: "Inbox · " + in.slug, body: lines, sel: sel, hits: hits, keys: "esc close", width: viewWidth})
 }
 
 func (in *inboxView) click(_ *dash, item, _ int, _ bool) tea.Cmd {
