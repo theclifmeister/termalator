@@ -144,6 +144,7 @@ func (s *Server) adopt(p proto.SessionAdoptParams) (any, *proto.Error) {
 	if s.tick != nil {
 		s.tick.Kick()
 	}
+	s.watch.wake()
 	s.log.Printf("session %s: adopted as thread %s of %s", p.ID, p.Thread, p.Project)
 	return proto.SessionStartResult{Session: sess.Info()}, nil
 }

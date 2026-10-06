@@ -384,6 +384,7 @@ func (s *Server) agentChanged(sess *session.Session) {
 	if s.tick != nil && ok && r.Project != "" {
 		s.tick.Kick()
 	}
+	s.watch.wake()
 	s.log.Printf("session %s: %s %s/%s (%s)", sess.ID(), st.Agent, st.State, st.Reason, st.Sources)
 	if blocked := st.State == agent.StateBlocked; blocked != s.blocked[sess.ID()] {
 		if blocked {
@@ -499,6 +500,7 @@ func (s *Server) promptWith(p proto.SessionPromptParams, o session.PromptOptions
 	if err != nil {
 		return nil, sessionError(p.ID, err)
 	}
+	s.watch.wake()
 	return proto.SessionPromptResult{Via: via}, nil
 }
 

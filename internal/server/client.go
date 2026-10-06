@@ -343,3 +343,39 @@ func (s *ViewStream) Next() (view.View, error) {
 
 // Close leaves the view.
 func (s *ViewStream) Close() error { return s.c.Close() }
+
+// WatchStream is a session watch (session.watch): the session's states
+// as the server sends them. Closing it ends the watch.
+type WatchStream struct{ c *Client }
+
+// WatchSession watches session id and returns the stream and the
+// session's state on joining.
+func WatchSession(p Paths, id string) (*WatchStream, proto.Watch, error) {
+	c, err := Dial(p, proto.KindControl)
+	if err != nil {
+		return nil, proto.Watch{}, err
+	}
+	var w proto.Watch
+	if err := c.Call(proto.MethodSessionWatch, proto.SessionIDParams{ID: id}, &w); err != nil {
+		c.Close()
+		return nil, proto.Watch{}, err
+	}
+	return &WatchStream{c: c}, w, nil
+}
+
+// Next blocks until the session's next state. After the one whose state
+// is "exited" the server hangs up and Next returns io.EOF.
+func (s *WatchStream) Next() (proto.Watch, error) {
+	for {
+		var ev proto.WatchEvent
+		if err := readJSONLine(s.c.br, &ev); err != nil {
+			return proto.Watch{}, err
+		}
+		if ev.Event == proto.EventWatchChanged {
+			return ev.Watch, nil
+		}
+	}
+}
+
+// Close ends the watch.
+func (s *WatchStream) Close() error { return s.c.Close() }
