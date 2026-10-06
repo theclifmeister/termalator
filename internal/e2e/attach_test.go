@@ -305,7 +305,7 @@ func TestAttachBuildMismatchReexec(t *testing.T) {
 	env.AssertMirrorsServer(w)
 	reexec := false
 	for _, l := range w.AttachLog() {
-		reexec = reexec || strings.Contains(l, "re-exec "+filepath.Join(env.Home, "server-bin"))
+		reexec = reexec || strings.Contains(l, "re-exec "+filepath.Join(filepath.Dir(env.Socket), "bin"))
 	}
 	if !reexec {
 		t.Fatalf("no re-exec logged; log:\n%s", strings.Join(w.AttachLog(), "\n"))

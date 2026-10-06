@@ -170,10 +170,11 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	if opts.Bin != "" {
-		if bin, err := pinBinary(p.Home, opts.Bin, version.BuildID()); err != nil {
+		if bin, err := pinBinary(p.RunDir, opts.Bin, version.BuildID()); err != nil {
 			logger.Printf("pin %s: %v; an upgrade in place will break attach re-exec and hooks until restart", opts.Bin, err)
 		} else {
 			opts.Bin = bin
+			removeLegacyPins(p.Home)
 		}
 	}
 
