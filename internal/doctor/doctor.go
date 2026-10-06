@@ -1,7 +1,8 @@
 // Package doctor implements `tm doctor` (docs/SPEC.md §15 M8): checks of
 // the toolchain, the server and its run dir (and, on macOS, whether its
 // sessions can reach the keychain), the agents against their
-// manifests' tested_versions, the sandbox prerequisites, and leftovers of
+// manifests' tested_versions, enabled Claude plugins known to be unsafe in
+// tm's sessions, the sandbox prerequisites, and leftovers of
 // threads (worktrees and merged branches nobody uses any more), and
 // settings in config.toml that tm no longer has.
 //
@@ -119,6 +120,7 @@ func Run(d Deps) []Check {
 	srv, live := Server(d)
 	out = append(out, srv...)
 	out = append(out, Agents(d)...)
+	out = append(out, Plugins(d)...)
 	out = append(out, Sandbox(d)...)
 	out = append(out, Leftovers(d, live)...)
 	out = append(out, Settings(d)...)
