@@ -28,6 +28,9 @@
 //
 // In a coordinator it also keeps the project's dashboard pane, /tm
 // (hooks/pane.tsx).
+//
+// Its guard refuses tool calls that break the standing rules the server
+// sends (hooks/guarded.ts, hooks/guard.ts).
 
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
@@ -38,6 +41,7 @@ import { drawBand } from './band'
 import { errorText, handled, offerOf } from './deliver'
 import type { Ack, Offer } from './deliver'
 import { feed } from './feed'
+import { guard } from './guarded'
 import { registerPane, sawViewport } from './pane'
 import { initialTurn, stateOf, step, waitKey } from './turn'
 import { initialUsage, reportOf } from './usage'
@@ -65,6 +69,9 @@ const POLL_GAP_MS = 250
 const RETRY_MS = 5_000
 
 export const register: Register = on => {
+  // The standing rules, checked on each tool call (hooks/guarded.ts).
+  guard(on)
+
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     const bin = await $.env.get('TERMINATR_BIN')
