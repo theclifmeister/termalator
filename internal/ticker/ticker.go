@@ -158,6 +158,10 @@ type projectMemo struct {
 	// gh-failing item raised for them, until a poll works again.
 	GHFails int    `json:"gh_fails,omitempty"`
 	GHItem  string `json:"gh_item,omitempty"`
+	// heldSince is when a nudge was first held for a coordinator that
+	// wasn't idle; heldLogged says the stall was logged (nudgeStall).
+	heldSince  time.Time
+	heldLogged bool
 	// Remote is what keepRemote saw of the coordinator (remote.go).
 	Remote *remoteMemo `json:"remote,omitempty"`
 }
@@ -782,7 +786,12 @@ func (t *Ticker) nudge(p *project.Project, sessions []proto.SessionInfo, now tim
 			break
 		}
 	}
-	if coord == nil || coord.State != "idle" || coord.Queued > 0 || now.Sub(pm.LastNudge) < t.o.Nudge {
+	if coord != nil && (coord.State != "idle" || coord.Queued > 0) {
+		t.nudgeStall(p, pm, coord, len(fresh), now)
+		return
+	}
+	pm.heldSince, pm.heldLogged = time.Time{}, false
+	if coord == nil || now.Sub(pm.LastNudge) < t.o.Nudge {
 		return
 	}
 	label := func(id string) string {
@@ -825,6 +834,30 @@ func (t *Ticker) nudge(p *project.Project, sessions []proto.SessionInfo, now tim
 	}
 	sort.Strings(pm.Nudged)
 	t.o.Log.Printf("ticker: %s: nudged %s about %d item(s)", p.Slug, coord.ID, len(fresh))
+}
+
+// nudgeStall is how long a nudge may wait for a coordinator that isn't
+// idle before the ticker logs it (T59: a status file left busy by a
+// slash command once held one for minutes).
+const nudgeStall = time.Minute
+
+// nudgeStall logs, once per stall, a nudge held for nudgeStall by a
+// coordinator that isn't idle, with the sources of its state; tm agent
+// explain shows the rest. The state is re-checked every sweep.
+func (t *Ticker) nudgeStall(p *project.Project, pm *projectMemo, coord *proto.SessionInfo, n int, now time.Time) {
+	if pm.heldSince.IsZero() {
+		pm.heldSince = now
+	}
+	if pm.heldLogged || now.Sub(pm.heldSince) < nudgeStall {
+		return
+	}
+	pm.heldLogged = true
+	state := coord.State
+	if coord.Reason != "" {
+		state += "/" + coord.Reason
+	}
+	t.o.Log.Printf("ticker: %s: nudge about %d item(s) held %s: %s is %s (%s), %d queued prompt(s); see tm agent explain %s",
+		p.Slug, n, now.Sub(pm.heldSince).Round(time.Second), coord.ID, state, coord.StateSources, coord.Queued, coord.ID)
 }
 
 // ServerRestarted raises one item per project that had sessions in the

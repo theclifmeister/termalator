@@ -166,6 +166,73 @@ func TestTrackerRanking(t *testing.T) {
 	r.want(StateExited, "exit status 0", "exit")
 }
 
+// TestTrackerSlashCommandWorking: T59. Claude marks its status file busy
+// for a slash command (/remote-control, injected by the ticker) that runs
+// no turn and fires no Stop, and may leave it so. A working file no turn
+// explains stands against the idle hook only for statusUnconfirmed
+// (docs/SPEC.md §8.4 rule 2); a real turn keeps the file in charge.
+func TestTrackerSlashCommandWorking(t *testing.T) {
+	t.Run("idle hook, slash command, file stuck on working", func(t *testing.T) {
+		r := newRig(t)
+		r.hook("UserPromptSubmit", nil)
+		r.status(StateWorking, "")
+		r.hook("Stop", nil)
+		r.status(StateIdle, "")
+		r.want(StateIdle, "", "status_file")
+		// The ticker pastes /remote-control: no hook; the file says busy.
+		r.tick(200 * time.Millisecond)
+		r.status(StateWorking, "")
+		r.want(StateWorking, "", "status_file")
+		r.tick(statusUnconfirmed - time.Second)
+		r.want(StateWorking, "", "status_file")
+		r.tick(time.Second)
+		r.want(StateIdle, "", "hooks")
+		if e := r.tr.Explain(); !strings.Contains(e.StatusDoubt, "no turn started") {
+			t.Fatalf("explain should say why the file is doubted: %q", e.StatusDoubt)
+		}
+		// Re-reads of the same file change nothing.
+		r.tick(time.Minute)
+		r.tr.Status(&StatusReading{Signal: Signal{Source: "status_file", State: StateWorking}}, r.now.Add(-time.Minute-statusUnconfirmed), nil)
+		r.want(StateIdle, "", "hooks")
+		// The next prompt is a turn: hooks, then the file, lead again.
+		r.hook("UserPromptSubmit", nil)
+		r.want(StateWorking, "", "hooks")
+		r.tick(time.Minute)
+		r.want(StateWorking, "", "status_file")
+		if e := r.tr.Explain(); e.StatusDoubt != "" {
+			t.Fatalf("doubt during a turn: %q", e.StatusDoubt)
+		}
+	})
+	t.Run("a tool call after the idle hook keeps the file in charge", func(t *testing.T) {
+		r := newRig(t)
+		r.hook("Stop", nil)
+		r.status(StateWorking, "")
+		r.hook("PreToolUse", map[string]any{"tool_name": "Bash"})
+		r.tick(time.Minute)
+		r.want(StateWorking, "", "status_file")
+	})
+	t.Run("background agents still read as working", func(t *testing.T) {
+		r := newRig(t)
+		r.hook("UserPromptSubmit", nil)
+		r.hook("SubagentStart", map[string]any{"agent_id": "a1", "agent_type": "general-purpose"})
+		r.hook("Stop", nil)
+		r.status(StateWorking, "")
+		r.tick(time.Minute)
+		r.want(StateWorking, "background", "hooks+counters")
+	})
+	t.Run("compaction is a turn", func(t *testing.T) {
+		r := newRig(t)
+		r.hook("Stop", nil)
+		r.hook("PreCompact", map[string]any{"trigger": "manual"})
+		r.status(StateWorking, "")
+		r.tick(time.Minute)
+		r.want(StateWorking, "", "status_file")
+		r.hook("SessionStart", map[string]any{"source": "compact"})
+		r.status(StateIdle, "")
+		r.want(StateIdle, "", "status_file")
+	})
+}
+
 func TestTrackerScreenOnly(t *testing.T) {
 	r := newRig(t)
 	r.screen("working-title-spinner", StateWorking, "")
