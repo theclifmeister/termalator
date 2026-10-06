@@ -23,7 +23,7 @@ import type { Elements, EngineInterface, On, RenderSurface, RenderViewport } fro
 
 import type { TerminatrItem, TerminatrNeed, TerminatrProject, TerminatrThread } from '../types'
 import {
-  BUTTON_LABELS, MAX_READY, askLine, asked, contextLine, contextToast, isNarrow, itemParts, itemTone, needButtons, needDetail, needHead, needKey, oneLine, projectFeed,
+  BUTTON_LABELS, MAX_READY, askLine, asked, contextLine, contextToast, isNarrow, itemParts, itemTone, kindWord, needButtons, needDetail, needHead, needKey, oneLine, projectFeed,
   reportTextOf,
   sentWords, summary, threadLine, todoLine,
 } from './dashboard'
@@ -190,7 +190,7 @@ async function openReport($: EngineInterface, thread: string, title: string) {
     $.ui.log(`terminatr: tm thread show ${thread}: ${String(err)}`, { to: 'debug' })
   }
   await update($, report, () => ({ thread, title, text: text || '_No report yet._' }))
-  await $.ui.open({ id: REPORT_PANE, title: `${thread} report`, focus: true, closeOnEscape: true })
+  await $.ui.open({ id: REPORT_PANE, title: `Report · ${thread}`, focus: true, closeOnEscape: true })
 }
 
 // press runs a need's button.
@@ -264,7 +264,7 @@ function drawItem(els: Elements[RenderSurface], it: TerminatrItem) {
   return (
     <Text key={'inbox-' + it.id} wrap="truncate-end">
       {'  '}
-      <Text color={itemTone(it.kind)}>{it.kind}</Text>
+      <Text color={itemTone(it.kind)}>{kindWord(it.kind)}</Text>
       {' ' + head}
       {title ? <Text dimColor>{' ' + title}</Text> : null}
     </Text>

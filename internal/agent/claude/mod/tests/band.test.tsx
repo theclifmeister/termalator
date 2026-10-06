@@ -82,7 +82,7 @@ test('a thread band shows task, steps, current item and PR on every surface that
       const head = 'T50 · steps 1/3 · #12 open, 2 checks failed, behind main'
       // From 140 columns it all fits on one row; at 60 the current item
       // takes a row of its own, and the first is cut at its end.
-      expect(await rows(ui)).toEqual(cols === 140 ? [head + '  ▸ Write the band'] : [head, '▸ Write the band'])
+      expect(await rows(ui)).toEqual(cols === 140 ? [head + '  now: Write the band'] : [head, 'now: Write the band'])
       expect((await text(ui, 'T50'))?.props.bold).toBe(true)
       expect((await text(ui, ' · #12 open, 2 checks failed, behind main'))?.props.color).toBe('error')
       expect(await text(ui, ' · 2 need you')).toBeUndefined()
@@ -95,7 +95,7 @@ test('a thread band shows task, steps, current item and PR on every surface that
 
 test('the status entry carries the same, short, and clears when the session exits', async ($, on) => {
   const { statuses } = await start($, on, [thread(), thread({ session: { id: 's-7', role: 'thread', state: 'exited' } })])
-  expect(statuses).toEqual(['T50 1/3 · #12 open, checks pending · 2 need you', undefined])
+  expect(statuses).toEqual(['T50 steps 1/3 · #12 open, checks pending · 2 need you', undefined])
 })
 
 test('quiet with no task: a thread without one, a coordinator with nothing waiting', async ($, on) => {
@@ -123,7 +123,7 @@ test('the band and the status entry never repeat the same text', async ($, on) =
   const { statuses } = await start($, on, [thread({ inbox: 1 })])
   const ui = await $.ui.mount({ plugin: 'terminatr', surface: 'terminal', ...band(140) })
   const drawn = (await rows(ui)).join(' ')
-  expect(statuses).toEqual(['T50 1/3 · #12 open, checks pending · 2 need you · 1 in inbox'])
+  expect(statuses).toEqual(['T50 steps 1/3 · #12 open, checks pending · 2 need you · 1 in inbox'])
   for (const c of ['need you', 'needs you', 'in inbox']) expect(drawn).not.toContain(c)
   await ui.unmount()
 })
@@ -132,7 +132,7 @@ test('a thread waiting on the user says so on a row of its own', async ($, on) =
   await start($, on, [thread({ session: { id: 's-7', role: 'thread', state: 'blocked', needs_you: 'which port?' } })])
   const ui = await $.ui.mount({ plugin: 'terminatr', surface: 'terminal', ...band(140) })
   expect(await rows(ui)).toEqual([
-    'T50 · steps 1/3 · #12 open, checks pending', '▸ Write the band', 'waiting on you: which port?'])
+    'T50 · steps 1/3 · #12 open, checks pending', 'now: Write the band', 'needs you: which port?'])
   await ui.unmount()
 })
 
@@ -145,7 +145,7 @@ test('a toast when the CI run finishes, once', async ($, on) => {
     thread({ pr: '#12 open, checks pending' }),
     thread({ pr: '#12 open, checks pass, approved' }),
   ])
-  expect(toasts).toEqual(['T50 #12: 1 check failed', 'T50 #12: checks pass'])
+  expect(toasts).toEqual(['T50 #12: 1 check failed', 'T50 #12: checks passed'])
   expect(ciToast(null, thread({ pr: '#12 open, checks pass' }))).toBeUndefined()
 })
 
@@ -161,10 +161,10 @@ test('[mods] band = false: no band, no status entry, no toast', async ($, on) =>
 
 test('mobile and vscode: the band validates there too, the status entry carries it', async ($, on) => {
   const { statuses } = await start($, on, [thread()])
-  expect(statuses).toEqual(['T50 1/3 · #12 open, checks pending · 2 need you'])
+  expect(statuses).toEqual(['T50 steps 1/3 · #12 open, checks pending · 2 need you'])
   for (const surface of ['mobile', 'vscode'] as const) {
     const ui = await $.ui.mount({ plugin: 'terminatr', surface, ...band(40) })
-    expect(await rows(ui)).toEqual(['T50 · steps 1/3 · #12 open, checks pending', '▸ Write the band'])
+    expect(await rows(ui)).toEqual(['T50 · steps 1/3 · #12 open, checks pending', 'now: Write the band'])
     await ui.unmount()
   }
 })

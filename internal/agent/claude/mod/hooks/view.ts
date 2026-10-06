@@ -44,14 +44,14 @@ export function counts(w: TerminatrWatch): string {
 }
 
 // statusText is the status entry under the prompt, short enough for a
-// phone: "T50 2/4 · #12 open, checks pass · 1 needs you". undefined
+// phone: "T50 steps 2/4 · #12 open, checks pass · 1 needs you". undefined
 // clears it.
 export function statusText(w: TerminatrWatch | null): string | undefined {
   if (!shows(w)) return undefined
   const parts: string[] = []
   if (w.task) {
     const t = w.task
-    parts.push(t.steps_total > 0 ? `${t.id} ${t.steps_done}/${t.steps_total}` : t.id)
+    parts.push(t.steps_total > 0 ? `${t.id} steps ${t.steps_done}/${t.steps_total}` : t.id)
   }
   if (w.pr) parts.push(w.pr)
   const c = counts(w)
@@ -77,7 +77,7 @@ export function ciToast(prev: TerminatrWatch | null, next: TerminatrWatch): stri
   if (now === '' || now === 'pending') return undefined
   const num = /#\d+/.exec(next.pr)?.[0] ?? 'PR'
   const task = next.task ? `${next.task.id} ` : ''
-  if (now === 'pass') return `${task}${num}: checks pass`
+  if (now === 'pass') return `${task}${num}: checks passed`
   const n = now.slice('failed '.length)
   return `${task}${num}: ${n} check${n === '1' ? '' : 's'} failed`
 }
