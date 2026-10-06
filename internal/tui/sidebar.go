@@ -70,6 +70,8 @@ type treeRow struct {
 	current bool // a project: the current one
 	hint    bool // a project: one of its threads is blocked or waiting, or a task needs you
 	remote  bool // a coordinator row: its remote control is on
+	ctx     int  // a coordinator row: its context window's use in percent, -1 for unknown
+	ctxHint bool // a coordinator row: ctx reached [ui] context_hint
 	paused  bool // a project: paused (no nudges, follow-up or new threads)
 	threads int  // a project: its open threads
 	here    bool // the row you are on
@@ -140,6 +142,9 @@ func markCursor(all []treeRow, w int, sel string) {
 type treeIn struct {
 	current string
 	focus   string
+	// ctxHint is [ui] context_hint: the percent from which a coordinator
+	// row says to consider /clear; 0 for never.
+	ctxHint int
 }
 
 // buildTree lays out the tree: every project, under each its
@@ -155,10 +160,10 @@ func buildTree(ps []ProjectData, sessions []proto.SessionInfo, in treeIn) []tree
 	for _, p := range ps {
 		pr := treeRow{kind: treeProject, slug: p.Slug, pct: -1, threads: len(p.Threads), current: p.Slug == in.current,
 			hint: p.Counts["needs_you"] > 0, paused: p.Safety != nil && p.Safety.Paused}
-		remote := false
+		remote, ctx := false, -1
 		for _, s := range sessions {
 			if s.Role == proto.RoleCoordinator && s.Project == p.Slug {
-				pr.session, pr.state, remote = s.ID, stateWord(s), s.RemoteControl
+				pr.session, pr.state, remote, ctx = s.ID, stateWord(s), s.RemoteControl, s.ContextPercent()
 				break
 			}
 		}
@@ -176,7 +181,8 @@ func buildTree(ps []ProjectData, sessions []proto.SessionInfo, in treeIn) []tree
 			kids = append(kids, tr)
 		}
 		// The threads hang under the coordinator, the project's only child.
-		coord := treeRow{kind: treeCoordinator, slug: p.Slug, session: pr.session, state: pr.state, remote: remote, pct: -1, last: true}
+		coord := treeRow{kind: treeCoordinator, slug: p.Slug, session: pr.session, state: pr.state, remote: remote, pct: -1, last: true,
+			ctx: ctx, ctxHint: ctx >= 0 && in.ctxHint > 0 && ctx >= in.ctxHint}
 		if len(kids) > 0 {
 			kids[len(kids)-1].last = true
 		}
@@ -453,19 +459,29 @@ func treeCells(r treeRow, cw int, slim, focused bool) string {
 		// A Nerd Font's remote icon draws two cells wide, over the blank
 		// after it, so that set gets a second one: a blank always shows
 		// between the icon and the state glyph, and the label gives way.
-		label, rc, gap := fit("coordinator", lw), "", " "
+		name, rc, gap, tail := "coordinator", "", " ", ""
 		if r.remote {
 			if i.name == IconsNerd {
 				gap = "  "
 			}
-			label, rc = fit("coordinator", max(lw-1-len(gap), 0))+" ", i.remote
+			lw = max(lw-1-len(gap), 0)
+			rc, tail = i.remote, " "
 		}
+		// The context use follows the name where there is room, coloured
+		// (warn from the threshold, red from 80%), with "/clear?" past it.
+		name = fit(name, max(lw, 0))
+		note, nst := ctxNote(r, lw-len(strings.TrimRight(name, " ")))
+		if note != "" {
+			name = strings.TrimRight(name, " ")
+		}
+		pad := strings.Repeat(" ", max(lw-ansi.StringWidth(name)-len(note), 0))
 		if r.here {
-			return lead + sel.Render(fit(label+rc+gap+g, cw-ld))
+			return lead + sel.Render(fit(name+note+pad+tail+rc+gap+g, cw-ld))
 		}
 		if r.state == "" {
-			label = styleFaint.Render(label)
+			name = styleFaint.Render(name)
 		}
+		label := name + nst.Render(note) + pad + tail
 		return fit(lead+label+styleAccent.Render(rc)+gap+st.Render(g), cw)
 	}
 	g, st := stateLook(r.state)
@@ -605,6 +621,7 @@ type sidebar struct {
 	agent    string // starts a clicked project's coordinator
 	projects []ProjectData
 	sessions []proto.SessionInfo
+	ctxHint  int      // [ui] context_hint
 	drag     bool     // the mouse is moving its border
 	drawn    []string // the lines on screen; nil repaints them all
 }
@@ -624,7 +641,7 @@ func (c *client) sideTree() []treeRow {
 	if c.focus != nil {
 		focus = c.focus.info.ID
 	}
-	rows := buildTree(c.side.projects, c.side.sessions, treeIn{current: c.sideCurrent(), focus: focus})
+	rows := buildTree(c.side.projects, c.side.sessions, treeIn{current: c.sideCurrent(), focus: focus, ctxHint: c.side.ctxHint})
 	if c.kb == areaSide {
 		markCursor(rows, c.sideW, c.v.SideSel)
 	}
@@ -992,4 +1009,27 @@ func clipWord(s string, w int) string {
 	}
 	cut := strings.TrimRight(ansi.Truncate(s, max(w-1, 0), ""), " ")
 	return fit(cut+"…", w)
+}
+
+// ctxNote is a coordinator row's context use, " 42%" or " 42% /clear?"
+// past the threshold, within room cells, and its style; "" when unknown
+// or when it doesn't fit.
+func ctxNote(r treeRow, room int) (string, lipgloss.Style) {
+	if r.ctx < 0 {
+		return "", stylePlain
+	}
+	note := fmt.Sprintf(" %d%%", r.ctx)
+	if r.ctxHint && room >= len(note)+len(" /clear?") {
+		note += " /clear?"
+	}
+	if len(note) > room {
+		return "", stylePlain
+	}
+	switch {
+	case r.ctx >= 80:
+		return note, styleBad
+	case r.ctxHint:
+		return note, styleWarn
+	}
+	return note, styleFaint
 }

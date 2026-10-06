@@ -638,3 +638,40 @@ func TestThreadNames(t *testing.T) {
 		t.Errorf("paneName without a task %q", got)
 	}
 }
+
+// TestCoordinatorContext: a coordinator row shows its context use after
+// its name, coloured from the threshold, with the hint past it.
+func TestCoordinatorContext(t *testing.T) {
+	sessions := []proto.SessionInfo{{ID: "s-1", Role: proto.RoleCoordinator, Project: "demo", State: "idle", Context: 84_000, ContextWindow: 200_000}}
+	rows := buildTree([]ProjectData{{Slug: "demo"}}, sessions, treeIn{current: "demo", ctxHint: 40})
+	c := rows[1]
+	if c.ctx != 42 || !c.ctxHint {
+		t.Fatalf("row %+v", c)
+	}
+	line := ansi.Strip(treeLine(c, sideDefault-1, false, false))
+	if !strings.Contains(line, "coordinator 42% /clear?") {
+		t.Fatalf("line %q", line)
+	}
+	// Below the threshold: the percent only; never: no hint.
+	rows = buildTree([]ProjectData{{Slug: "demo"}}, sessions, treeIn{current: "demo", ctxHint: 60})
+	if line := ansi.Strip(treeLine(rows[1], sideDefault-1, false, false)); !strings.Contains(line, "coordinator 42%") || strings.Contains(line, "/clear") {
+		t.Fatalf("below: %q", line)
+	}
+	rows = buildTree([]ProjectData{{Slug: "demo"}}, sessions, treeIn{current: "demo"})
+	if rows[1].ctxHint {
+		t.Fatal("hint with the setting off")
+	}
+	// No report, no number; a narrow sidebar drops it before cutting the name.
+	sessions[0].Context = 0
+	rows = buildTree([]ProjectData{{Slug: "demo"}}, sessions, treeIn{current: "demo", ctxHint: 40})
+	if rows[1].ctx != -1 || strings.Contains(ansi.Strip(treeLine(rows[1], sideDefault-1, false, false)), "%") {
+		t.Fatalf("unknown: %+v", rows[1])
+	}
+	sessions[0].Context = 84_000
+	rows = buildTree([]ProjectData{{Slug: "demo"}}, sessions, treeIn{current: "demo", ctxHint: 40})
+	for w := 12; w < 60; w++ {
+		if line := ansi.Strip(treeLine(rows[1], w, false, false)); ansi.StringWidth(line) != w {
+			t.Fatalf("width %d: %q is %d wide", w, line, ansi.StringWidth(line))
+		}
+	}
+}

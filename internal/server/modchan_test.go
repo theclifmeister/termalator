@@ -122,7 +122,13 @@ func TestModChannel(t *testing.T) {
 	if code := postMod(t, c, "/v1/usage", `{"input":5,"output":6,"cache_read":7,"cache_creation":8,"cost_usd":0.01,"model":"m"}`); code != http.StatusNoContent {
 		t.Fatalf("usage: %d", code)
 	}
-	for _, bad := range []string{`{"input":-1}`, `{"cost_usd":-0.5}`, `{"model":"` + strings.Repeat("x", 100) + `"}`, `{"output":"many"}`} {
+	if code := postMod(t, c, "/v1/usage", `{"input":5,"cache_read":7,"context":84000,"model":"m"}`); code != http.StatusNoContent {
+		t.Fatalf("usage with context: %d", code)
+	}
+	if v, ok := s.ctxOf.Load("s-1"); !ok || v.(ctxUse).tokens != 84000 || v.(ctxUse).window != windowStandard {
+		t.Fatalf("context kept: %v", v)
+	}
+	for _, bad := range []string{`{"context":-1}`, `{"input":-1}`, `{"cost_usd":-0.5}`, `{"model":"` + strings.Repeat("x", 100) + `"}`, `{"output":"many"}`} {
 		if code := postMod(t, c, "/v1/usage", bad); code != http.StatusBadRequest {
 			t.Fatalf("%s: %d", bad, code)
 		}

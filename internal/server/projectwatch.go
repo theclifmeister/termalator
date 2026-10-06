@@ -17,6 +17,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/tasks"
@@ -146,6 +147,7 @@ func projectWatchOf(p *project.Project, sessions []proto.SessionInfo, tickerStat
 		w.NeedsYou = append(w.NeedsYou, proto.WatchNeed{Why: proto.WhyQueue, Thread: info.Thread, Session: info.ID,
 			Title: queueTitle(info, note)})
 	}
+	w.Context = contextOf(p.Slug, sessions)
 	slices.SortStableFunc(w.NeedsYou, func(a, b proto.WatchNeed) int {
 		if c := cmp.Compare(whyRank(a.Why), whyRank(b.Why)); c != 0 {
 			return c
@@ -308,3 +310,26 @@ func (s *ProjectWatchStream) Next() (proto.ProjectWatch, error) {
 
 // Close ends the watch.
 func (s *ProjectWatchStream) Close() error { return s.c.Close() }
+
+// contextOf is the context use of project slug's coordinator, nil when
+// none runs or none reported a turn.
+func contextOf(slug string, sessions []proto.SessionInfo) *proto.WatchContext {
+	for _, info := range sessions {
+		if info.Project != slug || info.Role != proto.RoleCoordinator {
+			continue
+		}
+		pct := info.ContextPercent()
+		if pct < 0 {
+			return nil
+		}
+		hint := 0
+		if cfg, err := config.Load(); err == nil {
+			hint = cfg.ContextHint
+		} else {
+			hint = config.DefaultContextHint
+		}
+		return &proto.WatchContext{Tokens: info.Context, Window: info.ContextWindow, Percent: pct,
+			Threshold: hint, Hint: hint > 0 && pct >= hint}
+	}
+	return nil
+}

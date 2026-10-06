@@ -3,7 +3,7 @@ import type { On, RenderViewport } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 
 import type { TerminatrProject } from '../types'
-import { askLine, asked, itemParts, itemTone, needButtons, projectFeed, threadLine } from '../hooks/dashboard'
+import { askLine, asked, contextLine, contextToast, itemParts, itemTone, needButtons, projectFeed, threadLine } from '../hooks/dashboard'
 
 const project = (over: Partial<TerminatrProject> = {}): TerminatrProject => ({
   project: 'demo',
@@ -291,4 +291,22 @@ test('an inbox row reads count, task, what happened, then the title', () => {
   expect(itemParts(report!)).toEqual({ head: 'x3 T64 handed in report 3', title: 'Tools' })
   expect(itemParts({ id: 'i', kind: 'idle', subject: 't-1', summary: 'plain', count: 1, what: 'plain' })).toEqual({ head: 'plain', title: '' })
   expect(['report', 'pr-conflict', 'accept'].map(itemTone)).toEqual(['success', 'error', 'warning'])
+})
+
+const ctx = (percent: number, hint = false) => ({ tokens: percent * 2000, window: 200_000, percent, threshold: 40, hint })
+
+test('the context line is coloured by how full it is, with the hint from the threshold', () => {
+  expect(contextLine(ctx(12))).toEqual({ text: 'context 24k / 200k · 12%', tone: 'ok', hint: '' })
+  const warn = contextLine(ctx(42, true))
+  expect(warn.tone).toBe('warning')
+  expect(warn.hint).toContain('/clear')
+  expect(contextLine(ctx(85, true)).tone).toBe('error')
+  expect(contextLine({ tokens: 400_000, window: 1_000_000, percent: 40, threshold: 40, hint: true }).text).toBe('context 400k / 1.0M · 40%')
+})
+
+test('one toast per crossing of the threshold', () => {
+  expect(contextToast(false, ctx(41, true))).toContain('41%')
+  expect(contextToast(true, ctx(45, true))).toBeUndefined()
+  expect(contextToast(false, ctx(10))).toBeUndefined()
+  expect(contextToast(false, undefined)).toBeUndefined()
 })
