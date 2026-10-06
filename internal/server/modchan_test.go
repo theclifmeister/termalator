@@ -298,31 +298,3 @@ func TestAddUsage(t *testing.T) {
 		t.Fatalf("usage %+v, want %+v", got.Usage, want)
 	}
 }
-
-// TestHookContextWithMod: the SessionStart hook prints the full context
-// without the mod, and only a line with it (the mod gives the context
-// as a conversation block, fetched from /v1/context, which stays full);
-// a session outside a project gets nothing either way.
-func TestHookContextWithMod(t *testing.T) {
-	s := &Server{log: log.New(os.Stderr, "", 0)}
-	s.records = map[string]SessionRecord{
-		"s-1": {ID: "s-1", Role: proto.RoleThread, Brief: "/p/threads/t-1/brief.md"},
-		"s-2": {ID: "s-2"},
-	}
-	full, err := s.hookContextOf("s-1", false)()
-	if err != nil || !strings.HasPrefix(string(full), "tm skill thread v") || len(full) < 1000 {
-		t.Fatalf("without the mod: %v %.60q (%d bytes)", err, full, len(full))
-	}
-	short, err := s.hookContextOf("s-1", true)()
-	if err != nil || string(short) != modContextLine {
-		t.Fatalf("with the mod: %v %q", err, short)
-	}
-	if b, _ := s.contextOf("s-1")(); string(b) != string(full) {
-		t.Fatal("the mod's /v1/context is no longer the full context")
-	}
-	for _, mod := range []bool{false, true} {
-		if b, err := s.hookContextOf("s-2", mod)(); err != nil || len(b) != 0 {
-			t.Fatalf("outside a project (mod %v): %v %q", mod, err, b)
-		}
-	}
-}

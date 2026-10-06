@@ -102,7 +102,7 @@ make vet
 
 The first build fetches Ghostty and compiles libghostty-vt, which takes about 30–60 s. Later builds reuse `.build/`. Nothing is installed system-wide. `tm` links libghostty-vt statically and needs only libc at runtime.
 
-- **Plain `go` commands or gopls:** run `eval "$(make env)"` first, so pkg-config finds the library. In a linked worktree without a `.build/` of its own, `make` and `make env` use the main checkout's, so `make test` links there with no overrides; an `eval`-ed `PKG_CONFIG_PATH` or `CGO_CFLAGS` left in the shell by another checkout is replaced, not appended to.
+- **Plain `go` commands or gopls:** run `eval "$(make env)"` first, so pkg-config finds the library. In a linked worktree without a `.build/` of its own, `make` and `make env` use the main checkout's.
 
 ## Tests
 

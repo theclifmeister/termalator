@@ -237,29 +237,6 @@ func (s *Server) contextOf(id string) func() ([]byte, error) {
 	}
 }
 
-// modContextLine is what the SessionStart hook brings instead of the
-// context when the session has the mod: the mod gives it as a context
-// block of the conversation (T85), so a copy here would only be printed
-// twice.
-const modContextLine = "terminatr: your role's rules and your task's state are in this conversation's `terminatr` context block."
-
-// hookContextOf is what the session's SessionStart hook prints: the full
-// context, or with the mod only a line saying where it is (none for a
-// session outside a project).
-func (s *Server) hookContextOf(id string, mod bool) func() ([]byte, error) {
-	full := s.contextOf(id)
-	if !mod {
-		return full
-	}
-	return func() ([]byte, error) {
-		b, err := full()
-		if err != nil || len(b) == 0 {
-			return b, err
-		}
-		return []byte(modContextLine), nil
-	}
-}
-
 // agentLaunch is everything needed to (re)start one agent session.
 type agentLaunch struct {
 	rec    SessionRecord
@@ -354,7 +331,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		RemoteControl: r.RemoteControl, RemoteHeld: r.RemoteHeld,
 		Agent: &session.AgentConfig{
 			Agent: a, AgentSID: r.AgentSessionID, Kickoff: launch.Kickoff, Home: home,
-			Context:    s.hookContextOf(r.ID, modSock != ""),
+			Context:    s.contextOf(r.ID),
 			OnChange:   s.agentChanged,
 			PromptHold: envDuration(envPromptHold), OnPromptResolved: s.promptResolved,
 			ModSocket: modSock,

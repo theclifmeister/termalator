@@ -54,75 +54,34 @@ func Current(getenv func(string) string, env []string, home, runDir, logDir stri
 	return c, nil
 }
 
-// keepEnv and keepPrefix name what of the caller's environment the server
-// (and through it the agents it starts) needs: the search path, who and
-// where the user is, the terminal and locale, the ssh agent, and the
-// settings of the tools threads run (git, gh, Go, Node, Rust, Homebrew,
-// the compilers). Nothing else is kept, so a token someone exported in
-// their shell never reaches launch.json; an agent logs in the way it
-// always does (Claude's keychain, `gh auth login`).
-var keepEnv = map[string]bool{
-	"PATH": true, "HOME": true, "USER": true, "LOGNAME": true, "SHELL": true,
-	"LANG": true, "LANGUAGE": true, "TZ": true, "COLORTERM": true,
-	"EDITOR": true, "VISUAL": true, "PAGER": true, "MANPATH": true, "INFOPATH": true,
-	"SSH_AUTH_SOCK": true, "SDKROOT": true, "DEVELOPER_DIR": true, "JAVA_HOME": true,
-	"CLAUDE_CONFIG_DIR": true,
-	"GOPATH":            true, "GOROOT": true, "GOFLAGS": true, "GOPROXY": true, "GOMODCACHE": true, "GOCACHE": true,
-	"GOBIN": true, "GOTOOLCHAIN": true, "GOSUMDB": true, "GONOSUMDB": true, "HTTP_PROXY": true, "HTTPS_PROXY": true, "NO_PROXY": true,
-	"http_proxy": true, "https_proxy": true, "no_proxy": true, "ALL_PROXY": true,
+// dropEnv are variables a server started from a terminal would inherit
+// that belong to that terminal or login, not to the server: launchd's
+// own values (or none) stand in for them.
+var dropEnv = []string{
+	"SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY",
+	"SECURITYSESSIONID", "XPC_SERVICE_NAME", "XPC_FLAGS", "__CFBundleIdentifier",
+	"LaunchInstanceID", "TMPDIR", "PWD", "OLDPWD", "SHLVL", "_",
 }
 
-var keepPrefix = []string{
-	"TERM", "LC_", "XDG_", "TERMINATR_", "GIT_", "GH_", "HOMEBREW_",
-	"NVM_", "CARGO_", "RUSTUP_", "VOLTA_", "PNPM_", "BUN_",
-}
-
-// secretName says whether an environment variable's name is one that
-// holds a secret, whatever else says it is needed.
-func secretName(k string) bool {
-	k = strings.ToUpper(k)
-	for _, w := range []string{"TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL", "PRIVATE", "API_KEY", "APIKEY", "ACCESS_KEY", "AUTH_KEY"} {
-		if strings.Contains(k, w) {
-			return true
-		}
-	}
-	return strings.HasSuffix(k, "_KEY") || strings.HasSuffix(k, "_AUTH")
-}
-
-// keepVar says whether the server keeps variable k=v from the caller.
-func keepVar(k, v string) bool {
-	if k == "" || secretName(k) {
-		return false
-	}
-	// A proxy's address may carry its user and password.
-	if strings.HasSuffix(strings.ToUpper(k), "_PROXY") && strings.Contains(v, "@") {
-		return false
-	}
-	if keepEnv[k] {
-		return true
-	}
-	for _, p := range keepPrefix {
-		if strings.HasPrefix(k, p) {
-			return true
-		}
-	}
-	return false
-}
-
-// LaunchEnv is what of env the server gets under launchd: the variables
-// keepVar keeps, the ones a server started from that terminal would
-// inherit that it needs, and never a token or secret. An SSH login's
-// SSH_AUTH_SOCK is dropped too (it dies with the login; launchd's stands
-// in), while a local terminal's (say, a password manager's agent) stays.
+// LaunchEnv is what of env the server gets under launchd: everything a
+// server started from that terminal would inherit, less dropEnv. An SSH
+// login's SSH_AUTH_SOCK goes too (it dies with the login; launchd's
+// stands in), while a local terminal's (say, a password manager's agent)
+// stays.
 func LaunchEnv(env []string, getenv func(string) string) []string {
-	overSSH := getenv("SSH_CONNECTION") != "" || getenv("SSH_TTY") != "" || getenv("SSH_CLIENT") != ""
+	drop := map[string]bool{}
+	for _, k := range dropEnv {
+		drop[k] = true
+	}
+	if getenv("SSH_CONNECTION") != "" || getenv("SSH_TTY") != "" || getenv("SSH_CLIENT") != "" {
+		drop["SSH_AUTH_SOCK"] = true
+	}
 	var out []string
 	for _, kv := range env {
-		k, v, ok := strings.Cut(kv, "=")
-		if !ok || !keepVar(k, v) || (overSSH && k == "SSH_AUTH_SOCK") || k == "TMPDIR" {
-			continue
+		k, _, ok := strings.Cut(kv, "=")
+		if ok && k != "" && !drop[k] {
+			out = append(out, kv)
 		}
-		out = append(out, kv)
 	}
 	return out
 }
@@ -133,8 +92,8 @@ type launchFile struct {
 }
 
 // LaunchFile is the path of the file that hands the starting tm's
-// environment to the server launchd starts. It is private (0600), though
-// LaunchEnv keeps no secrets in it either.
+// environment to the server launchd starts. It is private (0600): the
+// environment may hold secrets, which the plist must not.
 func (c Config) LaunchFile() string { return filepath.Join(c.RunDir, "launch.json") }
 
 func (c Config) writeLaunchFile() error {

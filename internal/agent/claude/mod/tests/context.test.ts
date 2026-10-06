@@ -1,11 +1,18 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { withBlock } from '../hooks/context'
+import { splitContext, withBlock } from '../hooks/context'
 
 const SOCKET = '/run/s/s-7/mod.sock'
 const RULES = 'tm skill thread v0.9.0\n\nYou are one thread.\n'
 const FRESH = RULES + '\nYou are thread t-1 of project demo.\nPR: #7 open, checks pass\n'
+
+test('splitContext takes ours out, keeps the rest in order', () => {
+  expect(splitContext(undefined)).toEqual({ ours: '', rest: [] })
+  expect(splitContext(['user hook', RULES, 'other'])).toEqual({ ours: RULES, rest: ['user hook', 'other'] })
+  expect(splitContext(['tm skill coordinator v1.0.0\n'])).toEqual({ ours: 'tm skill coordinator v1.0.0\n', rest: [] })
+  expect(splitContext(['says tm skill thread v1 later'])).toEqual({ ours: '', rest: ['says tm skill thread v1 later'] })
+})
 
 test('withBlock puts ours last, once', () => {
   const date = { name: 'currentDate', text: 'today' }
@@ -38,17 +45,31 @@ test('outside a project there is no block', async ($, on) => {
   expect(r.blocks).toEqual([{ name: 'currentDate', text: 'today' }])
 })
 
-test('a SessionStart brings no copy: the block is the server\'s alone', async ($, on) => {
-  serve(on, { status: 200, text: FRESH })
-  on('classic.SessionStart', async () => ({ additionalContext: ['terminatr: see the context block'] }))
+test('SessionStart\'s copy is the block\'s fallback, and stays in its answer', async ($, on) => {
+  serve(on, 'down')
+  on('classic.SessionStart', async () => ({ additionalContext: ['user hook', RULES] }))
   const started = await $.classic.SessionStart({ source: 'clear' })
-  expect(started.additionalContext).toEqual(['terminatr: see the context block'])
+  expect(started.additionalContext).toEqual(['user hook', RULES])
   const r = await $.prompt.context({ blocks: [] })
-  expect(r.blocks).toEqual([{ name: 'currentDate', text: 'today' }, { name: 'terminatr', text: FRESH }])
+  expect(r.blocks).toEqual([{ name: 'currentDate', text: 'today' }, { name: 'terminatr', text: RULES }])
 })
 
-test('a server that does not answer leaves no block', async ($, on) => {
+test('a SessionStart without ours is left alone', async ($, on) => {
   serve(on, 'down')
+  on('classic.SessionStart', async () => ({ additionalContext: ['user hook'] }))
+  expect((await $.classic.SessionStart({ source: 'startup' })).additionalContext).toEqual(['user hook'])
   const r = await $.prompt.context({ blocks: [] })
   expect(r.blocks).toEqual([{ name: 'currentDate', text: 'today' }])
+})
+
+test('a server that does not answer falls back to the copy', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.env(on, { TERMINATR_MOD_SOCKET: SOCKET })
+  on('http.fetch', () => new Promise(() => {}))
+  on('prompt.context', async () => ({ blocks: [] }))
+  on('classic.SessionStart', async () => ({ additionalContext: [RULES] }))
+  await $.classic.SessionStart({ source: 'compact' })
+  const r = $.prompt.context({ blocks: [] })
+  await clock.advance(2_000)
+  expect((await r).blocks).toEqual([{ name: 'terminatr', text: RULES }])
 })
