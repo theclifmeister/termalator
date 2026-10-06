@@ -1504,7 +1504,7 @@ Terminatr has a test strategy from the first milestone, not a test phase at the 
 | **End-to-end** | The whole product as the user sees it: `tm` and `tm attach` running inside a **virtual terminal** (libghostty), keys typed, screens compared with golden files, windows closed, clients and servers killed | `internal/e2e`, `make e2e` (all) / `make e2e-smoke` (a core set under about 2 minutes) | smoke on every PR; full suite and race-built smoke nightly |
 | **Real agent** | The same scenarios against the installed `claude`, to catch Claude releases that change hooks, screens, the session file, or the task tools | build tag `realclaude`, `make test-claude` | on demand, and nightly on a machine with a Claude login (not GitHub-hosted CI) |
 
-**On every PR** (macOS and Linux, `ci.yml`): gofmt, vet, build, `go test -race ./...` (unit, integration and fuzz seeds), `make e2e-smoke` (without `-race`), `tm selftest`.
+**On every PR** (macOS and Linux, `ci.yml`): gofmt, vet, build, `go test -race ./...` (unit, integration and fuzz seeds), `make e2e-smoke` (without `-race`, in its own job, two shards per OS: `make e2e-smoke E2E_SHARD=1/2`), `tm selftest`. The release snapshot (`make release-snapshot` on macOS) runs on every push to main and on PRs that touch the release build (`.goreleaser.yaml`, the Makefile, `go.mod`/`go.sum`, `scripts/release/`, `Formula/`, the workflows, libghostty bindings).
 
 **Nightly** (`nightly.yml`, also by hand through `workflow_dispatch`): `make fuzz`, the full `make e2e`, `make e2e-smoke-race` (the smoke set with a race-built `tm`), and a Linux arm64 build.
 
