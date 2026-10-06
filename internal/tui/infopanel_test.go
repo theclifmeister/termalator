@@ -336,3 +336,46 @@ func TestOneFocusModel(t *testing.T) {
 		t.Fatalf("tab in the sidebar, no panel: %d", c.kb)
 	}
 }
+
+// TestInfoLinesQuestion: an open question menu shows in the panel with
+// its options by number, and the thread's state says "question open".
+func TestInfoLinesQuestion(t *testing.T) {
+	now := time.Now()
+	d := sampleInfo(now)
+	d.session.State, d.session.Reason = "blocked", "question"
+	d.session.Question = &proto.Question{Since: now.Add(-3 * time.Minute), Questions: []proto.QuestionItem{{
+		Question: "Which color?", Header: "Color", Options: []proto.QuestionOption{{Label: "Blue", Description: "calm"}, {Label: "Red"}},
+	}}}
+	lines, _ := infoLines(d, 60, now)
+	var plain []string
+	for _, l := range lines {
+		plain = append(plain, strings.TrimRight(ansi.Strip(l), " "))
+	}
+	text := strings.Join(plain, "\n")
+	for _, want := range []string{"blocked question open", "Question open", "1. [Color] Which color?", "1. Blue — calm", "2. Red", "3. (the user's own words)"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("panel lacks %q:\n%s", want, text)
+		}
+	}
+	d.session.Question = nil
+	lines, _ = infoLines(d, 60, now)
+	if strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "Question open") {
+		t.Error("a question shows without one open")
+	}
+}
+
+// TestQuestionOpenRow: a thread row's lead says "question open" while
+// the server holds the menu, and "question" without it.
+func TestQuestionOpenRow(t *testing.T) {
+	s := proto.SessionInfo{ID: "s-4", State: "blocked", Reason: "question"}
+	tr := &ThreadRow{Record: &thread.Record{ID: "t-0002", Session: "s-4"}}
+	_, reason, _ := threadState(tr, map[string]proto.SessionInfo{"s-4": s})
+	if reason != "question" {
+		t.Errorf("reason = %q", reason)
+	}
+	s.Question = &proto.Question{Questions: []proto.QuestionItem{{Question: "Q?"}}}
+	_, reason, _ = threadState(tr, map[string]proto.SessionInfo{"s-4": s})
+	if reason != "question open" {
+		t.Errorf("reason = %q", reason)
+	}
+}
