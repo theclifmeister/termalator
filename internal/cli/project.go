@@ -325,7 +325,7 @@ func runContext(e *Env, args []string) error {
 		return err
 	}
 	seen := ticker.Seen(tickerState(), p.Slug)
-	seen.Queues = heldQueues(p.Slug)
+	seen.Queues, seen.Questions = liveWaits(p.Slug)
 	sections, err := p.Context(seen)
 	if err != nil {
 		return err
@@ -337,25 +337,31 @@ func runContext(e *Env, args []string) error {
 	return err
 }
 
-// heldQueues asks a running server (it starts none) for the project's
-// sessions whose queued prompts are held while the agent is idle.
-func heldQueues(slug string) []project.HeldQueue {
+// liveWaits asks a running server (it starts none) for the project's
+// sessions whose queued prompts are held while the agent is idle, and
+// those with a question menu open.
+func liveWaits(slug string) (queues []project.HeldQueue, questions []project.OpenQuestion) {
 	c, _, err := connect(false)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 	defer c.Close()
 	var res proto.SessionListResult
 	if c.Call(proto.MethodSessionList, nil, &res) != nil {
-		return nil
+		return nil, nil
 	}
-	var out []project.HeldQueue
 	for _, s := range res.Sessions {
-		if s.Project == slug && s.QueueNote(time.Now()) != "" {
-			out = append(out, project.HeldQueue{Session: s.ID, Role: s.Role, Thread: s.Thread, Task: s.Task, Queued: s.Queued, Why: s.QueueHeld, Since: s.QueueHeldSince})
+		if s.Project != slug {
+			continue
+		}
+		if s.QueueNote(time.Now()) != "" {
+			queues = append(queues, project.HeldQueue{Session: s.ID, Role: s.Role, Thread: s.Thread, Task: s.Task, Queued: s.Queued, Why: s.QueueHeld, Since: s.QueueHeldSince})
+		}
+		if s.Question != nil {
+			questions = append(questions, project.OpenQuestion{Session: s.ID, Role: s.Role, Thread: s.Thread, Task: s.Task, Since: s.Question.Since, Lines: questionLines(s.Question)})
 		}
 	}
-	return out
+	return queues, questions
 }
 
 const inboxUsage = `usage: tm inbox list [--project <slug>] [--json]
