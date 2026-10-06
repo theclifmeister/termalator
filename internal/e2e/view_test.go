@@ -34,15 +34,15 @@ func TestSmokeViewsShared(t *testing.T) {
 	}
 	a := coordinatorOf(t, env, alpha)
 	// Started at w1's size, the window less the sidebar and status bar.
-	waitPaneSize(t, env, a, paneCols(120), 28)
+	waitPaneSize(t, env, a, threadCols(120), 28)
 	// Watching from w2 resized nothing.
-	assertPaneSize(t, env, a, paneCols(120), 28)
+	assertPaneSize(t, env, a, threadCols(120), 28)
 
 	// Typing in w2 claims the view's size: the pane takes w2's
 	// rectangle, and w1 shows the same frame, padded on the right.
 	w2.Type("x")
-	waitPaneSize(t, env, a, paneCols(100), 24)
-	edge := SideCols(120) + int(paneCols(100))
+	waitPaneSize(t, env, a, threadCols(100), 24)
+	edge := SideCols(120) + int(threadCols(100))
 	w1.WaitUntil("w1 padded", wait, func(sc string) bool {
 		lines := strings.Split(sc, "\n")
 		for _, l := range lines[:24] {
@@ -54,7 +54,7 @@ func TestSmokeViewsShared(t *testing.T) {
 	})
 	// And typing in w1 claims it back.
 	w1.Type("y")
-	waitPaneSize(t, env, a, paneCols(120), 28)
+	waitPaneSize(t, env, a, threadCols(120), 28)
 
 	// The sidebar: prefix } in w2 widens it in w1 too, by 2 columns.
 	w2.Prefix("}")
@@ -161,19 +161,19 @@ func TestSmokeFirstViewFills(t *testing.T) {
 	w1.WaitFor(" ■ "+alpha, wait)
 	clickCoordinator(t, w1, alpha)
 	w1.WaitUntil("attached to alpha", agentWait, func(sc string) bool { return lastLine(sc, alpha+" coordinator") })
-	waitPaneSize(t, env, co, paneCols(136), 38)
+	waitPaneSize(t, env, co, threadCols(136), 38)
 
 	// A second console showing it later resizes nothing.
 	w2 := env.Attach(100, 26, co.ID)
 	w2.WaitFor("Fake Claude Code", agentWait)
 	time.Sleep(time.Second) // longer than the server's resize quiet time
-	assertPaneSize(t, env, co, paneCols(136), 38)
+	assertPaneSize(t, env, co, threadCols(136), 38)
 
 	// Typing claims as before: w2's rectangle, then w1's again.
 	w2.Type("x")
-	waitPaneSize(t, env, co, paneCols(100), 24) // less the status bar and the row above it
+	waitPaneSize(t, env, co, threadCols(100), 24) // less the status bar and the row above it
 	w1.Type("y")
-	waitPaneSize(t, env, co, paneCols(136), 38)
+	waitPaneSize(t, env, co, threadCols(136), 38)
 
 	// The thread fills its first console too, and the next one to show
 	// it leaves it alone.
