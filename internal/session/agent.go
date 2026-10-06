@@ -61,6 +61,9 @@ const DefaultPromptHold = 10 * time.Minute
 const (
 	HeldBox    = "prompt box not empty"
 	HeldDialog = "dialog on screen"
+	// HeldMod: the mod took the prompt and handed it to the agent, which
+	// is idle and hasn't run it (modprompt.go).
+	HeldMod = "the mod took it, the agent hasn't run it"
 )
 
 // PromptOptions qualify a prompt.
@@ -154,6 +157,8 @@ type agentRT struct {
 	promptGen  string    // tells this agent's prompt ids from an earlier one's
 	heldSince  time.Time // the head prompt has been held while idle since
 	heldWhy    string
+	modPolls   int       // the mod's polls for prompts in flight (modprompt.go)
+	modPolled  time.Time // when the mod's last poll ended
 	stallAt    time.Time // the queued-at of the head prompt whose stall was logged
 	lastState  agent.Merged
 	lastSID    string
@@ -698,9 +703,28 @@ func (s *Session) deliverPrompts(rt *agentRT, now time.Time) {
 	}
 	if s.modDeliversLocked(rt, now) {
 		// The mod has the head; the box and dialogs are no concern of a
-		// prompt Claude queues itself.
+		// prompt Claude queues itself. Taken while the agent idles, it is
+		// held, and pasted after PromptHold: Claude runs what it queued
+		// once idle, so it lost this one.
+		p := &rt.prompts[0]
+		if !idle || !p.taken {
+			rt.heldSince, rt.heldWhy = time.Time{}, ""
+			rt.mu.Unlock()
+			return
+		}
+		if rt.heldWhy != HeldMod {
+			rt.heldSince, rt.heldWhy = now, HeldMod
+		}
+		held := now.Sub(rt.heldSince)
+		if held < rt.promptHold() {
+			rt.mu.Unlock()
+			return
+		}
+		p.paste, p.taken = true, false
+		id := p.id
 		rt.heldSince, rt.heldWhy = time.Time{}, ""
 		rt.mu.Unlock()
+		s.cfg.Logf("session %s: prompt %s held %s (%s): pasting it", s.cfg.ID, id, held.Round(time.Second), HeldMod)
 		return
 	}
 	why := ""

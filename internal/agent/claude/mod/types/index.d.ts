@@ -56,13 +56,15 @@ export type TerminatrProject = {
   ready: TerminatrTodo[]
 }
 
-// What waits for the user, most pressing first.
+// What waits for the user, most pressing first; 'queue' is a session
+// whose queued prompts are held (session names it).
 export type TerminatrNeed = {
-  why: 'review' | 'question' | 'ci' | 'blocked'
+  why: 'queue' | 'review' | 'question' | 'ci' | 'blocked'
   task?: string
   title: string
   status?: string
   thread?: string
+  session?: string
   question?: string
   pr?: string
   pr_url?: string

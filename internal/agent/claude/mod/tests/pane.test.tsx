@@ -120,6 +120,22 @@ async function texts(ui: { findAll: (q: { type: string }) => Promise<{ type: str
   return all.map(e => e.text)
 }
 
+// T82: a coordinator whose nudge is held while it idles.
+const stuck = { why: 'queue' as const, session: 's-86', title: '1 queued prompt for the coordinator, held 3m0s: prompt box not empty' }
+
+test('a held queue leads the pane, in red, naming its session, with no buttons', async ($, on) => {
+  expect(needButtons(stuck, '')).toEqual([])
+  await start($, on, 'coordinator', [project({ needs_you: [stuck, ...project().needs_you] })])
+  const ui = await $.ui.mount({ plugin: 'terminatr', surface: 'terminal', ...pane(120) })
+  const t = await texts(ui)
+  const at = (s: string) => t.findIndex(x => x.includes(s))
+  expect(t[at('s-86')]).toBe('s-86 stuck 1 queued prompt for the coordinator, held 3m0s: prompt box not empty')
+  expect(at('Needs you')).toBeLessThan(at('s-86'))
+  expect(at('s-86')).toBeLessThan(at('T63'))
+  expect(t).toContain('  the coordinator hears of nothing until it clears; tm agent explain s-86 says why')
+  await ui.unmount()
+})
+
 test('askLine is what the coordinator reads; asked holds while the status does', () => {
   expect(askLine('accept', 'T63')).toBe('accept T63')
   expect(askLine('send-back', 'T63', { note: '  fix\nthe  title ' })).toBe('send T63 back: fix the title')

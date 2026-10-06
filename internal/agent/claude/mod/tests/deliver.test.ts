@@ -20,7 +20,15 @@ type Server = {
   commandFails?: boolean
   failSubmitted?: number // answer this many "submitted" acks 500
   hold?: Promise<void> // Claude takes the prompt only once this resolves
+  hang?: number // this many polls never answer
+  state?: Store // the session's state, held here so a test can wipe it or fail a read
 }
+
+// Store stands for the host's $.state: clearing values is what a /clear
+// may do to it, failGets makes that many reads of 'delivering' throw.
+type Store = { values: Map<string, { value: unknown; version: number }>; failGets: number }
+
+const store = (): Store => ({ values: new Map(), failGets: 0 })
 
 // start runs session.start in a terminatr session with the mod's socket,
 // serving GET /v1/prompts and the acks from srv, and records what the
@@ -29,6 +37,7 @@ async function start($: Engine, on: On, srv: Server) {
   const clock = mock.clock(on)
   mock.env(on, { TERMINATR_BIN: '/opt/tm', TERMINATR_SESSION: 's-7', TERMINATR_MOD_SOCKET: SOCKET })
   const acks: Ack[] = []
+  const logs: string[] = []
   const submitted: { text: string; asUser?: boolean }[] = []
   const commands: string[] = []
   let fills = 0
@@ -37,8 +46,16 @@ async function start($: Engine, on: On, srv: Server) {
   on('http.fetch', async (_$, e) => {
     expect(e.init?.socketPath).toBe(SOCKET)
     if (e.url.endsWith('/v1/state')) return ok(204)
+    if (e.url.endsWith('/v1/log')) {
+      logs.push((JSON.parse(e.init?.body ?? '{}') as { text: string }).text)
+      return ok(204)
+    }
     if (e.url.includes('/v1/prompts?')) {
       polls++
+      if (srv.hang) {
+        srv.hang--
+        return new Promise<never>(() => {})
+      }
       if (srv.gone) return ok(410, 'gone')
       const head = srv.queue[0]
       return head ? ok(200, JSON.stringify(head)) : ok(204)
@@ -75,10 +92,29 @@ async function start($: Engine, on: On, srv: Server) {
     fills++
     return { isFilled: true }
   })
+  const st = srv.state
+  if (st) {
+    const name = (e: { plugin: string; key: string; id?: string }) => `${e.plugin}/${e.key}/${e.id ?? ''}`
+    on('state.get', async (_$, e) => {
+      if (st.failGets > 0 && e.key === 'delivering') {
+        st.failGets--
+        return { value: undefined as never } // a malformed answer: the read throws
+      }
+      const v = st.values.get(name(e))
+      return { value: v ? { value: v.value, version: v.version } : { value: undefined, version: 0 } }
+    })
+    on('state.set', async (_$, e) => {
+      const version = st.values.get(name(e))?.version ?? 0
+      if (e.ifVersion !== undefined && e.ifVersion !== version) return { value: { isSet: false, version } }
+      st.values.set(name(e), { value: e.value, version: version + 1 })
+      return { value: { isSet: true, version: version + 1 } }
+    })
+  }
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
+  on('session.end', async (_$, e) => ({ sessionId: e.sessionId }))
   await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
   await clock.settle()
-  return { clock, acks, submitted, commands, fills: () => fills, polls: () => polls }
+  return { clock, acks, submitted, commands, logs, fills: () => fills, polls: () => polls }
 }
 
 const acked = (acks: Ack[]) => acks.map(a => `${a.id}:${a.result}`)
@@ -156,6 +192,41 @@ test('the loop ends when the session is gone', async ($, on) => {
   const { clock, polls } = await start($, on, srv)
   await clock.advance(10_000)
   expect(polls()).toBe(1)
+})
+
+// T82: a coordinator took no prompt after a /clear: its loop had stopped
+// while the heartbeat went on, so the server kept the nudge for the mod.
+test('a /clear that wipes the state leaves the loop taking prompts', async ($, on) => {
+  const srv: Server = { queue: [{ id: 'g-1', kind: 'prompt', text: 'before' }], state: store() }
+  const { clock, submitted } = await start($, on, srv)
+  await clock.advance(1_000)
+  srv.state!.values.clear()
+  await $.session.end({ reason: 'clear', sessionId: 'x', resume: { id: 'x' } })
+  srv.queue.push({ id: 'g-2', kind: 'prompt', text: 'after' })
+  await clock.advance(1_000)
+  expect(submitted.map(s => s.text)).toEqual(['before', 'after'])
+})
+
+test('a loop that throws tells the server why and starts again', async ($, on) => {
+  const srv: Server = { queue: [{ id: 'g-1', kind: 'prompt', text: 'hi' }], state: { ...store(), failGets: 1 } }
+  const { clock, submitted, logs } = await start($, on, srv)
+  await clock.advance(1_000)
+  expect(submitted).toEqual([])
+  expect(logs.length).toBe(1)
+  expect(logs[0]).toMatch(/^the prompt loop failed: .+; starting it again$/)
+  await clock.advance(5_000)
+  expect(submitted.map(s => s.text)).toEqual(['hi'])
+})
+
+test('a loop that makes no round is started again by the heartbeat', async ($, on) => {
+  const srv: Server = { queue: [], hang: 1 }
+  const { clock, submitted, logs, polls } = await start($, on, srv)
+  srv.queue.push({ id: 'g-1', kind: 'prompt', text: 'hi' })
+  await clock.advance(50_000)
+  expect(polls()).toBe(1)
+  await clock.advance(20_000)
+  expect(logs).toEqual(['the prompt loop made no round for 60s: started again'])
+  expect(submitted.map(s => s.text)).toEqual(['hi'])
 })
 
 test('an offer: read from the body, and kept by its id', () => {

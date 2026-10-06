@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -38,6 +40,25 @@ func postMod(t *testing.T, c *http.Client, path, body string) int {
 	return resp.StatusCode
 }
 
+// lockedBuffer is a log the server's goroutines write to while a test
+// reads it.
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
+}
+
 // TestModChannel: a session with the mod reports its state over its own
 // socket; the server takes it, refuses what isn't a state, and closes
 // the socket with the session.
@@ -52,7 +73,8 @@ func TestModChannel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &Server{log: log.New(os.Stderr, "", 0), sessions: map[string]*session.Session{}}
+	var logged lockedBuffer
+	s := &Server{log: log.New(&logged, "", 0), sessions: map[string]*session.Session{}}
 	s.mu.Lock()
 	sock, err := s.listenMod("s-1", rt)
 	s.mu.Unlock()
@@ -103,6 +125,23 @@ func TestModChannel(t *testing.T) {
 	for _, bad := range []string{`{"input":-1}`, `{"cost_usd":-0.5}`, `{"model":"` + strings.Repeat("x", 100) + `"}`, `{"output":"many"}`} {
 		if code := postMod(t, c, "/v1/usage", bad); code != http.StatusBadRequest {
 			t.Fatalf("%s: %d", bad, code)
+		}
+	}
+	// The mod's own lines (its prompt loop failing, T82) go to the
+	// server's log, on one line and cut short.
+	if code := postMod(t, c, "/v1/log", `{"text":"the prompt loop failed:\nboom; starting it again"}`); code != http.StatusNoContent {
+		t.Fatalf("log: %d", code)
+	}
+	if code := postMod(t, c, "/v1/log", `{"text":"`+strings.Repeat("x", 400)+`"}`); code != http.StatusNoContent {
+		t.Fatalf("long log: %d", code)
+	}
+	if got := logged.String(); !strings.Contains(got, "session s-1: mod: the prompt loop failed: boom; starting it again\n") ||
+		!strings.Contains(got, strings.Repeat("x", maxModLog-1)+"…\n") {
+		t.Fatalf("server log: %q", got)
+	}
+	for _, bad := range []string{`{"text":"  "}`, `nope`} {
+		if code := postMod(t, c, "/v1/log", bad); code != http.StatusBadRequest {
+			t.Fatalf("log %s: %d", bad, code)
 		}
 	}
 	if code := postMod(t, c, "/v1/other", `{}`); code != http.StatusNotFound {

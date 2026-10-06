@@ -63,6 +63,18 @@ func (h tickerHost) PromptFresh(id, text string, refresh func() (string, bool)) 
 
 func (h tickerHost) Alert(msg string) { h.s.alert(msg) }
 
+// Unstick pastes the queued prompt session id's mod holds while its agent
+// idles (session.Session.Unstick).
+func (h tickerHost) Unstick(id string) string {
+	h.s.mu.Lock()
+	sess := h.s.sessions[id]
+	h.s.mu.Unlock()
+	if sess == nil {
+		return ""
+	}
+	return sess.Unstick()
+}
+
 func (h tickerHost) Remote(id string, on bool) (proto.SessionRemoteResult, error) {
 	res, perr := h.s.remote(proto.SessionRemoteParams{ID: id, On: on})
 	if perr != nil {

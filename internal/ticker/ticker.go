@@ -80,6 +80,9 @@ type Host interface {
 	// Remote turns a coordinator's remote control on or off, as
 	// session.remote does.
 	Remote(session string, on bool) (proto.SessionRemoteResult, error)
+	// Unstick pastes the queued prompt a session's mod holds while its
+	// agent idles, and says what it did; "" when the mod holds none.
+	Unstick(session string) string
 }
 
 // Options configure a Ticker. Zero durations take the defaults.
@@ -165,6 +168,10 @@ type projectMemo struct {
 	// wasn't idle; heldLogged says the stall was logged (nudgeStall).
 	heldSince  time.Time
 	heldLogged bool
+	// idleQueued is when a nudge was first held for a coordinator idle
+	// with prompts queued; unstuck says the ticker acted on it (unstick).
+	idleQueued time.Time
+	unstuck    bool
 	// Remote is what keepRemote saw of the coordinator (remote.go).
 	Remote *remoteMemo `json:"remote,omitempty"`
 }
@@ -778,6 +785,7 @@ func (t *Ticker) nudge(p *project.Project, sessions []proto.SessionInfo, now tim
 	}
 	pm.Nudged = keep
 	if len(fresh) == 0 {
+		pm.heldSince, pm.heldLogged, pm.idleQueued, pm.unstuck = time.Time{}, false, time.Time{}, false
 		return
 	}
 	var coord *proto.SessionInfo
@@ -791,7 +799,7 @@ func (t *Ticker) nudge(p *project.Project, sessions []proto.SessionInfo, now tim
 		t.nudgeStall(p, pm, coord, len(fresh), now)
 		return
 	}
-	pm.heldSince, pm.heldLogged = time.Time{}, false
+	pm.heldSince, pm.heldLogged, pm.idleQueued, pm.unstuck = time.Time{}, false, time.Time{}, false
 	if coord == nil || now.Sub(pm.LastNudge) < t.o.Nudge {
 		return
 	}
@@ -849,6 +857,7 @@ func (t *Ticker) nudgeStall(p *project.Project, pm *projectMemo, coord *proto.Se
 	if pm.heldSince.IsZero() {
 		pm.heldSince = now
 	}
+	t.unstick(p, pm, coord, n, now)
 	if pm.heldLogged || now.Sub(pm.heldSince) < nudgeStall {
 		return
 	}
@@ -859,6 +868,43 @@ func (t *Ticker) nudgeStall(p *project.Project, pm *projectMemo, coord *proto.Se
 	}
 	t.o.Log.Printf("ticker: %s: nudge about %d item(s) held %s: %s is %s (%s), %d queued prompt(s); see tm agent explain %s",
 		p.Slug, n, now.Sub(pm.heldSince).Round(time.Second), coord.ID, state, coord.StateSources, coord.Queued, coord.ID)
+}
+
+// nudgeUnstick is how long a nudge may wait for a coordinator idle with
+// prompts queued before the ticker acts (T82: a nudge the coordinator's
+// mod never took held every later one for half an hour).
+const nudgeUnstick = 2 * time.Minute
+
+// unstick acts, once per stall, on a nudge held nudgeUnstick by a
+// coordinator idle with prompts queued: an idle agent takes its queue at
+// once, so something holds it. The server pastes what the mod holds
+// (Host.Unstick); a box with text in it or a dialog stays, bounded by the
+// server's prompt hold. Either way it alerts: the user is the one who
+// can clear a box, and nobody else hears of it.
+func (t *Ticker) unstick(p *project.Project, pm *projectMemo, coord *proto.SessionInfo, n int, now time.Time) {
+	if coord.State != "idle" || coord.Queued == 0 {
+		pm.idleQueued, pm.unstuck = time.Time{}, false
+		return
+	}
+	if pm.idleQueued.IsZero() {
+		pm.idleQueued = now
+	}
+	if pm.unstuck || now.Sub(pm.idleQueued) < nudgeUnstick {
+		return
+	}
+	pm.unstuck = true
+	why := coord.QueueHeld
+	if why == "" {
+		why = "nothing on screen holds it"
+	}
+	msg := fmt.Sprintf("%s: nudge about %d item(s) held %s: coordinator %s is idle with %d queued prompt(s) (%s)",
+		p.Slug, n, now.Sub(pm.idleQueued).Round(time.Second), coord.ID, coord.Queued, why)
+	if did := t.o.Host.Unstick(coord.ID); did != "" {
+		msg += "; " + did
+	} else {
+		msg += "; see tm agent explain " + coord.ID
+	}
+	t.o.Host.Alert(msg)
 }
 
 // ServerRestarted raises one item per project that had sessions in the
