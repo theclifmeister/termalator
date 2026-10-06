@@ -221,6 +221,16 @@ What tm does with it (SPEC §8.6, T51):
 - The Claude adapter's `Probe` is a connect-only check, run every 5 s beside a pid check: a gone pid makes the status file stale, a gone socket keeps held prompts off the channel; `tm agent explain` shows `liveness`.
 - Not used: a fake inbox under Claude's socket dir to receive receipts (it would imitate Claude internals). Prompts from the human should move to a mod's `$.prompt.submit` once that lands (T48/T49).
 
+## 4b. Answering AskUserQuestion from a mod (2.1.291, T62)
+
+Spike t-0051, live against **Claude Code 2.1.291** with a throwaway `--plugin-dir` mod and with terminatr's own:
+
+- **Reading it.** `tool.call` with matcher `{ tool: 'AskUserQuestion' }` sees the tool's input: `questions[]` with `question`, `header`, `multiSelect` and `options[]` (`label`, `description`). `ui.render` on `AskUserQuestion` sees the same in `e.props.questions`, but that is a render site only: answering needs the tool call.
+- **Answering it.** The hook calls `next(e)` (the engine draws the menu) and races it: returning `{ result: { questions, answers } }` while `next(e)` is pending takes the menu down, and the model reads `User answered Claude's questions: · <question> → <answer>` exactly as for a human answer. `answers` maps question text to a string: an option's label, labels joined with `, ` for a multi-select, or free text for the menu's `Type something.` Two questions in one call work the same.
+- **The user first.** When the user answers in the pane, `next(e)` resolves with core's result (`answers`, `annotations`, and a `text` the model reads); the hook returns it unchanged and ends its `$.process.spawn` loop (`return()` on the iterator), which kills the child.
+- **Not possible:** `$.tool.call({ tool: 'AskUserQuestion' })` from a plugin is refused (`that is $.ui.ask (host check)`); `$.ui.ask(question, { options, header, multiSelect })` opens one question and resolves to the label(s) or text, and its `tool.call` passes every other hook, so the probe used it to open menus without the model.
+- **Hot reload:** editing a `--plugin-dir` mod's files reloads it at the next turn's end (`<plugin>: reloaded (…)`) with no question.
+
 ## 5. Other findings
 
 - **Session ids:**

@@ -49,6 +49,17 @@ type Ticked struct {
 	// Queues are the project's sessions whose queued prompts are held
 	// while the agent is idle (session.list, proto.SessionInfo.QueueNote).
 	Queues []HeldQueue
+	// Questions are the question menus open in the project's sessions,
+	// as their mods sent them (session.list, proto.SessionInfo.Question).
+	Questions []OpenQuestion
+}
+
+// OpenQuestion is one session's open question menu, its Lines as tm
+// thread show prints them.
+type OpenQuestion struct {
+	Session, Role, Thread, Task string
+	Since                       time.Time
+	Lines                       []string
 }
 
 // HeldQueue is one session's held prompt queue.
@@ -107,6 +118,20 @@ func (p *Project) Context(seen Ticked) ([]Section, error) {
 		}
 		head = append(head, fmt.Sprintf("Prompt queue: %s (%s) has %d prompt(s) held since %s (%s): nothing is pasted, and the coordinator gets no nudges, until it clears; after its bound the server drops a held prompt, or writes its own fixed-word ones to the agent's socket, unconfirmed (JOURNAL.md prompt.sent, prompt.dropped)",
 			q.Session, who, q.Queued, q.Since.UTC().Format("2006-01-02 15:04 UTC"), q.Why))
+	}
+	for _, q := range seen.Questions {
+		who, ref := q.Role, q.Session
+		switch {
+		case q.Task != "":
+			who, ref = who+" "+q.Task+" ("+q.Thread+")", q.Task
+		case q.Thread != "":
+			who, ref = who+" "+q.Thread, q.Thread
+		}
+		head = append(head, fmt.Sprintf("Question: %s (%s) waits on a question menu since %s; relay the user's answer with tm thread answer %s --choice N | --option LABEL | --text T [--question K]:",
+			q.Session, who, q.Since.UTC().Format("2006-01-02 15:04 UTC"), ref))
+		for _, l := range q.Lines {
+			head = append(head, "  "+l)
+		}
 	}
 	head = append(head, modelLines()...)
 	out = append(out, Section{Title: "Project", Lines: head})
