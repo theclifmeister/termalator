@@ -74,18 +74,18 @@ async function start($: Engine, on: On, lines: TerminatrWatch[], env: Record<str
   return { statuses, toasts }
 }
 
-test('a thread band shows task, steps, current item, PR and needs-you on every surface that has it', async ($, on) => {
+test('a thread band shows task, steps, current item and PR on every surface that has it', async ($, on) => {
   await start($, on, [thread({ pr: '#12 open, 2 checks failed, behind main' })])
   for (const surface of ['terminal', 'desktop'] as const) {
     for (const cols of [140, 60]) {
       const ui = await $.ui.mount({ plugin: 'terminatr', surface, ...band(cols) })
-      const head = 'T50 · steps 1/3 · #12 open, 2 checks failed, behind main · 2 need you'
+      const head = 'T50 · steps 1/3 · #12 open, 2 checks failed, behind main'
       // From 140 columns it all fits on one row; at 60 the current item
       // takes a row of its own, and the first is cut at its end.
       expect(await rows(ui)).toEqual(cols === 140 ? [head + '  ▸ Write the band'] : [head, '▸ Write the band'])
       expect((await text(ui, 'T50'))?.props.bold).toBe(true)
       expect((await text(ui, ' · #12 open, 2 checks failed, behind main'))?.props.color).toBe('error')
-      expect((await text(ui, ' · 2 need you'))?.props.color).toBe('warning')
+      expect(await text(ui, ' · 2 need you')).toBeUndefined()
       const drawn = (await ui.drawn()) as { children: { props: { wrap?: string } }[] }
       expect(drawn.children.map(r => r.props.wrap)).toEqual(drawn.children.map(() => 'truncate-end'))
       await ui.unmount()
@@ -110,11 +110,21 @@ test('quiet with no task: a thread without one, a coordinator with nothing waiti
   expect(statusText(coordinator(0, 0))).toBeUndefined()
 })
 
-test('a coordinator shows what waits for the user', async ($, on) => {
+test('a coordinator shows what waits for the user in the status entry only', async ($, on) => {
   const { statuses } = await start($, on, [coordinator(3, 1)])
   expect(statuses).toEqual(['3 need you · 1 in inbox'])
   const ui = await $.ui.mount({ plugin: 'terminatr', surface: 'terminal', ...band(120) })
-  expect(await rows(ui)).toEqual(['3 need you · 1 in inbox'])
+  expect(await ui.find({ key: 'band' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: 'engine' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('the band and the status entry never repeat the same text', async ($, on) => {
+  const { statuses } = await start($, on, [thread({ inbox: 1 })])
+  const ui = await $.ui.mount({ plugin: 'terminatr', surface: 'terminal', ...band(140) })
+  const drawn = (await rows(ui)).join(' ')
+  expect(statuses).toEqual(['T50 1/3 · #12 open, checks pending · 2 need you · 1 in inbox'])
+  for (const c of ['need you', 'needs you', 'in inbox']) expect(drawn).not.toContain(c)
   await ui.unmount()
 })
 
@@ -122,7 +132,7 @@ test('a thread waiting on the user says so on a row of its own', async ($, on) =
   await start($, on, [thread({ session: { id: 's-7', role: 'thread', state: 'blocked', needs_you: 'which port?' } })])
   const ui = await $.ui.mount({ plugin: 'terminatr', surface: 'terminal', ...band(140) })
   expect(await rows(ui)).toEqual([
-    'T50 · steps 1/3 · #12 open, checks pending · 2 need you', '▸ Write the band', 'waiting on you: which port?'])
+    'T50 · steps 1/3 · #12 open, checks pending', '▸ Write the band', 'waiting on you: which port?'])
   await ui.unmount()
 })
 
@@ -154,7 +164,7 @@ test('mobile and vscode: the band validates there too, the status entry carries 
   expect(statuses).toEqual(['T50 1/3 · #12 open, checks pending · 2 need you'])
   for (const surface of ['mobile', 'vscode'] as const) {
     const ui = await $.ui.mount({ plugin: 'terminatr', surface, ...band(40) })
-    expect(await rows(ui)).toEqual(['T50 · steps 1/3 · #12 open, checks pending · 2 need you', '▸ Write the band'])
+    expect(await rows(ui)).toEqual(['T50 · steps 1/3 · #12 open, checks pending', '▸ Write the band'])
     await ui.unmount()
   }
 })

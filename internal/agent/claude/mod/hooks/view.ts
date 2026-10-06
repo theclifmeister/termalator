@@ -11,6 +11,13 @@ export function shows(w: TerminatrWatch | null): w is TerminatrWatch {
   return w.task !== null || waiting(w) > 0
 }
 
+// bandShows reports whether the band above the prompt has anything to
+// draw: only a thread's task. The counts stay in the status entry, so a
+// coordinator, which has no task, gets no band.
+export function bandShows(w: TerminatrWatch | null): w is TerminatrWatch {
+  return shows(w) && w.task !== null
+}
+
 // waiting counts what waits for the user: the board's Needs you tasks
 // and the unhandled inbox items.
 export function waiting(w: TerminatrWatch): number {

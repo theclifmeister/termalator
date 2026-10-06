@@ -37,7 +37,7 @@ import type { Ack, Offer } from './deliver'
 import { feed } from './feed'
 import { initialTurn, stateOf, step, waitKey } from './turn'
 import type { Seen } from './turn'
-import { ciToast, shows, statusText } from './view'
+import { bandShows, ciToast, statusText } from './view'
 
 const watch = atom({ plugin: 'terminatr', key: 'watch' } as const, null)
 const band = atom({ plugin: 'terminatr', key: 'band' } as const, true)
@@ -99,7 +99,7 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const w = await read($, watch)
-    if (e.props.hasSurvey || !(await read($, band)) || !shows(w)) return next(e)
+    if (e.props.hasSurvey || !(await read($, band)) || !bandShows(w)) return next(e)
     return drawBand($.ui.resolve(e), e.props.bodyColumns, w)
   })
 
