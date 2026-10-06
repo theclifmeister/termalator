@@ -41,6 +41,10 @@ type LaunchSpec struct {
 	RemoteName    string
 	TMBin         string // absolute path of the running tm binary, for hooks
 	Socket        string // server socket path; the agent's sandbox must allow it
+	// Mods loads terminatr's own mod into the agent (a Modder), beside
+	// its command hooks. The core sets it only when [mods] enabled is on
+	// and the agent's version is at least ModsMinVersion.
+	Mods bool
 
 	// Access is the policy the core decided for this role. The manifest
 	// turns it into the agent's own permission and sandbox settings.
@@ -230,6 +234,15 @@ type Agent interface {
 // launch goes on: the trust screen then shows as blocked / trust.
 type Truster interface {
 	TrustDir(home, dir string) error
+}
+
+// Modder is an Agent that ships terminatr's mod: a plugin module the
+// agent loads beside its command hooks (docs/SPEC.md §8.6, Mods). The
+// agent's Launch writes it when LaunchSpec.Mods is set.
+type Modder interface {
+	// ModsMinVersion is the oldest agent version the mod was tested on;
+	// the core leaves it out for an older one, or one it can't read.
+	ModsMinVersion() string
 }
 
 // Rule is one screen rule. It is plain data, evaluated by package detect.
