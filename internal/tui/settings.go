@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -35,6 +36,12 @@ type setting struct {
 	// note adds lines under the help (e.g. the running coordinator's
 	// remote control when it differs).
 	note func(m *dash) []string
+	// from follows the value, faint: where it comes from ("all
+	// projects" on a project's setting it doesn't set itself).
+	from func(m *dash) string
+	// unset runs on x: a project's own value goes,
+	// so it follows all projects again.
+	unset func(m *dash) tea.Cmd
 }
 
 // settingsList is a list of settings with a selection.
@@ -54,6 +61,10 @@ func (l *settingsList) key(m *dash, k tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "+", "-":
 		if l.sel < len(l.rows) && l.rows[l.sel].adjust != nil && !m.busy {
 			return l.rows[l.sel].adjust(m, map[bool]int{true: -1, false: 1}[k.String() == "-"]), true
+		}
+	case "x":
+		if l.sel < len(l.rows) && l.rows[l.sel].unset != nil && !m.busy {
+			return l.rows[l.sel].unset(m), true
 		}
 	default:
 		return nil, false
@@ -86,11 +97,17 @@ func (l *settingsList) lines(m *dash, w int) (out []string, sel int, hits []int)
 		if r.adjust != nil {
 			btns = adjustButtons
 		}
-		text := fit(r.label, lw) + "  " + value + btns
+		from := ""
+		if r.from != nil {
+			if f := r.from(m); f != "" {
+				from = " · " + f
+			}
+		}
+		text := fit(r.label, lw) + "  " + value + btns + from
 		if i == l.sel {
 			out = append(out, styleSel.Render(fit(text, w)))
 		} else {
-			out = append(out, styleHead.Render(fit(r.label, lw))+"  "+styleAccent.Render(value)+styleHead.Render(btns))
+			out = append(out, styleHead.Render(fit(r.label, lw))+"  "+styleAccent.Render(value)+styleHead.Render(btns)+styleFaint.Render(from))
 		}
 		out = append(out, faintLines(r.help, w)...)
 		if r.note != nil {
@@ -171,11 +188,22 @@ func settingsErr(err error) error {
 	return err
 }
 
-// settingsView is the , popup: the settings of every project.
-type settingsView struct{ list settingsList }
+// settingsView is the , popup: the settings of every project, in two
+// tabs: General, and All projects (the project settings every project
+// follows unless it sets its own).
+type settingsView struct {
+	tab  int
+	tabs [2]settingsList
+	// top is each tab's first line shown; shown the selection's line
+	// (plus one) it last scrolled to (projectView.scroll).
+	top, shown [2]int
+}
+
+// settingsTabs are the , popup's tabs.
+var settingsTabs = [2]string{"General", "All projects"}
 
 func (m *dash) openSettings() {
-	sv := &settingsView{list: settingsList{rows: globalSettings()}}
+	sv := &settingsView{tabs: [2]settingsList{{rows: globalSettings()}, {rows: allProjectsSettings()}}}
 	m.push(sv)
 }
 
@@ -250,28 +278,90 @@ func nextSplit(cur float64) float64 {
 }
 
 func (sv *settingsView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
-	switch k.String() {
+	switch s := k.String(); s {
 	case "esc":
 		m.pop()
 		return nil
+	case "right", "l", "left", "h":
+		sv.tab = 1 - sv.tab
+		return nil
+	case "1", "2":
+		sv.tab = int(s[0] - '1')
+		return nil
 	}
-	cmd, _ := sv.list.key(m, k)
+	cmd, _ := sv.tabs[sv.tab].key(m, k)
 	return cmd
 }
 
 func (sv *settingsView) render(m *dash) string {
 	w := m.inner(settingsWidth)
-	lines, sel, hits := sv.list.lines(m, w)
+	lines, sel, hits := sv.tabs[sv.tab].lines(m, w)
 	lines = append(lines, "")
-	lines = append(lines, faintLines("A project's own settings (starting threads, yolo mode, remote control, …) are in its popup: a on the dashboard, prefix+a in a session.", w)...)
-	return m.popup(box{title: "settings", body: lines, sel: sel, hits: hits, keys: "enter change · ↑ ↓ move · esc back", width: settingsWidth})
+	keys := "enter change · ↑ ↓ move · ← → tabs · esc back"
+	if sv.tab == 0 {
+		lines = append(lines, faintLines("A project's own settings (starting threads, yolo mode, remote control, …) are in its popup: a on the dashboard, prefix+a in a session.", w)...)
+	} else {
+		lines = append(lines, faintLines("Every project follows these, a new one too, unless it sets its own in its popup (a on the dashboard, prefix+a in a session); x there makes it follow these again.", w)...)
+		keys = "enter change · + - number · ↑ ↓ move · ← → tabs · esc back"
+	}
+	head := []string{sv.tabBar(), ""}
+	all := append([]int{tabHit, noHit}, hits...)
+	for len(all) < len(head)+len(lines) {
+		all = append(all, noHit)
+	}
+	// As tall as the longer tab, so switching tabs doesn't resize it.
+	height := 0
+	for i := range sv.tabs {
+		l, _, _ := sv.tabs[i].lines(m, w)
+		height = max(height, len(head)+len(l)+3)
+	}
+	b := box{title: "settings", head: head, body: lines, sel: -1, hits: all, keys: keys, width: settingsWidth, height: height}
+	b.scroll = sv.scroll(m.boxRows(b)-len(head), sel, len(lines))
+	return m.popup(b)
+}
+
+// scroll is the open tab's first line shown, as projectView.scroll.
+func (sv *settingsView) scroll(rows, sel, n int) int {
+	t := sv.top[sv.tab]
+	if sel >= 0 && sel+1 != sv.shown[sv.tab] {
+		sv.shown[sv.tab] = sel + 1
+		t = min(t, sel)
+		t = max(t, sel-rows+1)
+	}
+	t = min(max(t, 0), max(n-max(rows, 1), 0))
+	sv.top[sv.tab] = t
+	return t
+}
+
+func (sv *settingsView) tabBar() string {
+	var parts []string
+	for i, name := range settingsTabs {
+		label := fmt.Sprintf(" %d %s ", i+1, name)
+		if i == sv.tab {
+			parts = append(parts, styleSel.Render(label))
+		} else {
+			parts = append(parts, styleFaint.Render(label))
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 func (sv *settingsView) click(m *dash, item, col int, _ bool) tea.Cmd {
-	return sv.list.click(m, item, col)
+	if item == tabHit {
+		x := 0
+		for i, name := range settingsTabs {
+			w := len([]rune(fmt.Sprintf("%d %s", i+1, name))) + 2
+			if col >= x && col < x+w {
+				sv.tab = i
+			}
+			x += w + 1
+		}
+		return nil
+	}
+	return sv.tabs[sv.tab].click(m, item, col)
 }
 
-func (sv *settingsView) wheel(m *dash, d int) { sv.list.key(m, arrow(d)) }
+func (sv *settingsView) wheel(m *dash, d int) { sv.tabs[sv.tab].key(m, arrow(d)) }
 
 const settingsWidth = 88
 
@@ -333,70 +423,144 @@ func (cv *confirmView) render(m *dash) string {
 }
 
 // projectSettings are a project's own settings (§11.2), for its popup.
-func projectSettings(slug string) []setting {
+func projectSettings(slug string) []setting { return safetySettings(slug) }
+
+// allProjectsSettings are the settings every project follows unless it
+// sets its own (§11.2 All projects), for the , popup.
+func allProjectsSettings() []setting { return safetySettings("") }
+
+// safetySettings are slug's settings, or with slug "" the all-projects
+// ones: the same rows, written to the project's table or to [defaults].
+func safetySettings(slug string) []setting {
+	all := slug == ""
+	table, forWho, ofWho := "projects."+slug, "for "+slug, "of "+slug
+	if all {
+		table, forWho, ofWho = config.DefaultsTable, "for all projects", "of each project"
+	}
 	safety := func(m *dash) config.Safety {
-		if p := m.projectData(slug); p != nil && p.Safety != nil {
+		if all {
+			if m.data.Defaults != nil {
+				return *m.data.Defaults
+			}
+		} else if p := m.projectData(slug); p != nil && p.Safety != nil {
 			return *p.Safety
 		}
 		return config.Defaults
 	}
-	table := "projects." + slug
 	// set saves a setting and shows it at once, before the next poll, so
 	// quick presses of + build on each other.
 	set := func(m *dash, key string, value any, msg string, apply func(*config.Safety)) tea.Cmd {
-		if p := m.projectData(slug); p != nil {
-			s := safety(m)
-			apply(&s)
+		s := safety(m)
+		apply(&s)
+		if all {
+			m.data.Defaults = &s
+		} else if p := m.projectData(slug); p != nil {
 			p.Safety = &s
+			if !slices.Contains(p.Own, key) {
+				p.Own = append(slices.Clip(p.Own), key)
+			}
 		}
 		return m.setSetting(table, key, value, msg)
 	}
-	toggle := func(key string, get func(config.Safety) bool, what string) func(m *dash) tea.Cmd {
+	toggle := func(key string, get func(config.Safety) bool, put func(*config.Safety, bool), what string) func(m *dash) tea.Cmd {
 		return func(m *dash) tea.Cmd {
 			on := !get(safety(m))
-			return m.setSetting(table, key, on, what+" "+onOff(on)+" for "+slug)
+			return set(m, key, on, what+" "+onOff(on)+" "+forWho, func(s *config.Safety) { put(s, on) })
 		}
 	}
-	return []setting{
-		{label: "Start threads", help: "Ask first: the coordinator proposes threads and starts them after your go-ahead. Automatically: it starts them itself.",
-			value: func(m *dash) string {
-				if safety(m).StartThreads == config.StartAuto {
-					return "automatically"
+	// scope fills in where each row's value comes from: on a project, its
+	// own value or all projects', which x goes back to; on all projects,
+	// the projects that set their own.
+	scope := func(rows []setting, keys [][]string, words []func(config.Safety) string) []setting {
+		for i := range rows {
+			keys := keys[i]
+			if all {
+				rows[i].note = joinNotes(rows[i].note, func(m *dash) []string { return ownNote(m, keys) })
+				continue
+			}
+			word := words[i]
+			rows[i].from = func(m *dash) string {
+				if p := m.projectData(slug); p != nil && !ownsAny(p.Own, keys) {
+					return config.AllProjectsName
 				}
-				return "ask first"
-			},
+				return ""
+			}
+			rows[i].unset = func(m *dash) tea.Cmd {
+				p := m.projectData(slug)
+				if p == nil || !ownsAny(p.Own, keys) {
+					m.msg = "this setting of " + slug + " already follows all projects"
+					return nil
+				}
+				msg := slug + " follows all projects in " + strings.ToLower(rows[i].label)
+				if m.data.Defaults != nil {
+					msg += ": " + word(*m.data.Defaults)
+				}
+				src := m.src
+				return m.act(func() actionMsg {
+					for _, k := range keys {
+						if err := src.SetSetting(table, k, nil); err != nil {
+							return actionMsg{err: settingsErr(err)}
+						}
+					}
+					return actionMsg{msg: msg}
+				})
+			}
+		}
+		return rows
+	}
+	threads := func(m *dash) string {
+		if all {
+			return ""
+		}
+		return fmt.Sprintf(" · %d working now", m.workingThreads(slug))
+	}
+	startWords := func(s config.Safety) string {
+		if s.StartThreads == config.StartAuto {
+			return "automatically"
+		}
+		return "ask first"
+	}
+	yoloQ := "Turn yolo mode on for " + slug + "? Threads started from now on skip the agent's permission prompts (the file rules and the sandbox still hold)."
+	rows := []setting{
+		{label: "Start threads", help: "Ask first: the coordinator proposes threads and starts them after your go-ahead. Automatically: it starts them itself.",
+			value: func(m *dash) string { return startWords(safety(m)) },
 			change: func(m *dash) tea.Cmd {
 				next, word := config.StartAuto, "automatically"
 				if safety(m).StartThreads == config.StartAuto {
 					next, word = config.StartPropose, "after asking you"
 				}
-				return m.setSetting(table, "start_threads", next, "threads of "+slug+" start "+word)
+				return set(m, "start_threads", next, "threads "+ofWho+" start "+word, func(s *config.Safety) { s.StartThreads = next })
 			}},
 		{label: "Yolo mode", help: "New threads skip the agent's permission prompts; the file rules and the sandbox still hold. Turning it on asks first.",
 			value: func(m *dash) string { return onOff(safety(m).Yolo) },
 			change: func(m *dash) tea.Cmd {
 				if safety(m).Yolo {
-					return m.setSetting(table, "yolo", false, "yolo mode off for "+slug)
+					return set(m, "yolo", false, "yolo mode off "+forWho, func(s *config.Safety) { s.Yolo = false })
 				}
-				m.confirm("Turn yolo mode on for "+slug+"? Threads started from now on skip the agent's permission prompts (the file rules and the sandbox still hold).", func() tea.Cmd {
-					return m.setSetting(table, "yolo", true, "yolo mode on for "+slug+": new threads skip permission prompts")
+				q := yoloQ
+				if all {
+					q = "Turn yolo mode on for all projects? Threads started from now on skip the agent's permission prompts in " + followers(m, []string{"yolo"}) + " (the file rules and the sandbox still hold)."
+				}
+				m.confirm(q, func() tea.Cmd {
+					return set(m, "yolo", true, "yolo mode on "+forWho+": new threads skip permission prompts", func(s *config.Safety) { s.Yolo = true })
 				})
 				return nil
 			}},
 		{label: "Coordinator approves", help: "The coordinator may answer its threads' in-scope permission prompts (allow once, never always).",
-			value:  func(m *dash) string { return onOff(safety(m).CoordinatorApproves) },
-			change: toggle("coordinator_approves", func(s config.Safety) bool { return s.CoordinatorApproves }, "coordinator approvals")},
+			value: func(m *dash) string { return onOff(safety(m).CoordinatorApproves) },
+			change: toggle("coordinator_approves", func(s config.Safety) bool { return s.CoordinatorApproves },
+				func(s *config.Safety, on bool) { s.CoordinatorApproves = on }, "coordinator approvals")},
 		{label: "Parallel threads", help: "The most threads working at once; beyond it the coordinator proposes and waits. Idle and done threads don't count. Enter or + and - change it.",
 			value: func(m *dash) string {
-				return fmt.Sprintf("%d · %d working now", safety(m).ParallelThreads, m.workingThreads(slug))
+				return fmt.Sprintf("%d", safety(m).ParallelThreads) + threads(m)
 			},
 			change: func(m *dash) tea.Cmd {
 				n := nextStep(capSteps, safety(m).ParallelThreads)
-				return set(m, "parallel_threads", n, fmt.Sprintf("up to %d threads of %s work at once", n, slug), func(s *config.Safety) { s.ParallelThreads = n })
+				return set(m, "parallel_threads", n, fmt.Sprintf("up to %d threads %s work at once", n, ofWho), func(s *config.Safety) { s.ParallelThreads = n })
 			},
 			adjust: func(m *dash, d int) tea.Cmd {
 				n := min(max(safety(m).ParallelThreads+d, 1), config.MaxParallelThreads)
-				return set(m, "parallel_threads", n, fmt.Sprintf("up to %d threads of %s work at once", n, slug), func(s *config.Safety) { s.ParallelThreads = n })
+				return set(m, "parallel_threads", n, fmt.Sprintf("up to %d threads %s work at once", n, ofWho), func(s *config.Safety) { s.ParallelThreads = n })
 			}},
 		{label: "Auto-close finished threads", help: "Close a thread when its pull request merges, or some days after it finishes (done, or its pull request merged); + and - change the days. One with uncommitted or unpushed work stays open, and the coordinator is told.",
 			value: func(m *dash) string { return closeWords(safety(m)) },
@@ -407,12 +571,12 @@ func projectSettings(slug string) []setting {
 				}
 				s := safety(m)
 				s.AutoClose = next
-				return set(m, "auto_close", next, "auto-close for "+slug+": "+closeWords(s), func(x *config.Safety) { x.AutoClose = next })
+				return set(m, "auto_close", next, "auto-close "+forWho+": "+closeWords(s), func(x *config.Safety) { x.AutoClose = next })
 			},
 			adjust: func(m *dash, d int) tea.Cmd {
 				s := safety(m)
 				n := min(max(s.AutoCloseDays+d, 1), config.MaxAutoCloseDays)
-				msg := fmt.Sprintf("threads of %s close %s after they finish", slug, days(n))
+				msg := fmt.Sprintf("threads %s close %s after they finish", ofWho, days(n))
 				if s.AutoClose != config.CloseDays {
 					msg = fmt.Sprintf("%s once auto-close is set to days after it finishes (enter)", days(n))
 				}
@@ -425,25 +589,152 @@ func projectSettings(slug string) []setting {
 				if safety(m).CompleteTasks == config.CompleteMerged {
 					next = config.CompleteUser
 				}
-				msg := "tasks of " + slug + " are done " + completeWords(next)
+				msg := "tasks " + ofWho + " are done " + completeWords(next)
 				if next == config.CompleteUser {
-					msg = "tasks of " + slug + " are done when you accept them"
+					msg = "tasks " + ofWho + " are done when you accept them"
 				}
 				return set(m, "complete_tasks", next, msg, func(x *config.Safety) { x.CompleteTasks = next })
 			}},
 		{label: "Pull request follow-up", help: "Prompt a thread when its pull request's checks fail, a reviewer asks for changes, or main moves past it.",
-			value:  func(m *dash) string { return onOff(safety(m).PRFollowup) },
-			change: toggle("pr_followup", func(s config.Safety) bool { return s.PRFollowup }, "pull request follow-up")},
+			value: func(m *dash) string { return onOff(safety(m).PRFollowup) },
+			change: toggle("pr_followup", func(s config.Safety) bool { return s.PRFollowup },
+				func(s *config.Safety, on bool) { s.PRFollowup = on }, "pull request follow-up")},
 		{label: "Remote control", help: "Coordinators keep remote control on, so you can continue them from another device: a new one starts with it, and tm turns it back on when it drops. prefix+r changes the running one; your off holds until it is started anew.",
-			value:  func(m *dash) string { return onOff(safety(m).CoordinatorRemoteControl) },
-			change: toggle("coordinator_remote_control", func(s config.Safety) bool { return s.CoordinatorRemoteControl }, "remote control for coordinators"),
+			value: func(m *dash) string { return onOff(safety(m).CoordinatorRemoteControl) },
+			change: toggle("coordinator_remote_control", func(s config.Safety) bool { return s.CoordinatorRemoteControl },
+				func(s *config.Safety, on bool) { s.CoordinatorRemoteControl = on }, "remote control for coordinators"),
 			note: func(m *dash) []string {
+				if all {
+					return nil
+				}
 				return remoteNote(safety(m).CoordinatorRemoteControl, m.data.Sessions, slug)
 			}},
 		{label: "Keep my checkout current", help: "Fast-forward your own checkout of each repository when its default branch is checked out, clean and only behind origin; else the overview says how far behind.",
-			value:  func(m *dash) string { return onOff(safety(m).FastForwardCheckout) },
-			change: toggle("fast_forward_checkout", func(s config.Safety) bool { return s.FastForwardCheckout }, "keeping your checkout current")},
+			value: func(m *dash) string { return onOff(safety(m).FastForwardCheckout) },
+			change: toggle("fast_forward_checkout", func(s config.Safety) bool { return s.FastForwardCheckout },
+				func(s *config.Safety, on bool) { s.FastForwardCheckout = on }, "keeping your checkout current")},
 	}
+	onOffOf := func(get func(config.Safety) bool) func(config.Safety) string {
+		return func(s config.Safety) string { return onOff(get(s)) }
+	}
+	rows = scope(rows,
+		[][]string{{"start_threads"}, {"yolo"}, {"coordinator_approves"}, {"parallel_threads"}, {"auto_close", "auto_close_days"},
+			{"complete_tasks"}, {"pr_followup"}, {"coordinator_remote_control"}, {"fast_forward_checkout"}},
+		[]func(config.Safety) string{startWords, onOffOf(func(s config.Safety) bool { return s.Yolo }),
+			onOffOf(func(s config.Safety) bool { return s.CoordinatorApproves }),
+			func(s config.Safety) string { return fmt.Sprint(s.ParallelThreads) }, closeWords,
+			func(s config.Safety) string { return completeWords(s.CompleteTasks) },
+			onOffOf(func(s config.Safety) bool { return s.PRFollowup }),
+			onOffOf(func(s config.Safety) bool { return s.CoordinatorRemoteControl }),
+			onOffOf(func(s config.Safety) bool { return s.FastForwardCheckout })})
+	if all {
+		return rows
+	}
+	// The project's own state, never all projects': pause, archive,
+	// delete.
+	return append(rows, []setting{
+		{label: "Paused", help: "While paused the coordinator gets no nudges, threads get no pull request follow-up, and no new thread starts; the dashboard still follows their state.",
+			value: func(m *dash) string { return onOff(safety(m).Paused) },
+			change: func(m *dash) tea.Cmd {
+				verb := "pause"
+				if safety(m).Paused {
+					verb = "resume"
+				}
+				if p := m.projectData(slug); p != nil {
+					s := safety(m)
+					s.Paused = verb == "pause"
+					p.Safety = &s
+				}
+				return m.lifecycle(slug, verb)
+			}},
+		{label: "Archive", help: "Hide the project from the sidebar and the switcher, and stop all background work for it; tm project unarchive brings it back. Not while its coordinator or threads run. Asks first.",
+			value: func(m *dash) string { return "enter archives" },
+			change: func(m *dash) tea.Cmd {
+				m.confirmNo("Archive "+slug+"? It leaves the sidebar and the switcher, and nothing runs for it until tm project unarchive "+slug+".", "not archived", func() tea.Cmd {
+					m.pop() // the project popup
+					return m.lifecycle(slug, "archive")
+				})
+				return nil
+			}},
+		{label: "Delete", help: "Move the project's folder to the trash; its worktrees and branches stay. Not while its coordinator or threads run. Asks first.",
+			value: func(m *dash) string { return "enter deletes" },
+			change: func(m *dash) tea.Cmd {
+				m.confirmNo("Delete "+slug+"? Its folder (tasks, memory, threads' reports) moves to the trash; its worktrees and branches stay.", "not deleted", func() tea.Cmd {
+					m.pop() // the project popup
+					return m.lifecycle(slug, "delete")
+				})
+				return nil
+			}},
+	}...)
+}
+
+// ownsAny reports whether own (a project's own settings) has one of keys.
+func ownsAny(own, keys []string) bool {
+	for _, k := range keys {
+		if slices.Contains(own, k) {
+			return true
+		}
+	}
+	return false
+}
+
+// ownNote names, under an all-projects setting, the projects that set
+// their own value.
+func ownNote(m *dash, keys []string) []string {
+	var slugs []string
+	for _, p := range m.data.Projects {
+		if ownsAny(p.Own, keys) {
+			slugs = append(slugs, p.Slug)
+		}
+	}
+	switch len(slugs) {
+	case 0:
+		return nil
+	case 1:
+		return []string{styleFaint.Render(slugs[0] + " sets its own")}
+	}
+	return []string{styleFaint.Render(joinAnd(slugs) + " set their own")}
+}
+
+// followers names the projects that follow all projects in keys, for
+// the yolo question.
+func followers(m *dash, keys []string) string {
+	var slugs []string
+	for _, p := range m.data.Projects {
+		if !ownsAny(p.Own, keys) {
+			slugs = append(slugs, p.Slug)
+		}
+	}
+	if len(slugs) == 0 {
+		return "every project that doesn't set it itself"
+	}
+	return joinAnd(slugs) + " and every new project"
+}
+
+// joinAnd joins words as "a, b and c".
+func joinAnd(words []string) string {
+	if len(words) < 2 {
+		return strings.Join(words, "")
+	}
+	return strings.Join(words[:len(words)-1], ", ") + " and " + words[len(words)-1]
+}
+
+// joinNotes is a note of a's lines, then b's.
+func joinNotes(a, b func(m *dash) []string) func(m *dash) []string {
+	if a == nil {
+		return b
+	}
+	return func(m *dash) []string { return append(a(m), b(m)...) }
+}
+
+// lifecycle pauses, resumes, archives or deletes a project in the
+// background, then reloads.
+func (m *dash) lifecycle(slug, verb string) tea.Cmd {
+	src := m.src
+	return m.act(func() actionMsg {
+		msg, err := src.Lifecycle(slug, verb)
+		return actionMsg{msg: msg, err: err}
+	})
 }
 
 // capSteps are the caps enter steps through; + and - fine-tune.

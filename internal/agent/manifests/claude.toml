@@ -122,6 +122,21 @@ rule = "blocked-question"
 text_option = "Type something"
 submit = "\r"
 
+# The models a thread may be started with (tm thread start --model): the
+# aliases `claude --model` accepts, which follow each family's latest
+# model. Without --model a thread runs the user's own default.
+[[models]]
+name = "opus"
+about = "most capable: large or subtle changes, design, hard debugging, long multi-step work"
+
+[[models]]
+name = "sonnet"
+about = "balanced: most everyday coding tasks with clear scope"
+
+[[models]]
+name = "haiku"
+about = "fastest and cheapest: small, well-specified edits, docs, mechanical or repetitive changes"
+
 [inject]
 # Bracketed paste + Enter while idle with an empty prompt box (core).
 # "channel" would use Claude's undocumented uds-messaging socket (Go, in

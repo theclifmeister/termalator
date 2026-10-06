@@ -28,10 +28,11 @@ func threadState(t *testing.T, projDir, id string) string {
 
 // TestThreadCapAndOverride: with a cap of 1, an idle thread doesn't
 // count, a blocked one does; at the cap tm thread start refuses with
-// exit 1, and --over-cap starts it anyway, journaled as the user's.
+// exit 1, and --over-cap starts it anyway, journaled as the user's. The
+// cap comes from all projects ([defaults]): demo doesn't set its own.
 func TestThreadCapAndOverride(t *testing.T) {
 	env, projDir, _ := tickerEnv(t)
-	writeConfig(t, env, "[projects.demo]\nparallel_threads = 1\n")
+	writeConfig(t, env, "[defaults]\nparallel_threads = 1\n\n[projects.other]\nparallel_threads = 5\n")
 	th := startThread(t, env, projDir) // t-0001, idle after its kickoff
 	env.MustCLI("thread", "start", "Second", "--project", "demo")
 	var rec struct{ Session string }

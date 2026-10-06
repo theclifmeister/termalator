@@ -625,3 +625,44 @@ func TestManifestAnswer(t *testing.T) {
 		t.Fatalf("claude answer %+v", ans)
 	}
 }
+
+func TestManifestModels(t *testing.T) {
+	const base = "manifest_version = 1\nname = \"a\"\n[launch]\ncommand = \"a\"\n"
+	const args = "model_args = [\"--model\", \"{{.Model}}\"]\n"
+	for _, c := range []struct {
+		toml string
+		n    int
+		ok   bool
+	}{
+		{"", 0, true},
+		{args + "[[models]]\nname = \"big\"\nabout = \"hard work\"\n[[models]]\nname = \"small-1.5\"\nabout = \"small edits\"\n", 2, true},
+		{"[[models]]\nname = \"big\"\nabout = \"hard work\"\n", 0, false}, // no model_args
+		{args + "[[models]]\nname = \"two words\"\nabout = \"x\"\n", 0, false},
+		{args + "[[models]]\nname = \"big\"\n", 0, false}, // no about
+		{args + "[[models]]\nname = \"big\"\nabout = \"a\\nb\"\n", 0, false},
+		{args + "[[models]]\nname = \"big\"\nabout = \"x\"\n[[models]]\nname = \"big\"\nabout = \"y\"\n", 0, false},
+	} {
+		m, err := ParseManifest([]byte(base + c.toml))
+		if (err == nil) != c.ok {
+			t.Errorf("%q: err = %v, want ok %v", c.toml, err, c.ok)
+			continue
+		}
+		if err == nil && len(ModelsOf(FromManifest(m))) != c.n {
+			t.Errorf("%q: %d models", c.toml, len(m.Models))
+		}
+	}
+	reg, err := Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	claude, _ := reg.Get("claude")
+	for _, name := range []string{"opus", "sonnet", "haiku"} {
+		if _, ok := ManifestOf(claude).FindModel(name); !ok {
+			t.Errorf("claude lacks %s", name)
+		}
+	}
+	l, err := claude.Launch(LaunchSpec{Role: RoleThread, Cwd: "/w", RuntimeDir: "/r", AgentSID: "x", Model: "haiku"})
+	if err != nil || !strings.Contains(strings.Join(l.Argv, " "), "--model haiku") {
+		t.Fatalf("launch with a model: %v %q", err, l.Argv)
+	}
+}

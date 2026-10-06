@@ -59,6 +59,11 @@ type Manifest struct {
 	// Without a rule the agent's menus are answered in its pane only.
 	Answer Answer `toml:"answer"`
 
+	// Models are the models a thread of this agent may be started with
+	// (tm thread start --model), each with a line on when it fits; none
+	// means threads run the agent's default. They need model_args.
+	Models []Model `toml:"models"`
+
 	Screen struct {
 		// Resize: "follow" (the default) lets the console typed in size
 		// the pane; "explicit" resizes it only on a window resize or a
@@ -161,6 +166,33 @@ func RemoteControlOf(a Agent) *RemoteControl {
 	return nil
 }
 
+// Model is one [[models]] entry: a name the agent's model_args accept,
+// and one line on when it fits, for the coordinator (tm context).
+type Model struct {
+	Name  string `toml:"name"`
+	About string `toml:"about"`
+}
+
+var modelNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/@\[\]-]{0,63}$`)
+
+// FindModel returns the manifest's model named name.
+func (m *Manifest) FindModel(name string) (Model, bool) {
+	for _, x := range m.Models {
+		if x.Name == name {
+			return x, true
+		}
+	}
+	return Model{}, false
+}
+
+// ModelsOf returns a's allowed models, nil for none.
+func ModelsOf(a Agent) []Model {
+	if m := ManifestOf(a); m != nil {
+		return m.Models
+	}
+	return nil
+}
+
 // ManifestFile is a generated file written into the session's runtime dir
 // before launch (a hook plugin, an extension, a settings file).
 type ManifestFile struct {
@@ -242,6 +274,22 @@ func (m *Manifest) validate() error {
 	}
 	if d := m.RemoteControl.DisableDialog; d != nil && (m.RemoteControl.Disable == "" || d.Contains == "" || d.Keys == "" || d.Done == "") {
 		errs = append(errs, errors.New("remote_control.disable_dialog: needs disable, and contains, keys and done"))
+	}
+	seen := map[string]bool{}
+	for i, x := range m.Models {
+		switch {
+		case !modelNameRE.MatchString(x.Name):
+			errs = append(errs, fmt.Errorf("models[%d]: name %q is not one word of letters, digits and ._:/@[]-", i, x.Name))
+		case seen[x.Name]:
+			errs = append(errs, fmt.Errorf("models[%d]: %q is listed twice", i, x.Name))
+		}
+		seen[x.Name] = true
+		if strings.TrimSpace(x.About) == "" || strings.ContainsAny(x.About, "\r\n") || len([]rune(x.About)) > 120 {
+			errs = append(errs, fmt.Errorf("models[%d]: about must be one line of 1 to 120 characters", i))
+		}
+	}
+	if len(m.Models) > 0 && len(m.Launch.ModelArgs) == 0 {
+		errs = append(errs, errors.New("models need launch.model_args"))
 	}
 	switch m.Screen.Resize {
 	case "", ResizeFollow, ResizeExplicit:

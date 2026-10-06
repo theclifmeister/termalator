@@ -156,3 +156,62 @@ func TestAutoCloseReplacesAutoResolve(t *testing.T) {
 		t.Fatalf("dotted key: %q", got)
 	}
 }
+
+// TestSetDefaultsAndUnset: the all-projects settings are written to
+// [defaults] with a project's checks, and unsetting a project's own value
+// lets it follow them again.
+func TestSetDefaultsAndUnset(t *testing.T) {
+	write(t, "# mine\n[projects.demo]\nparallel_threads = 2 # small\nauto_resolve = false\nauto_close = \"days\"\nyolo = true\n")
+	if err := SetDefaults("parallel_threads", 100); err == nil {
+		t.Fatal("wrote 100 threads")
+	}
+	if err := SetDefaults("nope", true); err == nil {
+		t.Fatal("wrote an unknown setting")
+	}
+	for _, k := range ProjectOnly {
+		if err := SetDefaults(k, true); err == nil {
+			t.Fatalf("wrote %s for all projects", k)
+		}
+	}
+	if err := SetDefaults("parallel_threads", 5); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetDefaults("auto_close", CloseMerged); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := c.Safety("demo"); s.ParallelThreads != 2 || s.AutoClose != CloseDays {
+		t.Fatalf("demo before unset %+v", s)
+	}
+	for _, k := range []string{"parallel_threads", "auto_close"} {
+		if err := UnsetProject("demo", k); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Unsetting what the project doesn't set changes nothing.
+	if err := UnsetProject("demo", "pr_followup"); err != nil {
+		t.Fatal(err)
+	}
+	path, _ := Path()
+	data, _ := os.ReadFile(path)
+	want := "# mine\n[projects.demo]\nyolo = true\n\n[defaults]\nparallel_threads = 5\nauto_close = \"merged\"\n"
+	if string(data) != want {
+		t.Fatalf("got\n%s\nwant\n%s", data, want)
+	}
+	c, _ = Load()
+	if s, _ := c.Safety("demo"); s.ParallelThreads != 5 || s.AutoClose != CloseMerged || !s.Yolo {
+		t.Fatalf("demo after unset %+v", s)
+	}
+}
+
+// TestUnsetOtherForm: a project's value in a form the line editor doesn't
+// change stays, with ErrForm.
+func TestUnsetOtherForm(t *testing.T) {
+	write(t, "[projects]\ndemo.yolo = true\n")
+	if err := UnsetProject("demo", "yolo"); !errors.Is(err, ErrForm) {
+		t.Fatalf("err %v, want ErrForm", err)
+	}
+}

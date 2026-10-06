@@ -10,7 +10,9 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"github.com/theclifmeister/termilator/internal/agent"
 	"github.com/theclifmeister/termilator/internal/config"
+	"github.com/theclifmeister/termilator/internal/home"
 	"github.com/theclifmeister/termilator/internal/tasks"
 )
 
@@ -80,6 +82,10 @@ func (p *Project) Context(seen Ticked) ([]Section, error) {
 	}
 	head = append(head, fmt.Sprintf("Safety: start_threads=%s · yolo=%t · coordinator_approves=%t · parallel_threads=%d · auto_close=%s · complete_tasks=%s (config.toml; the human's)",
 		safety.StartThreads, safety.Yolo, safety.CoordinatorApproves, safety.ParallelThreads, closeRule, safety.CompleteTasks))
+	if safety.Paused {
+		head = append(head, "Paused by the user: no nudges, no PR follow-up, and tm thread start refuses (project-paused) until they resume it")
+	}
+	head = append(head, modelLines()...)
 	out = append(out, Section{Title: "Project", Lines: head})
 	out = append(out, capLines("Standing instructions (PROJECT.md)", splitLines(p.Instructions), capInstructions, "PROJECT.md"))
 
@@ -146,6 +152,33 @@ func (p *Project) Context(seen Ticked) ([]Section, error) {
 	}
 	out = append(out, j)
 	return out, nil
+}
+
+// modelLines list each agent's models for tm thread start --model, from
+// the manifests' [[models]]: one line per model, the agent's default
+// first.
+func modelLines() []string {
+	dir, err := home.AgentsDir()
+	if err != nil {
+		return nil
+	}
+	reg, _ := agent.Load(dir) // a broken user manifest is skipped
+	if reg == nil {
+		return nil
+	}
+	var out []string
+	for _, name := range reg.Names() {
+		a, _ := reg.Get(name)
+		models := agent.ModelsOf(a)
+		if len(models) == 0 {
+			continue
+		}
+		out = append(out, fmt.Sprintf("Models of %s (tm thread start --model; without it, the agent's default):", name))
+		for _, m := range models {
+			out = append(out, "  "+m.Name+": "+m.About)
+		}
+	}
+	return out
 }
 
 func (p *Project) taskSection() (Section, error) {
@@ -229,6 +262,9 @@ func (p *Project) threadSection(prs map[string]string) (Section, error) {
 			if v, ok := rec[k].(string); ok && v != "" {
 				line += "  " + v
 			}
+		}
+		if v, ok := rec["model"].(string); ok && v != "" {
+			line += "  model: " + v
 		}
 		next, prURL, hasReport := reportNext(p.Path("threads", id, "REPORT.md"))
 		if hasReport {

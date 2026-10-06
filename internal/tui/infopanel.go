@@ -160,6 +160,9 @@ func infoLines(d *infoData, w int, now time.Time) ([]string, []infoHit) {
 	}
 	g, st := stateLook(s.State)
 	pl.field("thread", id+" "+st.Render(strings.TrimSpace(g+" "+oneLine(state))))
+	if d.rec != nil && d.rec.Model != "" {
+		pl.field("model", oneLine(d.rec.Model))
+	}
 	if ts := d.status; ts != nil {
 		pl.field("progress", progressLine(ts.Progress()))
 		switch {

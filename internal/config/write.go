@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -16,8 +17,9 @@ import (
 )
 
 // Writing settings (docs/SPEC.md §11.2). Only the TUI's settings popups
-// call these, on the human's keypress: no CLI command or socket method
-// reaches them, so agents can't change safety settings. The file is
+// call these, on the human's keypress, and the human-only tm project
+// pause|resume|archive|unarchive: no socket method reaches them, so
+// agents can't change safety settings. The file is
 // edited line by line, so the user's comments, order and formatting stay
 // as they were; the result is parsed before it replaces the file, which
 // happens atomically under the file's lock.
@@ -29,6 +31,66 @@ var ErrForm = errors.New("this setting is set in a form tm can't change here")
 // SetProject sets one of a project's safety settings by its key
 // (start_threads, yolo, …), checked against the setting's type.
 func SetProject(slug, key string, value any) error {
+	return setSafety("projects."+slug, key, value)
+}
+
+// SetDefaults sets one of the all-projects settings ([defaults]): every
+// project that doesn't set key itself follows it.
+func SetDefaults(key string, value any) error {
+	if slices.Contains(ProjectOnly, key) {
+		return fmt.Errorf("%s is a project's own setting, not all projects'", key)
+	}
+	return setSafety(DefaultsTable, key, value)
+}
+
+// DefaultsTable is the all-projects settings' table.
+const DefaultsTable = "defaults"
+
+// UnsetProject removes a project's own value of key, so it follows all
+// projects again; for auto_close the older auto_resolve goes too. ErrForm
+// when the file sets it in a form the line editor doesn't change.
+func UnsetProject(slug, key string) error {
+	if !validKey(key) {
+		return fmt.Errorf("unknown setting %q", key)
+	}
+	table := "projects." + slug
+	keys := []string{key}
+	if key == "auto_close" {
+		keys = append(keys, "auto_resolve")
+	}
+	return edit(func(data []byte) ([]byte, error) {
+		for _, k := range keys {
+			out := Remove(data, table, k)
+			if bytes.Equal(out, data) && sets(data, table, k) {
+				return nil, ErrForm
+			}
+			data = out
+		}
+		return data, nil
+	})
+}
+
+// sets reports whether data sets key in table, in any form.
+func sets(data []byte, table, key string) bool {
+	var got map[string]any
+	if _, err := toml.Decode(string(data), &got); err != nil {
+		return false
+	}
+	v := any(got)
+	for _, k := range append(splitTable(table), key) {
+		m, ok := v.(map[string]any)
+		if !ok {
+			return false
+		}
+		if v, ok = m[k]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// setSafety sets a safety setting in table, a project's or [defaults].
+func setSafety(table, key string, value any) error {
 	if !validKey(key) {
 		return fmt.Errorf("unknown setting %q", key)
 	}
@@ -47,7 +109,6 @@ func SetProject(slug, key string, value any) error {
 	if n, ok := value.(int); key == "auto_close_days" && (!ok || n < 1 || n > MaxAutoCloseDays) {
 		return fmt.Errorf("auto-close days must be 1 to %d", MaxAutoCloseDays)
 	}
-	table := "projects." + slug
 	if key == "auto_close" {
 		// auto_close replaces the older auto_resolve: its line goes in the
 		// same write, so nothing obsolete is left ignored in the file.
@@ -72,8 +133,13 @@ func validKey(key string) bool {
 	return false
 }
 
-// ProjectKeys are the settings of a [projects.<slug>] table.
-var ProjectKeys = []string{"start_threads", "yolo", "coordinator_approves", "parallel_threads", "auto_close", "auto_close_days", "auto_resolve", "pr_followup", "complete_tasks", "coordinator_remote_control", "fast_forward_checkout"}
+// ProjectKeys are the settings of a [projects.<slug>] table; all but
+// ProjectOnly are also those of [defaults].
+var ProjectKeys = []string{"start_threads", "yolo", "coordinator_approves", "parallel_threads", "auto_close", "auto_close_days", "auto_resolve", "pr_followup", "complete_tasks", "coordinator_remote_control", "fast_forward_checkout", "paused", "archived"}
+
+// ProjectOnly are a project's own state, never all projects': a paused
+// or archived [defaults] would stop or hide every project.
+var ProjectOnly = []string{"paused", "archived"}
 
 // Set sets key in table ("" is the top level, "keys", "projects.<slug>")
 // to value: a bool, an int or a string.
@@ -108,7 +174,7 @@ func edit(fn func(data []byte) ([]byte, error)) error {
 	if err != nil {
 		return err
 	}
-	if old != nil && bytes.Equal(old, data) {
+	if bytes.Equal(old, data) {
 		return nil
 	}
 	return mdfile.WriteAtomic(path, data, perm)
@@ -339,4 +405,19 @@ func setting(l, key string) (indent, comment string, ok bool) {
 		comment = m[2]
 	}
 	return indent, comment, true
+}
+
+// ClearProject removes keys from a project's table, e.g. a deleted
+// project's archived and paused, so a new project of the same slug
+// starts without them.
+func ClearProject(slug string, keys ...string) error {
+	return edit(func(data []byte) ([]byte, error) {
+		if data == nil {
+			return nil, nil
+		}
+		for _, k := range keys {
+			data = Remove(data, "projects."+slug, k)
+		}
+		return data, nil
+	})
 }
