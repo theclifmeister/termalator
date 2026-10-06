@@ -69,6 +69,14 @@ var popupMasks = []Mask{
 	{"host", regexp.MustCompile(`this one  \S+ *`)},
 }
 
+// saved waits until cond holds and the dashboard has saved the change:
+// a setting shows its new value at once, with "working…" until the save
+// is done, and the settings ignore enter, + and - till then.
+func saved(w *Window, desc string, cond func(screen string) bool) string {
+	w.env.T.Helper()
+	return w.WaitUntil(desc+", saved", wait, func(sc string) bool { return cond(sc) && !lastLine(sc, "working…") })
+}
+
 // TestSmokeProjectPopup: a opens the project popup; its tabs switch;
 // a setting changes in place, persists and reaches the coordinator's
 // context; the Keys tab is the help's list; the Memory tab shows the
@@ -106,7 +114,7 @@ func TestSmokeProjectPopup(t *testing.T) {
 	// Start threads: ask first → automatically, saved and in the
 	// coordinator's context.
 	w.Key(Enter)
-	w.WaitFor("automatically", wait)
+	saved(w, "automatically", func(sc string) bool { return strings.Contains(sc, "automatically") })
 	// The popup shows a change before its write to config.toml lands.
 	if out := ""; !Poll(wait, func() bool {
 		out = env.MustCLI("context", "--project", slug)
@@ -120,14 +128,14 @@ func TestSmokeProjectPopup(t *testing.T) {
 		w.Key(keyDown)
 	}
 	w.Type("-")
-	w.WaitUntil("parallel threads 9", wait, func(sc string) bool {
+	saved(w, "parallel threads 9", func(sc string) bool {
 		return regexp.MustCompile(`Parallel threads\s+9 · 0 working now`).MatchString(sc)
 	})
 	w.Key(keyDown)
 	w.Key(Enter)
-	w.WaitFor("7 days after it finishes", wait)
+	saved(w, "7 days", func(sc string) bool { return strings.Contains(sc, "7 days after it finishes") })
 	w.Type("+")
-	w.WaitFor("8 days after it finishes", wait)
+	saved(w, "8 days", func(sc string) bool { return strings.Contains(sc, "8 days after it finishes") })
 	// The popup shows a change before its write to config.toml lands.
 	if out := ""; !Poll(wait, func() bool {
 		out = env.MustCLI("context", "--project", slug)
@@ -138,7 +146,7 @@ func TestSmokeProjectPopup(t *testing.T) {
 	// Complete tasks: by you → when merged, in the coordinator's context.
 	w.Key(keyDown)
 	w.Key(Enter)
-	w.WaitUntil("complete tasks when merged", wait, func(sc string) bool {
+	saved(w, "complete tasks when merged", func(sc string) bool {
 		return regexp.MustCompile(`Complete tasks\s+when merged`).MatchString(sc)
 	})
 	// The popup shows a change before its write to config.toml lands.
@@ -153,7 +161,7 @@ func TestSmokeProjectPopup(t *testing.T) {
 		w.Key(keyDown)
 	}
 	w.Key(Enter)
-	w.WaitUntil("remote control on", wait, func(sc string) bool {
+	saved(w, "remote control on", func(sc string) bool {
 		return regexp.MustCompile(`Remote control\s+on`).MatchString(sc)
 	})
 	data, err := os.ReadFile(filepath.Join(env.Home, "config.toml"))
