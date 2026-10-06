@@ -50,10 +50,10 @@ fast_forward_checkout = false
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s, _ := c.Safety("demo"); !reflect.DeepEqual(s, (Safety{StartThreads: "auto", Yolo: true, CoordinatorApproves: true, ParallelThreads: 10, AutoClose: "merged", AutoCloseDays: 7, PRFollowup: true, CompleteTasks: "merged", FastForwardCheckout: true})) {
+	if s, _ := c.Safety("demo"); !reflect.DeepEqual(s, Safety{StartThreads: "auto", Yolo: true, CoordinatorApproves: true, ParallelThreads: 10, AutoClose: "merged", AutoCloseDays: 7, PRFollowup: true, CompleteTasks: "merged", FastForwardCheckout: true, Merge: "coordinator", Guard: true}) {
 		t.Fatalf("demo %+v", s)
 	}
-	if s, _ := c.Safety("other"); !reflect.DeepEqual(s, (Safety{StartThreads: "propose", ParallelThreads: 10, AutoClose: "off", AutoCloseDays: 7, CompleteTasks: "user", CoordinatorRemoteControl: true})) {
+	if s, _ := c.Safety("other"); !reflect.DeepEqual(s, Safety{StartThreads: "propose", ParallelThreads: 10, AutoClose: "off", AutoCloseDays: 7, CompleteTasks: "user", CoordinatorRemoteControl: true, Merge: "coordinator", Guard: true}) {
 		t.Fatalf("other %+v", s)
 	}
 }
@@ -118,6 +118,9 @@ func TestBadSettings(t *testing.T) {
 		"[defaults]\npaused = false\n":                     "defaults can't set paused or archived",
 		"[defaults]\nparallel_threads = 100\n":             "defaults.parallel_threads must be 1 to 99",
 		"[defaults]\nauto_close = \"never\"\n":             "defaults.auto_close must be",
+		"[projects.demo]\nmerge = \"anyone\"\n":            "merge must be",
+		"[defaults]\nguard_off = [\"push\"]\n":             "unknown rule \"push\"",
+		"[projects.demo]\nguard = \"no\"\n":                "guard",
 	} {
 		write(t, body)
 		if _, err := Load(); err == nil || !strings.Contains(err.Error(), want) {
@@ -170,7 +173,7 @@ auto_resolve = true
 	if err != nil {
 		t.Fatal(err)
 	}
-	all := Safety{StartThreads: "auto", CoordinatorApproves: true, ParallelThreads: 4, AutoClose: "off", AutoCloseDays: 7, PRFollowup: true, CompleteTasks: "merged", FastForwardCheckout: true}
+	all := Safety{StartThreads: "auto", CoordinatorApproves: true, ParallelThreads: 4, AutoClose: "off", AutoCloseDays: 7, PRFollowup: true, CompleteTasks: "merged", FastForwardCheckout: true, Merge: "coordinator", Guard: true}
 	if s, _ := c.AllProjects(); !reflect.DeepEqual(s, all) {
 		t.Fatalf("all projects %+v", s)
 	}
@@ -266,5 +269,24 @@ yolo = true
 		if _, err := Load(); err == nil {
 			t.Errorf("%s accepted", bad)
 		}
+	}
+}
+
+// TestGuard: merge, guard and guard_off default to the coordinator
+// merging and every rule on; a project's own value wins over [defaults].
+func TestGuard(t *testing.T) {
+	write(t, "[defaults]\nguard_off = [\"credentials\"]\n[projects.a]\nmerge = \"thread\"\nguard = false\n[projects.b]\nguard_off = []\n")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := c.Safety("a"); s.Merge != MergeThread || s.Guard || !reflect.DeepEqual(s.GuardOff, []string{"credentials"}) {
+		t.Errorf("a %+v", s)
+	}
+	if s, _ := c.Safety("b"); s.Merge != MergeCoordinator || !s.Guard || len(s.GuardOff) != 0 {
+		t.Errorf("b %+v", s)
+	}
+	if s, _ := c.Safety("c"); s.Merge != MergeCoordinator || !s.Guard || !reflect.DeepEqual(s.GuardOff, []string{"credentials"}) {
+		t.Errorf("c %+v", s)
 	}
 }

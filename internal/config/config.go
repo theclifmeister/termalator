@@ -54,6 +54,18 @@ const (
 	CompleteRemoved = "released"
 )
 
+// Values of merge: who merges a thread's pull request. The mod's guard
+// (docs/SPEC.md §8.6, Guard) refuses a thread's `gh pr merge` under
+// MergeCoordinator.
+const (
+	MergeCoordinator = "coordinator"
+	MergeThread      = "thread"
+)
+
+// GuardRules are the ids of the mod's guard rules (docs/SPEC.md §8.6,
+// Guard), which guard_off may name.
+var GuardRules = []string{"force-push", "push-default", "worktree-only", "delete-branch", "merge", "credentials"}
+
 // Limits of the number settings.
 const (
 	MaxParallelThreads = 99
@@ -100,13 +112,20 @@ type Safety struct {
 	// Archived hides the project from the sidebar and the switcher and
 	// stops all ticker work for it (§5.1).
 	Archived bool `json:"archived"`
+	// Merge is who merges a thread's PR: MergeCoordinator or MergeThread.
+	Merge string `json:"merge"`
+	// Guard turns the mod's guard on (docs/SPEC.md §8.6, Guard): it
+	// refuses tool calls that break the standing rules. GuardOff are the
+	// GuardRules it leaves out. Only the human sets them, here.
+	Guard    bool     `json:"guard"`
+	GuardOff []string `json:"guard_off,omitempty"`
 }
 
 // Defaults are the settings of a project that neither its own table nor
 // [defaults] (all projects) name.
 var Defaults = Safety{StartThreads: StartPropose, Yolo: false, CoordinatorApproves: true,
 	ParallelThreads: 10, AutoClose: CloseMerged, AutoCloseDays: 7, PRFollowup: true,
-	CompleteTasks: CompleteUser, FastForwardCheckout: true}
+	CompleteTasks: CompleteUser, FastForwardCheckout: true, Merge: MergeCoordinator, Guard: true}
 
 type rawSafety struct {
 	StartThreads        *string `toml:"start_threads"`
@@ -125,6 +144,9 @@ type rawSafety struct {
 	Models        *[]string `toml:"models"`
 	Paused        *bool     `toml:"paused"`
 	Archived      *bool     `toml:"archived"`
+	Merge         *string   `toml:"merge"`
+	Guard         *bool     `toml:"guard"`
+	GuardOff      *[]string `toml:"guard_off"`
 }
 
 // CheckModels checks a models allow-list's shape: at least one name,
@@ -370,6 +392,25 @@ func (r rawSafety) apply(s *Safety, path, table string) error {
 	}
 	if r.Archived != nil {
 		s.Archived = *r.Archived
+	}
+	if r.Merge != nil {
+		switch *r.Merge {
+		case MergeCoordinator, MergeThread:
+			s.Merge = *r.Merge
+		default:
+			return fmt.Errorf("%s: %s.merge must be %q or %q, not %q", path, table, MergeCoordinator, MergeThread, *r.Merge)
+		}
+	}
+	if r.Guard != nil {
+		s.Guard = *r.Guard
+	}
+	if r.GuardOff != nil {
+		for _, id := range *r.GuardOff {
+			if !slices.Contains(GuardRules, id) {
+				return fmt.Errorf("%s: %s.guard_off: unknown rule %q (rules: %s)", path, table, id, strings.Join(GuardRules, ", "))
+			}
+		}
+		s.GuardOff = slices.Clone(*r.GuardOff)
 	}
 	return nil
 }
