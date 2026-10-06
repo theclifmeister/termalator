@@ -87,6 +87,12 @@ type Safety struct {
 	// checkout of a project repo to origin's default branch when that
 	// branch is checked out, clean and only behind (§7.5).
 	FastForwardCheckout bool `json:"fast_forward_checkout"`
+	// Paused stops the ticker's prompts (nudges, PR follow-up) and new
+	// threads of the project; state polling goes on (§7.5, §11.2).
+	Paused bool `json:"paused"`
+	// Archived hides the project from the sidebar and the switcher and
+	// stops all ticker work for it (§5.1).
+	Archived bool `json:"archived"`
 }
 
 // Defaults are the settings of a project that neither its own table nor
@@ -109,6 +115,8 @@ type rawSafety struct {
 	CompleteTasks *string `toml:"complete_tasks"`
 	CoordinatorRC *bool   `toml:"coordinator_remote_control"`
 	FastForward   *bool   `toml:"fast_forward_checkout"`
+	Paused        *bool   `toml:"paused"`
+	Archived      *bool   `toml:"archived"`
 }
 
 // Config is the parsed file.
@@ -209,6 +217,11 @@ func (c *Config) AllProjects() (Safety, error) {
 	if c == nil {
 		return s, nil
 	}
+	// Pausing or archiving is a project's own state: in [defaults] it
+	// would stop or hide every project.
+	if c.defaults.Paused != nil || c.defaults.Archived != nil {
+		return s, fmt.Errorf("%s: defaults can't set paused or archived; they are each project's own", c.Path)
+	}
 	return s, c.defaults.apply(&s, c.Path, "defaults")
 }
 
@@ -296,6 +309,12 @@ func (r rawSafety) apply(s *Safety, path, table string) error {
 	}
 	if r.FastForward != nil {
 		s.FastForwardCheckout = *r.FastForward
+	}
+	if r.Paused != nil {
+		s.Paused = *r.Paused
+	}
+	if r.Archived != nil {
+		s.Archived = *r.Archived
 	}
 	return nil
 }

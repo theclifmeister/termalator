@@ -113,6 +113,8 @@ func TestBadSettings(t *testing.T) {
 		"[projects.demo]\nauto_close_days = 0\n":           "auto_close_days must be 1 to 365",
 		"[projects.demo]\ncomplete_tasks = \"later\"\n":    "complete_tasks must be",
 		"[defaults]\nyoloo = true\n":                       "unknown setting defaults.yoloo",
+		"[defaults]\narchived = true\n":                    "defaults can't set paused or archived",
+		"[defaults]\npaused = false\n":                     "defaults can't set paused or archived",
 		"[defaults]\nparallel_threads = 100\n":             "defaults.parallel_threads must be 1 to 99",
 		"[defaults]\nauto_close = \"never\"\n":             "defaults.auto_close must be",
 	} {

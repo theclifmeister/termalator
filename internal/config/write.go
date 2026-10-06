@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -16,8 +17,9 @@ import (
 )
 
 // Writing settings (docs/SPEC.md §11.2). Only the TUI's settings popups
-// call these, on the human's keypress: no CLI command or socket method
-// reaches them, so agents can't change safety settings. The file is
+// call these, on the human's keypress, and the human-only tm project
+// pause|resume|archive|unarchive: no socket method reaches them, so
+// agents can't change safety settings. The file is
 // edited line by line, so the user's comments, order and formatting stay
 // as they were; the result is parsed before it replaces the file, which
 // happens atomically under the file's lock.
@@ -35,6 +37,9 @@ func SetProject(slug, key string, value any) error {
 // SetDefaults sets one of the all-projects settings ([defaults]): every
 // project that doesn't set key itself follows it.
 func SetDefaults(key string, value any) error {
+	if slices.Contains(ProjectOnly, key) {
+		return fmt.Errorf("%s is a project's own setting, not all projects'", key)
+	}
 	return setSafety(DefaultsTable, key, value)
 }
 
@@ -128,9 +133,13 @@ func validKey(key string) bool {
 	return false
 }
 
-// ProjectKeys are the settings of a [projects.<slug>] table and of
-// [defaults].
-var ProjectKeys = []string{"start_threads", "yolo", "coordinator_approves", "parallel_threads", "auto_close", "auto_close_days", "auto_resolve", "pr_followup", "complete_tasks", "coordinator_remote_control", "fast_forward_checkout"}
+// ProjectKeys are the settings of a [projects.<slug>] table; all but
+// ProjectOnly are also those of [defaults].
+var ProjectKeys = []string{"start_threads", "yolo", "coordinator_approves", "parallel_threads", "auto_close", "auto_close_days", "auto_resolve", "pr_followup", "complete_tasks", "coordinator_remote_control", "fast_forward_checkout", "paused", "archived"}
+
+// ProjectOnly are a project's own state, never all projects': a paused
+// or archived [defaults] would stop or hide every project.
+var ProjectOnly = []string{"paused", "archived"}
 
 // Set sets key in table ("" is the top level, "keys", "projects.<slug>")
 // to value: a bool, an int or a string.
@@ -165,7 +174,7 @@ func edit(fn func(data []byte) ([]byte, error)) error {
 	if err != nil {
 		return err
 	}
-	if old != nil && bytes.Equal(old, data) {
+	if bytes.Equal(old, data) {
 		return nil
 	}
 	return mdfile.WriteAtomic(path, data, perm)
@@ -396,4 +405,19 @@ func setting(l, key string) (indent, comment string, ok bool) {
 		comment = m[2]
 	}
 	return indent, comment, true
+}
+
+// ClearProject removes keys from a project's table, e.g. a deleted
+// project's archived and paused, so a new project of the same slug
+// starts without them.
+func ClearProject(slug string, keys ...string) error {
+	return edit(func(data []byte) ([]byte, error) {
+		if data == nil {
+			return nil, nil
+		}
+		for _, k := range keys {
+			data = Remove(data, "projects."+slug, k)
+		}
+		return data, nil
+	})
 }

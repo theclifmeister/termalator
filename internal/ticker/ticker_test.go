@@ -5,7 +5,9 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -69,6 +71,8 @@ type rig struct {
 	ghFor func(target string) string
 	// unsaved is what closing the thread would lose.
 	unsaved string
+	// ghErr, when set, is the error of every gh call.
+	ghErr string
 }
 
 // newRig makes a project "demo" with one thread t-0001 running in
@@ -101,6 +105,10 @@ func newRigIn(t *testing.T, repo string, repos []string) *rig {
 		Now:     func() time.Time { return r.now },
 		Unsaved: func(*thread.Record, string) (string, error) { return r.unsaved, nil },
 		GH: func(dir string, args ...string) ([]byte, error) {
+			if r.ghErr != "" {
+				r.ghN++
+				return nil, fmt.Errorf("%s", r.ghErr)
+			}
 			if r.ghFor != nil {
 				if out := r.ghFor(args[2]); out != "" {
 					return []byte(out), nil
@@ -253,6 +261,46 @@ func TestNudge(t *testing.T) {
 	}
 }
 
+// TestPausedAndArchived: a paused project gets items but no nudges or
+// follow-up prompts; an archived one gets no ticker work at all.
+func TestPausedAndArchived(t *testing.T) {
+	r := newRig(t)
+	if err := config.SetProject("demo", "paused", true); err != nil {
+		t.Fatal(err)
+	}
+	r.gh = []string{prOpen, prFailed}
+	r.host.set("s-1", "idle", "")
+	r.sweep(0)
+	r.sweep(2 * time.Minute)
+	if k := strings.Split(r.kinds(), ","); len(k) != 2 || !slices.Contains(k, KindPROpened) || !slices.Contains(k, KindPRChecks) {
+		t.Fatalf("paused: kinds %s", k)
+	}
+	if len(r.host.prompts) != 0 {
+		t.Fatalf("paused, yet prompted: %v", r.host.prompts)
+	}
+	if err := config.SetProject("demo", "paused", false); err != nil {
+		t.Fatal(err)
+	}
+	r.sweep(time.Second)
+	if len(r.host.prompts) != 1 || !strings.Contains(r.host.prompts[0], "s-1 [tm] 2 new inbox items") {
+		t.Fatalf("resumed: %v", r.host.prompts)
+	}
+
+	r.handleAll()
+	if err := config.SetProject("demo", "archived", true); err != nil {
+		t.Fatal(err)
+	}
+	r.host.set("s-2", "blocked", "question")
+	n := r.ghN
+	r.sweep(5 * time.Minute)
+	if k := r.kinds(); k != "" || r.ghN != n {
+		t.Fatalf("archived: kinds %q, %d gh calls", k, r.ghN-n)
+	}
+	if _, ok := r.tk.st.Threads["demo/t-0001"]; !ok {
+		t.Fatal("archiving forgot the thread's PR")
+	}
+}
+
 func TestNudgeTextHasNoSummaries(t *testing.T) {
 	items := []project.Item{
 		{Kind: "report", Subject: "t-0002", Summary: "evil one"},
@@ -336,6 +384,52 @@ func TestPRPollFollowUpAndAutoResolve(t *testing.T) {
 	r.sweep(10 * time.Minute)
 	if r.ghN != n {
 		t.Fatal("polled a merged PR")
+	}
+}
+
+func TestGHFailing(t *testing.T) {
+	r := newRig(t)
+	r.ghErr = "gh pr view: exit status 1 To get started with GitHub CLI, please run:  gh auth login"
+	for i := 1; i < GHFailPolls; i++ {
+		r.sweep(2 * time.Minute)
+	}
+	if k := r.kinds(); k != "" {
+		t.Fatalf("raised %q after %d failed polls", k, GHFailPolls-1)
+	}
+	r.sweep(time.Minute) // no poll due: doesn't count
+	r.sweep(2 * time.Minute)
+	items := r.items()
+	if len(items) != 1 || items[0].Kind != KindGHFailing || !items[0].NeedsUser || strings.Contains(items[0].Summary, "auth login") {
+		t.Fatalf("items %+v", items)
+	}
+	r.sweep(2 * time.Minute)
+	r.sweep(2 * time.Minute)
+	if n := len(r.items()); n != 1 {
+		t.Fatalf("%d items: raised more than once", n)
+	}
+	// A gh that isn't installed neither counts nor clears.
+	r.ghErr = ""
+	gh := r.tk.o.GH
+	r.tk.o.GH = func(string, ...string) ([]byte, error) {
+		return nil, fmt.Errorf("gh pr view: %w", exec.ErrNotFound)
+	}
+	r.sweep(2 * time.Minute)
+	if n := len(r.items()); n != 1 || r.tk.st.Projects["demo"].GHFails != GHFailPolls+2 {
+		t.Fatalf("missing gh: %d items, %d fails", n, r.tk.st.Projects["demo"].GHFails)
+	}
+	r.tk.o.GH = gh
+	// A gh that works but finds no PR clears it.
+	r.ghErr = ""
+	r.sweep(2 * time.Minute)
+	if k := r.kinds(); k != "" {
+		t.Fatalf("still %q after gh worked", k)
+	}
+	r.ghErr = "gh: network down"
+	for i := 0; i < GHFailPolls; i++ {
+		r.sweep(2 * time.Minute)
+	}
+	if k := r.kinds(); k != KindGHFailing {
+		t.Fatalf("second outage: %q", k)
 	}
 }
 

@@ -168,6 +168,11 @@ func TestSetDefaultsAndUnset(t *testing.T) {
 	if err := SetDefaults("nope", true); err == nil {
 		t.Fatal("wrote an unknown setting")
 	}
+	for _, k := range ProjectOnly {
+		if err := SetDefaults(k, true); err == nil {
+			t.Fatalf("wrote %s for all projects", k)
+		}
+	}
 	if err := SetDefaults("parallel_threads", 5); err != nil {
 		t.Fatal(err)
 	}

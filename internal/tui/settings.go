@@ -617,7 +617,7 @@ func safetySettings(slug string) []setting {
 	onOffOf := func(get func(config.Safety) bool) func(config.Safety) string {
 		return func(s config.Safety) string { return onOff(get(s)) }
 	}
-	return scope(rows,
+	rows = scope(rows,
 		[][]string{{"start_threads"}, {"yolo"}, {"coordinator_approves"}, {"parallel_threads"}, {"auto_close", "auto_close_days"},
 			{"complete_tasks"}, {"pr_followup"}, {"coordinator_remote_control"}, {"fast_forward_checkout"}},
 		[]func(config.Safety) string{startWords, onOffOf(func(s config.Safety) bool { return s.Yolo }),
@@ -627,6 +627,45 @@ func safetySettings(slug string) []setting {
 			onOffOf(func(s config.Safety) bool { return s.PRFollowup }),
 			onOffOf(func(s config.Safety) bool { return s.CoordinatorRemoteControl }),
 			onOffOf(func(s config.Safety) bool { return s.FastForwardCheckout })})
+	if all {
+		return rows
+	}
+	// The project's own state, never all projects': pause, archive,
+	// delete.
+	return append(rows, []setting{
+		{label: "Paused", help: "While paused the coordinator gets no nudges, threads get no pull request follow-up, and no new thread starts; the dashboard still follows their state.",
+			value: func(m *dash) string { return onOff(safety(m).Paused) },
+			change: func(m *dash) tea.Cmd {
+				verb := "pause"
+				if safety(m).Paused {
+					verb = "resume"
+				}
+				if p := m.projectData(slug); p != nil {
+					s := safety(m)
+					s.Paused = verb == "pause"
+					p.Safety = &s
+				}
+				return m.lifecycle(slug, verb)
+			}},
+		{label: "Archive", help: "Hide the project from the sidebar and the switcher, and stop all background work for it; tm project unarchive brings it back. Not while its coordinator or threads run. Asks first.",
+			value: func(m *dash) string { return "enter archives" },
+			change: func(m *dash) tea.Cmd {
+				m.confirmNo("Archive "+slug+"? It leaves the sidebar and the switcher, and nothing runs for it until tm project unarchive "+slug+".", "not archived", func() tea.Cmd {
+					m.pop() // the project popup
+					return m.lifecycle(slug, "archive")
+				})
+				return nil
+			}},
+		{label: "Delete", help: "Move the project's folder to the trash; its worktrees and branches stay. Not while its coordinator or threads run. Asks first.",
+			value: func(m *dash) string { return "enter deletes" },
+			change: func(m *dash) tea.Cmd {
+				m.confirmNo("Delete "+slug+"? Its folder (tasks, memory, threads' reports) moves to the trash; its worktrees and branches stay.", "not deleted", func() tea.Cmd {
+					m.pop() // the project popup
+					return m.lifecycle(slug, "delete")
+				})
+				return nil
+			}},
+	}...)
 }
 
 // ownsAny reports whether own (a project's own settings) has one of keys.
@@ -686,6 +725,16 @@ func joinNotes(a, b func(m *dash) []string) func(m *dash) []string {
 		return b
 	}
 	return func(m *dash) []string { return append(a(m), b(m)...) }
+}
+
+// lifecycle pauses, resumes, archives or deletes a project in the
+// background, then reloads.
+func (m *dash) lifecycle(slug, verb string) tea.Cmd {
+	src := m.src
+	return m.act(func() actionMsg {
+		msg, err := src.Lifecycle(slug, verb)
+		return actionMsg{msg: msg, err: err}
+	})
 }
 
 // capSteps are the caps enter steps through; + and - fine-tune.

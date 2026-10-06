@@ -214,6 +214,70 @@ func TestProjectSettingsToggle(t *testing.T) {
 
 func must(s config.Safety, _ error) config.Safety { return s }
 
+// TestProjectLifecycleRows: Paused toggles at once and marks the project
+// in the sidebar; Archive and Delete ask first, then close the popup.
+func TestProjectLifecycleRows(t *testing.T) {
+	src, m := popupData(t)
+	keyPress(m, "a")
+	keyPress(m, "4")
+	pick := func(label string) {
+		t.Helper()
+		pv := m.projectPopupView()
+		for i, r := range pv.settings.rows {
+			if r.label == label {
+				pv.settings.sel = i
+				return
+			}
+		}
+		t.Fatalf("no %q row", label)
+	}
+	paused := func() bool {
+		cfg, err := config.Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return must(cfg.Safety("alpha")).Paused
+	}
+	pick("Paused")
+	act(m, src, "enter")
+	if !paused() {
+		t.Fatal("not paused")
+	}
+	rows := buildTree(m.data.Projects, m.data.Sessions, treeIn{})
+	if !rows[0].paused || !strings.Contains(treeCells(rows[0], 30, false, false), "alpha"+ic().paused) ||
+		!strings.Contains(treeCells(rows[0], 12, true, false), "alpha"+ic().paused) {
+		t.Fatalf("sidebar lacks the paused mark: %+v %q", rows[0], treeCells(rows[0], 30, false, false))
+	}
+	act(m, src, "enter")
+	if paused() {
+		t.Fatal("still paused")
+	}
+
+	pick("Archive")
+	act(m, src, "enter")
+	if _, ok := m.top().(*confirmView); !ok {
+		t.Fatalf("archive didn't ask: %T", m.top())
+	}
+	act(m, src, "n")
+	if len(src.lifecycle) != 2 || m.projectPopupView() == nil {
+		t.Fatalf("n archived: %v", src.lifecycle)
+	}
+	act(m, src, "enter")
+	act(m, src, "y")
+	if got := src.lifecycle[len(src.lifecycle)-1]; got != "alpha archive" || m.projectPopupView() != nil {
+		t.Fatalf("archive: %v, popup %v", src.lifecycle, m.projectPopupView())
+	}
+
+	keyPress(m, "a")
+	keyPress(m, "4")
+	pick("Delete")
+	act(m, src, "enter")
+	act(m, src, "y")
+	if got := src.lifecycle[len(src.lifecycle)-1]; got != "alpha delete" || m.projectPopupView() != nil {
+		t.Fatalf("delete: %v", src.lifecycle)
+	}
+}
+
 // TestProjectSettingsNumbers: parallel threads steps with enter and
 // + / -; auto-close cycles off, merged, days, and + / - set the days.
 func TestProjectSettingsNumbers(t *testing.T) {
@@ -832,6 +896,12 @@ func TestAllProjectsSettings(t *testing.T) {
 	keyPress(m, "2")
 	if out := screen(m); !strings.Contains(out, "2 All projects") || !strings.Contains(out, "Parallel threads") {
 		t.Fatalf("all projects tab:\n%s", out)
+	}
+	// Pausing, archiving and deleting are each project's own.
+	for _, r := range m.top().(*settingsView).tabs[1].rows {
+		if r.label == "Paused" || r.label == "Archive" || r.label == "Delete" {
+			t.Fatalf("all projects has a %s row", r.label)
+		}
 	}
 	for range 3 {
 		keyPress(m, "down")

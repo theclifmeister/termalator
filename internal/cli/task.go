@@ -22,7 +22,7 @@ const taskUsage = `usage: tm task <command> [--project <slug>] [--json]
   edit T12 [--title "…"] [--notes "…" | --notes-file F] [--owner O]
   steps T12 add "text" | check N | uncheck N | rename N "text" | remove N
   archive T12 | unarchive T12
-  delegate T12 [--agent A] [--repo PATH] [--base B] [--approved-by-user] [--over-cap]
+  delegate T12 [--agent A] [--model M] [--repo PATH] [--base B] [--approved-by-user] [--over-cap]
                                 = tm thread start --task T12
 
 Exit codes: 0 done or already true, 1 refused, 2 usage, 3 I/O.`
@@ -134,10 +134,10 @@ func runTask(e *Env, args []string) error {
 			return e.done(res, err, *asJSON, sub+"d")
 		}
 	case "delegate":
-		o := startOpts{task: new(string), agent: f.String("agent"), repo: f.String("repo"),
+		o := startOpts{task: new(string), agent: f.String("agent"), model: f.String("model"), repo: f.String("repo"),
 			base: f.String("base"), approved: f.Bool("approved-by-user"), overCap: f.Bool("over-cap")}
 		run = func(p *project.Project, s *tasks.Store, pos []string) error {
-			id, err := oneRef(pos, 1, "delegate T12 [--agent A] [--repo PATH] [--base B] [--approved-by-user] [--over-cap]")
+			id, err := oneRef(pos, 1, "delegate T12 [--agent A] [--model M] [--repo PATH] [--base B] [--approved-by-user] [--over-cap]")
 			if err != nil {
 				return err
 			}
