@@ -266,6 +266,32 @@ func TestNudge(t *testing.T) {
 	}
 }
 
+// TestNudgeStallLogged: a nudge held for a minute by a coordinator that
+// isn't idle is logged once, with the sources of its state (T59).
+func TestNudgeStallLogged(t *testing.T) {
+	r := newRig(t)
+	var buf strings.Builder
+	r.tk.o.Log = log.New(&buf, "", 0)
+	r.host.sessions[0].StateSources = "status_file"
+	r.p.AddItem("report", "t-0001", "x", false)
+	r.sweep(0)
+	r.sweep(30 * time.Second)
+	if strings.Contains(buf.String(), "held") {
+		t.Fatalf("logged before the minute: %s", buf.String())
+	}
+	r.sweep(31 * time.Second)
+	r.sweep(time.Minute)
+	want := "ticker: demo: nudge about 1 item(s) held 1m1s: s-1 is working (status_file), 0 queued prompt(s); see tm agent explain s-1"
+	if got := buf.String(); strings.Count(got, "held") != 1 || !strings.Contains(got, want) {
+		t.Fatalf("log %q, want %q once", got, want)
+	}
+	r.host.set("s-1", "idle", "")
+	r.sweep(time.Second)
+	if len(r.host.prompts) != 1 {
+		t.Fatalf("not nudged once idle: %v", r.host.prompts)
+	}
+}
+
 // TestPausedAndArchived: a paused project gets items but no nudges or
 // follow-up prompts; an archived one gets no ticker work at all.
 func TestPausedAndArchived(t *testing.T) {

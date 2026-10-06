@@ -71,6 +71,12 @@ func claudeLike(t *testing.T) *chanAgent {
 // what it is sent. The agent reads idle (a SessionStart hook).
 func startBox(t *testing.T, a agent.Agent, box string, hold time.Duration, resolved chan<- PromptResolution) *Session {
 	t.Helper()
+	return startBoxLog(t, a, box, hold, resolved, t.Logf)
+}
+
+// startBoxLog is startBox with the session's log.
+func startBoxLog(t *testing.T, a agent.Agent, box string, hold time.Duration, resolved chan<- PromptResolution, logf func(string, ...any)) *Session {
+	t.Helper()
 	script := `printf '\n\342\224\200\342\224\200\342\224\200\n\342\235\257\302\240` + box + `\n\342\224\200\342\224\200\342\224\200\n'; exec cat`
 	s, err := Start(Config{
 		ID: "s-test", Role: proto.RoleCoordinator, Project: "p",
@@ -78,7 +84,7 @@ func startBox(t *testing.T, a agent.Agent, box string, hold time.Duration, resol
 		Cwd:  t.TempDir(),
 		Env:  []string{"PATH=/usr/bin:/bin", "TERM=xterm-256color", "LANG=C.UTF-8"},
 		Cols: 80, Rows: 24,
-		Logf: t.Logf,
+		Logf: logf,
 		Agent: &AgentConfig{
 			Agent: a, Home: t.TempDir(), PromptHold: hold,
 			OnPromptResolved: func(_ *Session, r PromptResolution) { resolved <- r },
@@ -312,5 +318,84 @@ func TestStatusFileOfGonePID(t *testing.T) {
 	}
 	if e, _ := s.Explain(); e.Extra["liveness"] != fmt.Sprintf("gone: pid %d is gone", pid) {
 		t.Fatalf("explain %v", e.Extra)
+	}
+}
+
+// TestNudgeAfterInjectedSlashCommand: T59. The agent is idle by hooks;
+// the server pastes a slash command (/remote-control), which runs no turn
+// and fires no Stop, and the status file is left saying busy. A nudge
+// queued then must still go out once the busy file stands unconfirmed
+// (docs/SPEC.md §8.4 rule 2).
+func TestNudgeAfterInjectedSlashCommand(t *testing.T) {
+	resolved := make(chan PromptResolution, 1)
+	s := startBox(t, claudeLike(t), "", time.Hour, resolved)
+	home, pid := s.agentRT().cfg.Home, s.cmd.Process.Pid
+	writeStatus(t, home, pid, `{"status":"idle","version":"2.1.291"}`)
+	if _, err := s.Hook("UserPromptSubmit", map[string]any{"prompt": "go"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Hook("Stop", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Prompt("/remote-control"); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "the slash command pasted", func() bool { return strings.Contains(screen(t, s), "/remote-control") })
+	writeStatus(t, home, pid, `{"status":"busy","version":"2.1.291"}`)
+	eventually(t, "working by the status file", func() bool {
+		st, _ := s.AgentState()
+		return st.State == agent.StateWorking && st.Sources == "status_file"
+	})
+	if _, err := s.Prompt("[tm] nudge"); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "the nudge pasted", func() bool { return strings.Contains(screen(t, s), "[tm] nudge") })
+	st, _ := s.AgentState()
+	if st.State != agent.StateIdle || st.Sources != "hooks" {
+		t.Fatalf("state %+v", st.Merged)
+	}
+	if e, _ := s.Explain(); e.StatusDoubt == "" {
+		t.Fatal("explain should say why the status file is doubted")
+	}
+}
+
+// TestPromptStallLogged: a prompt queued behind a working agent for
+// promptStall is logged once, with the state's sources and the last hook
+// event (T59).
+func TestPromptStallLogged(t *testing.T) {
+	// Restored after the session stops (cleanups run last first).
+	old := promptStall
+	t.Cleanup(func() { promptStall = old })
+	promptStall = 300 * time.Millisecond
+	var mu sync.Mutex
+	var logs []string
+	logf := func(f string, a ...any) {
+		mu.Lock()
+		defer mu.Unlock()
+		logs = append(logs, fmt.Sprintf(f, a...))
+	}
+	stalls := func() (n int, line string) {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, l := range logs {
+			if strings.Contains(l, "queued prompt waiting") {
+				n, line = n+1, l
+			}
+		}
+		return n, line
+	}
+	s := startBoxLog(t, claudeLike(t), "", time.Hour, make(chan PromptResolution, 1), logf)
+	if _, err := s.Hook("UserPromptSubmit", map[string]any{"prompt": "go"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Prompt("[tm] main moved"); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "the stall log", func() bool { n, _ := stalls(); return n > 0 })
+	time.Sleep(500 * time.Millisecond)
+	n, line := stalls()
+	if n != 1 || !strings.Contains(line, "agent working (hooks), last hook event UserPromptSubmit at ") ||
+		!strings.Contains(line, "tm agent explain s-test") {
+		t.Fatalf("%d stall line(s), last %q", n, line)
 	}
 }

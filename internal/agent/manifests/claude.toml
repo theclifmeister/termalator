@@ -236,6 +236,13 @@ event = "PostToolUseFailure"
 state = "working"
 transient = true
 
+# Compaction runs no turn hooks; the edge keeps a busy status file
+# believed while it runs (docs/SPEC.md §8.4 rule 2).
+[[hooks]]
+event = "PreCompact"
+state = "working"
+transient = true
+
 [[hooks]]
 event = "PermissionRequest"
 match = { tool_name = "AskUserQuestion" }
