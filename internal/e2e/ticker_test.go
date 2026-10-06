@@ -264,7 +264,7 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	// 140 columns wide: the details beside the list instead of under it.
 	// A console of its own, so its selection doesn't move w's.
 	wide := env.Window(140+sideDefault, 30, "--own")
-	wide.WaitFor("t-0001 Fix the login", wait)
+	wide.WaitFor("(t-0001)", wait)
 	wide.Type("j")
 	wide.WaitFor("enter attaches it", wait)
 	wide.Golden("dashboard-split.txt", dashMasks...)
@@ -282,13 +282,13 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	w.WaitFor("report read", wait)
 	w.Type("i")
 	w.WaitFor("demo inbox", wait)
-	w.WaitFor("t-0001 (T1 Fix the login) handed in report 1", wait)
+	w.WaitFor("T1 Fix the login (t-0001) handed in report 1", wait)
 	w.Golden("dashboard-inbox.txt", dashMasks...)
 	w.Key(keyEsc)
 
 	// enter on the thread: attached, with nothing to take over.
 	w.Key(Enter)
-	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, "demo t-0001") })
+	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, "demo T1") })
 	if cols, rows := paneSize(env, th); cols == threadCols(110+sideDefault) && rows == 28 {
 		t.Fatalf("the thread's pane already fits the window: the size check below proves nothing")
 	}
@@ -298,7 +298,7 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	w.Type("qqq")
 	w.WaitFor("qqq", wait)
 	waitPaneSize(t, env, th, threadCols(110+sideDefault), 28) // typing claims the size
-	waitInbox(t, env, "takeover: the user typed into t-0001 (T1 Fix the login)'s pane")
+	waitInbox(t, env, "takeover: the user typed into T1 Fix the login (t-0001)'s pane")
 	w.Type("www")
 	w.WaitFor("www", wait)
 	w.Quiet(500 * time.Millisecond)

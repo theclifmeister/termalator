@@ -260,7 +260,7 @@ func heldQueues(slug string) []project.HeldQueue {
 	var out []project.HeldQueue
 	for _, s := range res.Sessions {
 		if s.Project == slug && s.QueueNote(time.Now()) != "" {
-			out = append(out, project.HeldQueue{Session: s.ID, Role: s.Role, Thread: s.Thread, Queued: s.Queued, Why: s.QueueHeld, Since: s.QueueHeldSince})
+			out = append(out, project.HeldQueue{Session: s.ID, Role: s.Role, Thread: s.Thread, Task: s.Task, Queued: s.Queued, Why: s.QueueHeld, Since: s.QueueHeldSince})
 		}
 	}
 	return out
