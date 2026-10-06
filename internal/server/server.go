@@ -109,6 +109,8 @@ type Server struct {
 	views *views
 	// watch wakes the session watches (watch.go).
 	watch watchers
+	// versions caches agent versions for the mod guard (mods.go).
+	versions versions
 
 	// protocol is the protocol the hello claims, and deaf hangs up on
 	// every hello: test hooks (testhooks.go).

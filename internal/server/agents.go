@@ -242,6 +242,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		Cwd: r.Cwd, RuntimeDir: rt, BriefPath: r.Brief, Kickoff: l.kick, Resume: l.resume,
 		Yolo: r.Yolo, Model: r.Model, TMBin: s.opts.Bin, Socket: s.opts.Paths.Socket, Access: access,
 		RemoteControl: r.RemoteControl, RemoteName: remoteName(r),
+		Mods: s.modsFor(a, r.ID),
 	}
 	launch, err := a.Launch(spec)
 	if err != nil {

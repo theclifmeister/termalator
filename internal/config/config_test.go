@@ -211,3 +211,20 @@ func TestAllProjectsReleasedRemoved(t *testing.T) {
 		t.Fatalf("Removed = %q", got)
 	}
 }
+
+// TestMods: [mods] enabled is off unless set; its unknown keys are
+// listed, not errors.
+func TestMods(t *testing.T) {
+	write(t, "")
+	if c, _ := Load(); c.Mods {
+		t.Fatal("mods on without a file")
+	}
+	write(t, "[mods]\nenabled = true\nband = true\n")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.Mods || strings.Join(c.Unknown, ",") != "mods.band" {
+		t.Fatalf("mods %v, unknown %v", c.Mods, c.Unknown)
+	}
+}
