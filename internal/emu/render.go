@@ -260,6 +260,10 @@ func (r *Renderer) row(b []byte, oy int) ([]byte, error) {
 	if err := r.ri.Cells(r.rc); err != nil {
 		return nil, err
 	}
+	sel, err := r.ri.Selection() // nil when the row has no selected cell
+	if err != nil {
+		return nil, err
+	}
 	x := 0
 	pendingBlank := 0 // a run of default blank cells, written lazily
 	for r.rc.Next() && x < r.outCols {
@@ -283,7 +287,8 @@ func (r *Renderer) row(b []byte, oy int) ([]byte, error) {
 				break
 			}
 		}
-		if len(g) == 0 && st.IsDefault() {
+		selected := sel != nil && x >= int(sel.StartX) && x <= int(sel.EndX)
+		if len(g) == 0 && st.IsDefault() && !selected {
 			pendingBlank++
 			x++
 			continue
@@ -297,7 +302,7 @@ func (r *Renderer) row(b []byte, oy int) ([]byte, error) {
 				b = append(b, ' ')
 			}
 		}
-		r.sgr = sgrFor(r.sgr[:0], st)
+		r.sgr = sgrFor(r.sgr[:0], st, selected)
 		if string(r.sgr) != string(r.last) {
 			b = append(b, r.sgr...)
 			r.last = append(r.last[:0], r.sgr...)
@@ -378,8 +383,9 @@ func appendColor(b []byte, c libghostty.StyleColor, base int) []byte {
 	return b
 }
 
-// sgrFor returns the complete SGR sequence, starting from a reset, for st.
-func sgrFor(dst []byte, st *libghostty.Style) []byte {
+// sgrFor returns the complete SGR sequence, starting from a reset, for st;
+// a selected cell is drawn with fore- and background swapped.
+func sgrFor(dst []byte, st *libghostty.Style, selected bool) []byte {
 	dst = append(dst, "\x1b[0"...)
 	if st.Bold() {
 		dst = append(dst, ";1"...)
@@ -405,7 +411,7 @@ func sgrFor(dst []byte, st *libghostty.Style) []byte {
 	if st.Blink() {
 		dst = append(dst, ";5"...)
 	}
-	if st.Inverse() {
+	if st.Inverse() != selected {
 		dst = append(dst, ";7"...)
 	}
 	if st.Invisible() {

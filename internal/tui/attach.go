@@ -299,6 +299,12 @@ type client struct {
 	// buttons, by column from its start.
 	menu       *amenu
 	statusHits []hint
+	// Text selection (selection.go): the drag in progress, the pane that
+	// shows a selection, and OSC 52 for the outer terminal, written with
+	// the next frame.
+	drag  *selDrag
+	selOn *pane
+	clip  []byte
 
 	bare      bool     // the view has no dashboard: detaching leaves
 	statusBar bool     // the view's chrome has the status bar
@@ -636,6 +642,13 @@ func (c *client) loadSnapshot(p *pane, payload []byte) error {
 	p.mirror = mirror
 	p.held, p.scrolled = false, false
 	p.r.Invalidate()
+	if c.selOn == p {
+		c.selOn = nil
+	}
+	if c.drag != nil && c.drag.p == p {
+		c.drag = nil
+	}
+	mirror.OnClipboard(c.forwardClipboard(p))
 	// Runs inside mirror.Write with c.mu held. At hold start the terminal
 	// still shows the last complete frame: capture it and keep drawing it.
 	mirror.OnRenderHold(func(held bool) {
@@ -1320,6 +1333,7 @@ func (c *client) input(k uv.Key) {
 		p.scrolled = false
 		c.poke()
 	}
+	c.clearSel()
 	ek, ok := toKey(k)
 	var b []byte
 	var err error
@@ -1359,6 +1373,11 @@ func (c *client) mouse(ev uv.Event) {
 	case c.menu != nil:
 		c.menuMouse(m)
 		return
+	case c.drag != nil && m.Action != emu.MousePress:
+		// A drag selection follows the mouse wherever it goes.
+		c.selMouse(c.drag.p, m)
+		c.mu.Unlock()
+		return
 	case press && c.confirmRemote != nil:
 		// A click on y yes says yes; any other click, no.
 		yes := status && m.Button == emu.MouseLeft && hintAt(c.statusHits, m.X-c.sideW) == "y"
@@ -1396,9 +1415,12 @@ func (c *client) mouse(ev uv.Event) {
 		c.poke()
 	}
 	if !p.mirror.Modes().MouseTracking() {
-		// tm's: the program doesn't take the mouse.
-		if press && m.Button == emu.MouseRight {
+		// tm's: the program doesn't take the mouse. A left drag selects.
+		switch {
+		case press && m.Button == emu.MouseRight:
 			c.openMenu("", c.sessionItems(), m.X, m.Y, false)
+		case m.Button == emu.MouseLeft:
+			c.selMouse(p, m)
 		}
 		_, wheel := ev.(uv.MouseWheelEvent)
 		claim := (click || wheel) && c.needClaim()
@@ -1551,6 +1573,8 @@ func (c *client) renderLoop(out io.Writer) Result {
 				b = append(b, '\a')
 				c.bell = false
 			}
+			b = append(b, c.clip...)
+			c.clip = nil
 		}
 		c.mu.Unlock()
 		if err != nil {
