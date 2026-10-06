@@ -1194,6 +1194,57 @@ func TestModelsSetting(t *testing.T) {
 	}
 }
 
+// TestHistorySetting: Keep history lists the four retention ages; enter
+// steps one, + and - change it by a day, each saved as its own setting,
+// and x makes the project follow all projects again.
+func TestHistorySetting(t *testing.T) {
+	src, m := popupData(t)
+	m.Update(tea.WindowSizeMsg{Width: 160, Height: 60})
+	keyPress(m, "a")
+	keyPress(m, "4")
+	pv := m.top().(*projectView)
+	i := slices.IndexFunc(pv.settings.rows, func(r setting) bool { return r.label == "Keep history" })
+	if i < 0 {
+		t.Fatal("no Keep history row")
+	}
+	pv.settings.sel = i
+	if out := screen(m); !strings.Contains(out, "Keep history") || !strings.Contains(out, "30 days · all projects") {
+		t.Fatalf("row:\n%s", out)
+	}
+	keyPress(m, "enter")
+	hv, ok := m.top().(*historyView)
+	if !ok {
+		t.Fatalf("enter opened %T", m.top())
+	}
+	out := screen(m)
+	for _, w := range []string{"keep history for alpha", "Done tasks", "Resolved threads", "Handled inbox items", "Journal"} {
+		if !strings.Contains(out, w) {
+			t.Errorf("history view lacks %q:\n%s", w, out)
+		}
+	}
+	keyPress(m, "down")
+	act(m, src, "enter") // resolved threads 30 → 60
+	act(m, src, "-")     // 59
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := must(cfg.Safety("alpha")); s.ArchiveThreadsDays != 59 || s.ArchiveTasksDays != 30 {
+		t.Fatalf("saved %+v", s)
+	}
+	if out := screen(m); !strings.Contains(out, "59 days") {
+		t.Fatalf("view after -:\n%s", out)
+	}
+	act(m, src, "x")
+	if cfg, _ := config.Load(); must(cfg.Safety("alpha")).ArchiveThreadsDays != 30 {
+		t.Fatal("x left the project's own value")
+	}
+	keyPress(m, "esc")
+	if m.top() == hv || m.top() != overlay(pv) {
+		t.Fatalf("esc left %T", m.top())
+	}
+}
+
 // TestTasksTabCompact: the Tasks tab lists steps only under the selected
 // active task (the others show n/n), none under done tasks, the done
 // group newest first and capped at the newest ten, with m to list all.

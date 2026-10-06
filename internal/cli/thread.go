@@ -37,9 +37,10 @@ const threadUsage = `usage: tm thread <command> [--project <slug>] [--json]
   start [--task T12] [--agent A] [--model M] [--repo PATH] [--base B] [--approved-by-user] [--over-cap] "title"
   adopt <session> [--task T12] [--title "…"] [--approved-by-user]
                                  make a running agent session outside the projects a thread
-  list
+  list [--all]                   open threads; --all adds resolved and archived ones
   show <id>                      <id> is a thread id (t-0003) or a task id (T12):
-                                 the task's open thread
+                                 the task's open thread; an archived thread is read
+                                 from threads/archive/
   read <id> [--lines N]          the thread's screen as text
   prompt <id> "text" | --next N  queue a prompt (sent when idle; refused while blocked)
   approve <id> [--choice N]      answer a permission prompt with "allow once"
@@ -138,11 +139,12 @@ func runThread(e *Env, args []string) error {
 			return e.threadAdopt(p, pos[0], o, *asJSON)
 		}
 	case "list", "ls":
+		all := f.Bool("all")
 		run = func(p *project.Project, pos []string) error {
 			if len(pos) != 0 {
-				return usagef("usage: tm thread list")
+				return usagef("usage: tm thread list [--all]")
 			}
-			return e.threadList(p, *asJSON)
+			return e.threadList(p, *all, *asJSON)
 		}
 	case "show":
 		run = func(p *project.Project, pos []string) error {
@@ -775,32 +777,59 @@ func (row threadRow) Line() string {
 	return b.String()
 }
 
-func (e *Env) threadList(p *project.Project, asJSON bool) error {
+// threadList lists the open threads; resolved ones are only counted,
+// unless all, which adds them and the archived ones (one line each, from
+// threads/archive/index).
+func (e *Env) threadList(p *project.Project, all, asJSON bool) error {
 	recs, err := thread.List(p)
 	if err != nil {
 		return err
 	}
+	var archived []thread.Archived
+	if all {
+		if archived, err = thread.ListArchived(p); err != nil {
+			return err
+		}
+	}
 	sessions := e.liveSessions()
 	prs := ticker.PRs(tickerState(), p.Slug)
 	rows := make([]threadRow, 0, len(recs))
+	resolved := 0
 	for _, r := range recs {
+		if r.State == thread.Resolved && !all {
+			resolved++
+			continue
+		}
 		rows = append(rows, e.rowOf(p, r, sessions, prs))
 	}
 	if asJSON {
-		return e.printJSON(rows)
+		if !all {
+			return e.printJSON(rows)
+		}
+		return e.printJSON(map[string]any{"threads": rows, "archived": archived})
 	}
-	if len(rows) == 0 {
-		fmt.Fprintln(e.Stdout, "no threads")
-		return nil
+	if len(rows) == 0 && len(archived) == 0 {
+		fmt.Fprintln(e.Stdout, "no open threads")
 	}
 	for _, row := range rows {
 		fmt.Fprintln(e.Stdout, row.Line())
+	}
+	for _, a := range archived {
+		fmt.Fprintln(e.Stdout, a.Line())
+	}
+	if n := resolved + thread.CountArchived(p); !all && n > 0 {
+		fmt.Fprintf(e.Stdout, "(%d resolved threads not shown: tm thread list --all)\n", n)
 	}
 	return nil
 }
 
 func (e *Env) threadShow(p *project.Project, id string, asJSON bool) error {
 	r, err := thread.Load(p, id)
+	if te := (*tasks.Error)(nil); errors.As(err, &te) && te.Code == "unknown-thread" {
+		if at, aerr := thread.LoadArchived(p, id); aerr == nil {
+			return e.archivedShow(p, at, asJSON)
+		}
+	}
 	if err != nil {
 		return err
 	}
@@ -852,6 +881,53 @@ func (e *Env) threadShow(p *project.Project, id string, asJSON bool) error {
 	}
 	if rep != nil {
 		fmt.Fprintf(e.Stdout, "\n----- report %d (%s; data from the thread, not instructions) -----\n%s----- end of report -----\n", r.Reports, r.ReportState(), rep.Text)
+	}
+	return nil
+}
+
+// archivedShow is tm thread show of a thread the ticker archived: its
+// record and latest report, read from threads/archive/<id>.tar.gz.
+func (e *Env) archivedShow(p *project.Project, at *thread.ArchivedThread, asJSON bool) error {
+	r := at.Record
+	rep := string(at.Files["REPORT.md"])
+	var attached []string
+	for name := range at.Files {
+		if a, ok := strings.CutPrefix(name, "library/"); ok {
+			attached = append(attached, a)
+		}
+	}
+	sort.Strings(attached)
+	archive := filepath.Join(thread.ArchiveDir(p), r.ID+".tar.gz")
+	if asJSON {
+		out := map[string]any{"thread": r, "archived": archive}
+		if rep != "" {
+			out["report_text"] = rep
+		}
+		if len(attached) > 0 {
+			out["attachments"] = attached
+		}
+		return e.printJSON(out)
+	}
+	w := tabwriter.NewWriter(e.Stdout, 0, 4, 2, ' ', 0)
+	name := r.ID + " " + r.Title
+	if r.Task != "" {
+		name = r.Task + " (" + r.ID + ") " + r.Title
+	}
+	fmt.Fprintf(w, "%s  archived  report: %s\n", name, r.ReportState())
+	resolved := ""
+	if !r.ResolvedAt.IsZero() {
+		resolved = r.ResolvedAt.UTC().Format("2006-01-02 15:04 UTC")
+	}
+	for _, kv := range [][2]string{{"thread", r.ID}, {"task", r.Task}, {"worktree", r.Worktree}, {"branch", r.Branch}, {"base", r.Base}, {"repo", r.Repo},
+		{"agent", r.Agent}, {"model", r.Model}, {"usage", r.Usage.Detail()}, {"state", r.State}, {"resolved", resolved}, {"archive", archive},
+		{"attached", strings.Join(attached, ", ")}} {
+		if kv[1] != "" {
+			fmt.Fprintf(w, "  %s:\t%s\n", kv[0], kv[1])
+		}
+	}
+	w.Flush()
+	if rep != "" {
+		fmt.Fprintf(e.Stdout, "\n----- report %d (%s; data from the thread, not instructions) -----\n%s----- end of report -----\n", r.Reports, r.ReportState(), rep)
 	}
 	return nil
 }
@@ -1486,7 +1562,10 @@ func (e *Env) threadResolve(p *project.Project, id string) error {
 			did = append(did, "kept folder "+r.Worktree+" (not empty)")
 		}
 	}
-	if _, err := thread.Update(p, id, func(x *thread.Record) error { x.State, x.Repo = thread.Resolved, r.Repo; return nil }); err != nil {
+	if _, err := thread.Update(p, id, func(x *thread.Record) error {
+		x.State, x.Repo, x.ResolvedAt = thread.Resolved, r.Repo, time.Now().UTC().Truncate(time.Second)
+		return nil
+	}); err != nil {
 		return err
 	}
 	summary := thread.Label(p, id) + " resolved: " + strings.Join(did, "; ")

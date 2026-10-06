@@ -193,6 +193,37 @@ func BranchExists(repo, branch string) bool {
 	return err == nil
 }
 
+// BranchUnsaved says what a resolved thread's branch holds that is
+// nowhere else: "<n> unpushed commit(s) on <branch>", or "" for nothing
+// (no such branch, or all its commits on a remote; in a repo without
+// remotes, merged into another branch).
+func BranchUnsaved(repo, branch string) (string, error) {
+	if repo == "" || branch == "" || !BranchExists(repo, branch) {
+		return "", nil
+	}
+	remotes, err := git(repo, "remote")
+	if err != nil {
+		return "", err
+	}
+	if remotes == "" {
+		if MergedBase(repo, branch) != "" {
+			return "", nil
+		}
+		return "unmerged commits on " + branch, nil
+	}
+	n, err := git(repo, "rev-list", "--count", "refs/heads/"+branch, "--not", "--remotes")
+	if err != nil {
+		return "", err
+	}
+	switch n {
+	case "0":
+		return "", nil
+	case "1":
+		return "1 unpushed commit on " + branch, nil
+	}
+	return n + " unpushed commits on " + branch, nil
+}
+
 // Unsaved says what removing a worktree would lose: "uncommitted
 // changes", "<n> unpushed commit(s)", or "" for nothing. Commits count as
 // pushed when a remote-tracking branch, or pushed (a commit the remote

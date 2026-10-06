@@ -16,7 +16,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/theclifmeister/terminatr/internal/caller"
 	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/mdfile"
 	"github.com/theclifmeister/terminatr/internal/project"
@@ -30,8 +29,6 @@ const (
 	DefaultSweep  = 15 * time.Second
 	DefaultPRPoll = 2 * time.Minute
 	DefaultNudge  = time.Minute
-	// DoneMaxAge is how long handled inbox items are kept.
-	DoneMaxAge = 30 * 24 * time.Hour
 	// minGap coalesces bursts of events into one sweep.
 	minGap = 200 * time.Millisecond
 )
@@ -109,6 +106,10 @@ type Options struct {
 	// Sync fetches a repo and fast-forwards its checkout when ff and it
 	// is safe; nil is worktree.Sync.
 	Sync func(repo string, ff bool) (worktree.Checkout, error)
+	// Kept says why a resolved thread's folder must stay ("" for no
+	// reason): work in its worktree or branch (upkeep.go). nil checks
+	// with git.
+	Kept func(r *thread.Record) (string, error)
 }
 
 // Ticker is the event loop.
@@ -206,6 +207,9 @@ func New(o Options) *Ticker {
 	}
 	if o.Sync == nil {
 		o.Sync = worktree.Sync
+	}
+	if o.Kept == nil {
+		o.Kept = kept
 	}
 	if o.Log == nil {
 		o.Log = log.New(os.Stderr, "", log.LstdFlags)
@@ -369,18 +373,7 @@ func (t *Ticker) Sweep() {
 		}
 		t.keepRemote(p, sessions, safety, now)
 		if prune {
-			// Done tasks leave the board after a while (§7.6); journaled
-			// as the ticker's task.archive.
-			if ids, err := p.ArchiveOldDone(caller.Caller{Kind: caller.Ticker}, now, project.ArchiveDoneAfter); err != nil {
-				t.o.Log.Printf("ticker: %s: archive done tasks: %v", p.Slug, err)
-			} else if len(ids) > 0 {
-				t.o.Log.Printf("ticker: %s: archived %d done tasks", p.Slug, len(ids))
-			}
-			if n, err := p.PruneDone(DoneMaxAge); err != nil {
-				t.o.Log.Printf("ticker: %s: prune inbox: %v", p.Slug, err)
-			} else if n > 0 {
-				t.o.Log.Printf("ticker: %s: deleted %d handled inbox items", p.Slug, n)
-			}
+			t.upkeep(p, safety, now)
 		}
 	}
 	if prune {
