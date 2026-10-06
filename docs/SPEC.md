@@ -1592,7 +1592,7 @@ Terminatr has a test strategy from the first milestone, not a test phase at the 
 | **Unit** | One package, no processes, no sockets. Manifest mapping, arbitration tables, `ApplyTodo`, `TASKS.md` round trips, report validation, path rules | `go test -race ./...` | every PR |
 | **Fuzz** | Every parser of input we don't control (§16.5) | seed corpora run as unit tests on every PR; `make fuzz` (1 min per target, capped) weekly | every PR (seeds), weekly (search) |
 | **Integration** | A real `tm server` in an isolated `TERMINATR_HOME` (a `t.TempDir()`, with a short run dir under `/tmp`), driven through the CLI and the socket. Lifecycle, stale sockets, handshake, sessions, hooks, tasks, threads with the fake agent | `go test -race ./...` (packages under `internal/…` with `_integration_test.go` files) | every PR |
-| **End-to-end** | The whole product as the user sees it: `tm` and `tm attach` running inside a **virtual terminal** (libghostty), keys typed, screens compared with golden files, windows closed, clients and servers killed | `internal/e2e`, `make e2e` (all) / `make e2e-smoke` (a core set under about 2 minutes) | smoke on every PR; race-built smoke on main; full suite weekly |
+| **End-to-end** | The whole product as the user sees it: `tm` and `tm attach` running inside a **virtual terminal** (libghostty), keys typed, screens compared with golden files, windows closed, clients and servers killed | `internal/e2e`, `make e2e` (all) / `make e2e-smoke` (a core set under about 2 minutes) | smoke on every PR and on main; race-built smoke and the full suite weekly |
 | **Real agent** | The same scenarios against the installed `claude`, to catch Claude releases that change hooks, screens, the session file, or the task tools | build tag `realclaude`, `make test-claude` | on demand, and nightly on a machine with a Claude login (not GitHub-hosted CI) |
 
 **On every PR** (macOS and Linux, `ci.yml`): gofmt, vet, build, `go test -race ./...` (unit, integration and fuzz seeds), `make e2e-smoke` (without `-race`, in its own job, two shards per OS: `make e2e-smoke E2E_SHARD=1/2`), `tm selftest`. The release snapshot (`make release-snapshot` on macOS) runs on every push to main and on PRs that touch the release build (`.goreleaser.yaml`, the Makefile, `go.mod`/`go.sum`, `scripts/release/`, `Formula/`, the workflows, libghostty bindings).
@@ -1622,7 +1622,7 @@ func TestDetachReattach(t *testing.T) {
 ```
 
 What the harness provides (M1 built `Env`, `Window` without `Key`/`Paste`/`Wheel`, golden screens, the orphan check, artifacts and the printer app; M2 adds the input helpers and `AssertMirrorsServer`):
-- **Running it.** Scenarios skip unless `E2E=1`, which `make e2e` and `make e2e-smoke` set, so `go test ./...` stays fast. The smoke set is every scenario named `TestSmoke*`. With `E2E_RACE=1` (`make e2e-smoke-race`, main and weekly) the harness builds `tm` with `-race` and fails any scenario whose `tm` printed `WARNING: DATA RACE`. PRs run the smoke set without it: a race-built `tm` takes about a second to start, and every agent hook starts one, which made the smoke step take 6–7 minutes.
+- **Running it.** Scenarios skip unless `E2E=1`, which `make e2e` and `make e2e-smoke` set, so `go test ./...` stays fast. The smoke set is every scenario named `TestSmoke*`. With `E2E_RACE=1` (`make e2e-smoke-race`, weekly) the harness builds `tm` with `-race` and fails any scenario whose `tm` printed `WARNING: DATA RACE`. PRs and main run the smoke set without it: a race-built `tm` takes about a second to start, and every agent hook starts one, which made the smoke step take 6–7 minutes.
 - **`Env`**:
   - builds `tm` once per test run;
   - an isolated `TERMINATR_HOME` and `HOME` (so the fake agent's `~/.claude/` is private);
@@ -1673,7 +1673,7 @@ Built in M3 (`internal/e2e/fakeagent`, a small Go TUI). It behaves like Claude C
 
 ### 16.5 Race detector and fuzzing
 
-- **Race detector:** `go test` runs with `-race` in CI on main and weekly (`make test-race`; pull requests run it without, for cost), and the e2e harness builds `tm` with `-race` for the smoke set (`make e2e-smoke-race`). Concurrency is the server's core job: PTY readers, client queues, hook connections, the ticker.
+- **Race detector:** `go test` runs with `-race` in CI on main and weekly (`make test-race`; pull requests run it without, for cost), and the e2e harness builds `tm` with `-race` for the weekly smoke set (`make e2e-smoke-race`). Concurrency is the server's core job: PTY readers, client queues, hook connections, the ticker.
 - **Fuzz targets.** Each one checks that the code never panics, and round trips where a format has both a reader and a writer:
 
   | Target | Status |

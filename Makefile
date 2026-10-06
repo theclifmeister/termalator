@@ -12,7 +12,7 @@
 #   make test-race  the same with -race (main and weekly in CI)
 #   make e2e        every end-to-end scenario (internal/e2e) against bin/tm
 #   make e2e-smoke  the core scenarios (every PR)
-#   make e2e-smoke-race  the same with tm built with -race (main and weekly)
+#   make e2e-smoke-race  the same with tm built with -race (weekly in CI)
 #   make test-claude  the scenarios against the real claude (needs a login; costs cents)
 #   make fuzz       run every fuzz target for FUZZTIME each (weekly)
 #   make vet        go vet ./... and staticcheck ./...
@@ -119,9 +119,9 @@ fuzz: $(READY)
 # set is every scenario named TestSmoke*. E2E_RACE=1 builds tm and the
 # test with -race; the harness then fails a scenario whose tm printed
 # "WARNING: DATA RACE". A race-built tm takes about a second to start, and
-# every agent hook starts one, so PRs run the smoke set without -race
-# (`go test -race ./...` still covers the code); main runs e2e-smoke-race
-# on Linux and the weekly workflow on both. E2E_SHARD=I/N runs only shard I of N of the smoke set
+# every agent hook starts one, so PRs and main run the smoke set without
+# -race (`go test -race ./...` still covers the code on main); only the
+# weekly workflow runs e2e-smoke-race. E2E_SHARD=I/N runs only shard I of N of the smoke set
 # (scripts/e2e-shard.sh), as CI does.
 E2E_RACE ?=
 E2E_SHARD ?=
