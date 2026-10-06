@@ -1332,6 +1332,18 @@ func (e *Env) threadRestart(p *project.Project, id string) error {
 			return err
 		}
 	}
+	// A moved repository is followed, and its worktree reconnected.
+	if r.Repo != "" && !r.Checkout {
+		was := r.Repo
+		if !followRepo(p, r) {
+			return &tasks.Error{Code: "no-repo", Msg: fmt.Sprintf("thread %s's repo %s is gone; add its new place with tm project repo add PATH, or resolve the thread", id, was)}
+		}
+		if r.Repo != was {
+			if _, err := thread.Update(p, id, func(x *thread.Record) error { x.Repo = r.Repo; return nil }); err != nil {
+				return err
+			}
+		}
+	}
 	// A worktree removed by hand comes back on its branch: nothing of the
 	// thread's lived in it.
 	if _, err := os.Stat(r.Worktree); errors.Is(err, os.ErrNotExist) {
@@ -1399,6 +1411,15 @@ func (e *Env) threadResolve(p *project.Project, id string) error {
 				return err
 			}
 		}
+	case r.Repo != "" && !followRepo(p, r):
+		// The repository is gone and no repo of the project has the
+		// branch: there is nothing git could do (docs/SPEC.md §9).
+		did = append(did, "repo "+r.Repo+" is gone")
+		if _, err := os.Stat(r.Worktree); err == nil {
+			did = append(did, "kept worktree "+r.Worktree+" (no repo to remove it from)")
+		} else {
+			did = append(did, "worktree was already gone")
+		}
 	case r.Repo != "":
 		_, statErr := os.Stat(r.Worktree)
 		err := worktree.Remove(r.Repo, r.Worktree)
@@ -1456,7 +1477,7 @@ func (e *Env) threadResolve(p *project.Project, id string) error {
 			did = append(did, "kept folder "+r.Worktree+" (not empty)")
 		}
 	}
-	if _, err := thread.Update(p, id, func(x *thread.Record) error { x.State = thread.Resolved; return nil }); err != nil {
+	if _, err := thread.Update(p, id, func(x *thread.Record) error { x.State, x.Repo = thread.Resolved, r.Repo; return nil }); err != nil {
 		return err
 	}
 	summary := thread.Label(p, id) + " resolved: " + strings.Join(did, "; ")
@@ -1468,6 +1489,30 @@ func (e *Env) threadResolve(p *project.Project, id string) error {
 	}
 	fmt.Fprintln(e.Stdout, summary)
 	return nil
+}
+
+// followRepo copes with a thread whose repository folder is gone: when
+// one of the project's repos has the thread's branch, the repo was moved
+// there, so r.Repo becomes it and the worktree is reconnected to it (git
+// worktree repair). It reports false when no repo is left to use.
+func followRepo(p *project.Project, r *thread.Record) bool {
+	if _, err := os.Stat(r.Repo); err == nil {
+		return true
+	}
+	if r.Branch == "" {
+		return false
+	}
+	for _, repo := range p.Meta.Repos {
+		if repo == r.Repo || !worktree.BranchExists(repo, r.Branch) {
+			continue
+		}
+		r.Repo = repo
+		if _, err := os.Stat(r.Worktree); err == nil {
+			worktree.Repair(repo, r.Worktree)
+		}
+		return true
+	}
+	return false
 }
 
 // otherBranches cleans up the thread's branches other than its own: the

@@ -395,6 +395,32 @@ const (
 	MethodCLIRun = "cli.run"
 )
 
+// MethodProjectRename renames a project's slug (tm project rename,
+// docs/SPEC.md §5.1): the server checks no thread of it runs, stops its
+// coordinator, renames it between two ticker sweeps, and starts the
+// coordinator again under the new slug. The human's.
+const MethodProjectRename = "project.rename"
+
+// ProjectRenameParams are the params of project.rename; Name "" keeps
+// the display name.
+type ProjectRenameParams struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+	Name string `json:"name,omitempty"`
+}
+
+// ProjectRenameResult is what the rename did: the project's folder and
+// worktrees folder now ("" for none), how many thread records changed,
+// what didn't go through, and the coordinator session started again
+// ("" when none was running).
+type ProjectRenameResult struct {
+	Dir         string   `json:"dir"`
+	Worktrees   string   `json:"worktrees,omitempty"`
+	Threads     int      `json:"threads"`
+	Notes       []string `json:"notes,omitempty"`
+	Coordinator string   `json:"coordinator,omitempty"`
+}
+
 // CLIRunParams are the params of cli.run.
 type CLIRunParams struct {
 	Args  []string `json:"args"`

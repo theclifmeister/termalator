@@ -257,6 +257,15 @@ type Truster interface {
 	TrustDir(home, dir string) error
 }
 
+// Mover is an Agent that keeps state by folder path (conversations to
+// resume, per-folder settings) and can carry it over when tm moves a
+// folder it ran in: a thread's worktree or a project folder, on tm
+// project rename (docs/SPEC.md §5.1). The folder has moved already; an
+// error is reported, and the rename stands.
+type Mover interface {
+	MoveDir(home, from, to string) error
+}
+
 // Modder is an Agent that ships terminatr's mod: a plugin module the
 // agent loads beside its command hooks (docs/SPEC.md §8.6, Mods). The
 // agent's Launch writes it when LaunchSpec.Mods is set.
