@@ -99,10 +99,12 @@ func progressLine(pr thread.Progress) string {
 func (m *dash) threadPanel(d *panel, r row) {
 	t := r.thread
 	state := t.State
+	var q *proto.Question
 	if s, ok := m.session(t.Session); ok && t.Session != "" {
+		q = s.Question
 		state = stateWord(s)
 		if s.State == "blocked" && s.Reason != "" {
-			state += " " + s.Reason
+			state += " " + blockReason(s)
 		}
 	}
 	d.title(threadName(t.Task, t.ID)+" "+t.Title, state)
@@ -128,6 +130,13 @@ func (m *dash) threadPanel(d *panel, r row) {
 	}
 	if t.Reports > 0 {
 		d.field("report", reportState(t, true))
+	}
+	if q != nil {
+		d.gap()
+		d.add(styleHead.Render("Question open"))
+		for _, l := range questionLines(q) {
+			d.wrap(l)
+		}
 	}
 	d.gap()
 	for _, l := range threadDetail(t, "", false) {
@@ -222,7 +231,7 @@ func (m *dash) projectPanel(d *panel, r row) {
 func sessionPanel(d *panel, s proto.SessionInfo) {
 	state := stateWord(s)
 	if s.State == "blocked" && s.Reason != "" {
-		state += " " + s.Reason
+		state += " " + blockReason(s)
 	}
 	d.title(s.ID+" "+sessionName(s), state)
 	d.field("project", s.Project)
@@ -232,6 +241,14 @@ func sessionPanel(d *panel, s proto.SessionInfo) {
 	}
 	d.field("agent", s.Agent)
 	d.field("progress", progressLine(sessionProgress(s)))
+	if s.Question != nil {
+		d.gap()
+		d.add(styleHead.Render("Question open"))
+		for _, l := range questionLines(s.Question) {
+			d.wrap(l)
+		}
+		d.gap()
+	}
 	if s.Current != "" {
 		d.field("now", "▸ "+oneLine(s.Current))
 	}
