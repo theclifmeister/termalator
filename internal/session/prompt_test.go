@@ -2,6 +2,11 @@ package session
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -228,5 +233,84 @@ func TestPromptRefresh(t *testing.T) {
 	eventually(t, "the refreshed paste", func() bool { return strings.Contains(screen(t, s), "new-text") })
 	if strings.Contains(screen(t, s), "old-text") {
 		t.Fatal("the stale text was pasted")
+	}
+}
+
+// goneAgent is claudeLike whose liveness probe says the agent is gone.
+type goneAgent struct{ *chanAgent }
+
+func (goneAgent) Probe(context.Context, agent.PromptTarget) (agent.Liveness, error) {
+	return agent.Gone, errors.New("messaging socket: connection refused")
+}
+
+// writeStatus writes Claude's status file for pid under home.
+func writeStatus(t *testing.T, home string, pid int, body string) {
+	t.Helper()
+	dir := filepath.Join(home, ".claude", "sessions")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("%d.json", pid)), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestHeldPromptProbeGone: once the agent's probe says it is gone, a
+// held server prompt isn't written to its channel; it is dropped with
+// the probe's reason, and tm agent explain says so.
+func TestHeldPromptProbeGone(t *testing.T) {
+	defer func(d time.Duration) { probeEvery = d }(probeEvery)
+	probeEvery = 50 * time.Millisecond
+	a := goneAgent{claudeLike(t)}
+	resolved := make(chan PromptResolution, 1)
+	s := startBox(t, a, "draft", 500*time.Millisecond, resolved)
+	writeStatus(t, s.agentRT().cfg.Home, s.cmd.Process.Pid, `{"status":"idle","version":"2.1.291","messagingSocketPath":"/nowhere.sock"}`)
+	eventually(t, "the probe", func() bool {
+		e, _ := s.Explain()
+		return strings.HasPrefix(e.Extra["liveness"], "gone: messaging socket")
+	})
+	if _, err := s.PromptWith("[tm] nudge", PromptOptions{Channel: true}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case r := <-resolved:
+		if r.Via != "dropped" || r.Err == nil || !strings.Contains(r.Err.Error(), "agent gone") {
+			t.Fatalf("resolution %+v", r)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("never resolved")
+	}
+	if got := a.Sent(); len(got) != 0 {
+		t.Fatalf("written to a gone channel: %q", got)
+	}
+}
+
+// TestStatusFileOfGonePID: a status file whose pid is gone is stale (a
+// crashed agent leaves its last state behind) and isn't trusted.
+func TestStatusFileOfGonePID(t *testing.T) {
+	cmd := exec.Command("/usr/bin/true")
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+	pid := cmd.Process.Pid // reaped: gone
+	home := t.TempDir()
+	writeStatus(t, home, pid, `{"status":"busy","version":"2.1.291","messagingSocketPath":"/tmp/x.sock"}`)
+	rt, err := newAgentRT(AgentConfig{Agent: claudeLike(t), Home: home}, pid, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Session{cfg: Config{ID: "s-test", Logf: t.Logf}, ag: rt}
+	now := time.Now()
+	rt.pollStatus(now)
+	if rt.fields == nil {
+		t.Fatal("status file not read before the probe")
+	}
+	s.probeAgent(rt, now)
+	rt.pollStatus(now.Add(time.Second))
+	if rt.fields != nil {
+		t.Fatalf("the status file of a gone pid is trusted: %v", rt.fields)
+	}
+	if e, _ := s.Explain(); e.Extra["liveness"] != fmt.Sprintf("gone: pid %d is gone", pid) {
+		t.Fatalf("explain %v", e.Extra)
 	}
 }

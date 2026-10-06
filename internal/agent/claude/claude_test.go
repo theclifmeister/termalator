@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
@@ -125,5 +127,53 @@ func TestPromptOverMessagingSocket(t *testing.T) {
 	target.Fields[SocketField] = filepath.Join(dir, "gone.sock")
 	if err := a.Prompt(context.Background(), target, "x"); err == nil {
 		t.Fatal("dead socket: no error")
+	}
+}
+
+// TestProbe: a connect-only liveness check. A missing socket or a
+// refused connection is gone; a listening socket is live and gets no
+// line.
+func TestProbe(t *testing.T) {
+	a := load(t).(agent.Prober)
+	dir, err := os.MkdirTemp("/tmp", "tmclaude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	sock := filepath.Join(dir, "m.sock")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make(chan string, 1)
+	go func() {
+		c, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		b, _ := io.ReadAll(c)
+		got <- string(b)
+	}()
+	target := agent.PromptTarget{Version: "2.1.291", Fields: map[string]string{SocketField: sock}}
+	if live, err := a.Probe(context.Background(), target); live != agent.Live || err != nil {
+		t.Fatalf("listening: %q %v", live, err)
+	}
+	if b := <-got; b != "" {
+		t.Fatalf("the probe wrote %q", b)
+	}
+
+	// The socket file left behind by a dead process refuses.
+	ln.(*net.UnixListener).SetUnlinkOnClose(false)
+	ln.Close()
+	if live, err := a.Probe(context.Background(), target); live != agent.Gone || !errors.Is(err, syscall.ECONNREFUSED) {
+		t.Fatalf("refused: %q %v", live, err)
+	}
+	os.Remove(sock)
+	if live, err := a.Probe(context.Background(), target); live != agent.Gone || !errors.Is(err, syscall.ENOENT) {
+		t.Fatalf("no socket file: %q %v", live, err)
+	}
+	if live, err := a.Probe(context.Background(), agent.PromptTarget{}); live != agent.LiveUnknown || !errors.Is(err, ErrNoSocket) {
+		t.Fatalf("no socket in the status file: %q %v", live, err)
 	}
 }

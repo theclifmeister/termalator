@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
@@ -75,7 +76,7 @@ type PromptOptions struct {
 
 // PromptResolution is what became of a prompt held for PromptHold.
 type PromptResolution struct {
-	Text   string
+	Text string
 	// Via is "sent" (written to the agent's channel, which may not
 	// confirm delivery: Claude's socket never answers), "dropped" or
 	// "stale" (Refresh said so).
@@ -104,6 +105,10 @@ const (
 	identifyEvery   = time.Second            // identify-by-process for shells
 )
 
+// probeEvery spaces the agent's liveness checks (its pid, and the
+// agent's own probe: Claude's messaging socket). A variable for tests.
+var probeEvery = 5 * time.Second
+
 // agentRT is the agent side of one session.
 type agentRT struct {
 	a        agent.Agent
@@ -126,6 +131,10 @@ type agentRT struct {
 	statusRead time.Time
 	fields     map[string]string // status-file fields while trusted
 	token      string            // the prompt channel's token, from the hooks
+	probedAt   time.Time
+	pidGone    string         // why the agent's pid is gone; the status file is then stale
+	live       agent.Liveness // the agent's own probe (agent.Prober)
+	liveErr    string
 	version    string
 	prompts    []queuedPrompt
 	heldSince  time.Time // the head prompt has been held while idle since
@@ -239,6 +248,16 @@ func (s *Session) Explain() (agent.Explanation, bool) {
 	}
 	if rt.observed {
 		e.Extra["identified"] = "by process"
+	}
+	switch {
+	case rt.pidGone != "":
+		e.Extra["liveness"] = "gone: " + rt.pidGone
+	case rt.live == agent.Gone:
+		e.Extra["liveness"] = "gone: " + rt.liveErr
+	case rt.live == agent.Live:
+		e.Extra["liveness"] = "live (probe answered)"
+	case rt.liveErr != "":
+		e.Extra["liveness"] = "unknown: " + rt.liveErr
 	}
 	if len(rt.prompts) > 0 {
 		q := fmt.Sprintf("%d, oldest since %s", len(rt.prompts), rt.prompts[0].at.Format(time.DateTime))
@@ -363,6 +382,10 @@ func (rt *agentRT) pollStatus(now time.Time) {
 	}
 	r, err := f.Read(data, rt.src)
 	rt.mu.Lock()
+	if err == nil && rt.pidGone != "" {
+		// A crashed agent leaves its last state behind.
+		err = fmt.Errorf("status file: %s", rt.pidGone)
+	}
 	rt.statusMod, rt.statusSize, rt.statusRead = fi.ModTime(), fi.Size(), now
 	if err != nil {
 		rt.fields = nil
@@ -376,6 +399,62 @@ func (rt *agentRT) pollStatus(now time.Time) {
 		return
 	}
 	rt.tr.Status(&r, fi.ModTime(), nil)
+}
+
+// probeAgent checks, every probeEvery, that the agent behind the status
+// file is still there: its pid, then the agent's own probe when it has
+// one and the status file names what to probe. A gone pid makes the
+// status file stale (pollStatus); a gone probe keeps prompts off the
+// agent's channel. Both show in tm agent explain.
+func (s *Session) probeAgent(rt *agentRT, now time.Time) {
+	rt.mu.Lock()
+	if !rt.probedAt.IsZero() && now.Sub(rt.probedAt) < probeEvery {
+		rt.mu.Unlock()
+		return
+	}
+	rt.probedAt = now
+	rt.mu.Unlock()
+	pidGone := ""
+	if rt.pid > 0 && errors.Is(syscall.Kill(rt.pid, 0), syscall.ESRCH) {
+		pidGone = fmt.Sprintf("pid %d is gone", rt.pid)
+	}
+	live, why := agent.LiveUnknown, ""
+	if p, ok := rt.a.(agent.Prober); ok && pidGone == "" {
+		if t := s.promptTarget(rt); t.Fields != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			var err error
+			live, err = p.Probe(ctx, t)
+			cancel()
+			if err != nil {
+				why = err.Error()
+			}
+		}
+	}
+	rt.mu.Lock()
+	changed := pidGone != rt.pidGone || live != rt.live
+	rt.pidGone, rt.live, rt.liveErr = pidGone, live, why
+	rt.mu.Unlock()
+	switch {
+	case !changed:
+	case pidGone != "":
+		s.cfg.Logf("session %s: %s %s: its status file is stale", s.cfg.ID, rt.a.Name(), pidGone)
+	case live == agent.Gone:
+		s.cfg.Logf("session %s: %s probe: gone (%s)", s.cfg.ID, rt.a.Name(), why)
+	}
+}
+
+// channelGone says why the agent's channel can't be used, when its
+// probe found it gone.
+func (rt *agentRT) channelGone() error {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	switch {
+	case rt.pidGone != "":
+		return errors.New(rt.pidGone)
+	case rt.live == agent.Gone:
+		return fmt.Errorf("agent gone: %s", rt.liveErr)
+	}
+	return nil
 }
 
 // readTail reads lines appended to the JSONL file since the last call.
@@ -488,6 +567,7 @@ func (s *Session) runAgent(rt *agentRT) {
 		case <-s.done:
 			return
 		case now := <-tick.C:
+			s.probeAgent(rt, now)
 			rt.pollStatus(now)
 			rt.readTail()
 			dirty := s.output.Swap(false)
@@ -640,9 +720,11 @@ func (rt *agentRT) promptHold() time.Duration {
 func (s *Session) resolveHeld(rt *agentRT, p queuedPrompt, why string, held time.Duration) {
 	res := PromptResolution{Text: p.text, Via: "dropped", Why: why, Held: held, Queued: p.at}
 	if p.channel {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		res.Err = rt.a.Prompt(ctx, s.promptTarget(rt), p.text)
-		cancel()
+		if res.Err = rt.channelGone(); res.Err == nil {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			res.Err = rt.a.Prompt(ctx, s.promptTarget(rt), p.text)
+			cancel()
+		}
 		if res.Err == nil {
 			res.Via = "sent"
 		}

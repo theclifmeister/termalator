@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"syscall"
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
@@ -21,9 +22,12 @@ func init() {
 // manifest) that holds Claude's messaging socket path.
 const SocketField = "messaging_socket"
 
-// dialTimeout bounds the probe and the delivery; the core falls back to
-// paste on any error, so this must stay short.
+// dialTimeout bounds the delivery; the core falls back to paste on any
+// error, so this must stay short.
 const dialTimeout = 300 * time.Millisecond
+
+// probeTimeout bounds Probe's connect, as Claude's own liveness check.
+const probeTimeout = 250 * time.Millisecond
 
 // Agent is the manifest agent with the uds-messaging prompt channel.
 type Agent struct {
@@ -89,6 +93,28 @@ func (a *Agent) Prompt(ctx context.Context, t agent.PromptTarget, text string) e
 		return fmt.Errorf("claude: messaging socket: %w", err)
 	}
 	return nil
+}
+
+// Probe is a connect-only liveness check of the messaging socket, the
+// one Claude runs on its peers: it writes nothing (Claude closes a
+// connection that sends no line), so it can't be mistaken for a message.
+// No such socket or a refused connection means the process is gone.
+func (a *Agent) Probe(ctx context.Context, t agent.PromptTarget) (agent.Liveness, error) {
+	path := t.Fields[SocketField]
+	if path == "" {
+		return agent.LiveUnknown, ErrNoSocket
+	}
+	d := net.Dialer{Timeout: probeTimeout}
+	c, err := d.DialContext(ctx, "unix", path)
+	switch {
+	case err == nil:
+		c.Close()
+		return agent.Live, nil
+	case errors.Is(err, syscall.ENOENT), errors.Is(err, syscall.ECONNREFUSED):
+		return agent.Gone, fmt.Errorf("messaging socket: %w", err)
+	default:
+		return agent.LiveUnknown, fmt.Errorf("messaging socket: %w", err)
+	}
 }
 
 // lines is what Prompt writes: the auth line when there is a token, then

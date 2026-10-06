@@ -227,6 +227,23 @@ type Agent interface {
 	Sources() *Sources
 }
 
+// Liveness is what a probe found out about the agent behind a target.
+type Liveness string
+
+const (
+	LiveUnknown Liveness = ""
+	Live        Liveness = "live"
+	Gone        Liveness = "gone"
+)
+
+// Prober is an Agent with a cheap check that its process is still there
+// (docs/SPEC.md §8.6), which the core runs beside the status file and
+// the pid. Gone must be certain; anything doubtful is LiveUnknown, with
+// the error that says why.
+type Prober interface {
+	Probe(ctx context.Context, target PromptTarget) (Liveness, error)
+}
+
 // Truster is an Agent that can mark a directory as trusted ahead of
 // launch, so its folder-trust screen never shows there (docs/SPEC.md
 // §8.6). The core calls it only for a thread's own worktree, which tm
