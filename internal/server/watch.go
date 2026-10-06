@@ -13,6 +13,7 @@ package server
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"io"
 	"net"
@@ -126,6 +127,9 @@ func watchOf(info proto.SessionInfo, tickerState string) proto.Watch {
 	}
 	pr := ticker.PRs(tickerState, info.Project)[info.Thread]
 	w.PR, w.PRURL = pr.Summary(), pr.URL
+	if w.PR != "" && pr.State == "OPEN" && pr.MergeState == "BEHIND" {
+		w.PR += ", behind " + cmp.Or(pr.Base, "its base")
+	}
 	if w.PRURL == "" {
 		if rep, _ := thread.ReadReport(p, info.Thread); rep != nil {
 			w.PRURL = rep.PR

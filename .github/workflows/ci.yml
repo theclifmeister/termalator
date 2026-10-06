@@ -77,13 +77,16 @@ jobs:
 
   # Whether this event needs the release snapshot: every push (main CI is
   # what a release tag waits for), and pull requests that touch the
-  # release build. The snapshot job is skipped otherwise; a job skipped by
+  # release build. Likewise the Claude mod check (mod): every push, and
+  # pull requests that touch the mod or the Claude adapter. Each job is
+  # skipped otherwise; a job skipped by
   # its `if` counts as passed for required checks, unlike a workflow left
   # out by a paths filter, which would leave them pending.
   changes:
     runs-on: ubuntu-latest
     outputs:
       release: ${{ steps.release.outputs.release }}
+      mod: ${{ steps.mod.outputs.mod }}
     steps:
       # A pull request checks out its merge commit, whose first parent is
       # the base: depth 2 is enough to diff the two.
@@ -104,6 +107,47 @@ jobs:
           hits=$(printf '%s\n' "$files" | grep -E '^(\.goreleaser\.yaml|Makefile|go\.(mod|sum)|scripts/release/|Formula/|\.github/workflows/(ci|release)\.yml|\.github/actions/|internal/(emu|version)/|cmd/tm/main\.go)' || true)
           echo "release-related: ${hits:-none}"
           echo "release=$([ -n "$hits" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Mod-related files
+        id: mod
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            echo "mod=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          hits=$(git diff --name-only HEAD^1 HEAD | grep -E '^(internal/agent/claude/|internal/agent/manifests/claude\.toml$|\.github/workflows/ci\.yml$)' || true)
+          echo "mod-related: ${hits:-none}"
+          echo "mod=$([ -n "$hits" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+  # terminatr's mod for Claude (docs/SPEC.md §8.6, Mods): claude plugin
+  # validate and claude plugin test on the plugin exactly as a session
+  # gets it. A pinned Claude Code, no login, no secrets; both commands
+  # work offline. Bump the pin together with ModsMinVersion
+  # (internal/agent/claude/mod.go). Needs Go only, not libghostty.
+  claude-mod:
+    needs: changes
+    if: needs.changes.outputs.mod == 'true'
+    runs-on: ubuntu-latest
+    env:
+      CLAUDE_CODE_VERSION: 2.1.291
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      # npm comes with the runner's Node.
+      - name: Install Claude Code
+        run: |
+          npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+          claude --version
+
+      - name: claude plugin validate / test
+        run: go test -count=1 -run '^TestModPlugin$' -v ./internal/agent/claude
+        env:
+          TERMINATR_CLAUDE_PLUGIN_CHECK: "1"
 
   # The release build (.goreleaser.yaml) as a snapshot: every target
   # cross-compiled with zig cc and archived, nothing tagged or uploaded.

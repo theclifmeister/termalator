@@ -242,6 +242,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		Cwd: r.Cwd, RuntimeDir: rt, BriefPath: r.Brief, Kickoff: l.kick, Resume: l.resume,
 		Yolo: r.Yolo, Model: r.Model, TMBin: s.opts.Bin, Socket: s.opts.Paths.Socket, Access: access,
 		RemoteControl: r.RemoteControl, RemoteName: remoteName(r),
+		Mods: s.modsFor(a, r.ID),
 	}
 	launch, err := a.Launch(spec)
 	if err != nil {
@@ -252,6 +253,9 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		return nil, proto.Errorf(proto.ErrInternal, "%v", err)
 	}
 	set := s.terminatrEnv(r)
+	if spec.Mods && !bandSetting() {
+		set[envBand] = "off"
+	}
 	for _, kv := range launch.Env {
 		k, v, _ := strings.Cut(kv, "=")
 		set[k] = v

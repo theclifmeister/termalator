@@ -54,10 +54,14 @@ TERMINATR_SESSION = "{{.SessionID}}"
 TERMINATR_SOCKET = "{{.Socket}}"
 TERMINATR_BIN = "{{.TMBin}}"
 
+# With .Mods the same plugin is also terminatr's mod (docs/SPEC.md §8.6,
+# Mods): the Go agent (internal/agent/claude) writes its module and type
+# contract beside these files, and hooks.json names the module.
 [[launch.files]]
 path = "claude-plugin/.claude-plugin/plugin.json"
 template = '''
-{"name": "terminatr", "description": "terminatr session hooks", "version": "0.1.0"}
+{"name": "terminatr", "description": "terminatr session hooks", "version": "0.1.0"
+{{- if .Mods}}, "types": "./types/index.d.ts"{{end}}}
 '''
 
 # Every event goes to `tm hook --agent claude`: a command hook (an http hook
@@ -67,7 +71,8 @@ template = '''
 path = "claude-plugin/hooks/hooks.json"
 template = '''
 {{- $h := printf `[{"hooks":[{"type":"command","command":%s,"timeout":5}]}]` (json (printf "%q hook --agent claude" .TMBin)) -}}
-{"hooks": {
+{ {{- if .Mods}}"modules": ["./register.ts"], {{end -}}
+"hooks": {
   "SessionStart": {{$h}}, "UserPromptSubmit": {{$h}},
   "PreToolUse": {{$h}}, "PostToolUse": {{$h}}, "PostToolUseFailure": {{$h}},
   "PermissionRequest": {{$h}}, "PermissionDenied": {{$h}}, "Notification": {{$h}},
