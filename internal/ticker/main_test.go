@@ -148,7 +148,7 @@ func TestFollowMain(t *testing.T) {
 	if len(r.host.prompts) != 2 || !strings.Contains(r.host.prompts[1], "main moved to "+main[:7]+" (#62 merged), and your PR #9 conflicts with it.") {
 		t.Fatalf("prompts %q", r.host.prompts)
 	}
-	if s := r.summaries(); r.kinds() != KindPRConflict || !strings.Contains(s, "PR #9 of t-0001 (T1 Fix it) conflicts with main at "+main[:7]+"; the thread was asked to merge it") {
+	if s := r.summaries(); r.kinds() != KindPRConflict || !strings.Contains(s, "PR #9 of T1 Fix it (t-0001) conflicts with main at "+main[:7]+"; the thread was asked to merge it") {
 		t.Fatalf("items %s: %s", r.kinds(), s)
 	}
 	r.handleAll()

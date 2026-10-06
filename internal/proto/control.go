@@ -160,11 +160,14 @@ const (
 
 // SessionInfo describes one hosted session.
 type SessionInfo struct {
-	ID      string    `json:"id"`
-	Role    string    `json:"role"`
-	Agent   string    `json:"agent,omitempty"`
-	Project string    `json:"project,omitempty"`
-	Thread  string    `json:"thread,omitempty"`
+	ID      string `json:"id"`
+	Role    string `json:"role"`
+	Agent   string `json:"agent,omitempty"`
+	Project string `json:"project,omitempty"`
+	Thread  string `json:"thread,omitempty"`
+	// Task is a thread session's task ("T12"), "" for a thread without
+	// one: the UI names a thread by its task (docs/SPEC.md §4).
+	Task    string    `json:"task,omitempty"`
 	Argv    []string  `json:"argv"`
 	Cwd     string    `json:"cwd"`
 	PID     int       `json:"pid"`

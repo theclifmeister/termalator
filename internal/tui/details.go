@@ -105,9 +105,9 @@ func (m *dash) threadPanel(d *panel, r row) {
 			state += " " + s.Reason
 		}
 	}
-	d.title(t.ID+" "+t.Title, state)
+	d.title(threadName(t.Task, t.ID)+" "+t.Title, state)
 	d.field("project", r.project)
-	d.field("task", t.Task)
+	d.field("thread", t.ID)
 	d.field("session", t.Session)
 	if st := t.Status; st != nil {
 		d.field("progress", progressLine(st.Progress()))
@@ -227,6 +227,9 @@ func sessionPanel(d *panel, s proto.SessionInfo) {
 	d.title(s.ID+" "+sessionName(s), state)
 	d.field("project", s.Project)
 	d.field("role", string(s.Role))
+	if s.Task != "" {
+		d.field("thread", s.Thread)
+	}
 	d.field("agent", s.Agent)
 	d.field("progress", progressLine(sessionProgress(s)))
 	if s.Current != "" {

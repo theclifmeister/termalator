@@ -1,7 +1,7 @@
  PROJECTS                    1 │ tm dashboard                                                                          ● server ok · 1 session
  ■ demo                    1   │ demo ────────────────────────────────────────────────────────────────────────────────────────────────────────
  └─ coordinator              · │  coordinator                              —          enter starts the coordinator  1 inbox
-    └─ t-0001 Fix the…   50% ○ │  t-0001 Fix the login                     ○ idle     ▰▰▰▱▱  T1  50% 1/2 ▸ Fix  <duration>  PR #7
+    └─ T1 Fix the login  50% ○ │  T1 Fix the login                         ○ idle     ▰▰▰▱▱  (t-0001)  50% 1/2 ▸ Fix  <duration>  PR #7
                                │        T1 steps:
                                │          ✓ 1 Reproduce
                                │          ○ 2 Fix
@@ -10,7 +10,7 @@
                                │ OTHER SESSIONS ──────────────────────────────────────────────────────────────────────────────────────────────
                                │  none outside the projects (1 in them); s starts a shell
                                │   ╭─ demo inbox ─────────────────────────────────────────────────────────────────────────────────────────╮
-                               │   │ report           <duration>     t-0001 (T1 Fix the login) handed in report 1                                 │
+                               │   │ report           <duration>     T1 Fix the login (t-0001) handed in report 1                                 │
                                │   │                                                                                                      │
                                │   │ The coordinator handles these (tm inbox done).                                                       │
                                │   ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯

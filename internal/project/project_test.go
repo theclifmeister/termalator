@@ -205,7 +205,7 @@ func TestContextDeterministicAndCapped(t *testing.T) {
 		"Done (15)",
 		"Prompt queue: s-28 (coordinator) has 1 prompt(s) held since 2026-10-05 19:45 UTC (prompt box not empty)",
 		"[… 5 done tasks not shown (tm task list)]",
-		"t-0001  T16  Fix login  report: yes  PR: #8 open, checks pass\n    next: Merge the PR",
+		"T16 (t-0001)  Fix login  report: yes  PR: #8 open, checks pass\n    next: Merge the PR",
 		"t-0002  Docs  report: yes  PR: https://github.com/o/r/pull/9\n    next: Review it",
 		"thread-done: t-0001 reported",
 		"human task.add T16 Fix login",

@@ -74,6 +74,9 @@ for the first piece of work. Propose nothing yet.
   starts are refused with `project-paused`: tell the user, and don't
   retry until they resume it. Pausing, archiving and deleting projects
   are the user's.
+- `<id>` in tm thread commands is a thread id (t-0003) or a task id
+  (T12) for the task's open thread; tm names threads by their task, the
+  thread id in brackets. Talk to the user in task ids.
 - Watch threads with `tm thread list` and `tm thread show <id>`; forward
   work with `tm thread prompt <id> "…"` or `--next N` (a line of its
   report's `## Next`); `tm thread ack <id>` once you have read a report;

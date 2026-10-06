@@ -243,7 +243,7 @@ func TestDashboardRows(t *testing.T) {
 		"! alpha        coordinator                              ▲ blocked  question",
 		"! s-4          claude                                   ▲ blocked  permission",
 		"  coordinator                              —          enter starts the coordinator",
-		"  t-0005 Write docs                        ● working  report new  ▰▰▰▱▱  T4  60% 3/5 ▸ Draft §2  PR #7",
+		"  T4 Write docs                            ● working  report new  ▰▰▰▱▱  (t-0005)  60% 3/5 ▸ Draft §2  PR #7",
 		"  t-0006 Old work                          · stopped",
 		"  tasks: 0 needs you · 0 in motion · 0 on deck",
 		"  s-3          /bin/zsh -l                              ● running",
@@ -495,7 +495,7 @@ func TestDashboardSplit(t *testing.T) {
 
 	m.sel = "th:beta:t-0005"
 	out := screen(m)
-	for _, want := range []string{"│ t-0005 Write docs", "● working", "task      T4", "progress  ▰▰▰▱▱ 60% 3/5",
+	for _, want := range []string{"│ T4 Write docs", "● working", "thread    t-0005", "progress  ▰▰▰▱▱ 60% 3/5",
 		"PR        https://github.com/o/r/pull/7", "report    1, new · for the coordinator", "✓ Outline",
 		"enter attaches it; the coordinator acts on it"} {
 		if !strings.Contains(out, want) {

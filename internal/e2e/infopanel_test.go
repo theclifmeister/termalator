@@ -33,7 +33,7 @@ func TestSmokeInfoPanel(t *testing.T) {
 	panel := view.InfoDefault
 	w := env.Window(cols, 30)
 	w.WaitFor("SESSIONS", wait)
-	w.ClickText("t-0001", 1)
+	w.ClickText("T1 Fix the login", 2) // the sidebar row (row 1 has the details' title)
 	w.WaitUntil("the panel", wait, func(sc string) bool {
 		return strings.Contains(sc, "│ T1 Fix the login") && strings.Contains(sc, "◐ Fix it")
 	})
@@ -51,7 +51,7 @@ func TestSmokeInfoPanel(t *testing.T) {
 
 	// prefix+| hides it, and the pane takes its columns; again shows it.
 	w.Prefix("|")
-	w.WaitUntil("no panel", wait, func(sc string) bool { return !strings.Contains(sc, "T1 Fix the login") })
+	w.WaitUntil("no panel", wait, func(sc string) bool { return !strings.Contains(sc, "│ T1 Fix the login") })
 	waitPaneSize(t, env, th, uint16(cols-sideDefault), 28)
 	w.Prefix("|")
 	w.WaitFor("│ T1 Fix the login", wait)
@@ -59,7 +59,7 @@ func TestSmokeInfoPanel(t *testing.T) {
 
 	// A narrow window hides it: the pane keeps its 60 columns.
 	w.Resize(110, 30)
-	w.WaitUntil("narrow: no panel", wait, func(sc string) bool { return !strings.Contains(sc, "T1 Fix the login") })
+	w.WaitUntil("narrow: no panel", wait, func(sc string) bool { return !strings.Contains(sc, "│ T1 Fix the login") })
 	waitPaneSize(t, env, th, uint16(110-sideDefault), 28)
 	w.Resize(cols, 30)
 	w.WaitFor("│ T1 Fix the login", wait)

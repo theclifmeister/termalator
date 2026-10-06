@@ -39,8 +39,8 @@ func TestDashboardSidebar(t *testing.T) {
 		" └─ coordinator              ▲ │",
 		" ■ beta                    2 ◆ │", // t-0005 waits on a question
 		" └─ coordinator              · │",
-		"    ├─ t-0005 Write do…  60% ● │", // threads hang under the coordinator, id and title
-		"    └─ t-0006 Old work       · │",
+		"    ├─ T4 Write docs     60% ● │", // threads hang under the coordinator, task id and title
+		"    └─ t-0006 Old work       · │", // a thread without a task: its own id
 	}
 	lines := strings.Split(whole(m), "\n")
 	for i, w := range want {
@@ -138,12 +138,13 @@ func hereRow(rows []treeRow) treeRow {
 // TestTreeThreadRows: every row is the same width with the percent in a
 // column of its own, so titles are cut alike whatever the percent, and
 // never leave a space before the "…". Each row leads with the thread's
-// id, which is never cut: the title gives way.
+// name (its task id, else its own), which is never cut: the title gives
+// way.
 func TestTreeThreadRows(t *testing.T) {
 	for _, r := range []treeRow{
-		{kind: treeThread, thread: "t-0003", title: "Key the CI cache on the Zig version", state: "blocked", pct: 0},
-		{kind: treeThread, thread: "t-0002", title: "Rewrite the README", state: "done", pct: 100},
-		{kind: treeThread, thread: "t-0001", title: "Fix the login session expiry", state: "working", pct: -1},
+		{kind: treeThread, thread: "t-0003", name: "T12", title: "Key the CI cache on the Zig version", state: "blocked", pct: 0},
+		{kind: treeThread, thread: "t-0002", name: "T7", title: "Rewrite the README", state: "done", pct: 100},
+		{kind: treeThread, thread: "t-0001", name: "t-0001", title: "Fix the login session expiry", state: "working", pct: -1},
 	} {
 		l := ansi.Strip(treeLine(r, 24, false, false))
 		if strings.Contains(l, " …") {
@@ -153,11 +154,11 @@ func TestTreeThreadRows(t *testing.T) {
 			t.Errorf("row %q is %d cells", l, w)
 		}
 		// The label column is the same on every row: 7 cells in (a level
-		// under the coordinator), 9 wide, the id, a space and what fits
-		// of the title; then the percent's 5, the state glyph and the
-		// blank column before the border.
+		// under the coordinator), 9 wide, the name, a space and what
+		// fits of the title; then the percent's 5, the state glyph and
+		// the blank column before the border.
 		label := string([]rune(l)[7:16])
-		if !strings.HasPrefix(label, r.thread+" ") || strings.TrimSpace(label[len(r.thread):]) == "" {
+		if !strings.HasPrefix(label, r.name+" ") || strings.TrimSpace(label[len(r.name):]) == "" {
 			t.Errorf("row %q: label %q", l, label)
 		}
 	}
@@ -169,14 +170,25 @@ const sideWidest = 160
 
 // TestTreeThreadIDNeverCut: at every sidebar width and in every icon set
 // a thread row is as wide as the sidebar, ends in its state glyph and a
-// blank column, and shows its whole id or none of it: none only at the
-// narrowest widths, where it doesn't fit beside the state glyph. From
-// 25 columns the title shows too, and a wide sidebar (there is no
-// maximum width) shows a long one whole.
+// blank column, and shows its whole name (a task id, or the thread id of
+// a thread without a task) or none of it: none only at the narrowest
+// widths, where it doesn't fit beside the state glyph. From 25 columns
+// the title shows too, and a wide sidebar (there is no maximum width)
+// shows a long one whole.
 func TestTreeThreadIDNeverCut(t *testing.T) {
 	defer setIcons(IconsUnicode)
 	const title = "Prefix each thread row with its id, and keep the title whole when the sidebar is wide"
-	r := treeRow{kind: treeThread, thread: "t-0042", title: title, state: "working", pct: 40}
+	for _, name := range []string{"t-0042", "T1052"} {
+		testTreeNameNeverCut(t, treeRow{kind: treeThread, thread: "t-0042", name: name, title: title, state: "working", pct: 40})
+	}
+	if got := threadLabel("t-0042", "Title", 4); got != "    " {
+		t.Errorf("an id wider than its room: %q", got)
+	}
+}
+
+func testTreeNameNeverCut(t *testing.T, r treeRow) {
+	t.Helper()
+	title, name := r.title, r.name
 	for _, set := range IconChoices[1:] {
 		setIcons(set)
 		for w := view.SideMin; w <= sideWidest; w++ {
@@ -187,20 +199,17 @@ func TestTreeThreadIDNeverCut(t *testing.T) {
 			if r := []rune(l); r[len(r)-1] != ' ' || r[len(r)-2] == ' ' {
 				t.Errorf("%s width %d: row %q: no glyph and gap at its end", set, w, l)
 			}
-			whole := strings.Contains(l, "t-0042")
-			if !whole && (w >= view.SideMin+2 || strings.Contains(l, "t-")) {
-				t.Errorf("%s width %d: row %q lacks the whole id", set, w, l)
+			whole := strings.Contains(l, name)
+			if !whole && (w >= view.SideMin+2 || strings.Contains(l, name[:2])) {
+				t.Errorf("%s width %d: row %q lacks the whole name", set, w, l)
 			}
-			if w >= 25 && !strings.Contains(l, "t-0042 P") {
+			if w >= 25 && !strings.Contains(l, name+" P") {
 				t.Errorf("%s width %d: row %q lacks the title", set, w, l)
 			}
 			if w >= 120 && (!strings.Contains(l, title) || strings.Contains(l, "…")) {
 				t.Errorf("%s width %d: row %q cuts the title", set, w, l)
 			}
 		}
-	}
-	if got := threadLabel("t-0042", "Title", 4); got != "    " {
-		t.Errorf("an id wider than its room: %q", got)
 	}
 }
 
@@ -239,7 +248,7 @@ func TestDashboardSidebarKeys(t *testing.T) {
 		}
 	}
 	// The cursor's row is highlighted, not the one you are on.
-	if l := strings.Split(whole(m), "\n")[5]; !strings.Contains(l, "t-0005 ") {
+	if l := strings.Split(whole(m), "\n")[5]; !strings.Contains(l, "T4 ") {
 		t.Fatalf("row 5 %q", l)
 	}
 	// Not a sidebar key: the list's ? opens the help.
@@ -471,7 +480,7 @@ func TestSidebarWiderThanWindow(t *testing.T) {
 	}
 	m := newDash(DashOptions{Source: src, Width: 200, Height: 30, UIFile: ui, State: DashState{Current: "beta"}})
 	m.setData(src.data)
-	if m.sideW() != 90 || m.w != 110 || !strings.Contains(whole(m), "t-0005 Write docs") {
+	if m.sideW() != 90 || m.w != 110 || !strings.Contains(whole(m), "T4 Write docs") {
 		t.Fatalf("wide window: sidebar %d, dashboard %d:\n%s", m.sideW(), m.w, whole(m))
 	}
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
@@ -599,5 +608,27 @@ func TestSessionSidebarClickFocus(t *testing.T) {
 	c.finish(Result{Reason: "detached"})
 	if !c.result.SideFocus {
 		t.Fatal("the result doesn't carry the sidebar's keyboard")
+	}
+}
+
+// TestThreadNames: the UI names a thread by its task; a thread without
+// one (ad hoc, adopted) keeps its own id, and the session details show
+// the thread id.
+func TestThreadNames(t *testing.T) {
+	s := proto.SessionInfo{ID: "s-9", Role: proto.RoleThread, Project: "beta", Thread: "t-0042", Task: "T52"}
+	if got := sessionName(s); got != "T52" {
+		t.Errorf("sessionName %q", got)
+	}
+	if got := paneName(s); got != "T52" {
+		t.Errorf("paneName %q", got)
+	}
+	d := &panel{w: 60}
+	sessionPanel(d, s)
+	if out := ansi.Strip(strings.Join(d.lines, "\n")); !strings.Contains(out, "s-9 T52") || !strings.Contains(out, "thread    t-0042") {
+		t.Errorf("session details:\n%s", out)
+	}
+	s.Task = ""
+	if got := paneName(s); got != "t-0042" {
+		t.Errorf("paneName without a task %q", got)
 	}
 }

@@ -562,5 +562,5 @@ func (s *Server) explain(id string) (any, *proto.Error) {
 	if !ok {
 		return nil, proto.Errorf(proto.ErrRefused, "session %s runs no agent", id)
 	}
-	return ExplainResult{Session: sess.Info(), Explanation: e}, nil
+	return ExplainResult{Session: s.info(sess), Explanation: e}, nil
 }

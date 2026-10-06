@@ -169,7 +169,8 @@ func (m *dash) enter(string) tea.Cmd {
 	case r.session != "":
 		return m.act(func() actionMsg { return actionMsg{attach: r.session, current: r.project} })
 	case r.thread != nil:
-		m.msg = r.thread.ID + " has no running session; the coordinator restarts it (tm thread restart " + r.thread.ID + ")"
+		name := threadName(r.thread.Task, r.thread.ID)
+		m.msg = name + " has no running session; the coordinator restarts it (tm thread restart " + name + ")"
 	case r.project != "":
 		return m.openProject(r.project)
 	}
