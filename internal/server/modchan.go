@@ -84,9 +84,13 @@ type ModUsage struct {
 	CacheRead     int64   `json:"cache_read"`
 	CacheCreation int64   `json:"cache_creation"`
 	CostUSD       float64 `json:"cost_usd"`
-	// Context is what the turn's last request read as context (the
-	// input and both cache counts); 0 when unknown.
-	Context int64 `json:"context,omitempty"`
+	// Context is what the session's last request read as context (the
+	// input and both cache counts, as the agent's status line counts
+	// them; never turn.complete's usage, which sums the turn's
+	// requests); 0 when unknown. ContextWindow is the window the agent
+	// gives for its model; 0: the server judges it by the model's id.
+	Context       int64 `json:"context,omitempty"`
+	ContextWindow int64 `json:"context_window,omitempty"`
 }
 
 // listenMod opens session id's mod socket in its runtime dir rt; s.mu
@@ -175,7 +179,7 @@ func (s *Server) modHandler(id string) http.Handler {
 		if s.modSession(w, id) == nil {
 			return
 		}
-		s.setContext(id, u.Model, u.Context)
+		s.setContext(id, u.Model, u.Context, u.ContextWindow)
 		s.addUsage(id, thread.Usage{Turns: 1, Input: u.Input, Output: u.Output,
 			CacheRead: u.CacheRead, CacheCreation: u.CacheCreation, CostUSD: u.CostUSD})
 		w.WriteHeader(http.StatusNoContent)
@@ -321,7 +325,7 @@ func checkModReport(r ModReport) error {
 const maxModTokens = 1 << 40
 
 func checkModUsage(u ModUsage) error {
-	for _, n := range []int64{u.Input, u.Output, u.CacheRead, u.CacheCreation, u.Context} {
+	for _, n := range []int64{u.Input, u.Output, u.CacheRead, u.CacheCreation, u.Context, u.ContextWindow} {
 		if n < 0 || n > maxModTokens {
 			return errors.New("token counts are small non-negative numbers")
 		}

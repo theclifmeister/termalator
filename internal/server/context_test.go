@@ -47,15 +47,15 @@ func TestContextAlertPerCrossing(t *testing.T) {
 		{"s-2", 150_000, 2}, // a thread's context never rings
 	}
 	for i, st := range steps {
-		s.setContext(st.id, "claude-x", st.tokens)
+		s.setContext(st.id, "claude-x", st.tokens, 0)
 		if got := s.alerts.Load(); got != st.alerts {
 			t.Fatalf("step %d: %d alerts, want %d", i, got, st.alerts)
 		}
 	}
 	// Never.
 	os.WriteFile(filepath.Join(h, "config.toml"), []byte("[ui]\ncontext_hint = 0\n"), 0o600)
-	s.setContext("s-1", "claude-x", 10_000)
-	s.setContext("s-1", "claude-x", 190_000)
+	s.setContext("s-1", "claude-x", 10_000, 0)
+	s.setContext("s-1", "claude-x", 190_000, 0)
 	if got := s.alerts.Load(); got != 2 {
 		t.Fatalf("with the hint off: %d alerts", got)
 	}
@@ -80,5 +80,25 @@ func TestContextOf(t *testing.T) {
 	}
 	if c := contextOf("none", sessions); c != nil {
 		t.Fatalf("no coordinator: %+v", c)
+	}
+}
+
+// TestContextAgentWindow: the window the agent gives wins over the guess
+// from the model's id; one smaller than the context is ignored.
+func TestContextAgentWindow(t *testing.T) {
+	t.Setenv(home.Env, t.TempDir())
+	s := &Server{records: map[string]SessionRecord{"s-1": {ID: "s-1", Role: proto.RoleThread}}}
+	get := func() ctxUse { v, _ := s.ctxOf.Load("s-1"); return v.(ctxUse) }
+	s.setContext("s-1", "claude-x", 300_000, 1_000_000)
+	if c := get(); c.window != 1_000_000 {
+		t.Fatalf("window %d", c.window)
+	}
+	s.setContext("s-1", "claude-x", 50_000, 400_000)
+	if c := get(); c.window != 400_000 {
+		t.Fatalf("agent's window not taken: %d", c.window)
+	}
+	s.setContext("s-1", "claude-x", 50_000, 10)
+	if c := get(); c.window != windowStandard {
+		t.Fatalf("a window below the context: %d", c.window)
 	}
 }
