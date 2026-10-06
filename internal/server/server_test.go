@@ -31,6 +31,7 @@ func testPaths(t *testing.T) Paths {
 	t.Cleanup(func() { os.RemoveAll(sockDir) })
 	t.Setenv("TERMINATR_HOME", home)
 	t.Setenv("TERMINATR_SOCKET", filepath.Join(sockDir, "tm.sock"))
+	t.Setenv("TERMINATR_LAUNCHD", "off")
 	p, err := ResolvePaths()
 	if err != nil {
 		t.Fatal(err)

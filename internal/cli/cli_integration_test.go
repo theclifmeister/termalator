@@ -23,6 +23,9 @@ import (
 var tmBin string // built once in TestMain; "" if the build failed
 
 func TestMain(m *testing.M) {
+	if dir := os.Getenv("TM_FAKE_LAUNCHCTL_DIR"); dir != "" && filepath.Base(os.Args[0]) == "launchctl" {
+		os.Exit(fakeLaunchctl(dir, os.Args[1:]))
+	}
 	code := func() int {
 		flag.Parse()
 		if testing.Short() {
@@ -87,7 +90,9 @@ func (p *tmProc) run(stdin string, args ...string) (int, string, string) {
 	cmd.Dir = p.cwd
 	cmd.Env = append([]string{"PATH=" + os.Getenv("PATH"), "HOME=" + p.home, "TERMINATR_HOME=" + filepath.Join(p.home, "tm"),
 		// A server started here stops itself when the test process is gone.
-		"TERMINATR_TEST_OWNER=" + strconv.Itoa(os.Getpid())}, p.env...)
+		"TERMINATR_TEST_OWNER=" + strconv.Itoa(os.Getpid()),
+		// Never through the user's launchd (macOS).
+		"TERMINATR_LAUNCHD=off"}, p.env...)
 	cmd.Stdin = strings.NewReader(stdin)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb

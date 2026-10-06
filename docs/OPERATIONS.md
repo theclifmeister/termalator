@@ -69,13 +69,19 @@ tm server stop --force    # a hung server: SIGKILL the pid that holds the lock
 
 ### Over SSH (macOS)
 
-Start and restart the server from a terminal on the Mac itself, not over SSH. A server started from an SSH login runs in that login's security session, and so does every session under it: the keychain refuses them, so `gh` says its token is invalid and `git push` over https fails ("Interaction with the Security Server is not allowed"). Any `tm` command that starts the server over SSH (`tm server start` or `restart`, `tm update`'s restart, or a command that auto-starts it) still starts it, but warns:
+On macOS a server started from an SSH login would run in that login's security session, and so would every session under it: the keychain refuses them, so `gh` says its token is invalid and `git push` over https fails ("Interaction with the Security Server is not allowed"). So every start (`tm server start` or `restart`, `tm update`'s restart, a command that auto-starts it, the TUI) goes through launchd: tm hands the server to your desktop session (`launchctl kickstart gui/<uid>/dev.terminatr.server`), wherever you typed the command. Starting over SSH is then the same as starting at the Mac, with the same environment: the server gets your shell's (`PATH`, `LANG`, tokens), less the SSH login's own variables.
+
+That needs someone logged in at the Mac's console; the screen can stay locked. With nobody logged in, a start refuses:
 
 ```
-tm: warning: the server was started over SSH, so its sessions can't use the keychain (gh, git push over https); restart the server from a terminal on the Mac itself, not over SSH: tm server restart
+tm server start: nobody is logged in at the Mac's console, so the server can't run in the desktop's session and its sessions couldn't use the keychain (gh, git push over https); log in on the Mac (the screen can stay locked) and try again, or start a server without the keychain: tm server start --no-launchd
 ```
 
-`tm doctor` shows whether the running server's sessions can reach the keychain (`server keychain`), wherever you run it from. The fix is `tm server restart` from a terminal on the Mac; `tm doctor --fix` offers that restart only when you run it there, outside tm's own sessions. Using tm over SSH is fine once the server runs; it's only the start that matters. On Linux none of this applies.
+`tm server start --no-launchd` (or `TERMINATR_LAUNCHD=off`) starts the server from your session as before, and over SSH warns that its sessions can't use the keychain. If launchd fails for another reason, the error names `launchctl` and the same way out.
+
+`tm doctor` shows whether the running server's sessions can reach the keychain (`server keychain`), wherever you run it from. The fix is `tm server restart`; `tm doctor --fix` offers it over SSH too, unless you run doctor from inside one of tm's own sessions. On Linux none of this applies.
+
+What launchd holds: the job `dev.terminatr.server` (another `TERMINATR_HOME` gets `dev.terminatr.server.<hash>`), from `~/Library/LaunchAgents/` when the login service is installed, else from `run/dev.terminatr.server.plist`, which isn't loaded at login; `run/launch.json` (private) holds the environment; the server's own output goes to `logs/service.log`. `launchctl print gui/$(id -u)/dev.terminatr.server` shows it.
 
 `tm server stop` and `tm server restart` work whatever version the running server is. When a newer `tm` meets an older server, other commands say `the running tm server is older than this tm …; run 'tm server restart'`, and that is the fix: restart stops the old server (asking it in its own protocol, or with `SIGTERM` when it can't be asked) and starts this `tm`'s, which resumes the agents. tm only ever signals the process that holds this home's server lock and runs `tm server run`.
 
@@ -99,8 +105,8 @@ Turns that were running are lost; resumed agents are idle. Each affected project
 ### Start at login (optional)
 
 Any `tm` command starts the server when needed, so you don't need a service. If you want the server up from login:
-- `tm server service install` writes `~/Library/LaunchAgents/dev.terminatr.server.plist` and loads it with launchd on macOS (`RunAtLoad`, no `KeepAlive`). On Linux it writes `~/.config/systemd/user/terminatr.service` and enables it with `systemctl --user enable --now`.
-- The service runs `tm server run` with the `PATH` of the shell you installed it from, so `claude` and `git` are found. Re-run install after moving `tm` or changing `PATH`.
+- `tm server service install` writes `~/Library/LaunchAgents/dev.terminatr.server.plist` and loads it with launchd on macOS (`RunAtLoad`, no `KeepAlive`). It is the job every start uses anyway ([Over SSH](#over-ssh-macos)); installing it while the server runs restarts the server, and agents are resumed. On Linux it writes `~/.config/systemd/user/terminatr.service` and enables it with `systemctl --user enable --now`.
+- The service runs `tm server run` (`--launchd` on macOS) with the `PATH` of the shell you installed it from, so `claude` and `git` are found. On macOS each start from a shell also hands the server that shell's environment, and a start after `brew upgrade` rewrites the plist for the new `tm`; on Linux re-run install after moving `tm` or changing `PATH`.
 - On macOS the service's own output goes to `~/.terminatr/logs/service.log`; the server still logs to `server.log`.
 - `tm server service uninstall` unloads and removes the file. That cleanly stops a server the service started, so the next server resumes its agents.
 - `--print` shows the file without installing anything.
@@ -111,7 +117,7 @@ Any `tm` command starts the server when needed, so you don't need a service. If 
 `tm doctor` checks your installation and changes nothing:
 - the `tm` build and libghostty-vt, git and gh;
 - how `tm` was installed (Homebrew, a direct download, or built from source) and whether a newer release exists, with the command that updates it;
-- the server: running and answering, the same build as this `tm` (a server of an older protocol is a warning; `tm doctor --fix` restarts it, agents are resumed), on macOS whether its sessions can reach the keychain (not when it was started over SSH; see [Over SSH](#over-ssh-macos)), a previous crash, stale `tm.sock`, `server.pid` and session runtime dirs (it never starts a server);
+- the server: running and answering, the same build as this `tm` (a server of an older protocol is a warning; `tm doctor --fix` restarts it, agents are resumed), on macOS whether its sessions can reach the keychain (not when it was started over SSH without launchd; see [Over SSH](#over-ssh-macos)), a previous crash, stale `tm.sock`, `server.pid` and session runtime dirs (it never starts a server);
 - each agent's installed version against its manifest's `tested_versions`. An untested Claude still works, but terminatr stops trusting its undocumented status file and messaging socket;
 - the sandbox tools Claude needs for threads: `sandbox-exec` on macOS, `bwrap` and `socat` on Linux;
 - Claude plugins you have enabled that are known to be unsafe in terminatr's sessions (from `claude plugin list --json`), each with the reason and the `claude plugin disable` command; today `worktrees@supermods`, whose "Remove N finished" removes a fresh thread's clean worktree. A warning only: doctor never disables a plugin;
@@ -149,7 +155,7 @@ tm server restart
 
 On a terminal the restart asks again before stopping agents that are mid-turn (`--yes` skips that). The restart works even when the server is older than the `tm` you ran `tm update` with.
 
-On macOS, upgrade and restart from a terminal on the Mac, not over SSH: a server restarted from an SSH login leaves its sessions without the keychain, so gh and `git push` over https fail in every agent ([Over SSH](#over-ssh-macos)). If you upgraded over SSH, `brew upgrade` is fine; leave the restart for when you are at the Mac, or redo it there.
+On macOS the restart goes through launchd, so upgrading and restarting over SSH is fine as long as someone is logged in at the Mac ([Over SSH](#over-ssh-macos)).
 
 ### Upgrading from Termilator
 
