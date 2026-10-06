@@ -107,15 +107,19 @@ fuzz: $(STAMP)
 # "WARNING: DATA RACE". A race-built tm takes about a second to start, and
 # every agent hook starts one, so PRs run the smoke set without -race
 # (`go test -race ./...` still covers the code) and nightly runs
-# e2e-smoke-race.
+# e2e-smoke-race. E2E_SHARD=I/N runs only shard I of N of the smoke set
+# (scripts/e2e-shard.sh), as CI does.
 E2E_RACE ?=
+E2E_SHARD ?=
 E2E_GOFLAGS := $(if $(filter 1,$(E2E_RACE)),-race)
 
 e2e: $(STAMP)
 	E2E=1 E2E_RACE=$(E2E_RACE) $(GO) test $(E2E_GOFLAGS) -count=1 ./internal/e2e $(E2E_FLAGS)
 
 e2e-smoke: $(STAMP)
-	E2E=1 E2E_RACE=$(E2E_RACE) $(GO) test $(E2E_GOFLAGS) -count=1 -run '^TestSmoke' ./internal/e2e $(E2E_FLAGS)
+	@run='^TestSmoke'; \
+	$(if $(E2E_SHARD),run=$$(GO=$(GO) scripts/e2e-shard.sh "$$run" $(E2E_SHARD)) || exit 1; echo "shard $(E2E_SHARD): -run '$$run'";) \
+	E2E=1 E2E_RACE=$(E2E_RACE) $(GO) test $(E2E_GOFLAGS) -count=1 -run "$$run" ./internal/e2e $(E2E_FLAGS)
 
 e2e-smoke-race:
 	$(MAKE) e2e-smoke E2E_RACE=1

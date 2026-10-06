@@ -1,0 +1,51 @@
+name: setup
+description: >
+  Go, the pinned Zig and libghostty-vt (both cached) and pkg-config: what
+  `make build`, `make test` and the e2e harness need. Run after checkout.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+
+    # No setup-zig: `make` fetches the pinned Zig into .build/ (sha256-
+    # checked) unless a Zig 0.16 is already on PATH. Cached on its own,
+    # keyed on the Zig pin in the Makefile.
+    - name: Zig pin
+      id: zig
+      shell: bash
+      run: echo "key=$(grep -E '^ZIG_(VERSION|SHA256_)' Makefile | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+
+    - name: Cache Zig
+      uses: actions/cache@v6
+      with:
+        path: .build/zig-*
+        key: zig-${{ runner.os }}-${{ runner.arch }}-${{ steps.zig.outputs.key }}
+
+    - name: pkg-config
+      shell: bash
+      run: command -v pkg-config || brew install pkgconf
+
+    # libghostty-vt only changes with the Ghostty pin (and the Zig that
+    # builds it), so its cache is keyed on those lines alone: other
+    # Makefile edits don't force a rebuild. The checkout path is in the
+    # key too: the build's pkg-config files name their absolute prefix,
+    # which moved when the repository was renamed.
+    - name: Ghostty pin
+      id: ghostty
+      shell: bash
+      run: echo "key=$({ grep -E '^(GHOSTTY_(REV|REPO|CPU)|ZIG_VERSION) ' Makefile; echo "$GITHUB_WORKSPACE"; } | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+
+    - name: Cache libghostty-vt
+      uses: actions/cache@v6
+      with:
+        path: .build/ghostty-*
+        key: ghostty-${{ runner.os }}-${{ runner.arch }}-${{ steps.ghostty.outputs.key }}
+
+    - name: toolchain
+      shell: bash
+      run: |
+        make toolchain
+        echo "zig on PATH: $(command -v zig || echo none)"
