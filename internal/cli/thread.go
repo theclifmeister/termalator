@@ -817,7 +817,7 @@ func (e *Env) threadShow(p *project.Project, id string, asJSON bool) error {
 		adopted = "yes"
 	}
 	for _, kv := range [][2]string{{"thread", r.ID}, {"task", r.Task}, {"worktree", r.Worktree}, {"branch", r.Branch}, {"base", r.Base}, {"repo", r.Repo}, {"adopted", adopted},
-		{"agent", r.Agent}, {"model", r.Model}, {"session", r.Session}, {"state", r.State}, {"folder", thread.Dir(p, id)},
+		{"agent", r.Agent}, {"model", r.Model}, {"usage", r.Usage.Detail()}, {"session", r.Session}, {"state", r.State}, {"folder", thread.Dir(p, id)},
 		{"attached", strings.Join(thread.Attachments(p, id), ", ")}} {
 		if kv[1] != "" {
 			fmt.Fprintf(w, "  %s:\t%s\n", kv[0], kv[1])
