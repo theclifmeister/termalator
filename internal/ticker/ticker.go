@@ -70,6 +70,9 @@ type Host interface {
 	Sessions() []proto.SessionInfo
 	// Prompt sends text to a session through its agent's injector.
 	Prompt(session, text string) error
+	// Nudge is Prompt for a coordinator's nudge: refresh is called right
+	// before delivery and returns the text then, or false to drop it.
+	Nudge(session, text string, refresh func() (string, bool)) error
 	// Alert rings every client's bell; msg goes to the server log.
 	Alert(msg string)
 	// Resolve runs `tm thread resolve` for the ticker and returns its
@@ -778,12 +781,37 @@ func (t *Ticker) nudge(p *project.Project, sessions []proto.SessionInfo, now tim
 	if coord == nil || coord.State != "idle" || coord.Queued > 0 || now.Sub(pm.LastNudge) < t.o.Nudge {
 		return
 	}
-	if err := t.o.Host.Prompt(coord.ID, NudgeText(fresh, func(id string) string {
+	label := func(id string) string {
 		if thread.ValidID(id) {
 			return thread.Label(p, id)
 		}
 		return thread.TaskLabel(p, id)
-	})); err != nil {
+	}
+	// A nudge can wait in the queue (a busy coordinator, a held prompt
+	// box): at delivery it names only the items still unhandled, and
+	// goes unsent once none is.
+	ids := map[string]bool{}
+	for _, it := range fresh {
+		ids[it.ID] = true
+	}
+	text := NudgeText(fresh, label)
+	refresh := func() (string, bool) {
+		items, err := p.Inbox()
+		if err != nil {
+			return text, true
+		}
+		var still []project.Item
+		for _, it := range items {
+			if ids[it.ID] {
+				still = append(still, it)
+			}
+		}
+		if len(still) == 0 {
+			return "", false
+		}
+		return NudgeText(still, label), true
+	}
+	if err := t.o.Host.Nudge(coord.ID, text, refresh); err != nil {
 		t.o.Log.Printf("ticker: %s: nudge: %v", p.Slug, err)
 		return
 	}

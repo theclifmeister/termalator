@@ -27,7 +27,8 @@ type fakeHost struct {
 	alerts   []string
 	resolved []string
 	resolve  func(slug, id string) error
-	remote   []string // "<session> on|off"
+	remote   []string              // "<session> on|off"
+	refresh  func() (string, bool) // the last nudge's
 }
 
 func (h *fakeHost) Sessions() []proto.SessionInfo {
@@ -36,6 +37,10 @@ func (h *fakeHost) Sessions() []proto.SessionInfo {
 func (h *fakeHost) Prompt(id, text string) error {
 	h.prompts = append(h.prompts, id+" "+text)
 	return nil
+}
+func (h *fakeHost) Nudge(id, text string, refresh func() (string, bool)) error {
+	h.refresh = refresh
+	return h.Prompt(id, text)
 }
 func (h *fakeHost) Alert(msg string) { h.alerts = append(h.alerts, msg) }
 func (h *fakeHost) Resolve(slug, id string) (string, error) {
@@ -298,6 +303,31 @@ func TestPausedAndArchived(t *testing.T) {
 	}
 	if _, ok := r.tk.st.Threads["demo/t-0001"]; !ok {
 		t.Fatal("archiving forgot the thread's PR")
+	}
+}
+
+// TestNudgeRefresh (T43): a nudge that waited in the queue names, when it
+// is delivered, only the items still unhandled, and is dropped once all
+// are (the one stuck overnight told of two takeovers handled long since).
+func TestNudgeRefresh(t *testing.T) {
+	r := newRig(t)
+	a, _ := r.p.AddItem("report", "t-0001", "x", false)
+	b, _ := r.p.AddItem("thread-done", "t-0001", "y", false)
+	r.host.set("s-1", "idle", "")
+	r.sweep(time.Second)
+	if len(r.host.prompts) != 1 || !strings.Contains(r.host.prompts[0], "2 new inbox items") || r.host.refresh == nil {
+		t.Fatalf("nudge %q", r.host.prompts)
+	}
+	if text, ok := r.host.refresh(); !ok || text != strings.TrimPrefix(r.host.prompts[0], "s-1 ") {
+		t.Fatalf("unchanged inbox: %q %v", text, ok)
+	}
+	r.p.DoneItem(a.ID)
+	if text, ok := r.host.refresh(); !ok || !strings.Contains(text, "1 new inbox item: t-0001 (T1 Fix it) done.") {
+		t.Fatalf("one handled: %q %v", text, ok)
+	}
+	r.p.DoneItem(b.ID)
+	if _, ok := r.host.refresh(); ok {
+		t.Fatal("a nudge whose items were all handled is still delivered")
 	}
 }
 

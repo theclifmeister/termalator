@@ -335,6 +335,11 @@ func (s *Server) baseEnv() []string {
 // rings the bell for a dropped one.
 func (s *Server) promptResolved(sess *session.Session, res session.PromptResolution) {
 	held := res.Held.Round(time.Second)
+	if res.Via == "stale" {
+		// Nothing was lost: what it said was handled meanwhile.
+		s.log.Printf("session %s: queued prompt (queued %s) went stale and was not delivered", sess.ID(), res.Queued.Format(time.DateTime))
+		return
+	}
 	msg := fmt.Sprintf("session %s: queued prompt (queued %s) held %s while idle, %s: ", sess.ID(), res.Queued.Format(time.DateTime), held, res.Why)
 	if res.Via == "channel" {
 		msg += "sent through the agent's channel"
