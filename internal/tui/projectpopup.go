@@ -11,6 +11,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/theclifmeister/terminatr/internal/config"
@@ -188,7 +189,7 @@ func (pv *projectView) count(m *dash) int {
 	case tabOverview:
 		return len(pv.data(m).Repos)
 	case tabInbox:
-		return len(pv.data(m).Items)
+		return len(project.Rows(pv.data(m).Items))
 	case tabTasks:
 		return len(pv.tasks())
 	}
@@ -580,25 +581,50 @@ func (pv *projectView) taskLines(m *dash, w int) ([]string, int, []int) {
 	return out, sel, lineHits(len(out), taskAt)
 }
 
-// inboxLines are a project's unhandled inbox items, sel selected, and
-// the item on each line.
+// kindStyle is the style of an inbox item's kind: red for what went
+// wrong, green for what finished, yellow for the rest.
+func kindStyle(kind string) lipgloss.Style {
+	switch kind {
+	case "pr-checks-failed", "pr-conflict", "exited", "gh-failing", "blocked", "needs-you", "guard":
+		return styleBad
+	case "report", "pr-merged", "pr-opened", "task-done", "thread-resolved":
+		return styleGood
+	}
+	return styleWarn
+}
+
+// inboxLines are a project's unhandled inbox items, one row for the
+// items of one kind for one subject, sel selected, and the row on each
+// line. A row reads kind, age, ×N when it stands for more, task, what
+// happened, then the task's title, which is what a narrow row cuts.
 func inboxLines(items []project.Item, sel, w int) ([]string, int, []int) {
 	var lines []string
 	var hits []int
 	at := -1
 	now := time.Now()
-	for i, it := range items {
-		when := fmt.Sprintf("%-6s", age(now.Sub(it.Created)))
+	rows := project.Rows(items)
+	for i, r := range rows {
+		kind := fit(r.Kind, 16)
+		when := fmt.Sprintf("%-6s", age(now.Sub(r.Created)))
+		rest := oneLine(strings.TrimSpace(strings.Join([]string{r.Task, r.What}, " ")))
+		if r.Count > 1 {
+			rest = fmt.Sprintf("x%d %s", r.Count, rest)
+		}
 		hits = append(hits, i)
 		if i == sel {
 			at = len(lines)
-			lines = append(lines, styleSel.Render(fit(fmt.Sprintf("%s %s %s", fit(it.Kind, 16), when, oneLine(it.Summary)), w)))
+			if r.Title != "" {
+				rest += " " + oneLine(r.Title)
+			}
+			lines = append(lines, styleSel.Render(fit(kind+" "+when+" "+rest, w)))
 			continue
 		}
-		lines = append(lines, fit(fmt.Sprintf("%s %s %s", styleWarn.Render(fit(it.Kind, 16)),
-			styleFaint.Render(when), oneLine(it.Summary)), w)+reset)
+		if r.Title != "" {
+			rest += " " + styleFaint.Render(oneLine(r.Title))
+		}
+		lines = append(lines, fit(kindStyle(r.Kind).Render(kind)+" "+styleFaint.Render(when)+" "+rest, w)+reset)
 	}
-	if len(items) == 0 {
+	if len(rows) == 0 {
 		lines = append(lines, styleFaint.Render("inbox empty"))
 		hits = append(hits, noHit)
 	}

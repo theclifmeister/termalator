@@ -282,7 +282,7 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	w.WaitFor("report read", wait)
 	w.Type("i")
 	w.WaitFor("demo inbox", wait)
-	w.WaitFor("T1 Fix the login (t-0001) handed in report 1", wait)
+	w.WaitFor("T1 handed in report 1 Fix the login", wait)
 	w.Golden("dashboard-inbox.txt", dashMasks...)
 	w.Key(keyEsc)
 

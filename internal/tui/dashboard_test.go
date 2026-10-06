@@ -833,3 +833,23 @@ func TestDashboardNeedsYouTasks(t *testing.T) {
 		t.Errorf("enter on a task acted: opened %v, attach %q", src.opened, m.result.Attach)
 	}
 }
+
+// An inbox row leads with the kind, then the task, what happened and last
+// the title; items of one kind for one thread are one row, counted.
+func TestInboxLinesRows(t *testing.T) {
+	items := []project.Item{
+		{ID: "a", Kind: "report", Subject: "t-0001", Summary: "T1 Fix the login (t-0001) handed in report 1"},
+		{ID: "b", Kind: "report", Subject: "t-0001", Summary: "T1 Fix the login (t-0001) handed in report 2"},
+	}
+	lines, _, hits := inboxLines(items, 0, 80)
+	if len(lines) != 1 || len(hits) != 1 {
+		t.Fatalf("lines %q hits %v", lines, hits)
+	}
+	got := ansi.Strip(lines[0])
+	if !strings.HasPrefix(got, "report") || !strings.Contains(got, "x2 T1 handed in report 2 Fix the login") {
+		t.Errorf("row %q", got)
+	}
+	if narrow, _, _ := inboxLines(items, -1, 40); strings.Contains(ansi.Strip(narrow[0]), "login") || !strings.Contains(ansi.Strip(narrow[0]), "report 2") {
+		t.Errorf("narrow row %q", ansi.Strip(narrow[0]))
+	}
+}

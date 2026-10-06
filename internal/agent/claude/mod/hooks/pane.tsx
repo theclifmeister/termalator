@@ -19,9 +19,9 @@
 import { atom, read, update } from 'claude-code'
 import type { Elements, EngineInterface, On, RenderSurface, RenderViewport } from 'claude-code'
 
-import type { TerminatrNeed, TerminatrProject, TerminatrThread } from '../types'
+import type { TerminatrItem, TerminatrNeed, TerminatrProject, TerminatrThread } from '../types'
 import {
-  BUTTON_LABELS, MAX_READY, askLine, asked, isNarrow, needButtons, needDetail, needHead, oneLine, projectFeed, reportTextOf,
+  BUTTON_LABELS, MAX_READY, askLine, asked, isNarrow, itemParts, itemTone, needButtons, needDetail, needHead, oneLine, projectFeed, reportTextOf,
   sentWords, summary, threadLine, todoLine,
 } from './dashboard'
 import type { AskKind } from './dashboard'
@@ -208,7 +208,7 @@ function drawPane($: EngineInterface, els: Elements[RenderSurface], hasInput: bo
       {p.needs_you.length === 0 ? <Text dimColor>Nothing waits for you.</Text> : <Text bold color="warning">Needs you</Text>}
       {p.needs_you.map(n => drawNeed($, els, hasInput, bodyColumns, n, asked(n.task, n.status, n.asked, sent), editing))}
       {p.inbox.length > 0 ? <Text bold>Inbox</Text> : null}
-      {p.inbox.map(it => <Text key={'inbox-' + it.id} dimColor wrap="truncate-end">{'  ' + it.summary}</Text>)}
+      {p.inbox.map(it => drawItem(els, it))}
       {p.threads.length > 0 ? <Text bold>Threads</Text> : null}
       {p.threads.map(t => drawThread($, els, bodyColumns, t))}
       {ready.length > 0 ? <Text bold>On deck</Text> : null}
@@ -225,6 +225,21 @@ function drawPane($: EngineInterface, els: Elements[RenderSurface], hasInput: bo
       })}
       {p.ready.length > MAX_READY ? <Text dimColor>{`  and ${p.ready.length - MAX_READY} more`}</Text> : null}
     </Box>
+  )
+}
+
+// drawItem draws one inbox row: its kind in its color, then the task,
+// what happened and, last, the task's title.
+function drawItem(els: Elements[RenderSurface], it: TerminatrItem) {
+  const { Text } = els
+  const { head, title } = itemParts(it)
+  return (
+    <Text key={'inbox-' + it.id} wrap="truncate-end">
+      {'  '}
+      <Text color={itemTone(it.kind)}>{it.kind}</Text>
+      {' ' + head}
+      {title ? <Text dimColor>{' ' + title}</Text> : null}
+    </Text>
   )
 }
 

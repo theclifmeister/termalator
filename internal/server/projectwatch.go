@@ -39,8 +39,9 @@ func projectWatchOf(p *project.Project, sessions []proto.SessionInfo, tickerStat
 	w := proto.ProjectWatch{Project: p.Slug, NeedsYou: []proto.WatchNeed{}, Inbox: []proto.WatchItem{},
 		Threads: []proto.WatchThread{}, Ready: []proto.WatchTodo{}}
 	items, _ := p.Inbox()
-	for _, it := range items {
-		w.Inbox = append(w.Inbox, proto.WatchItem{ID: it.ID, Kind: it.Kind, Subject: it.Subject, Summary: it.Summary, NeedsUser: it.NeedsUser})
+	for _, r := range project.Rows(items) {
+		w.Inbox = append(w.Inbox, proto.WatchItem{ID: r.ID, Kind: r.Kind, Subject: r.Subject, Summary: r.Summary, NeedsUser: r.NeedsUser,
+			Count: r.Count, Task: r.Task, What: r.What, Title: r.Title})
 	}
 	b, _ := p.Tasks().Load()
 	byThread := map[string]proto.SessionInfo{}

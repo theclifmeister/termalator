@@ -1,4 +1,4 @@
-import type { TerminatrAsk, TerminatrNeed, TerminatrProject, TerminatrThread, TerminatrTodo } from '../types'
+import type { TerminatrAsk, TerminatrItem, TerminatrNeed, TerminatrProject, TerminatrThread, TerminatrTodo } from '../types'
 
 // The coordinator's /tm pane (docs/SPEC.md §8.6, Mods): what it says
 // about a line of `tm watch --project --json`, and what its buttons ask.
@@ -175,4 +175,21 @@ export function reportTextOf(out: string): string {
   } catch {
     return ''
   }
+}
+
+// itemTone is the color an inbox item's kind gets, as the Go dashboard's
+// (kindStyle): red for what went wrong, green for what finished, yellow
+// for the rest.
+export function itemTone(kind: string): 'error' | 'success' | 'warning' {
+  if (['pr-checks-failed', 'pr-conflict', 'exited', 'gh-failing', 'blocked', 'needs-you', 'guard'].includes(kind)) return 'error'
+  if (['report', 'pr-merged', 'pr-opened', 'task-done', 'thread-resolved'].includes(kind)) return 'success'
+  return 'warning'
+}
+
+// itemParts are an inbox row's text after its kind, in the order it
+// reads: "x3" when it stands for several items, the task, what happened.
+// The task's title is apart, drawn last, so it is what a narrow row cuts.
+export function itemParts(it: TerminatrItem): { head: string; title: string } {
+  const head = [it.count > 1 ? `x${it.count}` : '', it.task ?? '', it.what ?? it.summary].filter(Boolean).join(' ')
+  return { head, title: it.title ?? '' }
 }
