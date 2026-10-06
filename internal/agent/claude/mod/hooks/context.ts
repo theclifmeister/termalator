@@ -2,9 +2,8 @@
 // gets back after /clear or compaction. The mod adds it as a context
 // block of the conversation's first message, which Claude re-reads after
 // /clear and compaction; the SessionStart command hook brings the same
-// text, which the mod keeps as a fallback and takes out of SessionStart,
-// so the model reads it once. Plain functions; the hooks live in
-// register.ts.
+// text, which the mod keeps as a fallback (and leaves in SessionStart's
+// answer for now). Plain functions; the hooks live in register.ts.
 
 import type { PromptContextBlock } from 'claude-code'
 

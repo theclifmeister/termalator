@@ -45,11 +45,11 @@ test('outside a project there is no block', async ($, on) => {
   expect(r.blocks).toEqual([{ name: 'currentDate', text: 'today' }])
 })
 
-test('SessionStart\'s copy goes to the block, not twice to the model', async ($, on) => {
+test('SessionStart\'s copy is the block\'s fallback, and stays in its answer', async ($, on) => {
   serve(on, 'down')
   on('classic.SessionStart', async () => ({ additionalContext: ['user hook', RULES] }))
   const started = await $.classic.SessionStart({ source: 'clear' })
-  expect(started.additionalContext).toEqual(['user hook'])
+  expect(started.additionalContext).toEqual(['user hook', RULES])
   const r = await $.prompt.context({ blocks: [] })
   expect(r.blocks).toEqual([{ name: 'currentDate', text: 'today' }, { name: 'terminatr', text: RULES }])
 })
@@ -58,18 +58,8 @@ test('a SessionStart without ours is left alone', async ($, on) => {
   serve(on, 'down')
   on('classic.SessionStart', async () => ({ additionalContext: ['user hook'] }))
   expect((await $.classic.SessionStart({ source: 'startup' })).additionalContext).toEqual(['user hook'])
-})
-
-test('a resumed conversation keeps the hook\'s copy', async ($, on) => {
-  serve(on, 'down')
-  on('classic.SessionStart', async () => ({ additionalContext: [RULES] }))
-  expect((await $.classic.SessionStart({ source: 'resume' })).additionalContext).toEqual([RULES])
-})
-
-test('a SessionStart with ours alone answers no context', async ($, on) => {
-  serve(on, 'down')
-  on('classic.SessionStart', async () => ({ additionalContext: [RULES] }))
-  expect((await $.classic.SessionStart({ source: 'compact' })).additionalContext).toBeUndefined()
+  const r = await $.prompt.context({ blocks: [] })
+  expect(r.blocks).toEqual([{ name: 'currentDate', text: 'today' }])
 })
 
 test('a server that does not answer falls back to the copy', async ($, on) => {

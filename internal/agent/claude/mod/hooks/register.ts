@@ -89,18 +89,17 @@ export const register: Register = on => {
     return started
   })
 
-  // The role's context reaches the model once, as our context block:
-  // the command hook's copy is kept for when the server can't be asked.
-  // Claude reads the blocks for a new conversation, after /clear and
-  // after compaction; a resumed or forked one keeps the hook's copy.
+  // The role's context, as our context block: the command hook's copy
+  // is kept for when the server can't be asked. The hook's copy stays in
+  // its answer too until Claude's re-read of the blocks after /clear is
+  // verified live (the model reads it twice meanwhile).
   on('classic.SessionStart', async ($, e, next) => {
     const r = await next(e)
-    const { ours, rest } = splitContext(r.additionalContext)
+    const { ours } = splitContext(r.additionalContext)
     if (!ours) return r
     await update($, context, () => ours)
-    if (e.source === 'resume' || e.source === 'fork') return r
-    if (e.source !== 'startup') $.ui.invalidate('prompt.context')
-    return { ...r, additionalContext: rest.length ? rest : undefined }
+    if (e.source === 'clear' || e.source === 'compact') $.ui.invalidate('prompt.context')
+    return r
   })
 
   on('prompt.context', async ($, e, next) => {
