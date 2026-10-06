@@ -30,6 +30,12 @@ func TestEdit(t *testing.T) {
 			"default_agent = \"pi\"\n[keys]\n"},
 		{"other table's key untouched", "[projects.other]\nyolo = false\n[projects.demo]\n", "projects.demo", "yolo", true,
 			"[projects.other]\nyolo = false\n[projects.demo]\nyolo = true\n"},
+		{"mods table absent: appended", "default_agent = \"claude\"\n[ui]\nicons = \"ascii\"\n", "mods", "enabled", true,
+			"default_agent = \"claude\"\n[ui]\nicons = \"ascii\"\n\n[mods]\nenabled = true\n"},
+		{"mods band beside enabled", "[mods]\nenabled = true\n\n[projects.demo]\nyolo = true\n", "mods", "band", false,
+			"[mods]\nenabled = true\nband = false\n\n[projects.demo]\nyolo = true\n"},
+		{"mods line edited, comment kept", "# mods\n[mods]\nenabled = false # early access\nband = true\n", "mods", "enabled", true,
+			"# mods\n[mods]\nenabled = true # early access\nband = true\n"},
 		{"string escaped", "", "keys", "prefix", `ctrl+"`,
 			"[keys]\nprefix = \"ctrl+\\\"\"\n"},
 	} {
@@ -53,6 +59,11 @@ func TestEditOtherForms(t *testing.T) {
 		"[projects]\ndemo = { yolo = false }\n",
 	} {
 		if _, err := Edit([]byte(in), "projects.demo", "yolo", true); !errors.Is(err, ErrForm) {
+			t.Errorf("%q: err %v, want ErrForm", in, err)
+		}
+	}
+	for _, in := range []string{"mods.enabled = false\n", "mods = { enabled = false }\n"} {
+		if _, err := Edit([]byte(in), "mods", "enabled", true); !errors.Is(err, ErrForm) {
 			t.Errorf("%q: err %v, want ErrForm", in, err)
 		}
 	}

@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/theclifmeister/terminatr/internal/agent/claude"
 	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/thread"
@@ -261,6 +262,30 @@ func globalSettings() []setting {
 				next := IconChoices[(slices.Index(IconChoices, cur)+1)%len(IconChoices)]
 				setIcons(next)
 				return m.setSetting("ui", "icons", next, "icons: "+next+"; consoles started earlier pick them up when they next open")
+			}},
+		{label: "Mods", help: "Load terminatr's mod in Claude panes (early access). Needs Claude Code " + claude.ModsMinVersion + " or newer. Applies to sessions launched after the change.",
+			value: func(m *dash) string { return onOff(m.data.Mods) },
+			change: func(m *dash) tea.Cmd {
+				on := !m.data.Mods
+				m.data.Mods = on
+				msg := "mods off; sessions launched from now on load no mod"
+				if on {
+					msg = "mods on; sessions launched from now on load the mod"
+				}
+				return m.setSetting("mods", "enabled", on, msg)
+			}},
+		{label: "Mods band", help: "The band, status entry and toast in the pane; the feed still runs. Only matters while Mods is on. Applies to sessions launched after the change.",
+			value: func(m *dash) string { return onOff(m.data.ModsBand) },
+			from: func(m *dash) string {
+				if !m.data.Mods {
+					return "needs Mods on"
+				}
+				return ""
+			},
+			change: func(m *dash) tea.Cmd {
+				on := !m.data.ModsBand
+				m.data.ModsBand = on
+				return m.setSetting("mods", "band", on, "mods band "+onOff(on)+"; sessions launched from now on follow it")
 			}},
 	}
 }
