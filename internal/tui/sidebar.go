@@ -357,7 +357,8 @@ func treeSel(r treeRow, focused bool) (bool, lipgloss.Style) {
 // The slim strip shows projects alone, "▸●ter", the current one marked
 // and its coordinator's glyph (or the hint) after it.
 // A coordinator with remote control on gets "⌁" in its row's count
-// column, right beside its state glyph; never on the project's row, so
+// column, one blank before its state glyph (two in the Nerd set, whose
+// icon draws wide); never on the project's row, so
 // not in the slim strip either.
 // A paused project gets "∥" after its name, in either width.
 // The row you are on is in reverse video (and, in the slim strip, marked),
