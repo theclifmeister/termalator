@@ -8,13 +8,13 @@ package server
 import (
 	"path/filepath"
 
-	"github.com/theclifmeister/termilator/internal/agent"
-	"github.com/theclifmeister/termilator/internal/caller"
-	"github.com/theclifmeister/termilator/internal/project"
-	"github.com/theclifmeister/termilator/internal/proto"
-	"github.com/theclifmeister/termilator/internal/pty"
-	"github.com/theclifmeister/termilator/internal/session"
-	"github.com/theclifmeister/termilator/internal/thread"
+	"github.com/theclifmeister/terminatr/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/caller"
+	"github.com/theclifmeister/terminatr/internal/project"
+	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/pty"
+	"github.com/theclifmeister/terminatr/internal/session"
+	"github.com/theclifmeister/terminatr/internal/thread"
 )
 
 // callerOf tells who is calling from the peer pid: a process that

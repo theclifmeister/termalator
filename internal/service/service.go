@@ -115,7 +115,7 @@ func (c Config) unit() []byte {
 	var b bytes.Buffer
 	b.WriteString(`[Unit]
 Description=terminatr server (agent sessions)
-Documentation=https://github.com/theclifmeister/termilator
+Documentation=https://github.com/theclifmeister/terminatr
 
 [Service]
 Type=simple

@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/caller"
-	"github.com/theclifmeister/termilator/internal/config"
-	"github.com/theclifmeister/termilator/internal/home"
-	"github.com/theclifmeister/termilator/internal/mdfile"
-	"github.com/theclifmeister/termilator/internal/tasks"
+	"github.com/theclifmeister/terminatr/internal/caller"
+	"github.com/theclifmeister/terminatr/internal/config"
+	"github.com/theclifmeister/terminatr/internal/home"
+	"github.com/theclifmeister/terminatr/internal/mdfile"
+	"github.com/theclifmeister/terminatr/internal/tasks"
 )
 
 // Meta is PROJECT.md's front matter.

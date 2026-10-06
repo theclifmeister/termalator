@@ -11,12 +11,12 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/theclifmeister/termilator/internal/config"
-	"github.com/theclifmeister/termilator/internal/project"
-	"github.com/theclifmeister/termilator/internal/proto"
-	"github.com/theclifmeister/termilator/internal/server"
-	"github.com/theclifmeister/termilator/internal/thread"
-	"github.com/theclifmeister/termilator/internal/tui"
+	"github.com/theclifmeister/terminatr/internal/config"
+	"github.com/theclifmeister/terminatr/internal/project"
+	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/server"
+	"github.com/theclifmeister/terminatr/internal/thread"
+	"github.com/theclifmeister/terminatr/internal/tui"
 )
 
 const attachUsage = `usage: tm attach [SESSION]   (the newest session when none is named; the prefix, Ctrl+B, then d detaches)

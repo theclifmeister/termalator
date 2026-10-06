@@ -3,7 +3,7 @@ package thread
 import (
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/proto"
 )
 
 // The parallel threads cap (docs/SPEC.md §9, §11.2): tm thread start

@@ -18,14 +18,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/agent"
-	"github.com/theclifmeister/termilator/internal/caller"
-	"github.com/theclifmeister/termilator/internal/emu"
-	"github.com/theclifmeister/termilator/internal/keychain"
-	"github.com/theclifmeister/termilator/internal/proto"
-	"github.com/theclifmeister/termilator/internal/session"
-	"github.com/theclifmeister/termilator/internal/ticker"
-	"github.com/theclifmeister/termilator/internal/version"
+	"github.com/theclifmeister/terminatr/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/caller"
+	"github.com/theclifmeister/terminatr/internal/emu"
+	"github.com/theclifmeister/terminatr/internal/keychain"
+	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/session"
+	"github.com/theclifmeister/terminatr/internal/ticker"
+	"github.com/theclifmeister/terminatr/internal/version"
 )
 
 // StopGrace is how long sessions get between SIGHUP and SIGKILL.

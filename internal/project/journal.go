@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/caller"
-	"github.com/theclifmeister/termilator/internal/mdfile"
+	"github.com/theclifmeister/terminatr/internal/caller"
+	"github.com/theclifmeister/terminatr/internal/mdfile"
 )
 
 var now = time.Now

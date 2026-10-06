@@ -3,7 +3,7 @@ package doctor
 import (
 	"fmt"
 
-	"github.com/theclifmeister/termilator/internal/project"
+	"github.com/theclifmeister/terminatr/internal/project"
 )
 
 // Upkeep warns about each project's context files over their size

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theclifmeister/termilator/internal/view"
+	"github.com/theclifmeister/terminatr/internal/view"
 )
 
 // TestSmokeInfoPanel: the info panel beside a thread's pane (docs/SPEC.md

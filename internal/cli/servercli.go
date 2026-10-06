@@ -14,10 +14,10 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/theclifmeister/termilator/internal/caller"
-	"github.com/theclifmeister/termilator/internal/keychain"
-	"github.com/theclifmeister/termilator/internal/proto"
-	"github.com/theclifmeister/termilator/internal/server"
+	"github.com/theclifmeister/terminatr/internal/caller"
+	"github.com/theclifmeister/terminatr/internal/keychain"
+	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/server"
 )
 
 func init() {

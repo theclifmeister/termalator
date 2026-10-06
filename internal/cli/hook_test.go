@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/proto"
 )
 
 // hookEnv runs `tm hook` in-process against a socket in a short temp dir.

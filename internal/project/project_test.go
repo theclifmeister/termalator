@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/caller"
-	"github.com/theclifmeister/termilator/internal/home"
-	"github.com/theclifmeister/termilator/internal/tasks"
+	"github.com/theclifmeister/terminatr/internal/caller"
+	"github.com/theclifmeister/terminatr/internal/home"
+	"github.com/theclifmeister/terminatr/internal/tasks"
 )
 
 var (

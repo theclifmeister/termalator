@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/agent"
-	"github.com/theclifmeister/termilator/internal/project"
-	"github.com/theclifmeister/termilator/internal/tasks"
+	"github.com/theclifmeister/terminatr/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/project"
+	"github.com/theclifmeister/terminatr/internal/tasks"
 )
 
 func steps(done ...bool) []tasks.Step {

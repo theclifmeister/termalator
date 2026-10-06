@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/emu"
-	"github.com/theclifmeister/termilator/internal/proto"
-	"github.com/theclifmeister/termilator/internal/version"
+	"github.com/theclifmeister/terminatr/internal/emu"
+	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/version"
 )
 
 // testPaths gives a test its own home and a short socket path (a macOS

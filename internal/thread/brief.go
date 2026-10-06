@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/mdfile"
-	"github.com/theclifmeister/termilator/internal/project"
-	"github.com/theclifmeister/termilator/internal/tasks"
+	"github.com/theclifmeister/terminatr/internal/mdfile"
+	"github.com/theclifmeister/terminatr/internal/project"
+	"github.com/theclifmeister/terminatr/internal/tasks"
 )
 
 // Kickoff is the fixed first prompt of a thread (docs/SPEC.md §7.8).

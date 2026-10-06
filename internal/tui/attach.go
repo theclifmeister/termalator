@@ -19,12 +19,12 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"golang.org/x/term"
 
-	"github.com/theclifmeister/termilator/internal/emu"
-	"github.com/theclifmeister/termilator/internal/project"
-	"github.com/theclifmeister/termilator/internal/proto"
-	"github.com/theclifmeister/termilator/internal/server"
-	"github.com/theclifmeister/termilator/internal/thread"
-	"github.com/theclifmeister/termilator/internal/view"
+	"github.com/theclifmeister/terminatr/internal/emu"
+	"github.com/theclifmeister/terminatr/internal/project"
+	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/server"
+	"github.com/theclifmeister/terminatr/internal/thread"
+	"github.com/theclifmeister/terminatr/internal/view"
 )
 
 // The attach client (docs/SPEC.md §3.3). It draws a server-owned view's

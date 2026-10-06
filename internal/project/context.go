@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/theclifmeister/termilator/internal/agent"
-	"github.com/theclifmeister/termilator/internal/config"
-	"github.com/theclifmeister/termilator/internal/home"
-	"github.com/theclifmeister/termilator/internal/tasks"
+	"github.com/theclifmeister/terminatr/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/config"
+	"github.com/theclifmeister/terminatr/internal/home"
+	"github.com/theclifmeister/terminatr/internal/tasks"
 )
 
 // Caps on `tm context` sections (§7.6). Each section says what it left

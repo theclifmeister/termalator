@@ -19,19 +19,19 @@ Claude Code is the first supported agent. Other agents plug in through a manifes
 On macOS 13+ or Linux with glibc 2.28+, with Homebrew:
 
 ```sh
-brew tap theclifmeister/terminatr https://github.com/theclifmeister/termilator
+brew tap theclifmeister/terminatr https://github.com/theclifmeister/terminatr
 brew trust --formula theclifmeister/terminatr/terminatr
-brew install terminatr
+brew install theclifmeister/terminatr/terminatr
 ```
 
 Newer Homebrew refuses formulas from a tap it doesn't trust; `brew trust` once after tapping allows this one.
 
-Terminatr was called Termilator up to v0.6.2. To upgrade from that by hand: stop the server (`tm server stop --yes`), `mv ~/.termilator ~/.terminatr`, edit the paths inside `~/.terminatr/config.toml` and the project files that name `~/.termilator`, then start it again (`tm server start`); details, Homebrew and the login service in [Upgrading from Termilator](docs/OPERATIONS.md#upgrading-from-termilator). Older installs: [Upgrading from Termalator](docs/OPERATIONS.md#upgrading-from-termalator).
+Terminatr was called Termilator up to v0.6.2. To upgrade from that by hand: stop the server (`tm server stop --yes`); with Homebrew, `brew uninstall termilator`, `brew untap theclifmeister/termilator` and tap and install the new one as above; `mv ~/.termilator ~/.terminatr`, edit the paths inside `~/.terminatr/config.toml` and the project files that name `~/.termilator`, then start it again (`tm server start`); details and the login service in [Upgrading from Termilator](docs/OPERATIONS.md#upgrading-from-termilator). Older installs: [Upgrading from Termalator](docs/OPERATIONS.md#upgrading-from-termalator).
 
 or directly, into `~/.local/bin`:
 
 ```sh
-mkdir -p ~/.local/bin && curl -fsSL "https://github.com/theclifmeister/termilator/releases/latest/download/tm_$(uname -s | tr A-Z a-z)_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar -xz -C ~/.local/bin tm
+mkdir -p ~/.local/bin && curl -fsSL "https://github.com/theclifmeister/terminatr/releases/latest/download/tm_$(uname -s | tr A-Z a-z)_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar -xz -C ~/.local/bin tm
 ```
 
 Then `tm doctor`. macOS binaries are signed with a Developer ID and notarised. `tm update` installs new releases (with Homebrew it runs `brew upgrade terminatr`). Where state lives, logs, the login service, upgrading and uninstalling: [docs/OPERATIONS.md](docs/OPERATIONS.md). To build from source, see below.

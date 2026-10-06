@@ -20,7 +20,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/proto"
 )
 
 const wait = 10 * time.Second

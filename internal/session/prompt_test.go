@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/agent"
-	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/proto"
 )
 
 // chanAgent is the built-in claude manifest with a channel that records

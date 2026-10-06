@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/emu"
+	"github.com/theclifmeister/terminatr/internal/emu"
 )
 
 // TestSmokePrefixQuit: prefix+q quits the console from everywhere

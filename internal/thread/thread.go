@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/theclifmeister/termilator/internal/home"
-	"github.com/theclifmeister/termilator/internal/mdfile"
-	"github.com/theclifmeister/termilator/internal/project"
-	"github.com/theclifmeister/termilator/internal/tasks"
+	"github.com/theclifmeister/terminatr/internal/home"
+	"github.com/theclifmeister/terminatr/internal/mdfile"
+	"github.com/theclifmeister/terminatr/internal/project"
+	"github.com/theclifmeister/terminatr/internal/tasks"
 )
 
 // States of a thread record. The live agent state (working, blocked, …)

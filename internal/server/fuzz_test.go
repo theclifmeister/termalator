@@ -8,7 +8,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/proto"
 )
 
 // FuzzControlDecode runs arbitrary bytes through everything the server

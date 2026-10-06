@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/proto"
-	"github.com/theclifmeister/termilator/internal/update"
-	"github.com/theclifmeister/termilator/internal/version"
+	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/update"
+	"github.com/theclifmeister/terminatr/internal/version"
 )
 
 const updateUsage = `usage: tm update [--check] [--yes] [--restart] [--json]`

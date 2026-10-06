@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/proto"
 )
 
 // TestSmokeCrashResume is M8's "Try it": kill -9 the server with a

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/theclifmeister/termilator/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/agent"
 )
 
 func TestTrustDir(t *testing.T) {

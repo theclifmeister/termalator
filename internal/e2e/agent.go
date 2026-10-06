@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/agent"
-	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/proto"
 )
 
 // Setenv adds a variable to the environment of every later tm command,

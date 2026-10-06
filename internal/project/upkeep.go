@@ -9,8 +9,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/caller"
-	"github.com/theclifmeister/termilator/internal/tasks"
+	"github.com/theclifmeister/terminatr/internal/caller"
+	"github.com/theclifmeister/terminatr/internal/tasks"
 )
 
 // Upkeep of the coordinator's context files (docs/SPEC.md §7.6).

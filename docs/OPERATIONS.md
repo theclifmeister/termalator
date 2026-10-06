@@ -9,18 +9,18 @@ On macOS 13+ or Linux with glibc 2.28+, on arm64 or x86_64.
 **Homebrew** (macOS and Linux):
 
 ```sh
-brew tap theclifmeister/terminatr https://github.com/theclifmeister/termilator
+brew tap theclifmeister/terminatr https://github.com/theclifmeister/terminatr
 brew trust --formula theclifmeister/terminatr/terminatr
-brew install terminatr
+brew install theclifmeister/terminatr/terminatr
 tm doctor
 ```
 
 The two-argument `brew tap` is needed because the formula lives in this repository (`Formula/terminatr.rb`), not in a `homebrew-terminatr` one. Newer Homebrew refuses to install from a tap it doesn't trust, hence `brew trust --formula` once after tapping. `brew upgrade terminatr` (or `tm update`, which suggests it) picks up new releases.
 
-**Direct download.** Release archives are on the [releases page](https://github.com/theclifmeister/termilator/releases). Each holds one static `tm` binary (plus this file, the README and the licence); `checksums.txt` lists their sha256. To install the latest into `~/.local/bin`:
+**Direct download.** Release archives are on the [releases page](https://github.com/theclifmeister/terminatr/releases). Each holds one static `tm` binary (plus this file, the README and the licence); `checksums.txt` lists their sha256. To install the latest into `~/.local/bin`:
 
 ```sh
-mkdir -p ~/.local/bin && curl -fsSL "https://github.com/theclifmeister/termilator/releases/latest/download/tm_$(uname -s | tr A-Z a-z)_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar -xz -C ~/.local/bin tm
+mkdir -p ~/.local/bin && curl -fsSL "https://github.com/theclifmeister/terminatr/releases/latest/download/tm_$(uname -s | tr A-Z a-z)_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar -xz -C ~/.local/bin tm
 tm doctor
 ```
 
@@ -148,7 +148,7 @@ On macOS, upgrade and restart from a terminal on the Mac, not over SSH: a server
 Terminatr was called Termilator up to v0.6.2 (`brew install termilator`, state in `~/.termilator`). Nothing moves such an install over; by hand, with the old `tm`:
 
 1. `tm server service uninstall` if you installed the login service, then `tm server stop --yes`.
-2. Homebrew: `brew uninstall termilator`, `brew untap theclifmeister/termilator`, then install Terminatr as above.
+2. Homebrew: `brew uninstall termilator`, `brew untap theclifmeister/termilator`, then tap, trust and install Terminatr as above (`brew tap theclifmeister/terminatr …`).
 3. `mv ~/.termilator ~/.terminatr`, and edit the paths that still name `~/.termilator` by hand: in `~/.terminatr/config.toml` and in the files under `~/.terminatr/projects/`.
 4. `git worktree repair` in each thread worktree (under `~/.terminatr/worktrees/`), and rename `TERMILATOR_*` variables to `TERMINATR_*`.
 5. `tm server start` (and `tm server service install` again if you use it).

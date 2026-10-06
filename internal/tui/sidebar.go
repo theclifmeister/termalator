@@ -12,13 +12,13 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 
-	"github.com/theclifmeister/termilator/internal/config"
-	"github.com/theclifmeister/termilator/internal/emu"
-	"github.com/theclifmeister/termilator/internal/project"
-	"github.com/theclifmeister/termilator/internal/proto"
-	"github.com/theclifmeister/termilator/internal/server"
-	"github.com/theclifmeister/termilator/internal/thread"
-	"github.com/theclifmeister/termilator/internal/view"
+	"github.com/theclifmeister/terminatr/internal/config"
+	"github.com/theclifmeister/terminatr/internal/emu"
+	"github.com/theclifmeister/terminatr/internal/project"
+	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/server"
+	"github.com/theclifmeister/terminatr/internal/thread"
+	"github.com/theclifmeister/terminatr/internal/view"
 )
 
 // The projects sidebar (docs/SPEC.md §4): a column on the left of every

@@ -28,7 +28,7 @@ cat <<RUBY
 # Written by scripts/release/formula.sh for each release; don't edit by hand.
 class Terminatr < Formula
   desc "Terminal workspace where coding agents work through a project's tasks"
-  homepage "https://github.com/theclifmeister/termilator"
+  homepage "https://github.com/theclifmeister/terminatr"
   version "$version"
   license "MIT"
 
@@ -39,22 +39,22 @@ class Terminatr < Formula
 
   on_macos do
     on_arm do
-      url "https://github.com/theclifmeister/termilator/releases/download/v#{version}/tm_darwin_arm64.tar.gz"
+      url "https://github.com/theclifmeister/terminatr/releases/download/v#{version}/tm_darwin_arm64.tar.gz"
       sha256 "$darwin_arm64"
     end
     on_intel do
-      url "https://github.com/theclifmeister/termilator/releases/download/v#{version}/tm_darwin_amd64.tar.gz"
+      url "https://github.com/theclifmeister/terminatr/releases/download/v#{version}/tm_darwin_amd64.tar.gz"
       sha256 "$darwin_amd64"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/theclifmeister/termilator/releases/download/v#{version}/tm_linux_arm64.tar.gz"
+      url "https://github.com/theclifmeister/terminatr/releases/download/v#{version}/tm_linux_arm64.tar.gz"
       sha256 "$linux_arm64"
     end
     on_intel do
-      url "https://github.com/theclifmeister/termilator/releases/download/v#{version}/tm_linux_amd64.tar.gz"
+      url "https://github.com/theclifmeister/terminatr/releases/download/v#{version}/tm_linux_amd64.tar.gz"
       sha256 "$linux_amd64"
     end
   end

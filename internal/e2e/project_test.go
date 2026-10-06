@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theclifmeister/termilator/internal/mdfile"
-	"github.com/theclifmeister/termilator/internal/project"
+	"github.com/theclifmeister/terminatr/internal/mdfile"
+	"github.com/theclifmeister/terminatr/internal/project"
 )
 
 // TestSmokeProjectOpenAndSwitch: tm project open starts a project's

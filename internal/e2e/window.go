@@ -8,9 +8,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/emu"
-	"github.com/theclifmeister/termilator/internal/pty"
-	"github.com/theclifmeister/termilator/internal/view"
+	"github.com/theclifmeister/terminatr/internal/emu"
+	"github.com/theclifmeister/terminatr/internal/pty"
+	"github.com/theclifmeister/terminatr/internal/view"
 )
 
 // Window is a virtual terminal window: a PTY running a command (`tm …`, or

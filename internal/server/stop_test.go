@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/proto"
 )
 
 // TestStopOlderProtocol: a server that claims an older protocol refuses

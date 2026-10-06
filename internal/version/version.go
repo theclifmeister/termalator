@@ -11,7 +11,7 @@ import (
 
 // Version and LibGhostty are overridden at build time by the Makefile:
 //
-//	go build -ldflags "-X github.com/theclifmeister/termilator/internal/version.Version=v0.1.0"
+//	go build -ldflags "-X github.com/theclifmeister/terminatr/internal/version.Version=v0.1.0"
 var (
 	Version    = "dev"
 	LibGhostty = "unknown" // the Ghostty commit libghostty-vt was built from

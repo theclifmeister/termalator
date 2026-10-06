@@ -11,12 +11,12 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theclifmeister/termilator/internal/proto"
-	"github.com/theclifmeister/termilator/internal/server"
-	"github.com/theclifmeister/termilator/internal/tasks"
-	"github.com/theclifmeister/termilator/internal/thread"
-	"github.com/theclifmeister/termilator/internal/ticker"
-	"github.com/theclifmeister/termilator/internal/view"
+	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/server"
+	"github.com/theclifmeister/terminatr/internal/tasks"
+	"github.com/theclifmeister/terminatr/internal/thread"
+	"github.com/theclifmeister/terminatr/internal/ticker"
+	"github.com/theclifmeister/terminatr/internal/view"
 )
 
 // sampleInfo is a thread with a task, steps, a PR and a report.

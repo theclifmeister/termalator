@@ -14,9 +14,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/proto"
-	"github.com/theclifmeister/termilator/internal/server"
-	"github.com/theclifmeister/termilator/internal/version"
+	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/server"
+	"github.com/theclifmeister/terminatr/internal/version"
 )
 
 const serverUsage = `usage: tm server run [--detached] | start | stop [--yes] [--force] | restart [--yes] | status [--json]

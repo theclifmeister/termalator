@@ -100,7 +100,7 @@ const (
 	DefaultAPI = "https://api.github.com/repos/theclifmeister/terminatr"
 	// DefaultWeb is the repository's web address, whose releases/latest
 	// redirects to the latest release's tag.
-	DefaultWeb = "https://github.com/theclifmeister/termilator"
+	DefaultWeb = "https://github.com/theclifmeister/terminatr"
 )
 
 // EnvAPI overrides DefaultAPI (tests point it at a local server); "off"

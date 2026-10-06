@@ -8,10 +8,10 @@ import (
 	"os"
 
 	// The Go parts of built-in agents register themselves.
-	_ "github.com/theclifmeister/termilator/internal/agent/claude"
-	"github.com/theclifmeister/termilator/internal/cli"
-	"github.com/theclifmeister/termilator/internal/emu"
-	"github.com/theclifmeister/termilator/internal/version"
+	_ "github.com/theclifmeister/terminatr/internal/agent/claude"
+	"github.com/theclifmeister/terminatr/internal/cli"
+	"github.com/theclifmeister/terminatr/internal/emu"
+	"github.com/theclifmeister/terminatr/internal/version"
 )
 
 func main() {

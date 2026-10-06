@@ -11,12 +11,12 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/theclifmeister/termilator/internal/project"
-	"github.com/theclifmeister/termilator/internal/proto"
-	"github.com/theclifmeister/termilator/internal/server"
-	"github.com/theclifmeister/termilator/internal/thread"
-	"github.com/theclifmeister/termilator/internal/update"
-	"github.com/theclifmeister/termilator/internal/worktree"
+	"github.com/theclifmeister/terminatr/internal/project"
+	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/server"
+	"github.com/theclifmeister/terminatr/internal/thread"
+	"github.com/theclifmeister/terminatr/internal/update"
+	"github.com/theclifmeister/terminatr/internal/worktree"
 )
 
 // testDeps is an isolated home with a short run dir, no server, and the

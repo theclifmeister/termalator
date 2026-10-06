@@ -3,7 +3,7 @@ package server
 import (
 	"strings"
 
-	"github.com/theclifmeister/termilator/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/agent"
 )
 
 // Variables that leak the launching terminal's identity into a session

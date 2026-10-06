@@ -4,8 +4,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/theclifmeister/termilator/internal/project"
-	"github.com/theclifmeister/termilator/internal/tasks"
+	"github.com/theclifmeister/terminatr/internal/project"
+	"github.com/theclifmeister/terminatr/internal/tasks"
 )
 
 // maxLabelTitle caps the title in a label, in runes.

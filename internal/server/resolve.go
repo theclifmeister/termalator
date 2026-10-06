@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/theclifmeister/termilator/internal/home"
+	"github.com/theclifmeister/terminatr/internal/home"
 )
 
 const homeEnv = home.Env

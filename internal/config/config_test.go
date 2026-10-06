@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theclifmeister/termilator/internal/home"
+	"github.com/theclifmeister/terminatr/internal/home"
 )
 
 func write(t *testing.T, body string) {

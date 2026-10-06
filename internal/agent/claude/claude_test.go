@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/theclifmeister/termilator/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/agent"
 )
 
 func load(t *testing.T) agent.Agent {

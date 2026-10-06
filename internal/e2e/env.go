@@ -35,7 +35,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/proto"
 )
 
 var (

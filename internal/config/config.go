@@ -20,7 +20,7 @@ import (
 	"sort"
 
 	"github.com/BurntSushi/toml"
-	"github.com/theclifmeister/termilator/internal/home"
+	"github.com/theclifmeister/terminatr/internal/home"
 )
 
 // Values of start_threads.

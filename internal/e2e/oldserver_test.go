@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/proto"
 )
 
 func TestSmokeReplaceOldServer(t *testing.T) {

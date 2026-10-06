@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theclifmeister/termilator/internal/proto"
-	"github.com/theclifmeister/termilator/internal/update"
+	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/update"
 )
 
 type updateRig struct {

@@ -7,8 +7,8 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 
-	"github.com/theclifmeister/termilator/internal/config"
-	"github.com/theclifmeister/termilator/internal/emu"
+	"github.com/theclifmeister/terminatr/internal/config"
+	"github.com/theclifmeister/terminatr/internal/emu"
 )
 
 // DefaultPrefixKey is Ctrl+B, as in tmux. Outer terminals send it as
