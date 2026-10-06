@@ -61,7 +61,7 @@ func TestModsFor(t *testing.T) {
 		t.Fatal("a plain agent got the mod")
 	}
 
-	s, a, runs, buf := modsServer(t, true, "2.1.288")
+	s, a, _, buf := modsServer(t, true, "2.1.288")
 	if s.modsFor(a, "s-1") || !strings.Contains(buf.String(), "claude 2.1.288 is older than 2.1.289") {
 		t.Fatalf("2.1.288: %q", buf.String())
 	}
