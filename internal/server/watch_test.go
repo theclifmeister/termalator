@@ -1,6 +1,7 @@
 package server
 
 import (
+	"os"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
@@ -68,6 +69,14 @@ func TestWatchOf(t *testing.T) {
 	}
 	if w.NeedsYou != 1 || w.Inbox != 1 || w.Queued != 2 || w.PR != "" {
 		t.Errorf("watch %+v", w)
+	}
+
+	// The ticker's PR, behind its base: said in the same words.
+	st := filepath.Join(t.TempDir(), "ticker.json")
+	os.WriteFile(st, []byte(`{"threads": {"`+p.Slug+`/`+rec.ID+`": {"pr": {"number": 12, "url": "https://github.com/o/r/pull/12",
+		"state": "OPEN", "checks": "fail", "failed": 2, "base": "main", "merge_state": "BEHIND"}}}}`), 0o600)
+	if w := watchOf(info, st); w.PR != "#12 open, 2 checks failed, behind main" || w.PRURL != "https://github.com/o/r/pull/12" {
+		t.Errorf("pr %q %q", w.PR, w.PRURL)
 	}
 
 	// Not a thread: the project's counts, no task.

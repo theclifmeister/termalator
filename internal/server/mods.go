@@ -31,6 +31,17 @@ func modsSetting() bool {
 	return err == nil && cfg.Mods
 }
 
+// envBand is set to "off" in a session with the mod when [mods] band is
+// false: the mod then draws no band, status entry or toast.
+const envBand = "TERMINATR_BAND"
+
+// bandSetting is [mods] band; a config.toml that doesn't load leaves it
+// on, as when unset.
+func bandSetting() bool {
+	cfg, err := config.Load()
+	return err != nil || cfg.ModsBand
+}
+
 // modsFor reports whether a session of a gets terminatr's mod, and logs
 // why not when the setting asks for it.
 func (s *Server) modsFor(a agent.Agent, id string) bool {

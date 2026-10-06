@@ -20,7 +20,7 @@ const ModsMinVersion = "2.1.289"
 // tests for `claude plugin test` (ModFiles). plugin.json and
 // hooks/hooks.json come from the manifest, rendered with .Mods.
 //
-//go:embed mod/hooks/*.ts mod/types/*.d.ts mod/tests/*.ts
+//go:embed mod/hooks/*.ts mod/hooks/*.tsx mod/types/*.d.ts mod/tests/*.ts mod/tests/*.tsx
 var mod embed.FS
 
 // pluginDir is where the manifest's launch.files put the plugin, inside

@@ -253,6 +253,9 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		return nil, proto.Errorf(proto.ErrInternal, "%v", err)
 	}
 	set := s.terminatrEnv(r)
+	if spec.Mods && !bandSetting() {
+		set[envBand] = "off"
+	}
 	for _, kv := range launch.Env {
 		k, v, _ := strings.Cut(kv, "=")
 		set[k] = v

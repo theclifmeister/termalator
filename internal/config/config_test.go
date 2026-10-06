@@ -212,19 +212,23 @@ func TestAllProjectsReleasedRemoved(t *testing.T) {
 	}
 }
 
-// TestMods: [mods] enabled is off unless set; its unknown keys are
-// listed, not errors.
+// TestMods: [mods] enabled is off unless set, band on unless set
+// false; its unknown keys are listed, not errors.
 func TestMods(t *testing.T) {
 	write(t, "")
-	if c, _ := Load(); c.Mods {
-		t.Fatal("mods on without a file")
+	if c, _ := Load(); c.Mods || !c.ModsBand {
+		t.Fatalf("without a file: mods %v, band %v", c.Mods, c.ModsBand)
 	}
-	write(t, "[mods]\nenabled = true\nband = true\n")
+	write(t, "[mods]\nenabled = true\npane = true\n")
 	c, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !c.Mods || strings.Join(c.Unknown, ",") != "mods.band" {
-		t.Fatalf("mods %v, unknown %v", c.Mods, c.Unknown)
+	if !c.Mods || !c.ModsBand || strings.Join(c.Unknown, ",") != "mods.pane" {
+		t.Fatalf("mods %v, band %v, unknown %v", c.Mods, c.ModsBand, c.Unknown)
+	}
+	write(t, "[mods]\nenabled = true\nband = false\n")
+	if c, err := Load(); err != nil || !c.Mods || c.ModsBand || len(c.Unknown) != 0 {
+		t.Fatalf("band = false: %v, %+v", err, c)
 	}
 }

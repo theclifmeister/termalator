@@ -133,7 +133,11 @@ type Config struct {
 	// Mods is [mods] enabled: agent sessions load terminatr's mod, where
 	// the agent has one and its version is new enough. Off by default
 	// while the mods API is early access.
-	Mods     bool
+	Mods bool
+	// ModsBand is [mods] band: with the mod loaded, it draws the band
+	// above the prompt, its status entry and the CI toast. On unless set
+	// false.
+	ModsBand bool
 	projects map[string]rawSafety
 	// defaults is the [defaults] table: the all-projects settings.
 	defaults rawSafety
@@ -172,18 +176,20 @@ func Load() (*Config, error) {
 			Icons string `toml:"icons"`
 		} `toml:"ui"`
 		Mods struct {
-			Enabled bool `toml:"enabled"`
+			Enabled bool  `toml:"enabled"`
+			Band    *bool `toml:"band"`
 		} `toml:"mods"`
 	}
 	md, err := toml.DecodeFile(path, &raw)
 	if errors.Is(err, fs.ErrNotExist) {
-		return &Config{Path: path}, nil
+		return &Config{Path: path, ModsBand: true}, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	c := &Config{Path: path, projects: raw.Projects, defaults: raw.Defaults, agent: raw.DefaultAgent,
-		Prefix: cmp.Or(raw.Keys.Prefix, raw.Keys.Detach), Icons: raw.UI.Icons, Mods: raw.Mods.Enabled}
+		Prefix: cmp.Or(raw.Keys.Prefix, raw.Keys.Detach), Icons: raw.UI.Icons, Mods: raw.Mods.Enabled,
+		ModsBand: raw.Mods.Band == nil || *raw.Mods.Band}
 	for _, k := range md.Undecoded() {
 		switch {
 		case len(k) >= 3 && k[0] == "projects", len(k) >= 2 && k[0] == "defaults":

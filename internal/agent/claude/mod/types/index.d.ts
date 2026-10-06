@@ -1,5 +1,6 @@
 // The terminatr mod's state contract: one line of `tm watch --json`
-// (proto.Watch, docs/SPEC.md §3.3), kept as the session's latest.
+// (proto.Watch, docs/SPEC.md §3.3), kept as the session's latest, and
+// whether the band and status entry show ([mods] band).
 
 export type TerminatrWatch = {
   session: {
@@ -29,6 +30,6 @@ export type TerminatrWatch = {
 
 declare module 'claude-code' {
   interface PluginState {
-    terminatr: { watch: TerminatrWatch | null }
+    terminatr: { watch: TerminatrWatch | null; band: boolean }
   }
 }

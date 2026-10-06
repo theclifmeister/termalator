@@ -27,7 +27,7 @@ test('session.start follows tm watch for the session', async ($, on) => {
   let argv: readonly string[] = []
   on('process.spawn', async function* (_$, e) {
     argv = e.argv
-    return { code: 0, signal: null }
+    return { value: { code: 0, signal: null } }
   })
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
 
@@ -41,7 +41,7 @@ test('outside a terminatr session it starts nothing', async ($, on) => {
   let spawned = false
   on('process.spawn', async function* () {
     spawned = true
-    return { code: 0, signal: null }
+    return { value: { code: 0, signal: null } }
   })
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
 
