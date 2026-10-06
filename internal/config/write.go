@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
@@ -420,4 +421,67 @@ func ClearProject(slug string, keys ...string) error {
 		}
 		return data, nil
 	})
+}
+
+// ErrProjectSet: config.toml already has settings for the new slug.
+var ErrProjectSet = errors.New("config.toml already has settings for that project")
+
+// RenameProject moves a project's settings, [projects.<from>] and any
+// table below it, to [projects.<to>] (tm project rename, docs/SPEC.md
+// §5.1). Only the header lines change: comments, order and the settings
+// themselves stay. ErrForm when the file sets them in a form the line
+// editor doesn't change (dotted keys, an inline table).
+func RenameProject(from, to string) error {
+	return edit(func(data []byte) ([]byte, error) {
+		if data == nil {
+			return nil, nil
+		}
+		return RenameTable(data, from, to)
+	})
+}
+
+// RenameTable returns data with the tables of project from renamed to
+// project to. A file without settings for from comes back as it was.
+func RenameTable(data []byte, from, to string) ([]byte, error) {
+	var before map[string]any
+	if _, err := toml.Decode(string(data), &before); err != nil {
+		return nil, fmt.Errorf("the settings can't be read: %w", err)
+	}
+	projects, _ := before["projects"].(map[string]any)
+	if _, ok := projects[to]; ok {
+		return nil, ErrProjectSet
+	}
+	if _, ok := projects[from]; !ok {
+		return data, nil
+	}
+	lines := strings.SplitAfter(string(data), "\n")
+	for i, l := range lines {
+		h, ok := header(l)
+		if !ok || len(h) < 2 || h[0] != "projects" || h[1] != from {
+			continue
+		}
+		m := headerRE.FindStringSubmatchIndex(strings.TrimRight(l, "\r\n"))
+		name := append([]string{"projects", to}, h[2:]...)
+		lines[i] = l[:m[2]] + strings.Join(name, ".") + l[m[3]:]
+	}
+	res := []byte(strings.Join(lines, ""))
+	var after map[string]any
+	if _, err := toml.Decode(string(res), &after); err != nil {
+		return nil, ErrForm
+	}
+	want := map[string]any{}
+	for k, v := range before {
+		want[k] = v
+	}
+	moved := map[string]any{}
+	for k, v := range projects {
+		moved[k] = v
+	}
+	moved[to] = moved[from]
+	delete(moved, from)
+	want["projects"] = moved
+	if !reflect.DeepEqual(after, want) {
+		return nil, ErrForm
+	}
+	return res, nil
 }

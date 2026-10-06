@@ -16,10 +16,11 @@ import (
 
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/server"
+	"github.com/theclifmeister/terminatr/internal/service"
 	"github.com/theclifmeister/terminatr/internal/version"
 )
 
-const serverUsage = `usage: tm server run [--detached] | start | stop [--yes] [--force] | restart [--yes] | status [--json]
+const serverUsage = `usage: tm server run [--detached] | start [--no-launchd] | stop [--yes] [--force] | restart [--yes] [--no-launchd] | status [--json]
        tm server service install|uninstall [--print]`
 
 // serverCmd implements `tm server …` (docs/SPEC.md §3.1).
@@ -35,10 +36,18 @@ func serverCmd(e *Env, args []string) int {
 	case "stop":
 		return serverStop(e, args[1:])
 	case "restart":
-		if code := serverStop(e, args[1:]); code != ExitOK {
+		var stop, start []string
+		for _, a := range args[1:] {
+			if a == "--no-launchd" || a == "-no-launchd" {
+				start = append(start, a)
+			} else {
+				stop = append(stop, a)
+			}
+		}
+		if code := serverStop(e, stop); code != ExitOK {
 			return code
 		}
-		return serverStart(e, nil)
+		return serverStart(e, start)
 	case "status":
 		return serverStatus(e, args[1:])
 	case "service":
@@ -51,8 +60,17 @@ func serverRun(e *Env, args []string) int {
 	fs := flag.NewFlagSet("server run", flag.ContinueOnError)
 	fs.SetOutput(e.Stderr)
 	detached := fs.Bool("detached", false, "detach from the terminal and log to the server log")
+	launchd := fs.Bool("launchd", false, "started by launchd (macOS): log to the server log")
+	launchFile := fs.String("launch-file", "", "with --launchd: the file holding the environment to run with")
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
+	}
+	if *launchFile != "" {
+		// Before the paths: the starting tm's environment says where
+		// they are.
+		if err := service.ApplyLaunchFile(*launchFile); err != nil {
+			return e.srvFail("server run", err)
+		}
 	}
 	p, err := server.ResolvePaths()
 	if err != nil {
@@ -60,7 +78,22 @@ func serverRun(e *Env, args []string) int {
 	}
 	logger := log.New(e.Stderr, "", log.LstdFlags|log.Lmicroseconds)
 	sigs := []os.Signal{syscall.SIGTERM, syscall.SIGINT}
-	if !*detached || !server.IsSessionLeader() {
+	if *launchd {
+		// launchd owns the process: its stdout and stderr go to
+		// logs/service.log, the server's log to the server log.
+		lf, err := server.OpenLog(p)
+		if err != nil {
+			return e.srvFail("server run", err)
+		}
+		defer lf.Close()
+		logger.SetOutput(lf)
+		hup := make(chan os.Signal, 1)
+		signal.Notify(hup, syscall.SIGHUP)
+		go func() {
+			for range hup {
+			}
+		}()
+	} else if !*detached || !server.IsSessionLeader() {
 		// Started by hand; a detached child of StartDetached logs it.
 		warnSSH(e.Stderr, runtime.GOOS, e.Getenv)
 	}
@@ -104,7 +137,10 @@ func serverRun(e *Env, args []string) int {
 }
 
 func serverStart(e *Env, args []string) int {
-	if len(args) > 0 {
+	fs := flag.NewFlagSet("server start", flag.ContinueOnError)
+	fs.SetOutput(e.Stderr)
+	direct := fs.Bool("no-launchd", false, "macOS: start the server from this session, not launchd's (no keychain over SSH)")
+	if err := fs.Parse(args); err != nil || fs.NArg() > 0 {
 		return e.srvUsage("server start", serverUsage)
 	}
 	c, p, err := connect(false)
@@ -116,7 +152,11 @@ func serverStart(e *Env, args []string) int {
 	if !errors.Is(err, server.ErrNotRunning) {
 		return e.srvFail("server start", err)
 	}
-	if err := server.StartDetached(p); err != nil {
+	start := server.StartDetached
+	if *direct {
+		start = server.StartChild
+	}
+	if err := start(p); err != nil {
 		return e.srvFail("server start", err)
 	}
 	c, err = server.Dial(p, proto.KindControl)
@@ -125,7 +165,9 @@ func serverStart(e *Env, args []string) int {
 	}
 	defer c.Close()
 	fmt.Fprintf(e.Stdout, "started (pid %d)\n", c.Server.PID)
-	warnSSH(e.Stderr, runtime.GOOS, e.Getenv)
+	if *direct || !service.Wanted(runtime.GOOS, e.Getenv) {
+		warnSSH(e.Stderr, runtime.GOOS, e.Getenv)
+	}
 	return ExitOK
 }
 

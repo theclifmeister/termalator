@@ -9,10 +9,20 @@ import (
 	"testing"
 )
 
-type fakeRunner struct{ calls []string }
+// fakeRunner records calls; a call starting with a key of fail fails.
+type fakeRunner struct {
+	calls []string
+	fail  map[string]bool
+}
 
 func (f *fakeRunner) run(name string, args ...string) error {
-	f.calls = append(f.calls, name+" "+strings.Join(args, " "))
+	call := name + " " + strings.Join(args, " ")
+	f.calls = append(f.calls, call)
+	for p := range f.fail {
+		if strings.HasPrefix(call, p) {
+			return errors.New("exit status 113")
+		}
+	}
 	return nil
 }
 
@@ -22,7 +32,7 @@ func config(t *testing.T, goos string) (Config, *fakeRunner) {
 	return Config{
 		GOOS: goos, UID: 501, UserHome: h, Bin: "/opt/tm dir/bin/tm",
 		Home: "/data/tm & co", LogDir: filepath.Join(h, ".terminatr", "logs"),
-		Path: "/usr/bin:/bin", Run: f.run,
+		RunDir: filepath.Join(h, "run"), Path: "/usr/bin:/bin", Run: f.run,
 	}, f
 }
 
@@ -44,8 +54,9 @@ func TestPlist(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"<string>dev.terminatr.server</string>",
-		"<string>/opt/tm dir/bin/tm</string>\n\t\t<string>server</string>\n\t\t<string>run</string>",
+		"<string>dev.terminatr.server.a09d65a9</string>",
+		"<string>/opt/tm dir/bin/tm</string>\n\t\t<string>server</string>\n\t\t<string>run</string>\n\t\t<string>--launchd</string>\n" +
+			"\t\t<string>--launch-file</string>\n\t\t<string>" + c.RunDir + "/launch.json</string>",
 		"<key>RunAtLoad</key>\n\t<true/>", "<key>KeepAlive</key>\n\t<false/>",
 		"<key>TERMINATR_HOME</key>\n\t\t<string>/data/tm &amp; co</string>",
 		"<key>PATH</key>\n\t\t<string>/usr/bin:/bin</string>",
@@ -55,7 +66,7 @@ func TestPlist(t *testing.T) {
 			t.Errorf("plist lacks %q:\n%s", want, data)
 		}
 	}
-	if p, _ := c.File(); !strings.HasSuffix(p, "Library/LaunchAgents/dev.terminatr.server.plist") {
+	if p, _ := c.File(); !strings.HasSuffix(p, "Library/LaunchAgents/dev.terminatr.server.a09d65a9.plist") {
 		t.Errorf("file %s", p)
 	}
 }
@@ -96,8 +107,8 @@ func TestSystemdQuote(t *testing.T) {
 func TestInstallUninstall(t *testing.T) {
 	for goos, want := range map[string][2][]string{
 		"darwin": {
-			{"launchctl bootout gui/501/dev.terminatr.server", "launchctl bootstrap gui/501 "},
-			{"launchctl bootout gui/501/dev.terminatr.server"},
+			{"launchctl bootout gui/501/dev.terminatr.server.a09d65a9", "launchctl bootstrap gui/501 "},
+			{"launchctl bootout gui/501/dev.terminatr.server.a09d65a9"},
 		},
 		"linux": {
 			{"systemctl --user daemon-reload", "systemctl --user enable --now terminatr.service"},

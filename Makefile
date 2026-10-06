@@ -37,7 +37,13 @@ ZIG_MIN      := 0.16.0
 # staticcheck, pinned; `make vet` runs it after go vet.
 STATICCHECK  ?= honnef.co/go/tools/cmd/staticcheck@v0.8.1
 
-BUILD       := $(abspath .build)
+# A linked worktree (a terminatr thread's) has no .build of its own: it
+# uses the main checkout's when that has one, instead of fetching and
+# building Ghostty again. make BUILD=/path overrides.
+MAIN_BUILD  := $(shell c=$$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) && \
+	[ "$$c" != "$$(git rev-parse --path-format=absolute --git-dir)" ] && \
+	[ -d "$${c%/.git}/.build" ] && echo "$${c%/.git}/.build")
+BUILD       := $(abspath $(if $(wildcard .build),.build,$(or $(MAIN_BUILD),.build)))
 
 # Zig. The pinned Ghostty commit builds with Zig 0.16 (build.zig.zon), and
 # Zig breaks its build API between minor releases, so a zig on PATH is used
@@ -59,6 +65,10 @@ endif
 GHOSTTY_SRC := $(BUILD)/ghostty-src
 GHOSTTY_OUT := $(BUILD)/ghostty-$(shell echo $(GHOSTTY_REV) | cut -c1-12)-$(GHOSTTY_CPU)$(if $(GHOSTTY_TARGET),-$(GHOSTTY_TARGET))
 STAMP       := $(GHOSTTY_OUT)/.built
+# READY: the build's pkg-config files name their prefix relative to
+# themselves (${pcfiledir}), so a moved or renamed checkout still links
+# its own library instead of the one at the path it was built at.
+READY       := $(GHOSTTY_OUT)/.relocatable
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X github.com/theclifmeister/terminatr/internal/version.Version=$(VERSION) \
@@ -79,7 +89,7 @@ export CGO_CFLAGS += -DTM_LIBGHOSTTY=$(GHOSTTY_OUT)
 
 all: build
 
-build: $(STAMP)
+build: $(READY)
 	$(GO) build -ldflags '$(LDFLAGS)' -o bin/tm ./cmd/tm
 
 # `make run` is the way to try terminatr: scripts/run.sh starts the server
@@ -88,11 +98,11 @@ build: $(STAMP)
 run: build
 	@TM=bin/tm ./scripts/run.sh $(RUN_ARGS)
 
-test: $(STAMP)
+test: $(READY)
 	$(GO) test -race ./...
 
 FUZZTIME ?= 5m
-fuzz: $(STAMP)
+fuzz: $(READY)
 	@set -e; for pkg in $$($(GO) list ./...); do \
 		for t in $$($(GO) test -list '^Fuzz' $$pkg | grep '^Fuzz' || true); do \
 			echo "== $$pkg $$t"; \
@@ -113,10 +123,10 @@ E2E_RACE ?=
 E2E_SHARD ?=
 E2E_GOFLAGS := $(if $(filter 1,$(E2E_RACE)),-race)
 
-e2e: $(STAMP)
+e2e: $(READY)
 	E2E=1 E2E_RACE=$(E2E_RACE) $(GO) test $(E2E_GOFLAGS) -count=1 ./internal/e2e $(E2E_FLAGS)
 
-e2e-smoke: $(STAMP)
+e2e-smoke: $(READY)
 	@run='^TestSmoke'; \
 	$(if $(E2E_SHARD),run=$$(GO=$(GO) scripts/e2e-shard.sh "$$run" $(E2E_SHARD)) || exit 1; echo "shard $(E2E_SHARD): -run '$$run'";) \
 	E2E=1 E2E_RACE=$(E2E_RACE) $(GO) test $(E2E_GOFLAGS) -count=1 -run "$$run" ./internal/e2e $(E2E_FLAGS)
@@ -126,14 +136,14 @@ e2e-smoke-race:
 
 # The real-Claude suite (docs/SPEC.md §16.4): build tag realclaude, the
 # claude on PATH, Haiku. On demand, and nightly where a login exists.
-test-claude: $(STAMP)
+test-claude: $(READY)
 	E2E=1 $(GO) test -tags realclaude -count=1 -timeout 30m -run '^TestReal' -v ./internal/e2e $(E2E_FLAGS)
 
-vet: $(STAMP)
+vet: $(READY)
 	$(GO) vet ./...
 	$(GO) run $(STATICCHECK) ./...
 
-ghostty: $(STAMP)
+ghostty: $(READY)
 
 $(STAMP): | toolchain $(if $(filter $(ZIG_LOCAL),$(ZIG)),$(ZIG_LOCAL))
 	@mkdir -p $(GHOSTTY_SRC)
@@ -148,6 +158,13 @@ $(STAMP): | toolchain $(if $(filter $(ZIG_LOCAL),$(ZIG)),$(ZIG_LOCAL))
 		--prefix $(GHOSTTY_OUT)
 	@test -f $(GHOSTTY_OUT)/share/pkgconfig/libghostty-vt-static.pc || \
 		{ echo "libghostty-vt build produced no pkg-config file" >&2; exit 1; }
+	@touch $@
+
+$(READY): $(STAMP)
+	@for pc in $(GHOSTTY_OUT)/share/pkgconfig/*.pc; do \
+		sed 's|^prefix=.*|prefix=$${pcfiledir}/../..|' "$$pc" > "$$pc.tmp" && mv "$$pc.tmp" "$$pc" || \
+		{ echo "can't rewrite $$pc: run make once where $(BUILD) is writable" >&2; exit 1; }; \
+	done
 	@touch $@
 
 $(ZIG_LOCAL):

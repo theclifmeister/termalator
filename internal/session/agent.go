@@ -154,6 +154,7 @@ type agentRT struct {
 	promptGen  string    // tells this agent's prompt ids from an earlier one's
 	heldSince  time.Time // the head prompt has been held while idle since
 	heldWhy    string
+	stallAt    time.Time // the queued-at of the head prompt whose stall was logged
 	lastState  agent.Merged
 	lastSID    string
 	lastTodos  []agent.Todo
@@ -687,7 +688,8 @@ func (s *Session) SetPromptToken(token string) {
 // drives the agent from elsewhere) is resolved, so it can't hold the
 // queue forever: through the channel when it allows that, else dropped.
 func (s *Session) deliverPrompts(rt *agentRT, now time.Time) {
-	idle := rt.tr.State().State == agent.StateIdle
+	st := rt.tr.State()
+	idle := st.State == agent.StateIdle
 	rt.mu.Lock()
 	if len(rt.prompts) == 0 {
 		rt.heldSince, rt.heldWhy = time.Time{}, ""
@@ -713,7 +715,15 @@ func (s *Session) deliverPrompts(rt *agentRT, now time.Time) {
 		rt.heldSince, rt.heldWhy = time.Time{}, ""
 	}
 	if !idle {
+		head := rt.prompts[0].at
+		stalled := st.State == agent.StateWorking && now.Sub(head) >= promptStall && !rt.stallAt.Equal(head)
+		if stalled {
+			rt.stallAt = head
+		}
 		rt.mu.Unlock()
+		if stalled {
+			s.logStall(rt, st, now.Sub(head))
+		}
 		return
 	}
 	if why != "" {
@@ -755,6 +765,24 @@ func (s *Session) deliverPrompts(rt *agentRT, now time.Time) {
 		time.Sleep(pasteEnterDelay)
 		s.Input([]byte("\r"))
 	}()
+}
+
+// promptStall is how long a queued prompt may wait for a working agent
+// before the session logs it, once per prompt (T59: a status file left
+// busy by a slash command once held a nudge for minutes). A variable for
+// tests.
+var promptStall = time.Minute
+
+// logStall logs a queued prompt waiting for a working agent: the sources
+// of the state and the last hook event; tm agent explain shows the rest.
+func (s *Session) logStall(rt *agentRT, st agent.Merged, waited time.Duration) {
+	last := "no hook event yet"
+	if ev := rt.tr.Explain().Events; len(ev) > 0 {
+		e := ev[len(ev)-1]
+		last = fmt.Sprintf("last hook event %s at %s", e.Event, e.At.Format(time.TimeOnly))
+	}
+	s.cfg.Logf("session %s: queued prompt waiting %s: agent %s (%s), %s; see tm agent explain %s",
+		s.cfg.ID, waited.Round(time.Second), st.State, st.Sources, last, s.cfg.ID)
 }
 
 func (rt *agentRT) promptHold() time.Duration {

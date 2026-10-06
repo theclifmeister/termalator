@@ -52,25 +52,56 @@ type settingsList struct {
 }
 
 func (l *settingsList) key(m *dash, k tea.KeyPressMsg) (tea.Cmd, bool) {
+	var run func(m *dash) tea.Cmd
+	if l.sel < len(l.rows) {
+		r := l.rows[l.sel]
+		switch k.String() {
+		case "enter", "space", " ":
+			if r.change != nil {
+				run = r.change
+			}
+		case "+", "-":
+			if r.adjust != nil {
+				d := map[bool]int{true: -1, false: 1}[k.String() == "-"]
+				run = func(m *dash) tea.Cmd { return r.adjust(m, d) }
+			}
+		case "x":
+			if r.unset != nil {
+				run = r.unset
+			}
+		}
+	}
 	switch k.String() {
 	case "up", "k", "down", "j", "pgup", "pgdown":
 		l.sel = moveSel(l.sel, scrollKeys[k.String()], len(l.rows))
-	case "enter", "space", " ":
-		if l.sel < len(l.rows) && l.rows[l.sel].change != nil && !m.busy {
-			return l.rows[l.sel].change(m), true
+	case "enter", "space", " ", "+", "-", "x":
+		if run == nil {
+			break
 		}
-	case "+", "-":
-		if l.sel < len(l.rows) && l.rows[l.sel].adjust != nil && !m.busy {
-			return l.rows[l.sel].adjust(m, map[bool]int{true: -1, false: 1}[k.String() == "-"]), true
+		if m.busy {
+			// A save is in flight: the key waits its turn, on the row it
+			// was pressed on, and runs on top of the saved value.
+			m.queued = append(m.queued, run)
+			return nil, true
 		}
-	case "x":
-		if l.sel < len(l.rows) && l.rows[l.sel].unset != nil && !m.busy {
-			return l.rows[l.sel].unset(m), true
-		}
+		return run(m), true
 	default:
 		return nil, false
 	}
 	return nil, true
+}
+
+// runQueued runs the next key that waited for a save, if any: nil when
+// none did. The rest stay queued until its save is done.
+func (m *dash) runQueued() tea.Cmd {
+	for len(m.queued) > 0 {
+		run := m.queued[0]
+		m.queued = m.queued[1:]
+		if cmd := run(m); cmd != nil {
+			return cmd
+		}
+	}
+	return nil
 }
 
 // lines draws the list w cells wide; sel is the selected row's last
