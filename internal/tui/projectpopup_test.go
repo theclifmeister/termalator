@@ -1061,7 +1061,7 @@ func TestListsPage(t *testing.T) {
 	src, m := popupData(t)
 	src.data.Projects[0].Items = nil
 	for i := range 12 {
-		src.data.Projects[0].Items = append(src.data.Projects[0].Items, project.Item{ID: fmt.Sprint(i), Kind: "report", Summary: "item"})
+		src.data.Projects[0].Items = append(src.data.Projects[0].Items, project.Item{ID: fmt.Sprint(i), Kind: "report", Subject: fmt.Sprint("t-", i), Summary: "item"})
 	}
 	m.setData(src.Load())
 	keyPress(m, "i")
