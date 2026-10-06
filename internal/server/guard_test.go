@@ -25,7 +25,7 @@ func TestGuardRulesFor(t *testing.T) {
 	if !g.On || !slices.Equal(g.Rules, []string{"force-push", "push-default", "worktree-only", "delete-branch", "merge", "credentials"}) {
 		t.Fatalf("thread %+v", g)
 	}
-	if g.Writable[0] != wt || !slices.Contains(g.Protected, "main") || len(g.Secrets) == 0 {
+	if g.Writable[0] != wt || g.Cwd != wt || !slices.Contains(g.Protected, "main") || len(g.Secrets) == 0 {
 		t.Errorf("thread %+v", g)
 	}
 	coord := SessionRecord{ID: "s-1", Role: proto.RoleCoordinator, Project: p.Slug, Cwd: p.Dir}

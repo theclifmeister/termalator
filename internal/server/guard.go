@@ -35,13 +35,18 @@ type GuardRules struct {
 	Role string `json:"role,omitempty"`
 	// Rules are the config.GuardRules ids in force.
 	Rules []string `json:"rules,omitempty"`
-	// Home is the user's home directory, for ~ in paths and commands.
+	// Home is the user's home directory, for ~ in paths and commands;
+	// Cwd the folder the session started in, for relative paths.
 	Home string `json:"home,omitempty"`
+	Cwd  string `json:"cwd,omitempty"`
 	// Writable are the folders the file tools may write in under
 	// worktree-only: the thread's worktree first, then the temporary
 	// folders and Claude's own (plans, memory). Each as given and
 	// with its symlinks resolved.
 	Writable []string `json:"writable,omitempty"`
+	// Worktrees is tm's worktrees folder: under delete-branch, no rm -r
+	// takes it, a project's folder in it or a worktree.
+	Worktrees string `json:"worktrees,omitempty"`
 	// Protected are the branches no push may target: the repos' default
 	// branches, main and master.
 	Protected []string `json:"protected,omitempty"`
@@ -94,7 +99,10 @@ func (s *Server) guardRulesFor(r SessionRecord) GuardRules {
 		return GuardRules{}
 	}
 	home, _ := os.UserHomeDir()
-	g := GuardRules{On: true, Role: r.Role, Home: home}
+	g := GuardRules{On: true, Role: r.Role, Home: home, Cwd: r.Cwd}
+	if s.opts.Paths.Home != "" {
+		g.Worktrees = realPath(filepath.Join(s.opts.Paths.Home, "worktrees"))
+	}
 	for _, id := range config.GuardRules {
 		if slices.Contains(set.GuardOff, id) {
 			continue
