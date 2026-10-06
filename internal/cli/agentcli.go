@@ -243,6 +243,9 @@ func printExplain(e *Env, r server.ExplainResult) {
 	if r.StatusErr != "" {
 		note = "  (not used: " + r.StatusErr + ")"
 	}
+	if r.StatusDoubt != "" {
+		note = "  (not believed: " + r.StatusDoubt + ")"
+	}
 	src("status file", r.StatusFile, note)
 	src("hooks", r.Hook, "")
 	src("hook edge", r.HookEdge, "")

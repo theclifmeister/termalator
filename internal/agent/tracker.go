@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -13,7 +14,9 @@ import (
 // the process exit. It is safe for concurrent use.
 //
 // The precedence is fixed: exit > status file > hooks > JSONL tail >
-// screen. A visible blocker on screen overrides any non-blocked state,
+// screen. A working status file that no turn explains (the hooks
+// say idle and nothing has started since) yields to the hooks after
+// statusUnconfirmed. A visible blocker on screen overrides any non-blocked state,
 // background counters turn idle into working, and so does a kickoff prompt
 // the agent hasn't started on yet (AwaitKickoff).
 type Tracker struct {
@@ -21,10 +24,11 @@ type Tracker struct {
 	now func() time.Time
 
 	exit     *Signal
-	status   *Signal // last good status-file reading; nil when invalid
-	statusEr string  // why the status file is not used, for explain
-	hook     *Signal // last level (non-transient) hook signal
-	edge     *Signal // last transient hook signal
+	status   *Signal   // last good status-file reading; nil when invalid
+	statusWk time.Time // when the status file's current run of working began
+	statusEr string    // why the status file is not used, for explain
+	hook     *Signal   // last level (non-transient) hook signal
+	edge     *Signal   // last transient hook signal
 	tail     *Signal
 	screen   screenObs
 	seq      map[string]uint64
@@ -70,6 +74,13 @@ const maxEvents = 30
 // statusLag is how long a hook newer than the status file may stand in
 // for it. Claude updates its file within ~100 ms of the hook.
 const statusLag = time.Second
+
+// statusUnconfirmed is how long the status file's working may stand
+// against an idle hook with no sign of a new turn (no UserPromptSubmit,
+// no tool call since): Claude marks its file busy for a slash command
+// such as /remote-control, which runs no turn and fires no Stop, and
+// may leave it so (docs/SPEC.md §8.4 rule 2).
+const statusUnconfirmed = 5 * time.Second
 
 // Screen debounce (docs/SPEC.md §8.4 rule 6): leaving working for idle on
 // screen evidence alone needs this many evaluations in a row, or this long.
@@ -225,6 +236,9 @@ func (t *Tracker) Status(r *StatusReading, written time.Time, err error) (sidCha
 	if s.At.IsZero() {
 		s.At = t.now()
 	}
+	if s.State == StateWorking && (t.status == nil || t.status.State != StateWorking) {
+		t.statusWk = s.At
+	}
 	t.status, t.statusEr = &s, ""
 	t.sawState(s.State, false)
 	if s.AgentSID != "" && s.AgentSID != t.agentSID && !t.sidAt.After(s.At) {
@@ -338,6 +352,10 @@ func (t *Tracker) merge() Merged {
 		// up, or for statusLag at most.
 		m.State, m.Reason = t.hook.State, t.hook.Reason
 		used = append(used, "hooks")
+	case t.statusDoubt(t.now()) != "":
+		// Rule 2a: a working status file no turn explains.
+		m.State, m.Reason = t.hook.State, t.hook.Reason
+		used = append(used, "hooks")
 	case t.status != nil:
 		// Rule 2: the status file is the primary level signal.
 		m.State, m.Reason = t.status.State, t.status.Reason
@@ -409,6 +427,29 @@ func (t *Tracker) merge() Merged {
 	return m
 }
 
+// statusDoubt says why the status file's working is not believed, or
+// "": the last hook level signal says idle, no turn has started since
+// (a UserPromptSubmit would have replaced it, a tool call shows as a
+// newer edge), and the file has said working for statusUnconfirmed
+// after that idle hook. Counters still turn the result into working.
+func (t *Tracker) statusDoubt(now time.Time) string {
+	if t.status == nil || t.status.State != StateWorking || t.hook == nil || t.hook.State != StateIdle {
+		return ""
+	}
+	if t.edge != nil && t.edge.At.After(t.hook.At) {
+		return ""
+	}
+	since := t.statusWk
+	if t.hook.At.After(since) {
+		since = t.hook.At
+	}
+	if now.Sub(since) < statusUnconfirmed {
+		return ""
+	}
+	return fmt.Sprintf("status file says working since %s, but no turn started after the idle hook at %s",
+		t.statusWk.Format(time.TimeOnly), t.hook.At.Format(time.TimeOnly))
+}
+
 func (t *Tracker) running() int {
 	n := 0
 	for _, m := range t.counters {
@@ -439,21 +480,24 @@ func stateText(s State, reason string) string {
 // Explanation is what `tm agent explain` prints: the last signal of every
 // source, the screen rules that matched, and the arbitration result.
 type Explanation struct {
-	Result     Merged            `json:"result"`
-	Exit       *SourceView       `json:"exit,omitempty"`
-	StatusFile *SourceView       `json:"status_file,omitempty"`
-	StatusErr  string            `json:"status_file_error,omitempty"`
-	Hook       *SourceView       `json:"hook,omitempty"`
-	HookEdge   *SourceView       `json:"hook_transient,omitempty"`
-	Tail       *SourceView       `json:"jsonl_tail,omitempty"`
-	Screen     *SourceView       `json:"screen,omitempty"`
-	ScreenLast *SourceView       `json:"screen_last,omitempty"` // before the debounce
-	Matches    []string          `json:"screen_matches,omitempty"`
-	Counters   map[string]int    `json:"counters,omitempty"`
-	AgentSID   string            `json:"agent_session_id,omitempty"`
-	Todos      []Todo            `json:"todos,omitempty"`
-	Events     []EventRecord     `json:"events,omitempty"`
-	Extra      map[string]string `json:"extra,omitempty"`
+	Result     Merged      `json:"result"`
+	Exit       *SourceView `json:"exit,omitempty"`
+	StatusFile *SourceView `json:"status_file,omitempty"`
+	StatusErr  string      `json:"status_file_error,omitempty"`
+	// StatusDoubt says why a working status file is not believed
+	// (§8.4 rule 2).
+	StatusDoubt string            `json:"status_file_doubt,omitempty"`
+	Hook        *SourceView       `json:"hook,omitempty"`
+	HookEdge    *SourceView       `json:"hook_transient,omitempty"`
+	Tail        *SourceView       `json:"jsonl_tail,omitempty"`
+	Screen      *SourceView       `json:"screen,omitempty"`
+	ScreenLast  *SourceView       `json:"screen_last,omitempty"` // before the debounce
+	Matches     []string          `json:"screen_matches,omitempty"`
+	Counters    map[string]int    `json:"counters,omitempty"`
+	AgentSID    string            `json:"agent_session_id,omitempty"`
+	Todos       []Todo            `json:"todos,omitempty"`
+	Events      []EventRecord     `json:"events,omitempty"`
+	Extra       map[string]string `json:"extra,omitempty"`
 }
 
 // SourceView is one source's last signal.
@@ -476,17 +520,18 @@ func (t *Tracker) Explain() Explanation {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	e := Explanation{
-		Result:     t.merge(),
-		Exit:       view(t.exit),
-		StatusFile: view(t.status),
-		StatusErr:  t.statusEr,
-		Hook:       view(t.hook),
-		HookEdge:   view(t.edge),
-		Tail:       view(t.tail),
-		Matches:    append([]string{}, t.screen.matches...),
-		AgentSID:   t.agentSID,
-		Todos:      append([]Todo{}, t.todos...),
-		Events:     append([]EventRecord{}, t.events...),
+		Result:      t.merge(),
+		Exit:        view(t.exit),
+		StatusFile:  view(t.status),
+		StatusErr:   t.statusEr,
+		StatusDoubt: t.statusDoubt(t.now()),
+		Hook:        view(t.hook),
+		HookEdge:    view(t.edge),
+		Tail:        view(t.tail),
+		Matches:     append([]string{}, t.screen.matches...),
+		AgentSID:    t.agentSID,
+		Todos:       append([]Todo{}, t.todos...),
+		Events:      append([]EventRecord{}, t.events...),
 	}
 	if s := t.screen.stable; s != nil {
 		e.Screen = &SourceView{State: s.State, Reason: s.Reason, Rule: s.Rule, At: t.screen.stableAt}
