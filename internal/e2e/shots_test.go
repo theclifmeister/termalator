@@ -64,6 +64,18 @@ func (s *shooter) soft(text string) bool {
 	return ok
 }
 
+// home closes whatever is open and goes back to the dashboard, so one
+// section's miss doesn't spill into the next.
+func (s *shooter) home() {
+	for range 3 {
+		s.w.Key(keyEsc)
+		time.Sleep(100 * time.Millisecond)
+	}
+	s.w.Prefix("d")
+	time.Sleep(500 * time.Millisecond)
+	s.soft("SESSIONS")
+}
+
 func (s *shooter) esc() {
 	s.w.Key(keyEsc)
 	time.Sleep(150 * time.Millisecond)
@@ -97,12 +109,17 @@ func (s *shooter) clickSoft(text string, from int) bool {
 	return true
 }
 
-// downTo presses down until the screen shows text, then clicks it.
+// downTo presses down until the screen shows text, then clicks it
+// twice: a click selects a setting, the second changes it.
 func (s *shooter) downTo(text string) bool {
 	for i := 0; i < 40 && !strings.Contains(s.w.Screen(), text); i++ {
 		s.w.Key(keyDown)
 		time.Sleep(60 * time.Millisecond)
 	}
+	if !s.clickSoft(text, 0) {
+		return false
+	}
+	time.Sleep(150 * time.Millisecond)
 	return s.clickSoft(text, 0)
 }
 
@@ -163,6 +180,9 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nFixed the login r
 	time.Sleep(2 * time.Second)
 
 	for _, sz := range shotSizes {
+		if only := os.Getenv("TM_SHOTS_SIZES"); only != "" && !strings.Contains(only, sz.name) {
+			continue
+		}
 		shootSize(t, env, dir, sz)
 	}
 }
@@ -178,7 +198,7 @@ func shootSize(t *testing.T, env *Env, dir string, sz shotSize) {
 	w := env.Window(sz.cols, sz.rows, "--own")
 	s := &shooter{t: t, dir: dir, size: sz.name, w: w}
 	s.soft("SESSIONS")
-	s.soft("t-0001")
+	s.soft("T1 Fix the login")
 	s.shot("dashboard")
 	// The list's rows, one by one, for the details panel / footer.
 	w.Key(keyDown)
@@ -210,6 +230,7 @@ func shootSize(t *testing.T, env *Env, dir string, sz shotSize) {
 		s.esc()
 	}
 
+	s.home()
 	// The project popup, every tab.
 	w.Type("a")
 	s.soft("1 Overview")
@@ -244,6 +265,9 @@ func shootSize(t *testing.T, env *Env, dir string, sz shotSize) {
 		}
 	}
 	// Tasks tab: T3 (blocked) first, then T4 (review), T1, T5, T2.
+	s.home()
+	w.Type("a")
+	s.soft("1 Overview")
 	w.Type("3")
 	s.soft("T4")
 	w.Key(keyDown)
@@ -279,9 +303,10 @@ func shootSize(t *testing.T, env *Env, dir string, sz shotSize) {
 	s.esc()
 	s.esc()
 
+	s.home()
 	// Task list, inbox, switcher, new project.
 	w.Type("t")
-	s.soft("demo tasks")
+	s.soft("Tasks · demo")
 	s.shot("tasks")
 	w.Key(Enter)
 	time.Sleep(300 * time.Millisecond)
@@ -289,7 +314,7 @@ func shootSize(t *testing.T, env *Env, dir string, sz shotSize) {
 	s.esc()
 	s.esc()
 	w.Type("i")
-	s.soft("demo inbox")
+	s.soft("Inbox · demo")
 	s.shot("inbox")
 	s.esc()
 	w.Type("p")
@@ -301,6 +326,7 @@ func shootSize(t *testing.T, env *Env, dir string, sz shotSize) {
 	s.shot("input-new-project")
 	s.esc()
 
+	s.home()
 	// Settings, both tabs, and their dialogs.
 	w.Type(",")
 	time.Sleep(300 * time.Millisecond)
@@ -323,6 +349,7 @@ func shootSize(t *testing.T, env *Env, dir string, sz shotSize) {
 	s.shot("settings-all-projects-end")
 	s.esc()
 
+	s.home()
 	// Adopt an agent session of the user's own.
 	if x, y := s.at(ownAgent+" ", 1); y >= 0 {
 		w.Click(x, y)
@@ -334,6 +361,7 @@ func shootSize(t *testing.T, env *Env, dir string, sz shotSize) {
 		s.esc()
 	}
 
+	s.home()
 	// Focus areas: the details panel, the sidebar; the slim strip.
 	w.Key(emu.Key{Special: emu.KeyTab})
 	time.Sleep(200 * time.Millisecond)

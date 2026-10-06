@@ -81,7 +81,7 @@ var asciiIcons = iconSet{
 	folder: "+", folderOpen: "+",
 	mid: "|-", end: "`-",
 	hint: "?", current: ">", remote: "@", paused: "=",
-	working: "*", blocked: "!", idle: "o", starting: "~", running: "*", review: "#", done: "v", other: "-", none: ".",
+	working: "*", blocked: "!", idle: "o", starting: "~", running: ":", review: "#", done: "v", other: "-", none: ".",
 	todoDone: "x", todoNow: "~", todoOpen: "o",
 	barOn: "#", barOff: "-",
 }
