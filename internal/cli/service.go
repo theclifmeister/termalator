@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 
-	"github.com/theclifmeister/terminatr/internal/home"
 	"github.com/theclifmeister/terminatr/internal/server"
 	"github.com/theclifmeister/terminatr/internal/service"
 )
@@ -19,29 +17,13 @@ const serviceUsage = `usage: tm server service install|uninstall [--print]`
 var serviceRun func(name string, args ...string) error
 
 func serviceConfig(e *Env) (service.Config, error) {
-	bin, err := os.Executable()
-	if err != nil {
-		return service.Config{}, err
-	}
-	if r, err := filepath.EvalSymlinks(bin); err == nil {
-		bin = r
-	}
-	userHome, err := os.UserHomeDir()
-	if err != nil {
-		return service.Config{}, err
-	}
 	p, err := server.ResolvePaths()
 	if err != nil {
 		return service.Config{}, err
 	}
-	c := service.Config{
-		GOOS: runtime.GOOS, UID: os.Getuid(), UserHome: userHome, Bin: bin,
-		LogDir: filepath.Dir(p.Log), Path: e.Getenv("PATH"), Run: serviceRun,
-	}
-	if e.Getenv(home.Env) != "" {
-		c.Home = p.Home
-	}
-	return c, nil
+	c, err := service.Current(e.Getenv, os.Environ(), p.Home, p.RunDir, filepath.Dir(p.Log))
+	c.Run = serviceRun
+	return c, err
 }
 
 // serverService implements `tm server service install|uninstall`

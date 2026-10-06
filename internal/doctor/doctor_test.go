@@ -364,7 +364,7 @@ func TestKeychain(t *testing.T) {
 		Detail: "the server runs in a Background session, not the desktop's (Aqua)"}
 	cs := keychainCheck(d, bad, nil)
 	if len(cs) != 1 || cs[0].Status != Warn || !strings.Contains(cs[0].Detail, "Background") ||
-		!strings.Contains(cs[0].Detail, "not over SSH") || cs[0].Fix == nil {
+		!strings.Contains(cs[0].Detail, "tm server restart") || cs[0].Fix == nil {
 		t.Fatalf("unreachable, doctor on the Mac: %+v", cs)
 	}
 	if cs[0].Fix.Apply(); !restarted {
@@ -380,6 +380,12 @@ func TestKeychain(t *testing.T) {
 		if cs := keychainCheck(d, bad, nil); len(cs) != 1 || cs[0].Fix != nil {
 			t.Fatalf("doctor in %+v: %+v", l, cs)
 		}
+	}
+	// Unless the restart goes through launchd's GUI domain (macOS),
+	// which starts it in the desktop's session from anywhere.
+	d.Launchd = func() bool { return true }
+	if cs := keychainCheck(d, bad, nil); len(cs) != 1 || cs[0].Fix == nil || !strings.Contains(cs[0].Fix.Desc, "launchd") {
+		t.Fatalf("doctor over SSH, launchd restart: %+v", cs)
 	}
 }
 
