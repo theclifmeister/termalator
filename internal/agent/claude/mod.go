@@ -11,7 +11,9 @@ import (
 
 // ModsMinVersion is the Claude Code build the mod was tested on
 // (docs/SPEC.md §8.6, Mods). The mods API is early access, so an older
-// build gets the command hooks alone.
+// build gets the command hooks alone. CI's claude-mod job pins the
+// Claude Code it checks the mod with (CLAUDE_CODE_VERSION in ci.yml):
+// bump the two together.
 const ModsMinVersion = "2.1.289"
 
 // mod is terminatr's mod: the hooks module, its type contract, and its

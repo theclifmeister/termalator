@@ -89,6 +89,61 @@ jobs:
           path: ${{ runner.temp }}/e2e-artifacts
           if-no-files-found: ignore
 
+  # terminatr's mod for Claude (docs/SPEC.md §8.6, Mods): claude plugin
+  # validate and claude plugin test on the plugin exactly as a session
+  # gets it. A pinned Claude Code, no login, no secrets; both commands
+  # work offline. Bump the pin together with ModsMinVersion
+  # (internal/agent/claude/mod.go). On every push to main, and on PRs
+  # that touch the mod, the Claude adapter or this workflow; the job
+  # always runs and skips its steps otherwise, so the check never blocks
+  # a merge by being skipped.
+  claude-mod:
+    runs-on: ubuntu-latest
+    env:
+      CLAUDE_CODE_VERSION: 2.1.291
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Changed files
+        id: changed
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(git diff --name-only "origin/$BASE...HEAD")
+          echo "$files"
+          if echo "$files" | grep -qE '^(internal/agent/claude/|internal/agent/manifests/claude\.toml$|\.github/workflows/ci\.yml$)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing of the mod changed: skipping."
+          fi
+
+      - uses: actions/setup-go@v7
+        if: steps.changed.outputs.run == 'true'
+        with:
+          go-version-file: go.mod
+
+      # npm comes with the runner's Node.
+      - name: Install Claude Code
+        if: steps.changed.outputs.run == 'true'
+        run: |
+          npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+          claude --version
+
+      - name: claude plugin validate / test
+        if: steps.changed.outputs.run == 'true'
+        run: go test -count=1 -run '^TestModPlugin$' -v ./internal/agent/claude
+        env:
+          TERMINATR_CLAUDE_PLUGIN_CHECK: "1"
+
   # The release build (.goreleaser.yaml) as a snapshot: every target
   # cross-compiled with zig cc and archived, nothing tagged or uploaded.
   # macOS, like the release itself: darwin targets need the macOS SDK.
