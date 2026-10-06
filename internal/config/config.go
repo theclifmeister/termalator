@@ -3,7 +3,8 @@
 // under [projects.<slug>], the all-projects ones under [defaults] that a
 // project follows for every key it doesn't set, the default agent, and
 // the TUI's prefix key ([keys] prefix) and icon set ([ui] icons), whose
-// values the TUI checks.
+// values the TUI checks, and whether sessions load terminatr's mod
+// ([mods] enabled, docs/SPEC.md §8.6).
 //
 // Changing safety settings is a human action: tm writes this file only
 // from the TUI's settings popups, on the human's keypress (write.go). It
@@ -125,10 +126,14 @@ type Config struct {
 	// Prefix is [keys] prefix, or the older [keys] detach that named the
 	// same key; Icons is [ui] icons. "" when unset.
 	Prefix, Icons string
-	// Unknown are the keys under [keys] and [ui] that tm doesn't know
+	// Unknown are the keys under [keys], [ui] and [mods] that tm doesn't know
 	// (e.g. "ui.icon"), sorted. tm doctor reports them; unlike a
 	// project's, they don't fail Load, so a typo there never stops tm.
-	Unknown  []string
+	Unknown []string
+	// Mods is [mods] enabled: agent sessions load terminatr's mod, where
+	// the agent has one and its version is new enough. Off by default
+	// while the mods API is early access.
+	Mods     bool
 	projects map[string]rawSafety
 	// defaults is the [defaults] table: the all-projects settings.
 	defaults rawSafety
@@ -147,7 +152,7 @@ func Path() (string, error) {
 // Load reads config.toml. A missing file gives the defaults. Unknown keys
 // inside a [projects.<slug>] or the [defaults] table are errors, so a
 // typo can't silently leave a safety setting at its default; those under
-// [keys] and [ui] are listed in Unknown. With such a safety error, the
+// [keys], [ui] and [mods] are listed in Unknown. With such a safety error, the
 // Config is returned too, for its Prefix and Icons: a file that doesn't
 // parse gives none.
 func Load() (*Config, error) {
@@ -166,6 +171,9 @@ func Load() (*Config, error) {
 		UI struct {
 			Icons string `toml:"icons"`
 		} `toml:"ui"`
+		Mods struct {
+			Enabled bool `toml:"enabled"`
+		} `toml:"mods"`
 	}
 	md, err := toml.DecodeFile(path, &raw)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -175,12 +183,12 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	c := &Config{Path: path, projects: raw.Projects, defaults: raw.Defaults, agent: raw.DefaultAgent,
-		Prefix: cmp.Or(raw.Keys.Prefix, raw.Keys.Detach), Icons: raw.UI.Icons}
+		Prefix: cmp.Or(raw.Keys.Prefix, raw.Keys.Detach), Icons: raw.UI.Icons, Mods: raw.Mods.Enabled}
 	for _, k := range md.Undecoded() {
 		switch {
 		case len(k) >= 3 && k[0] == "projects", len(k) >= 2 && k[0] == "defaults":
 			return c, fmt.Errorf("%s: unknown setting %s", path, k.String())
-		case len(k) >= 2 && (k[0] == "keys" || k[0] == "ui"):
+		case len(k) >= 2 && (k[0] == "keys" || k[0] == "ui" || k[0] == "mods"):
 			c.Unknown = append(c.Unknown, k.String())
 		}
 	}
