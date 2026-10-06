@@ -194,7 +194,7 @@ func (a *app) childEnv() []string {
 	env := os.Environ()
 	env = append(env, "CLAUDECODE=1", "CLAUDE_CODE_ENTRYPOINT=cli", "CLAUDE_PROJECT_DIR="+a.cwd)
 	if a.sockPath != "" {
-		env = append(env, "CLAUDE_CODE_MESSAGING_SOCKET="+a.sockPath)
+		env = append(env, "CLAUDE_CODE_MESSAGING_SOCKET="+a.sockPath, "CLAUDE_CODE_MESSAGING_TOKEN="+a.messagingToken())
 	}
 	return env
 }

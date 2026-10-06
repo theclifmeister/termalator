@@ -509,12 +509,15 @@ func TestTickerCheckoutSync(t *testing.T) {
 // TestSmokeHeldNudge reproduces T43: text left in the coordinator's
 // prompt box (typed and never sent, while the user drives it over remote
 // control) held the queued nudge, and with it every later nudge,
-// forever. Now a held server prompt goes through the agent's messaging
-// socket after the bound, and any other held prompt is dropped; both
-// are journaled, and the user's text stays in the box.
+// forever. Now a held server prompt is sent through the agent's
+// messaging socket after the bound, and any other held prompt is
+// dropped; both are journaled, and the user's text stays in the box.
+// The socket requires the auth line (Claude 2.1.291), with the token the
+// agent's hooks handed to the server.
 func TestSmokeHeldNudge(t *testing.T) {
 	env, projDir, out := tickerEnv(t)
 	env.Setenv("TERMINATR_PROMPT_HOLD", "2s")
+	env.Setenv("FAKEAGENT_SOCKET_AUTH", "required")
 	coord := env.StartAgent("claude", projDir, "--role", "coordinator", "--project", "demo")
 	env.WaitState(coord, "idle", agentWait)
 	env.Keys(coord, "whats still open?")
@@ -539,7 +542,7 @@ func TestSmokeHeldNudge(t *testing.T) {
 			t.Fatalf("journal lacks %q:\n%s", want, b)
 		}
 	}
-	journal(`ticker prompt\.channel ` + coord.ID + ` held \S+: prompt box not empty`)
+	journal(`ticker prompt\.sent ` + coord.ID + ` held \S+: prompt box not empty`)
 
 	// The human's own words never take the socket: held, they are dropped.
 	env.WaitState(coord, "idle", agentWait)

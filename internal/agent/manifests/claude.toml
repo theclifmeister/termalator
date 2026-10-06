@@ -144,11 +144,16 @@ about = "fastest and cheapest: small, well-specified edits, docs, mechanical or 
 
 [inject]
 # Bracketed paste + Enter while idle with an empty prompt box (core).
-# "channel" would use Claude's undocumented uds-messaging socket (Go, in
-# internal/agent/claude, behind a probe), but 2.1.289 presents socket
-# messages as coming from "another Claude session … not typed by your
-# user", so prompts from the human or the coordinator are pasted.
+# Claude's undocumented uds-messaging socket (Go, internal/agent/claude)
+# presents a message as coming from "another Claude session … not typed
+# by your user", can't run slash commands and never acknowledges, so
+# prompts from the human or the coordinator are always pasted; the
+# socket only carries tm's own fixed-word prompts once held (§8.6).
 prompt = "paste"
+# tm hook passes this variable from the hook's environment to the server:
+# Claude 2.1.291's socket may require an auth line, and the token it gives
+# its children is valid there. Kept in memory only.
+token_env = "CLAUDE_CODE_MESSAGING_TOKEN"
 # Paste only into an empty box: after an Esc, Claude puts the cancelled
 # prompt back, and a paste would be appended to it.
 empty_rule = "idle-empty-box"

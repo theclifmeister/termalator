@@ -102,7 +102,7 @@ func (p *Project) Context(seen Ticked) ([]Section, error) {
 		if q.Thread != "" {
 			who += " " + q.Thread
 		}
-		head = append(head, fmt.Sprintf("Prompt queue: %s (%s) has %d prompt(s) held since %s (%s): nothing is pasted, and the coordinator gets no nudges, until it clears; the server sends or drops a held prompt after its bound (JOURNAL.md prompt.*)",
+		head = append(head, fmt.Sprintf("Prompt queue: %s (%s) has %d prompt(s) held since %s (%s): nothing is pasted, and the coordinator gets no nudges, until it clears; after its bound the server drops a held prompt, or writes its own fixed-word ones to the agent's socket, unconfirmed (JOURNAL.md prompt.sent, prompt.dropped)",
 			q.Session, who, q.Queued, q.Since.UTC().Format("2006-01-02 15:04 UTC"), q.Why))
 	}
 	head = append(head, modelLines()...)

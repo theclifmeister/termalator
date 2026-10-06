@@ -183,6 +183,10 @@ type PromptTarget struct {
 	PID       int
 	Version   string            // the agent's version, when the status file says
 	Fields    map[string]string // from the status file; nil when it isn't trusted
+	// Token authenticates to the channel (Claude's messaging token), as
+	// the agent's hooks last reported it (inject.token_env); empty when
+	// none did.
+	Token string
 }
 
 // Agent is the whole contract between the core and one agent harness.
@@ -225,6 +229,23 @@ type Agent interface {
 	// agent besides hooks and the screen: a status file, a JSONL tail and a
 	// todo snapshot, plus hook payload trimming (docs/SPEC.md §8.2).
 	Sources() *Sources
+}
+
+// Liveness is what a probe found out about the agent behind a target.
+type Liveness string
+
+const (
+	LiveUnknown Liveness = ""
+	Live        Liveness = "live"
+	Gone        Liveness = "gone"
+)
+
+// Prober is an Agent with a cheap check that its process is still there
+// (docs/SPEC.md §8.6), which the core runs beside the status file and
+// the pid. Gone must be certain; anything doubtful is LiveUnknown, with
+// the error that says why.
+type Prober interface {
+	Probe(ctx context.Context, target PromptTarget) (Liveness, error)
 }
 
 // Truster is an Agent that can mark a directory as trusted ahead of
