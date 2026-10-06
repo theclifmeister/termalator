@@ -202,6 +202,16 @@ func TestProjectSettingsToggle(t *testing.T) {
 		t.Fatalf("file:\n%s", data)
 	}
 
+	// Auto-clear: off by default, enter turns it on.
+	keyPress(m, "down")
+	if out := screen(m); !strings.Contains(out, "Auto-clear coordinator       off") {
+		t.Fatalf("auto-clear row:\n%s", out)
+	}
+	act(m, src, "enter")
+	if cfg, _ := config.Load(); !must(cfg.Safety("alpha")).AutoClear {
+		t.Fatal("auto-clear not saved")
+	}
+
 	// Keep my checkout current: on by default, enter turns it off.
 	keyPress(m, "down")
 	if out := screen(m); !strings.Contains(out, "Keep my checkout current     on") {

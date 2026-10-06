@@ -52,6 +52,11 @@ type Manifest struct {
 		// (PromptTarget.Token): Claude's messaging token. The server
 		// keeps it in memory only and never logs it.
 		TokenEnv string `toml:"token_env"`
+		// Clear is the prompt that clears the conversation (Claude's
+		// /clear), pasted like any prompt: the ticker's auto-clear of an
+		// idle coordinator (auto_clear) sends it. Empty: the agent has
+		// none, and auto-clear leaves its sessions alone.
+		Clear string `toml:"clear"`
 	} `toml:"inject"`
 
 	// RemoteControl: reaching the session from another device, e.g.
@@ -169,6 +174,15 @@ func RemoteControlOf(a Agent) *RemoteControl {
 		return &m.RemoteControl
 	}
 	return nil
+}
+
+// ClearTextOf is the prompt that clears a's conversation ([inject]
+// clear), "" when it has none.
+func ClearTextOf(a Agent) string {
+	if m := ManifestOf(a); m != nil {
+		return m.Inject.Clear
+	}
+	return ""
 }
 
 // Model is one [[models]] entry: a name the agent's model_args accept,

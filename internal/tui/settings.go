@@ -690,6 +690,10 @@ func safetySettings(slug string) []setting {
 				}
 				return remoteNote(safety(m).CoordinatorRemoteControl, m.data.Sessions, slug)
 			}},
+		{label: "Auto-clear coordinator", help: "Clear the coordinator's conversation once its context reaches the hint (context_hint), only while it is idle with nothing waiting: no inbox item, queued prompt, open question or blocked thread. The project lives in files, so it reads tm context again. Off by default; each clear is journaled.",
+			value: func(m *dash) string { return onOff(safety(m).AutoClear) },
+			change: toggle("auto_clear", func(s config.Safety) bool { return s.AutoClear },
+				func(s *config.Safety, on bool) { s.AutoClear = on }, "auto-clear for coordinators")},
 		{label: "Keep my checkout current", help: "Fast-forward your own checkout of each repository when its default branch is checked out, clean and only behind origin; else the overview says how far behind.",
 			value: func(m *dash) string { return onOff(safety(m).FastForwardCheckout) },
 			change: toggle("fast_forward_checkout", func(s config.Safety) bool { return s.FastForwardCheckout },
@@ -745,13 +749,14 @@ func safetySettings(slug string) []setting {
 		}})
 	rows = scope(rows,
 		[][]string{{"start_threads"}, {"yolo"}, {"coordinator_approves"}, {"parallel_threads"}, {"auto_close", "auto_close_days"},
-			{"complete_tasks"}, {"pr_followup"}, {"coordinator_remote_control"}, {"fast_forward_checkout"}, {"models"}, config.ArchiveKeys},
+			{"complete_tasks"}, {"pr_followup"}, {"coordinator_remote_control"}, {"auto_clear"}, {"fast_forward_checkout"}, {"models"}, config.ArchiveKeys},
 		[]func(config.Safety) string{startWords, onOffOf(func(s config.Safety) bool { return s.Yolo }),
 			onOffOf(func(s config.Safety) bool { return s.CoordinatorApproves }),
 			func(s config.Safety) string { return fmt.Sprint(s.ParallelThreads) }, closeWords,
 			func(s config.Safety) string { return completeWords(s.CompleteTasks) },
 			onOffOf(func(s config.Safety) bool { return s.PRFollowup }),
 			onOffOf(func(s config.Safety) bool { return s.CoordinatorRemoteControl }),
+			onOffOf(func(s config.Safety) bool { return s.AutoClear }),
 			onOffOf(func(s config.Safety) bool { return s.FastForwardCheckout }),
 			func(s config.Safety) string { return modelWords(s.Models) }, historyWords})
 	if all {

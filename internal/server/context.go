@@ -8,7 +8,8 @@ import (
 )
 
 // Context use (docs/SPEC.md §8.6, Context): the mod sends how many
-// tokens a turn's last request read as context with its usage; the
+// tokens the session's last request read as context, and the window,
+// with its usage; the
 // server keeps the latest per session, in memory, and shows it with the
 // session (SessionInfo.Context) and in the project watch.
 
@@ -31,9 +32,10 @@ func contextWindow(model string, tokens int64) int64 {
 	return windowStandard
 }
 
-// setContext records that session id's latest turn read tokens as
-// context; 0 leaves what is kept.
-func (s *Server) setContext(id, model string, tokens int64) {
+// setContext records that session id's latest request read tokens as
+// context, in a window of window tokens as the agent gives it (0: judged
+// by the model's id); 0 tokens leaves what is kept.
+func (s *Server) setContext(id, model string, tokens, window int64) {
 	if tokens <= 0 {
 		return
 	}
@@ -42,7 +44,10 @@ func (s *Server) setContext(id, model string, tokens int64) {
 		model = s.records[id].Model
 		s.mu.Unlock()
 	}
-	now := ctxUse{tokens, contextWindow(model, tokens)}
+	if window < tokens {
+		window = contextWindow(model, tokens)
+	}
+	now := ctxUse{tokens, window}
 	was, had := s.ctxOf.Swap(id, now)
 	s.mu.Lock()
 	coord := s.records[id].Role == proto.RoleCoordinator

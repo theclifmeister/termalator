@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/caller"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/session"
@@ -73,6 +74,29 @@ func (h tickerHost) Unstick(id string) string {
 		return ""
 	}
 	return sess.Unstick()
+}
+
+// Clear pastes the agent's clear prompt ([inject] clear) into session
+// id, the ticker's auto-clear: a plain prompt, never through the channel
+// (which runs no slash command), dropped at delivery unless still.
+func (h tickerHost) Clear(id string, still func() bool) error {
+	h.s.mu.Lock()
+	sess := h.s.sessions[id]
+	h.s.mu.Unlock()
+	if sess == nil {
+		return fmt.Errorf("no session %s", id)
+	}
+	text := agent.ClearTextOf(sess.Agent())
+	if text == "" {
+		return fmt.Errorf("its agent has no clear prompt ([inject] clear)")
+	}
+	_, perr := h.s.promptWith(proto.SessionPromptParams{ID: id, Text: text}, session.PromptOptions{
+		Refresh: func() (string, bool) { return text, still() },
+	})
+	if perr != nil {
+		return perr
+	}
+	return nil
 }
 
 func (h tickerHost) Remote(id string, on bool) (proto.SessionRemoteResult, error) {

@@ -254,16 +254,17 @@ export const register: Register = on => {
 async function spent($: EngineInterface, turnId: string, u: TurnUsageIn | undefined, subagent: boolean) {
   if (!socket || !u) return
   try {
-    const ledger = (await $.session.usage()).cost?.usd
+    const su = await $.session.usage()
+    const ledger = su.cost?.usd
     let out: UsageReport | null = null
     await update($, usage, before => {
-      const r = reportOf(turnId, u, ledger, before)
+      const r = reportOf(turnId, u, ledger, before, su.context)
       out = r.report
       return r.now
     })
     if (!out) return
     // A subagent's context is its own, not the session's.
-    if (subagent) (out as UsageReport).context = 0
+    if (subagent) (out as UsageReport).context = (out as UsageReport).context_window = 0
     const r = await $.http.fetch('http://terminatr/v1/usage', {
       method: 'POST', socketPath: socket, headers: { 'content-type': 'application/json' }, body: JSON.stringify(out),
     })
