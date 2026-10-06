@@ -41,7 +41,7 @@ func TestText(t *testing.T) {
 		}
 	}
 	thread, _ := Text("thread", "dev")
-	for _, w := range []string{"Stay in your worktree", "read-only", "tm task steps T<n> add", "tm report", "## Remember", "`## Check`", "don't guess: say exactly what is missing", "uploads/ folder", "outside the project's repos"} {
+	for _, w := range []string{"Stay in your worktree", "read-only", "tm task steps T<n> add", "tm report", "## Remember", "`## Check`", "don't guess: say exactly what is missing", "uploads/ folder", "outside the project's repos", "mcp__terminatr__report", "Without them, the commands above"} {
 		if !strings.Contains(thread, w) {
 			t.Errorf("thread rules lack %q", w)
 		}
