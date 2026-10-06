@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/theclifmeister/terminatr/internal/mdfile"
 	"github.com/theclifmeister/terminatr/internal/project"
@@ -129,15 +130,20 @@ func WriteBrief(p *project.Project, r *Record, restart bool) (string, error) {
 
 // ResetContext is what a thread gets back after /clear or compaction
 // (docs/SPEC.md §7.8), besides the role rules: the brief path, the task
-// with its steps, the current item and the report state.
-func ResetContext(p *project.Project, id string) string {
+// with its steps, the current item, the PR (pr, the ticker's summary of
+// it, or else the last report's PR link), the coordinator's latest
+// follow-up and the report state. It stays within ResetBudget.
+func ResetContext(p *project.Project, id, pr string) string {
 	r, err := Load(p, id)
 	if err != nil {
 		return ""
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "You are thread %s of project %s, in %s.\n", r.ID, p.Slug, r.Worktree)
-	fmt.Fprintf(&b, "Your brief: %s\nRead it again, then continue with your task's unchecked steps.\n", Path(p, id, "brief.md"))
+	fmt.Fprintf(&b, "You are thread %s of project %s, in %s", r.ID, p.Slug, r.Worktree)
+	if r.Branch != "" {
+		fmt.Fprintf(&b, " on branch %s", r.Branch)
+	}
+	fmt.Fprintf(&b, ".\nYour brief: %s\nRead it again, then continue with your task's unchecked steps.\n", Path(p, id, "brief.md"))
 	if tid := r.TaskID(); tid > 0 {
 		if t, err := p.Tasks().Get(tid); err == nil {
 			fmt.Fprintf(&b, "\nTask %s %s (%d/%d steps):\n", t.Ref(), t.Title, t.StepsDone(), len(t.Steps))
@@ -156,6 +162,62 @@ func ResetContext(p *project.Project, id string) string {
 	if st, err := ReadStatus(p, id); err == nil && st.Current != "" {
 		fmt.Fprintf(&b, "Current item: %s\n", st.Current)
 	}
+	if pr == "" {
+		if prs := ReportPRs(p, id); len(prs) > 0 {
+			pr = prs[len(prs)-1]
+		}
+	}
+	if pr != "" {
+		fmt.Fprintf(&b, "PR: %s\n", pr)
+	}
 	fmt.Fprintf(&b, "Report: %s (%d stored; tm report --show prints the latest)\n", r.ReportState(), r.Reports)
-	return b.String()
+	if at, text := LatestFollowUp(p, id); text != "" {
+		fmt.Fprintf(&b, "\nThe coordinator's latest instruction (%s; all of them in %s):\n%s\n",
+			at, Path(p, id, "task.md"), Clip(text, followUpBudget))
+	}
+	return Clip(b.String(), ResetBudget)
+}
+
+// Size budgets for what is re-added after /clear or compaction, in
+// bytes: the whole thread context (the role rules aside), and the
+// follow-up quoted in it.
+const (
+	ResetBudget    = 4 << 10
+	followUpBudget = 1 << 10
+)
+
+// LatestFollowUp is the last prompt the coordinator forwarded (task.md's
+// last "## Follow-up" section): when, as written there, and its text;
+// "" for none.
+func LatestFollowUp(p *project.Project, id string) (at, text string) {
+	b, err := os.ReadFile(Path(p, id, "task.md"))
+	if err != nil {
+		return "", ""
+	}
+	s := string(b)
+	i := strings.LastIndex(s, "\n"+followUpMark+" ")
+	if i < 0 {
+		return "", ""
+	}
+	head, body, _ := strings.Cut(s[i+len(followUpMark)+2:], "\n")
+	return strings.TrimSpace(head), strings.TrimSpace(body)
+}
+
+// Clip bounds s to n bytes, cut at a line end (or a rune boundary when
+// one line is longer) and marked.
+func Clip(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	const mark = "[… cut at the size budget]\n"
+	cut := max(n-len(mark)-1, 0) // room for the mark and a line end
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	if i := strings.LastIndexByte(s[:cut], '\n'); i > 0 {
+		cut = i + 1
+	} else if cut > 0 {
+		return s[:cut] + "\n" + mark
+	}
+	return s[:cut] + mark
 }

@@ -399,13 +399,21 @@ cmd = '` + tm + `inbox done "$(` + tm + `inbox list | grep t-0003 | cut -d" " -f
 	if !strings.Contains(inboxBefore, "t-0002") || strings.Contains(inboxBefore, "t-0003") || len(doneBefore) != 1 {
 		t.Fatalf("after the work: inbox\n%s\ndone %v", inboxBefore, doneBefore)
 	}
-	want := env.MustCLI("skill", "coordinator") + "\n\n" + env.MustCLI("context", "--project", slug)
+	// The rules, then tm context's essentials: every section but
+	// CONTEXT.md, the memory index and the journal, which a last line
+	// names (T66).
+	rules := env.MustCLI("skill", "coordinator")
+	full := env.MustCLI("context", "--project", slug)
+	essentials, _, _ := strings.Cut(full, "\n## Context (CONTEXT.md)\n")
+	tasks, _, _ := strings.Cut(full[strings.Index(full, "## Tasks\n"):], "\n## Journal")
+	want := rules + "\n\n" + essentials + "\n" + tasks +
+		"\nThe essentials of `tm context`; run it for everything (also Context (CONTEXT.md), Memory index (MEMORY.md), Journal (last 20)).\n"
 
 	n := len(env.FakeRecords("context"))
 	env.Keys(s, "/clear\r")
 	r := env.WaitFake("context", agentWait, func(r FakeRecord) bool { return r.Str("source") == "clear" })
 	if got := r.Str("text"); got != want {
-		t.Fatalf("context after /clear differs from rules + tm context before it\n--- got\n%s\n--- want\n%s", got, want)
+		t.Fatalf("context after /clear differs from rules + tm context's essentials before it\n--- got\n%s\n--- want\n%s", got, want)
 	}
 	if len(env.FakeRecords("context")) != n+1 {
 		t.Errorf("clear injected the context %d times", len(env.FakeRecords("context"))-n)

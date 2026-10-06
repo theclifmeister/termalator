@@ -22,6 +22,11 @@
 // PR and what waits for the user; and it toasts when the PR's CI run
 // finishes.
 //
+// After /clear and compaction it gives the thread or coordinator its
+// context back (hooks/context.ts): fetched fresh from GET /v1/context
+// when Claude reads the conversation's context blocks, the copy the
+// SessionStart command hook brought when that fails.
+//
 // In a thread session it gives the model the thread's tools,
 // mcp__terminatr__report, __status, __steps and __done, served over the
 // same socket (hooks/tools.ts): typed, checked by the server, run as the
@@ -43,6 +48,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { TerminatrTurn, TerminatrWatch } from '../types'
 import { answers, question } from './ask'
 import { drawBand } from './band'
+import { splitContext, withBlock } from './context'
 import { errorText, handled, offerOf } from './deliver'
 import type { Ack, Offer } from './deliver'
 import { feed } from './feed'
@@ -61,6 +67,7 @@ const turn = atom({ plugin: 'terminatr', key: 'turn' } as const, initialTurn)
 const usage = atom({ plugin: 'terminatr', key: 'usage' } as const, initialUsage)
 const delivering = atom({ plugin: 'terminatr', key: 'delivering' } as const, '')
 const deliverer = atom({ plugin: 'terminatr', key: 'deliverer' } as const, 0)
+const context = atom({ plugin: 'terminatr', key: 'context' } as const, '')
 
 // BEAT_MS is the heartbeat: the server's ModBeat (internal/agent).
 const BEAT_MS = 10_000
@@ -73,6 +80,9 @@ const END_WAIT_MS = 500
 const POLL_S = 20
 const POLL_GAP_MS = 250
 const RETRY_MS = 5_000
+
+// CONTEXT_WAIT_MS bounds the fetch of the role's context.
+const CONTEXT_WAIT_MS = 2_000
 
 export const register: Register = on => {
   // The standing rules, checked on each tool call (hooks/guarded.ts).
@@ -88,6 +98,25 @@ export const register: Register = on => {
     if (socket && (await $.env.get('TERMINATR_ROLE')) === 'thread') await registerTools($)
     if (bin && id) void follow($, bin, id, isBand)
     return started
+  })
+
+  // The role's context, as our context block: the command hook's copy
+  // is kept for when the server can't be asked. The hook's copy stays in
+  // its answer too until Claude's re-read of the blocks after /clear is
+  // verified live (the model reads it twice meanwhile).
+  on('classic.SessionStart', async ($, e, next) => {
+    const r = await next(e)
+    const { ours } = splitContext(r.additionalContext)
+    if (!ours) return r
+    await update($, context, () => ours)
+    if (e.source === 'clear' || e.source === 'compact') $.ui.invalidate('prompt.context')
+    return r
+  })
+
+  on('prompt.context', async ($, e, next) => {
+    const r = await next(e)
+    const fresh = await fetchContext($)
+    return { ...r, blocks: withBlock(r.blocks, fresh ?? (await read($, context))) }
   })
 
   // The thread's tools: each call goes to the server, which answers what
@@ -351,6 +380,26 @@ async function ack($: EngineInterface, id: string, a: Ack): Promise<boolean> {
     $.ui.log(`terminatr: prompt ${id} ${a.result}: ${String(err)}`, { to: 'debug' })
     return false
   }
+}
+
+// fetchContext is the role's context from the server: "" for a session
+// outside a project, null when it can't be had.
+async function fetchContext($: EngineInterface): Promise<string | null> {
+  const sock = socket || ((await $.env.get('TERMINATR_MOD_SOCKET')) ?? '')
+  if (!sock) return null
+  try {
+    const r = await Promise.race([
+      $.http.fetch('http://terminatr/v1/context', { socketPath: sock }),
+      $.clock.sleep(CONTEXT_WAIT_MS).then(() => null),
+    ])
+    if (!r) throw new Error('no answer')
+    if (r.status === 204) return ''
+    if (r.ok) return r.text
+    $.ui.log(`terminatr: context: ${r.status} ${r.text}`, { to: 'debug' })
+  } catch (err) {
+    $.ui.log(`terminatr: context: ${String(err)}`, { to: 'debug' })
+  }
+  return null
 }
 
 // saw moves the turn on and reports where it got to, without waiting

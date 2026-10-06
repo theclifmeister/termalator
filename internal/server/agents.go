@@ -160,9 +160,10 @@ func (s *Server) accessFor(role, slug, cwd string) (agent.Access, error) {
 }
 
 // contextFor renders the context a role gets back after a clear or a
-// compaction (docs/SPEC.md §7.8): the role's rules plus `tm context` for
-// a coordinator, the rules plus the brief for a thread, nothing for a
-// session outside a project.
+// compaction (docs/SPEC.md §7.8): the role's rules plus the essentials
+// of `tm context` for a coordinator, the rules plus the brief, task, PR
+// and latest follow-up for a thread, nothing for a session outside a
+// project. Each stays within its size budget, the rules aside.
 func contextFor(role, slug, threadID, brief, tickerState string) func() ([]byte, error) {
 	return func() ([]byte, error) {
 		switch role {
@@ -176,11 +177,16 @@ func contextFor(role, slug, threadID, brief, tickerState string) func() ([]byte,
 			if err != nil {
 				return []byte(rules), nil
 			}
-			return []byte(rules + "\n\n" + project.RenderContext(secs)), nil
+			return []byte(rules + "\n\n" + coordinatorEssentials(secs)), nil
 		case proto.RoleThread:
 			rules, _ := skill.Text("thread", version.Version)
 			if p, err := project.Open(slug); err == nil && threadID != "" {
-				if ctx := thread.ResetContext(p, threadID); ctx != "" {
+				pr := ticker.PRs(tickerState, slug)[threadID]
+				line := pr.Summary()
+				if line != "" && pr.URL != "" {
+					line += " " + pr.URL
+				}
+				if ctx := thread.ResetContext(p, threadID, line); ctx != "" {
 					return []byte(rules + "\n\n" + ctx), nil
 				}
 			}
@@ -191,6 +197,33 @@ func contextFor(role, slug, threadID, brief, tickerState string) func() ([]byte,
 		}
 		return nil, nil
 	}
+}
+
+// coordinatorBudget bounds the part of `tm context` a coordinator gets
+// back after a clear or a compaction, in bytes.
+const coordinatorBudget = 12 << 10
+
+// coordinatorEssentials is `tm context` less what the coordinator reads
+// again when it needs it (CONTEXT.md, the memory index, the journal),
+// named on a last line, within coordinatorBudget.
+func coordinatorEssentials(secs []project.Section) string {
+	var keep []project.Section
+	var left []string
+	for _, s := range secs {
+		switch {
+		case strings.HasPrefix(s.Title, "Context ("), strings.HasPrefix(s.Title, "Memory index"), strings.HasPrefix(s.Title, "Journal"):
+			left = append(left, s.Title)
+		default:
+			keep = append(keep, s)
+		}
+	}
+	out := project.RenderContext(keep)
+	tail := "\nThe essentials of `tm context`; run it for everything"
+	if len(left) > 0 {
+		tail += " (also " + strings.Join(left, ", ") + ")"
+	}
+	tail += ".\n"
+	return thread.Clip(out, coordinatorBudget-len(tail)) + tail
 }
 
 // contextOf is contextFor the session's current record, so that a

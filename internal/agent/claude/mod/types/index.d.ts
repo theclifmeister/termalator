@@ -2,7 +2,8 @@
 // (proto.Watch, docs/SPEC.md §3.3), kept as the session's latest,
 // whether the band and status entry show ([mods] band), the turn it
 // reports to the server, the id of the last prompt from the server it
-// handed to Claude, and which load of the module takes those prompts.
+// handed to Claude, which load of the module takes those prompts, and
+// the role's context as the SessionStart command hook last brought it.
 // In a coordinator, also the project's line of `tm watch --project
 // --json` (proto.ProjectWatch) for the /tm pane, what its buttons asked,
 // the task being sent back, and the thread report it shows.
@@ -122,6 +123,7 @@ declare module 'claude-code' {
       usage: TerminatrUsage
       delivering: string
       deliverer: number
+      context: string
       project: TerminatrProject | null
       asks: TerminatrAsk[]
       sendBack: string

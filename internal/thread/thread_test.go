@@ -221,8 +221,76 @@ func TestFiles(t *testing.T) {
 	if got.Reports != 3 || got.ReportState() != "new" {
 		t.Fatalf("record %+v", got)
 	}
-	if ctx := ResetContext(p, r.ID); !strings.Contains(ctx, "brief.md") || !strings.Contains(ctx, "Report: new") {
+	if ctx := ResetContext(p, r.ID, ""); !strings.Contains(ctx, "brief.md") || !strings.Contains(ctx, "Report: new") || strings.Contains(ctx, "PR:") {
 		t.Fatalf("reset context:\n%s", ctx)
+	}
+}
+
+// TestResetContext: after /clear or compaction a thread gets its PR (the
+// ticker's summary, else its last report's link) and the coordinator's
+// latest follow-up, within the size budget.
+func TestResetContext(t *testing.T) {
+	t.Setenv("TERMINATR_HOME", t.TempDir())
+	p, err := project.New(project.Options{Name: "demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := Create(p, Record{Title: "Keep the brief", Agent: "claude", State: Running, Branch: "tm/demo/x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteTaskText(p, r.ID, "# Keep the brief\n"); err != nil {
+		t.Fatal(err)
+	}
+	ctx := ResetContext(p, r.ID, "")
+	if !strings.Contains(ctx, "on branch tm/demo/x") || strings.Contains(ctx, "PR:") || strings.Contains(ctx, "latest instruction") {
+		t.Fatalf("before any PR or follow-up:\n%s", ctx)
+	}
+	if _, err := StoreReport(p, r.ID, "PR: https://github.com/o/r/pull/7\n## Report\nok\n## Next\nMerge\n", nil, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	t0 := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+	AppendFollowUp(p, r.ID, "First: rebase.", t0)
+	AppendFollowUp(p, r.ID, "Then: fix the failing check.\nAnd say so.", t0.Add(time.Hour))
+	ctx = ResetContext(p, r.ID, "")
+	for _, want := range []string{
+		"PR: https://github.com/o/r/pull/7\n",
+		"The coordinator's latest instruction (2026-10-06T13:00:00Z; all of them in " + Path(p, r.ID, "task.md") + "):\nThen: fix the failing check.\nAnd say so.\n",
+	} {
+		if !strings.Contains(ctx, want) {
+			t.Fatalf("missing %q in:\n%s", want, ctx)
+		}
+	}
+	if strings.Contains(ctx, "First: rebase.") {
+		t.Fatalf("an older follow-up came back:\n%s", ctx)
+	}
+	if ctx := ResetContext(p, r.ID, "#7 open, checks pass https://github.com/o/r/pull/7"); !strings.Contains(ctx, "PR: #7 open, checks pass https://") {
+		t.Fatalf("ticker's PR:\n%s", ctx)
+	}
+
+	// A long follow-up is clipped; the whole stays within the budget.
+	AppendFollowUp(p, r.ID, strings.Repeat("word ", 2000), t0.Add(2*time.Hour))
+	ctx = ResetContext(p, r.ID, "")
+	if len(ctx) > ResetBudget || !strings.Contains(ctx, "[… cut at the size budget]") || !strings.Contains(ctx, "Report: new") {
+		t.Fatalf("long follow-up (%d bytes):\n%s", len(ctx), ctx)
+	}
+}
+
+func TestClip(t *testing.T) {
+	mark := "[… cut at the size budget]\n"
+	for _, c := range []struct {
+		in   string
+		n    int
+		want string
+	}{
+		{"short\n", 100, "short\n"},
+		{"line one\nline two\n" + strings.Repeat("x", 60) + "\n", 50, "line one\nline two\n" + mark},
+		{strings.Repeat("é", 40), 50, strings.Repeat("é", 10) + "\n" + mark},
+	} {
+		got := Clip(c.in, c.n)
+		if got != c.want || len(got) > c.n {
+			t.Errorf("Clip(%q, %d) = %q, want %q", c.in, c.n, got, c.want)
+		}
 	}
 }
 

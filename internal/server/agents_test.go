@@ -2,9 +2,11 @@ package server
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/session"
 )
 
@@ -67,6 +69,38 @@ func TestWriteLaunchFilesFails(t *testing.T) {
 		t.Cleanup(func() { os.Chmod(ro, 0o700) })
 		if err := writeLaunchFiles(ro, map[string][]byte{name: []byte("x")}); err == nil {
 			t.Errorf("%s in an unwritable runtime dir: no error", name)
+		}
+	}
+}
+
+// TestCoordinatorEssentials: after a clear the coordinator gets `tm
+// context` less what it reads again when needed, named, within the
+// budget.
+func TestCoordinatorEssentials(t *testing.T) {
+	long := make([]string, 2000)
+	for i := range long {
+		long[i] = "T1 a task with a long enough title to fill the budget"
+	}
+	secs := []project.Section{
+		{Title: "Project", Lines: []string{"Project: demo (demo)"}},
+		{Title: "Context (CONTEXT.md)", Lines: []string{"## Where things stand"}},
+		{Title: "Memory index (MEMORY.md)", Lines: []string{"- a memory"}},
+		{Title: "Tasks", Lines: long},
+		{Title: "Journal (last 20)", Lines: []string{"a journal line"}},
+	}
+	got := coordinatorEssentials(secs)
+	if len(got) > coordinatorBudget {
+		t.Fatalf("%d bytes, over the budget", len(got))
+	}
+	for _, want := range []string{"## Project\n", "## Tasks\n", "[… cut at the size budget]",
+		"run it for everything (also Context (CONTEXT.md), Memory index (MEMORY.md), Journal (last 20))."} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q", want)
+		}
+	}
+	for _, gone := range []string{"Where things stand", "a memory", "a journal line"} {
+		if strings.Contains(got, gone) {
+			t.Fatalf("%q kept", gone)
 		}
 	}
 }
