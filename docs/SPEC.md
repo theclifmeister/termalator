@@ -73,11 +73,21 @@ One binary, several roles:
 | `internal/project` | Project folders, `PROJECT.md`, memory, inbox, `tm context` |
 | `internal/tasks` | `TASKS.md` model and writer (§6) |
 | `internal/thread` | Threads: records, briefs, `STATUS.md`, `REPORT.md` |
-| `internal/worktree` | git worktree create/remove, `info/exclude` |
-| `internal/ticker` | Event loop and sweep: inbox items, nudges, PR polling |
+| `internal/worktree` | git worktree create and remove, branch checks (nothing terminatr-owned goes into a worktree, §5.2) |
+| `internal/ticker` | Event loop and sweep: inbox items, nudges, PR polling, checkout sync, auto-close, completing tasks (§7.5) |
 | `internal/tui` | Dashboard and attach client: the two screens of a view (`ViewConn`) |
-| `internal/cli` | Subcommands and the exit-code contract |
+| `internal/cli` | Subcommands and the exit-code contract (§6.3, §10) |
+| `internal/caller` | Who is calling: human, coordinator, thread or ticker (§11.1) |
+| `internal/config` | `config.toml`: loading, project settings with `[defaults]`, the line editor the settings popups write with (§5.1, §11.2) |
+| `internal/home` | `TERMINATR_HOME` and the paths under it |
+| `internal/skill` | The standing rules, `tm skill coordinator\|thread` (§7.7) |
+| `internal/doctor` | `tm doctor`'s checks and `--fix` (§10) |
+| `internal/update` | Install method, latest release, `tm update` (§10.1) |
+| `internal/service` | The launchd and systemd user service files (§3.1) |
+| `internal/keychain` | Whether the server's sessions reach the macOS keychain (§3.1) |
+| `internal/version` | Version, build id, release channel |
 | `internal/mdfile` | Markdown with TOML front matter, lock files, atomic writes |
+| `internal/e2e` | The end-to-end harness and scenarios, with the scripted fake agent (§16) |
 
 The dependency rule: `server`, `session`, `ticker`, `tui`, `project`, `thread` and `tasks` MUST NOT import `internal/agent/<name>` or mention any agent by name. They see only `internal/agent`.
 
@@ -142,9 +152,9 @@ The types are in `internal/proto`.
 
 ```jsonc
 // client → server
-{"protocol": 2, "version": "v0.1.0", "build": "v0.1.0+33da6848d63b+3f2a…", "kind": "control" | "attach" | "hook"}
+{"protocol": 9, "version": "v0.8.1", "build": "v0.8.1+33da6848d63b+3f2a…", "kind": "control" | "attach" | "hook"}
 // server → client
-{"protocol": 2, "version": "v0.1.0", "build": "v0.1.0+33da6848d63b+3f2a…", "bin": "/usr/local/bin/tm", "pid": 4242}
+{"protocol": 9, "version": "v0.8.1", "build": "v0.8.1+33da6848d63b+3f2a…", "bin": "~/.terminatr/server-bin/tm-…", "pid": 4242}
 ```
 
 `build` is `version.BuildID()`: the version, the Ghostty commit, and a hash of the executable.
@@ -167,14 +177,14 @@ So that this keeps working, every server of every future protocol keeps three pr
 | Area | Methods |
 |---|---|
 | server | `ping`, `server.status`, `server.stop`, `server.keychain` (macOS: can the server's sessions reach the login keychain, §3.1; a server without it answers `unknown-method`, which `tm doctor` skips) |
-| sessions | `session.list`, `session.start`, `session.stop`, `session.read` (screen text), `session.prompt`, `session.keys`, `session.wait` (until a state), `session.adopt {id, project, thread, brief}` (a plain agent session becomes a thread's, §9 **Adopt**; refused unless it is a live shell-role session with an agent), `session.watch {id}` (the session's state; the connection then streams `watch.changed`, below; a server without it answers `unknown-method`) |
+| sessions | `session.list`, `session.start`, `session.stop`, `session.read` (screen text), `session.prompt` (queued, pasted once the agent is idle; the answer's `via` says how it went), `session.keys`, `session.wait` (until a state), `session.remote {id, on}` (a coordinator's remote control, §11.2), `session.adopt {id, project, thread, brief}` (a plain agent session becomes a thread's, §9 **Adopt**; refused unless it is a live shell-role session with an agent), `session.watch {id}` (the session's state; the connection then streams `watch.changed`, below; a server without it answers `unknown-method`) |
 | agents | `agent.list`, `agent.reload`, `agent.explain` (which signals and rules produced a session's state) |
 | hooks | `hook.event` (from `tm hook`; also its own connection kind, §8.2) |
 | views | `view.subscribe` (join a view; the connection then streams `view.changed`), `view.attach`, `view.dashboard`, `view.project`, `view.select`, `view.sidesel`, `view.sidebar`, `view.info`, `view.size`, `view.input` (below) |
-| projects | `project.list`, `project.context`, `task.*`, `thread.*`, `inbox.*`, `report.*`, `status.*` |
-| events | `subscribe` turns the connection into an event stream: `session.state`, `session.exited`, `inbox.new`, `task.changed`, `thread.changed` |
+| callers | `caller.who` (who the peer pid is: the hosted session it descends from, and its role, §11.1) |
+| projects | `cli.run {args, cwd, stdin}`: an agent's project command (`tm task`, `thread`, `report`, `status`, `done`, `inbox`, `context`, `project`) run inside the server with the caller from the peer pid (§11.1); its answer is the command's output and exit code |
 
-The server MAY serve file-only operations such as `task.*` itself, so that all writes are serialised. The CLI MUST also work without a server for read-only commands (`task list`, `context`), by reading the files directly.
+Project commands have no methods of their own: the server runs the CLI's code (`cli.run`), so all writes from agents are serialised and made with the caller the server derived. There is no general event stream; consoles follow their view (`view.subscribe`) and mods a session (`session.watch`). The CLI MUST also work without a server for read-only commands (`task list`, `context`), by reading the files directly.
 
 **Views (server-owned).** What a console shows is the server's, as in tmux, so every console joined to the same view shows the same screen. The model is `internal/view`; the server keeps the views (`internal/server/views.go`).
 - **A view holds** the screen (`mode`: the dashboard, or an attached session), the session it shows (`focus`; one pane per view: split panes and zoom were removed, user 2026-10-05), the dashboard's selected row, the current project (the one the dashboard lists, in the accent colour in the sidebar's tree, where `]` and `[` count from), the projects sidebar's width and slim strip and the row its keyboard cursor is on (§4; every project is always expanded, so the view keeps no open/closed state since protocol 7), the info panel beside a thread's pane (its width, whether it is off, and `thread`: whether the session shown is a thread's, which the server sets from the session's role; since protocol 8), and its **latest** client with that client's window size. Each change bumps its `seq`.
@@ -309,7 +319,7 @@ The processes die with the server, because the PTY master closes and the childre
                                │  tasks: 1 needs you (a → Tasks) · 3 in motion · 4 on deck
                                │ OTHER SESSIONS 1 ───────────────────────────────────────────────────────────────
                                │────────────────────────────────────────────────────────────────────────────
-                               │ enter attach · t tasks · i inbox · p projects · ? help · prefix+q quit
+                               │ ≡ menu · enter attach · a project · t tasks · i inbox · , settings · ? help · prefix+q quit
 ```
 
 - **Rows.** There are three sections. NEEDS YOU comes first, across every project. Then the current project's own section (headed by its slug): its coordinator, its threads, its other sessions and its task counts; the sidebar's tree lists every project, so the list has no section of all projects. A click on a project in the tree shows its section. OTHER SESSIONS, last, lists the sessions outside the projects (shells, the user's own agents); when there are none but the header counts some, it says how many are in the projects. The header names the app (`tm dashboard`), never a project, so a project called `terminatr` isn't named twice.
@@ -329,7 +339,7 @@ The processes die with the server, because the PTY master closes and the childre
   1. **Overview**: the name, the goal, the repositories (`+` adds one from a typed path, `x` removes the selected one after a `y`; the coordinator can do the same with `tm project repo`), the machines (this one in v0.1), the coordinator's agent and state (or the agent a new one runs), the threads' agents, and the task counts.
   2. **Inbox**: what waits for the coordinator, read-only.
   3. **Tasks**: NEEDS YOU, IN MOTION, ON DECK and DONE, each task with its steps; the coordinator changes tasks, and `D`, `A` and `x` ask it to delegate, accept or send back the selected one (**Delegate**, **Accept and send back**, below); `c` opens the project's coordinator. `enter` shows the selected task as the task view `t` does (its notes and steps, what it is blocked on, how to check it), with the same keys; `esc` comes back to the tab. The footer lists the selected task's keys, only those that work in its status, from one table for the Tasks tab, the task view and a shown task (`A accept · x send back` in review, `x send back` when done, `c coordinator · D delegate` when blocked, `D delegate` when open or ready, none when started). Until 2026-10-05 these were `d` and `a`, which are prefix commands (back to the dashboard, the project popup); the key table keeps a plain key from meaning anything else than its prefix command. `enter` on a task row of the dashboard's NEEDS YOU opens the popup here, that task selected.
-  4. **Settings**: the project's settings (§11.2) as plain labels, each with a line on what it does, changed in place with `enter` or `space`: Start threads (ask first / automatically), Yolo mode (turning it on asks first), Coordinator approves, Parallel threads (a number, with how many work now: `10 · 3 working now`), Auto-close finished threads (off / when its pull request merges / N days after it finishes), Complete tasks (by you / when merged), Pull request follow-up, Remote control (with the running coordinator's state when `prefix+r` changed it since, or when it is off and tm turns it on once the coordinator is idle). A setting the project doesn't set itself follows *All projects* (§11.2) and says so after its value, faint (`on · all projects`); changing it here makes it the project's own, and `x` on one the project sets itself drops it, so it follows All projects again (`demo follows all projects in parallel threads: 10`); for auto-close that is the mode and the days together. The footer offers `x follow all projects` while such a setting is selected. `enter` steps a number through common values (1, 2, 3, 5, 10, 15, 20) and `+` / `-` change it by one; on auto-close, `enter` cycles the three choices and `+` / `-` change the days. The selected setting scrolls into view whole, with its line and note. A change is saved at once and shows on every console's next poll.
+  4. **Settings**: the project's settings (§11.2) as plain labels, each with a line on what it does, changed in place with `enter` or `space`: Start threads (ask first / automatically), Yolo mode (turning it on asks first), Coordinator approves, Parallel threads (a number, with how many work now: `10 · 3 working now`), Auto-close finished threads (off / when its pull request merges / N days after it finishes), Complete tasks (by you / when merged), Pull request follow-up, Remote control (with the running coordinator's state when `prefix+r` changed it since, or when it is off and tm turns it on once the coordinator is idle), Keep my checkout current; then the project's own Paused, Archive and Delete rows (§5.1; the last two ask first). A setting the project doesn't set itself follows *All projects* (§11.2) and says so after its value, faint (`on · all projects`); changing it here makes it the project's own, and `x` on one the project sets itself drops it, so it follows All projects again (`demo follows all projects in parallel threads: 10`); for auto-close that is the mode and the days together. The footer offers `x follow all projects` while such a setting is selected. `enter` steps a number through common values (1, 2, 3, 5, 10, 15, 20) and `+` / `-` change it by one; on auto-close, `enter` cycles the three choices and `+` / `-` change the days. The selected setting scrolls into view whole, with its line and note. A change is saved at once and shows on every console's next poll.
   5. **Keys**: the help's list.
   6. **Memory** (user, 2026-10-05): what every thread is told besides its task, read-only and scrollable: the project's CONTEXT.md, its MEMORY.md and the titles of its memory notes (each note's first heading), as text. A link shows its text only and the tab names no file, so no file path shows (the rule for the UI); the coordinator keeps these files. It reloads with the tasks, every 5 seconds while the popup is open.
 - **Delegate** (`D` on a task in the project popup's Tasks tab or the task view `t`, on the dashboard or over a session with the prefix; since 2026-10-05): on an `open`, `ready` or `blocked` task it asks `Delegate T12 to the coordinator?`; `y` adds a `delegate` inbox item for the project's coordinator (subject `T12`, `the user asks to delegate T12`) and a journal line (`human task.delegate.ask T12`), and the footer says `asked the coordinator to delegate T12`. Until the coordinator marks the item done, the task's row and its shown view say `waiting on the coordinator` (`waiting on coordinator` in the task view's narrower rows; right after the status, and the title gives way so it is never cut), and `D` again only says so; so do `A` and `x` (one ask per task at a time). On a `started`, `review` or `done` task, `D` does nothing but say why in the footer. Confirming is the user's go-ahead (§9, `start_threads = "propose"`): the coordinator runs `tm task delegate T12 --approved-by-user`, proposing instead only at the parallel threads cap or when the task needs something from the user first. The task itself changes only when the coordinator delegates it. Refused when `tm` runs inside an agent.
@@ -445,9 +455,13 @@ The processes die with the server, because the PTY master closes and the childre
   agents/<name>.toml                   user agent manifests (§8.2)                   [human]
   .trash/<slug>-<UTC time>/            deleted projects' folders (tm project delete)  [tm, on the human's word]
   run/  tm.sock server.lock server.pid                                               [server]
+  run/s/<id>/                          per-session launch files: the agent's settings and plugin (hooks, terminatr's mod), §8.6  [server]
+  server-bin/tm-<build>                the running server's pinned binary (§3.6)     [server]
   state/sessions.json                  live sessions, for resume (§3.6)              [server]
   state/views.json                     the server-owned views but own ones: screen, the session shown, selection, current project, sidebar (§3.3)  [server]
-  logs/server.log                                                                    [server]
+  state/ticker.json                    what the ticker already reported: thread states, PRs, nudges, syncs (§7.5)  [server]
+  logs/server.log                      rotated at 10 MB, 3 kept                      [server]
+  logs/service.log                     a launchd-started server's own output (macOS service, §3.1)  [launchd]
   worktrees/<slug>/<id>-<title-slug>/  thread worktrees: plain git checkouts, nothing terminatr-owned inside (§9)
   projects/<slug>/                     one project = the coordinator's cwd
     PROJECT.md                         TOML front matter (name, goal, repos) + standing instructions   [coordinator, human]
@@ -581,19 +595,23 @@ The project defaults to `$TERMINATR_PROJECT`, or to the project whose folder or 
 
 ```sh
 tm task add "Fix login redirect after OAuth" --notes "Users land on /home…" --step "Reproduce" --step "Fix"
-tm task add --json < plan.json            # bulk: [{"title":…,"notes":…,"steps":[…],"status":"ready"}]
+tm task add "…" [--notes-file f.md] [--status ready] [--owner me]   # status: open (default) or any other; owner: me or an agent
+tm task add --json < plan.json            # bulk: [{"title":…,"notes":…,"steps":[…],"status":"ready","owner":…}]
 tm task list                              # grouped board, plain text
 tm task list --needs-you --json           # machine-readable
 tm task list --status started,blocked
+tm task list --archived                   # the archive (tasks/ARCHIVE.md) instead of the board
 tm task show T12 [--json]
+tm task help                              # every task command
 tm task status T12 started                # also: open ready blocked review done
 tm task status T12 done --approved-by-user  # the coordinator, once the user accepted the work (§6.4)
 tm task status T12 blocked --note "waiting for API key"
-tm task edit T12 --title "…" [--notes "…" | --notes-file f.md]
+tm task edit T12 [--title "…"] [--notes "…" | --notes-file f.md] [--owner O]
 tm task steps T12 add "Open a PR"
 tm task steps T12 check 2                 # idempotent; also uncheck, rename N "…", remove N
 tm task archive T12 | tm task unarchive T12
-tm task delegate T12 [--agent claude] [--model M] [--repo PATH]   # = tm thread start --task T12 (§6.5)
+tm task delegate T12 [--agent claude] [--model M] [--repo PATH] [--base B] [--approved-by-user] [--over-cap]
+                                          # = tm thread start --task T12 (§6.5, §9)
 ```
 
 - **Output.** Plain text by default, one task per line in `list`:
@@ -768,9 +786,11 @@ Threads are grouped as herdr-projects does: Waiting on you → Ready for review 
   - a PR's state changes (`gh pr view --json` every 2 minutes, fixed fields only)
   - a process exits
   - a server restart
-  - the user takes over a thread's pane (§4)
+  - the user types into a thread's pane (§4)
+  - the user asks, from the task list or the dashboard, to delegate, accept, send back or adopt
   - a task completed by the project's complete-tasks setting
-- Kinds (M7): `report`, `thread-done`, `thread-resolved` and `needs-you` come from the `tm` commands, `takeover` from the attach client (the first input into a thread's pane during an attach, §4), `delegate`, `accept` and `send-back` from the task list (`d`, the user's go-ahead to delegate the task named in its subject; `a`, the user's acceptance of it; `x`, the user sending it back, the note in its summary; §4); the ticker adds `blocked` (`needs_user` unless it is a permission prompt the coordinator may approve; on a question its summary says to ask the user and relay the answer with `tm thread answer`), `idle` (once per report, and not while that report's own item is unhandled), `exited`, `server-restart`, and `pr-opened`, `pr-checks-failed`, `pr-review` (approved or changes requested), `pr-merged`, `pr-closed`, `pr-conflict` (main moved and a thread's open PR now conflicts with it), `task-done` (a task completed by `complete_tasks`), `gh-failing` (`needs_user`: `gh` failed on 3 PR polls of the project in a row).
+  - auto-close holds a thread back for its unpushed work
+- Kinds (M7): `report`, `thread-done`, `thread-resolved` and `needs-you` come from the `tm` commands, `takeover` from the attach client (the first input into a thread's pane during an attach, §4), `delegate`, `accept` and `send-back` from the task list (`D`, the user's go-ahead to delegate the task named in its subject; `A`, the user's acceptance of it; `x`, the user sending it back, the note in its summary; §4), `adopt` from the dashboard's `T` (the user asks to adopt the session in its subject, §4); the ticker adds `blocked` (`needs_user` unless it is a permission prompt the coordinator may approve; on a question its summary says to ask the user and relay the answer with `tm thread answer`), `idle` (once per report, and not while that report's own item is unhandled), `exited`, `server-restart`, and `pr-opened`, `pr-checks-failed`, `pr-review` (approved or changes requested), `pr-merged`, `pr-closed`, `pr-conflict` (main moved and a thread's open PR now conflicts with it), `task-done` (a task completed by `complete_tasks`), `close-held` (auto-close kept a thread open for its uncommitted or unpushed work, once per reason, below), `gh-failing` (`needs_user`: `gh` failed on 3 PR polls of the project in a row).
 - A summary names its thread by its task and title, the thread id in brackets, e.g. `T10 Make needs-you tasks easy to find (t-0003) opened PR #53`, so the coordinator needs no lookup (`thread.Label`: the task's title from `TASKS.md`; a thread without a task by its id and own title, `t-0003 (title)`; one printable line of at most 60 runes). Until T52 the thread id led.
 - What the ticker already reported (per-thread state, PR fields, the default-branch head each open PR was checked against, nudged item ids, each repo's last sync, its last remote control try) is kept in `state/ticker.json`, so a server restart repeats nothing. `TERMINATR_TICK_SWEEP`, `TERMINATR_TICK_PR`, `TERMINATR_TICK_NUDGE`, `TERMINATR_TICK_REMOTE` and `TERMINATR_TICK_REMOTE_GRACE` shorten the intervals for tests.
 - **PR polling.** For each unresolved thread with a repo, `gh pr view <report PR URL, else the branch> --json number,url,state,reviewDecision,statusCheckRollup,mergedAt,headRefOid,mergeCommit,baseRefName,mergeable,mergeStateStatus` in the repo, every 2 minutes, until the PR merged. Only those fields are kept, each checked against a strict pattern. A failed `gh` (no PR yet, no network) is retried at the next poll. `tm thread list` and `tm context` read them from `state/ticker.json` (§7.4).
@@ -1130,40 +1150,45 @@ A worktree is a plain git checkout. Terminatr puts nothing in it: no `.terminatr
 
 ## 10. The `tm` CLI
 
-These commands are used by the human, the coordinator and threads alike. Exit codes follow §6.3 everywhere. `--json` is available on every read command.
+These commands are used by the human, the coordinator and threads alike. Exit codes follow §6.3 everywhere. `--json` is available on every read command. This table lists every command and flag (`TestSPECListsEveryCommand` in `cmd/tm` checks the commands); each command's own usage (`tm task help`, `tm thread help`, the message of a wrong call) says the same in short. `tm help` lists the commands (built from the CLI's own table); an unknown command prints `tm: unknown command "…"` and that list, and exits 2.
 
 | Command | Who | What |
 |---|---|---|
 | `tm [--own]` | human | a console of view `main` (§3.3, Views): the dashboard or the layout it shows, as every other console of `main`; `--own` gives the console a view of its own |
 | `tm attach [<session>]` | human | one session (the newest when none is named) beside the projects sidebar, in a bare view of this console's own, which no other console follows; the prefix then `d` leaves; a click on the sidebar switches to the full UI on view `main` |
-| `tm server run\|start\|stop\|restart\|status\|service` | human | §3.1 |
-| `tm project new <name> [--repo PATH]… \| list \| open <slug> [--agent A]` | human | create a project folder; `open` starts the coordinator (role coordinator, cwd the project folder, remote control per `coordinator_remote_control`) unless one runs, then attaches with the status bar, in a bare view of its own as `tm attach`; without a terminal it prints the session id |
+| `tm server run [--detached] \| start \| stop [--yes] [--force] \| restart [--yes] \| status [--json]` | human | §3.1: `run` is the server itself, in the foreground unless `--detached` (how auto-start launches it); `stop` asks while agents run (`--yes` skips; `--force` SIGKILLs a hung server); `status` prints pid, uptime, version, protocol, sessions and the last restart's resumed and lost sessions |
+| `tm server service install\|uninstall [--print]` | human | the login service (§3.1); `--print` shows the file and installs nothing |
+| `tm project new <name> [--goal "…"] [--repo PATH]… [--json] \| list [--json] \| open <slug> [--agent A]` | human | create a project folder; `open` starts the coordinator (role coordinator, cwd the project folder, remote control per `coordinator_remote_control`) unless one runs, then attaches with the status bar, in a bare view of its own as `tm attach`; without a terminal it prints the session id |
 | `tm project remote on\|off [<slug>]` | human | turn the running coordinator's remote control on or off (§11.2); refused when no coordinator runs or its agent has none |
 | `tm project pause\|resume [<slug>]` | human | pause or resume the project (§11.2): while paused no nudges, no PR follow-up, and thread starts refused (`project-paused`); state polling goes on. Also the Settings tab's `Paused` row |
 | `tm project archive\|unarchive <slug>` | human | hide the project from the sidebar, the dashboard and the switcher and stop the ticker's work for it, or bring it back (§5.1); archiving is refused while its agents run (`sessions-running`). Also the Settings tab's `Archive` row (asks first) |
 | `tm project delete <slug> [--yes]` | human | move the project folder to `~/.terminatr/.trash/` (§5.1): on a terminal it asks for the slug, otherwise it needs `--yes`; refused while its agents run. Also the Settings tab's `Delete` row (asks first) |
-| `tm project repo add\|remove PATH` | human, coordinator | change the project's repo list in `PROJECT.md`; `tm thread start` defaults to the first repo |
-| `tm context [--project]` | coordinator | §7.6 |
+| `tm project repo add\|remove PATH [--project <slug>]` | human, coordinator | change the project's repo list in `PROJECT.md`; `tm thread start` defaults to the first repo |
+| `tm context [--project <slug>] [--json]` | coordinator | §7.6 |
 | `tm skill coordinator\|thread` | agents | print the standing rules, versioned with the binary (§7.8) |
-| `tm task …` | all | §6.3; threads only read, and add or tick steps on their own task (§6.4); the coordinator sets `done` only with `--approved-by-user` |
+| `tm task add\|list\|show\|status\|edit\|steps\|archive\|unarchive\|delegate\|help …` | all | §6.3, which lists every flag; threads only read, and add or tick steps on their own task (§6.4); the coordinator sets `done` only with `--approved-by-user` |
 | `tm thread start [--task T12] [--agent A] [--model M] [--repo PATH] [--base B] [--approved-by-user] [--over-cap] "title"` | coordinator | §9; refused if `start_threads = "propose"` and the human hasn't approved (§11), at the parallel threads cap without `--over-cap` (§9), with a model the agent's manifest doesn't list (`unknown-model`, §8.2), or while the project is paused (`project-paused`, also for `tm thread restart` and `adopt`). The thread keeps its model across restarts; `tm thread list`/`show`, `tm context` and the info panel show it |
 | `tm thread adopt <session> [--task T12] [--title "…"] [--approved-by-user]` | coordinator, human | make a running agent session outside the projects a thread (§9, **Adopt**); the dashboard's `T` asks the coordinator to (§4) |
-| `tm thread list \| show <id> \| read <id> [--lines N]` | coordinator | state, report, screen text. Here and below, `<id>` is a thread id (`t-0003`) or a task id (`T12`), which names the task's open (unresolved) thread; a task with several open threads, or only resolved ones, is refused (`ambiguous-task`, `no-open-thread`) with their ids, which still reach each one (T52) |
+| `tm thread list \| show <id> \| read <id> [--lines N] \| help` | coordinator | state, report, screen text. Here and below, `<id>` is a thread id (`t-0003`) or a task id (`T12`), which names the task's open (unresolved) thread; a task with several open threads, or only resolved ones, is refused (`ambiguous-task`, `no-open-thread`) with their ids, which still reach each one (T52) |
 | `tm thread prompt <id> "text" \| --next N` | coordinator | queue a prompt (sent when idle; refused while blocked) |
 | `tm thread approve <id> [--choice N]` | coordinator | answer a permission prompt (§11.2) |
 | `tm thread answer <id> --choice N [--text T]` | coordinator | relay the user's answer to a question menu (§11.2) |
 | `tm thread ack <id> \| stop <id> \| restart <id> \| resolve <id>` | coordinator | acknowledge a report, stop, restart, resolve |
-| `tm status --percent N --activity "…" [--needs-you "…"] \| --unknown` | threads | progress, §7.3 |
+| `tm status --percent N --activity "…" [--needs-you "…"] \| --unknown [--activity "…"] \| --needs-you "…"` | threads | progress, §7.3 |
 | `tm report [--file F] [--attach F]… \| --show` | threads | hand in the report (stdin or file), §7.2 |
-| `tm done ["summary"]` | threads | §7.3 |
-| `tm inbox list \| done <id>…` | coordinator | §7.5 |
-| `tm session list \| start [--agent A] [--cwd D] [-- CMD…] \| read <id> [--scrollback] \| keys <id> [--enter] "…" \| prompt <id> "…" \| stop <id>` | human | sessions outside projects (shells, or an agent such as Claude); `keys` types raw text |
+| `tm done ["summary"]` | threads | §7.3. `tm status`, `tm report` and `tm done` also take `--project <slug> --thread <id>`, for a human acting for a thread outside its session (a thread's own call always means its own thread) |
+| `tm inbox list [--json] \| done <id>…` (`--project <slug>`) | coordinator | §7.5 |
+| `tm session list [--json]` | human | the sessions in the server, with their role, project, agent and state |
+| `tm session start [--cwd D] [--cols N --rows N] [-- CMD…]` | human | a shell session (or `CMD`) outside the projects, sized to this terminal unless `--cols`/`--rows` |
+| `tm session start --agent A [--cwd D] [--brief F] [--kickoff T] [--model M] [--yolo]` | human | an agent session of the user's own: `--brief` is given to the agent as its system prompt, `--kickoff` is its first prompt, `--yolo` skips its permission prompts (refused in an agent call). Internal, for tests and the server's own launches: `--role coordinator\|thread\|shell`, `--project <slug>` and `--thread <id>`, which make the session a project's; people use `tm project open` and `tm thread start` |
+| `tm session read <id> [--scrollback] [--json] \| keys <id> [--enter] "…" \| prompt <id> "…" \| stop <id>` | human | the screen as text; `keys` types raw text (`--enter` presses Enter after it); `prompt` queues a prompt, pasted once the agent is idle (`-` reads it from stdin) and prints `queued` or `sent`; `stop` ends the session |
+| `tm session wait <id> [--state S[,S…]] [--timeout 30s]` | human, tests | wait until the session's agent state is one of the states (any change when none is named); exit 1 at the timeout |
 | `tm watch [--session <id>] [--json]` | anyone, mods | a session's state (§3.3, **Watch**), then a line on each change, until the session ends (exit 0); the session defaults to `$TERMINATR_SESSION`. `--json` prints each state as one `Watch` object per line (NDJSON) for a mod to read; plain lines are for people: `s-3 thread working · T12 started 2/4: Write tests · #12 open, checks pass · 1 needs you · 3 in inbox`. Exit 3 when the server goes away, or when it is older than `session.watch` (restart it) |
-| `tm agent list \| check <file> \| reload \| explain <session>` | human | §8 |
+| `tm agent list [--json] \| check <file> \| reload \| explain <session> [--json]` | human | §8: the agents tm knows, a manifest checked without loading it, the manifests read again, and why a session is in its state (§8.4) |
 | `tm hook --agent <name>` | harness hooks | §8.2 |
-| `tm doctor [--fix]` | human | toolchain (with `gh auth status`: a warning when `gh` isn't logged in or can't read its token, since the ticker's PR polls need it, §7.5), install method and newer release, server (a server of an older protocol is a warning whose fix is `tm server restart`; on macOS, a server whose sessions can't reach the keychain is a warning whose fix is a restart from the Mac, §3.1; a session whose queued prompts are held while its agent is idle is a `prompt queue` warning, §8.6), sockets, manifests, hooks, enabled Claude plugins known to be unsafe in tm sessions (`claude plugin list --json`; a warning naming the reason and `claude plugin disable <id>`, no fix; the list is `unsafePlugins` in `internal/doctor/plugins.go`, today `worktrees@supermods`, whose "Remove N finished" removes clean worktrees with no commits ahead, which includes a fresh thread's), leftovers, settings tm no longer has (`complete_tasks = "released"`, read as `user`, in a project's table or `[defaults]`) |
+| `tm doctor [--fix [--yes]] [--json]` | human | checks and changes nothing; `--fix` offers to remove leftovers and restart an old server after a `y` on a terminal (`--yes` instead, needed without one); `--json` for scripts; exit 1 only when a check fails. Checks: toolchain (with `gh auth status`: a warning when `gh` isn't logged in or can't read its token, since the ticker's PR polls need it, §7.5), install method and newer release, server (a server of an older protocol is a warning whose fix is `tm server restart`; on macOS, a server whose sessions can't reach the keychain is a warning whose fix is a restart from the Mac, §3.1; a session whose queued prompts are held while its agent is idle is a `prompt queue` warning, §8.6), sockets, manifests, hooks, enabled Claude plugins known to be unsafe in tm sessions (`claude plugin list --json`; a warning naming the reason and `claude plugin disable <id>`, no fix; the list is `unsafePlugins` in `internal/doctor/plugins.go`, today `worktrees@supermods`, whose "Remove N finished" removes clean worktrees with no commits ahead, which includes a fresh thread's), leftovers, settings tm no longer has (`complete_tasks = "released"`, read as `user`, in a project's table or `[defaults]`) |
 | `tm update [--check [--json]] [--yes] [--restart]` | human | §10.1 |
-| `tm version`, `tm selftest` | anyone | the skeleton's current commands |
+| `tm version` (or `--version`), `tm selftest`, `tm help` | anyone | the version and build id; `selftest` writes a line through libghostty-vt to show it is linked; `help` (or `-h`, `--help`) lists the commands |
 
 Every agent-facing command prints short, stable, plain text. It never prints untrusted text (report bodies, PR comments) except in a clearly delimited block.
 
@@ -1277,7 +1302,7 @@ Never automated, in any mode: merging PRs, force-pushes, deleting branches with 
 
 ## 13. Non-goals for v0.1
 
-- Splits, zoom, tabs, or more than one pane visible per client (split panes were in for a while and removed on 2026-10-05). No copy mode or mouse UI of our own: the mouse goes to the app, and native selection works while the app doesn't track the mouse. Shift+PgUp/PgDn local scrollback is in.
+- Splits, zoom, tabs, or more than one pane visible per client (split panes were in for a while and removed on 2026-10-05). No copy mode: native selection works while the app doesn't track the mouse, and Shift-drag otherwise. tm's own mouse UI (clicks, menus, dragged dividers, §4) is in; inside a pane the program gets the mouse whenever it tracks it. Shift+PgUp/PgDn local scrollback is in.
 - Kitty graphics compositing, and any rendering of panes through Bubble Tea.
 - Windows; SSH remote machines; a web UI.
 - Keeping agent processes alive across a server restart (a live PTY handoff over `SCM_RIGHTS`). Agents are resumed instead (§3.6); the handoff is a later spike.
@@ -1322,7 +1347,8 @@ The spike code itself was removed in T39 and is in git history under `spikes/` a
 | Kickoff argument | Must follow `--` | 8.6 |
 | Inherited env | Strip Claude's session variables | 3.4 |
 | Socket paths | Short run dir; bind before spawn | 3.2 |
-| Prompt injection | Paste works with preconditions; the `uds-messaging` socket is better (Go, probed, falls back) | 8.6 |
+| Prompt injection | Paste works with preconditions and is the injector; the `uds-messaging` socket is used only to send the server's own held prompts (sent, never confirmed delivered) | 8.6 |
+| Release binaries | `zig cc` builds with a glibc 2.28 floor (checked on Debian 10); darwin binaries signed with a Developer ID and notarised in the release workflow (M8; `.goreleaser.yaml`, docs/OPERATIONS.md) | 10.1, 12 |
 
 **Still open** (none of these blocks M1–M4):
 
@@ -1333,8 +1359,7 @@ The spike code itself was removed in T39 and is in git history under `spikes/` a
 | 3 | Claude edge cases: auto-compaction, `async` hooks, `PermissionDenied`/`StopFailure`/MCP elicitation, the status file after a Claude crash, Ctrl+U, `skipDangerousModePermissionPrompt`, the `deleted` task status | 8.6 | Fixtures in M3; the dead-pid rule covers the crash case |
 | 4 | The undocumented status file and `uds-messaging` socket can change in any Claude release | 8.6 | `tested_versions` guard and fallbacks (in place); `tm doctor` warns |
 | 5 | Live server upgrade (PTY handoff over `SCM_RIGHTS` + snapshots) | 3.6 | Later spike; v0.1 resumes agents instead |
-| 6 | Release binaries: macOS signing and notarisation. (Settled in M8: `zig cc` builds with a glibc 2.28 floor, checked on Debian 10; see `.goreleaser.yaml` and docs/OPERATIONS.md) | 12 | Developer ID signing and notarisation in the release workflow (§10.1); needs the Apple secrets |
-| 7 | Codex and pi under the same harness | 8.7 | After v0.1 |
+| 6 | Codex and pi under the same harness | 8.7 | After v0.1 |
 
 ---
 

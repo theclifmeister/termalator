@@ -1,11 +1,12 @@
 // Command tm is terminatr: an agent session host, a dashboard and the CLI
-// that coordinator and thread agents call. This is a placeholder; the
-// commands are specified in docs/SPEC.md.
+// that coordinator and thread agents call. The commands are specified in
+// docs/SPEC.md §10; this file dispatches them.
 package main
 
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	// The Go parts of built-in agents register themselves.
 	_ "github.com/theclifmeister/terminatr/internal/agent/claude"
@@ -27,12 +28,26 @@ func main() {
 		fmt.Println("libghostty-vt: ok")
 		return
 	}
+	if len(os.Args) > 1 && (os.Args[1] == "help" || os.Args[1] == "-h" || os.Args[1] == "--help") {
+		fmt.Println(usage())
+		return
+	}
 	if code, ok := cli.Run(os.Args[1:]); ok {
 		os.Exit(code)
 	}
-	fmt.Fprintln(os.Stderr, "tm: not implemented yet; see docs/SPEC.md")
-	fmt.Fprintln(os.Stderr, "usage: tm version | selftest | server | session | watch | attach | agent | hook | project | task | context | skill | inbox | doctor | update")
+	fmt.Fprintf(os.Stderr, "tm: unknown command %q\n%s\n", os.Args[1], usage())
 	os.Exit(2)
+}
+
+// own are the commands main runs itself, before the cli package.
+var own = []string{"version", "selftest"}
+
+// usage lists every command, from cli's table, so it can't drift.
+func usage() string {
+	return "usage: tm [--own]   (the dashboard)\n" +
+		"       tm <command> ...\n" +
+		"commands: " + strings.Join(append(append([]string{}, own...), cli.Commands()...), " | ") + "\n" +
+		"docs/SPEC.md §10 lists every command and flag"
 }
 
 // selftest feeds a line through the emulator to show libghostty-vt is linked.
