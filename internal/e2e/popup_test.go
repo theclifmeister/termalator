@@ -136,10 +136,15 @@ func TestSmokeProjectPopup(t *testing.T) {
 	saved(w, "7 days", func(sc string) bool { return strings.Contains(sc, "7 days after it finishes") })
 	w.Type("+")
 	saved(w, "8 days", func(sc string) bool { return strings.Contains(sc, "8 days after it finishes") })
+	// Presses while a save is in flight wait their turn: none is lost.
+	for range 3 {
+		w.Type("+")
+	}
+	saved(w, "11 days", func(sc string) bool { return strings.Contains(sc, "11 days after it finishes") })
 	// The popup shows a change before its write to config.toml lands.
 	if out := ""; !Poll(wait, func() bool {
 		out = env.MustCLI("context", "--project", slug)
-		return strings.Contains(out, "parallel_threads=9 · auto_close=8 days after done or merged")
+		return strings.Contains(out, "parallel_threads=9 · auto_close=11 days after done or merged")
 	}) {
 		t.Fatalf("context after the numbers:\n%s", out)
 	}
@@ -166,7 +171,7 @@ func TestSmokeProjectPopup(t *testing.T) {
 	})
 	data, err := os.ReadFile(filepath.Join(env.Home, "config.toml"))
 	if err != nil || !strings.Contains(string(data), "coordinator_remote_control = true") || !strings.Contains(string(data), `start_threads = "auto"`) ||
-		!strings.Contains(string(data), "parallel_threads = 9\nauto_close = \"days\"\nauto_close_days = 8\ncomplete_tasks = \"merged\"\n") {
+		!strings.Contains(string(data), "parallel_threads = 9\nauto_close = \"days\"\nauto_close_days = 11\ncomplete_tasks = \"merged\"\n") {
 		t.Fatalf("settings file (%v):\n%s", err, data)
 	}
 	screens = append(screens, w.Screen())
