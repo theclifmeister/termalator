@@ -75,14 +75,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X github.com/theclifmeister/terminatr/internal/version.Version=$(VERSION) \
            -X github.com/theclifmeister/terminatr/internal/version.LibGhostty=$(shell echo $(GHOSTTY_REV) | cut -c1-12)
 
-# A shell that exported an earlier checkout's PKG_CONFIG_PATH or CGO_CFLAGS
-# (`eval "$(make env)"` there, or a server started from it) must not lead
-# this build to that checkout's library, which may no longer exist: its
-# .build/ghostty-* entries are dropped.
-space :=
-space +=
-OTHER_PKG := $(subst $(space),:,$(strip $(foreach p,$(subst :, ,$(PKG_CONFIG_PATH)),$(if $(findstring /.build/ghostty-,$(p)),,$(p)))))
-export PKG_CONFIG_PATH := $(GHOSTTY_OUT)/share/pkgconfig$(if $(OTHER_PKG),:$(OTHER_PKG))
+export PKG_CONFIG_PATH := $(GHOSTTY_OUT)/share/pkgconfig$(if $(PKG_CONFIG_PATH),:$(PKG_CONFIG_PATH))
 export CGO_ENABLED := 1
 # Go's build cache doesn't key on pkg-config output, so a cached cgo package
 # would keep linking the previous library path. CGO_CFLAGS is part of the
@@ -91,7 +84,7 @@ export CGO_ENABLED := 1
 # and a package cached in another (since removed) worktree would link that
 # worktree's library.
 CGO_CFLAGS ?= -O2 -g
-export CGO_CFLAGS := $(filter-out -DTM_LIBGHOSTTY=%,$(CGO_CFLAGS)) -DTM_LIBGHOSTTY=$(GHOSTTY_OUT)
+export CGO_CFLAGS += -DTM_LIBGHOSTTY=$(GHOSTTY_OUT)
 
 .PHONY: all build run test test-race test-claude e2e e2e-smoke e2e-smoke-race fuzz vet ghostty toolchain env clean distclean zig-path release-ghostty release-snapshot release
 
