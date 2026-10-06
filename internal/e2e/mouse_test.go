@@ -6,6 +6,8 @@ package e2e
 // right-clicks, the wheel and drags only.
 
 import (
+	"bytes"
+	"encoding/base64"
 	"strings"
 	"testing"
 	"time"
@@ -158,6 +160,38 @@ func TestSmokeMousePopupsAndAttach(t *testing.T) {
 
 	w.ClickText("prefix+d dashboard", 29)
 	w.WaitFor("SESSIONS", wait)
+	w.Quit()
+	w.WaitExit(wait)
+}
+
+// TestSmokeDragCopies (T72): a drag over a shell's pane (which doesn't
+// take the mouse) selects its text, and the release copies it to the
+// window's clipboard with OSC 52, as it would over SSH; the program's
+// own OSC 52 reaches the window too.
+func TestSmokeDragCopies(t *testing.T) {
+	env := New(t)
+	s1 := env.StartSize(120, 29, "shell")
+	w := env.Window(120, 30)
+	w.WaitFor(s1.ID+" ", wait)
+	w.Key(Enter)
+	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, "≡  prefix+d dashboard") })
+	waitPaneSize(t, env, s1, paneCols(120), 28)
+
+	env.Keys(s1, "printf 'mark%s\\n' er\r")
+	x, y := w.TextAt("marker", 0)
+	w.DragTo(x, y, x+5, y)
+	osc52 := func(text string) []byte {
+		return []byte("\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(text)) + "\a")
+	}
+	if !Poll(wait, func() bool { return bytes.Contains(w.Raw(), osc52("marker")) }) {
+		t.Fatalf("no OSC 52 with \"marker\" in the window's output; screen:\n%s", w.Screen())
+	}
+	w.WaitUntil("the copied note", wait, func(sc string) bool { return lastLine(sc, "copied 1 line") })
+
+	env.Keys(s1, "printf '\\033]52;c;%s\\a' aGk=\r")
+	if !Poll(wait, func() bool { return bytes.Contains(w.Raw(), osc52("hi")) }) {
+		t.Fatalf("the program's OSC 52 didn't reach the window; screen:\n%s", w.Screen())
+	}
 	w.Quit()
 	w.WaitExit(wait)
 }
