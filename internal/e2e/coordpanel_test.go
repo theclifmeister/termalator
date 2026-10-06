@@ -29,7 +29,9 @@ func TestSmokeCoordinatorPanel(t *testing.T) {
 	clickCoordinator(t, w, "demo")
 	w.WaitFor("Fake Claude Code", agentWait)
 	coord := coordinatorOf(t, env, "demo")
-	shown := func(sc string) bool { return strings.Contains(sc, "│ Needs you") && strings.Contains(sc, "│ On deck") }
+	shown := func(sc string) bool {
+		return strings.Contains(sc, "│ Needs you") && strings.Contains(sc, "│ On deck")
+	}
 	w.WaitUntil("the panel", wait, shown)
 	waitPaneSize(t, env, coord, threadCols(cols), 28)
 	panel := cols - int(threadCols(cols)) - SideCols(cols)
