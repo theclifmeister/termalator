@@ -122,8 +122,10 @@ func (s *Server) startTicker(ctx context.Context) <-chan struct{} {
 	return done
 }
 
-// kick asks the ticker for a sweep soon.
+// kick asks the ticker for a sweep soon, and the watches to look again
+// (a project command has run).
 func (s *Server) kick() {
+	s.watch.wake()
 	s.mu.Lock()
 	t := s.tick
 	s.mu.Unlock()

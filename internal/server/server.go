@@ -107,6 +107,8 @@ type Server struct {
 
 	// views are what consoles show (views.go).
 	views *views
+	// watch wakes the session watches (watch.go).
+	watch watchers
 
 	// protocol is the protocol the hello claims, and deaf hangs up on
 	// every hello: test hooks (testhooks.go).
@@ -422,8 +424,12 @@ func (s *Server) serveControl(c net.Conn, br *bufio.Reader, peerPID int) {
 		if err := readJSONLine(br, &req); err != nil {
 			return
 		}
-		if req.Method == proto.MethodViewSubscribe {
+		switch req.Method {
+		case proto.MethodViewSubscribe:
 			s.serveViewStream(c, br, req)
+			return
+		case proto.MethodSessionWatch:
+			s.serveWatch(c, br, req)
 			return
 		}
 		result, perr := s.dispatch(req, peerPID)
@@ -755,6 +761,7 @@ func (s *Server) sessionExited(sess *session.Session) {
 	if s.tick != nil {
 		s.tick.Kick()
 	}
+	s.watch.wake()
 	if s.stopping {
 		return // keep the record: shutdown writes it for resume
 	}
