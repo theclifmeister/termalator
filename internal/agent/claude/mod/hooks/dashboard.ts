@@ -166,9 +166,9 @@ export function projectFeed(rest: string, text: string): { projects: TerminatrPr
   return { projects, rest: tail }
 }
 
-// reportOf reads `tm thread show <id> --json`: its report's text, "" for
+// reportTextOf reads `tm thread show <id> --json`: its report's text, "" for
 // none.
-export function reportOf(out: string): string {
+export function reportTextOf(out: string): string {
   try {
     const v = JSON.parse(out) as { report_text?: unknown }
     return typeof v.report_text === 'string' ? v.report_text : ''

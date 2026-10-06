@@ -21,7 +21,7 @@ import type { Elements, EngineInterface, On, RenderSurface, RenderViewport } fro
 
 import type { TerminatrNeed, TerminatrProject, TerminatrThread } from '../types'
 import {
-  BUTTON_LABELS, MAX_READY, askLine, asked, isNarrow, needButtons, needDetail, needHead, oneLine, projectFeed, reportOf,
+  BUTTON_LABELS, MAX_READY, askLine, asked, isNarrow, needButtons, needDetail, needHead, oneLine, projectFeed, reportTextOf,
   sentWords, summary, threadLine, todoLine,
 } from './dashboard'
 import type { AskKind } from './dashboard'
@@ -171,7 +171,7 @@ async function openReport($: EngineInterface, thread: string, title: string) {
   if (!bin) return
   let text = ''
   try {
-    text = reportOf((await $.process.run([bin, 'thread', 'show', thread, '--json'])).stdout)
+    text = reportTextOf((await $.process.run([bin, 'thread', 'show', thread, '--json'])).stdout)
   } catch (err) {
     $.ui.log(`terminatr: tm thread show ${thread}: ${String(err)}`, { to: 'debug' })
   }
