@@ -11,11 +11,11 @@ import (
 // maxLabelTitle caps the title in a label, in runes.
 const maxLabelTitle = 60
 
-// Label names a thread for the coordinator with its task and title, so
-// a bare id needs no lookup: "t-0003 (T10 Make needs-you tasks easy to
-// find)", or "t-0003 (title)" for a thread without a task. The title
-// comes from TASKS.md or thread.toml, which only the coordinator and tm
-// write. It falls back to the bare id.
+// Label names a thread for the coordinator by its task, with the
+// thread id in brackets, so a bare id needs no lookup: "T10 Make
+// needs-you tasks easy to find (t-0003)", or "t-0003 (title)" for a
+// thread without a task. The title comes from TASKS.md or thread.toml,
+// which only the coordinator and tm write. It falls back to the bare id.
 func Label(p *project.Project, id string) string {
 	r, err := Load(p, id)
 	if err != nil {
@@ -29,7 +29,7 @@ func Label(p *project.Project, id string) string {
 				ref, title = t.Ref(), cleanTitle(t.Title)
 			}
 		}
-		desc = strings.TrimSpace(ref + " " + title)
+		return strings.TrimSpace(ref+" "+title) + " (" + id + ")"
 	}
 	if desc == "" {
 		return id

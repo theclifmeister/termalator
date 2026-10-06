@@ -494,7 +494,11 @@ func (t *Ticker) sweepThreads(p *project.Project, sessions []proto.SessionInfo, 
 
 		// A new report: alert (the item is tm report's).
 		if r.Reports > m.Reports {
-			t.o.Host.Alert(fmt.Sprintf("%s %s handed in report %d", p.Slug, r.ID, r.Reports))
+			name := r.ID
+			if r.Task != "" {
+				name = r.Task + " (" + r.ID + ")"
+			}
+			t.o.Host.Alert(fmt.Sprintf("%s %s handed in report %d", p.Slug, name, r.Reports))
 		}
 		m.Reports = r.Reports
 

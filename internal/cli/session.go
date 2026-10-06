@@ -70,7 +70,15 @@ func sessionList(e *Env, args []string) int {
 		if s.Agent != "" {
 			what = s.Agent + " " + stateLine(s)
 		}
-		fmt.Fprintf(tw, "%s\t%s\tpid %d\t%d×%d\t%s\t%s\t%s\n", s.ID, s.Role, s.PID, s.Cols, s.Rows,
+		// A thread's session names its task, the thread id in brackets.
+		role := s.Role
+		switch {
+		case s.Task != "":
+			role += " " + s.Task + " (" + s.Thread + ")"
+		case s.Thread != "":
+			role += " " + s.Thread
+		}
+		fmt.Fprintf(tw, "%s\t%s\tpid %d\t%d×%d\t%s\t%s\t%s\n", s.ID, role, s.PID, s.Cols, s.Rows,
 			time.Since(s.Created).Round(time.Second), what, s.Cwd)
 	}
 	tw.Flush()

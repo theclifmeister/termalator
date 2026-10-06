@@ -60,6 +60,7 @@ type treeRow struct {
 	slug    string // its project
 	session string // the coordinator's or the thread's live session, "" for none
 	thread  string // a thread's id
+	name    string // a thread's name: its task's id, else its own (threadName)
 	title   string // a thread's title
 	// state is the coordinator's (on a project or coordinator row) or the
 	// thread's state word; "" when no coordinator runs.
@@ -168,7 +169,7 @@ func buildTree(ps []ProjectData, sessions []proto.SessionInfo, in treeIn) []tree
 		var kids []treeRow
 		for i := range threads {
 			t := &threads[i]
-			tr := treeRow{kind: treeThread, slug: p.Slug, thread: t.ID, title: oneLine(t.Title), pct: -1}
+			tr := treeRow{kind: treeThread, slug: p.Slug, thread: t.ID, name: threadName(t.Task, t.ID), title: oneLine(t.Title), pct: -1}
 			tr.state, _, tr.session = threadState(t, byID)
 			tr.pct = t.Status.Progress().Percent
 			pr.hint = pr.hint || tr.state == "blocked" || t.Status != nil && t.Status.NeedsYou != ""
@@ -339,15 +340,17 @@ func treeSel(r treeRow, focused bool) (bool, lipgloss.Style) {
 //	                           waiting, or that a task needs you
 //	" └─ coordinator     ⌁ ○"  its coordinator, ⌁ while its remote
 //	                           control is on
-//	"    ├─ t-0002 B…  40% ●"  a thread's id and title, its progress, its
-//	                           state, one level under the coordinator
-//	"    └─ t-0003 S…      ▲"  the coordinator's last thread
+//	"    ├─ T12 Bump…  40% ●"  a thread's task id and title (an ad hoc
+//	                           or adopted thread's own id, t-0002), its
+//	                           progress, its state, one level under the
+//	                           coordinator
+//	"    └─ T14 Sort…      ▲"  the coordinator's last thread
 //
 // The nerd set opens the current project's folder and marks the
 // coordinator and threads with an icon of their own after the connector.
 // The counts and percents share one column, the state glyphs the last
 // one, so they line up down the tree; a long name or title is cut with
-// "…", but a thread's id never is: its title gives way. Project rows are
+// "…", but a thread's name (its task id) never is: its title gives way. Project rows are
 // bold, the current one in the accent colour; the
 // connectors are faint.
 //
@@ -463,24 +466,24 @@ func treeCells(r treeRow, cw int, slim, focused bool) string {
 		g, st = i.none, styleFaint
 	}
 	// The percent has a column of its own, the same width on every row,
-	// so titles are cut at the same place. The id leads and is never
-	// cut: the title gives way; where even the id doesn't fit the label
+	// so titles are cut at the same place. The name leads and is never
+	// cut: the title gives way; where even the name doesn't fit the label
 	// column it takes the percent's too, then the space before the
 	// glyph, and where it still doesn't fit it is left out.
 	pct := strings.Repeat(" ", pctCol)
 	if r.pct >= 0 {
 		pct = fmt.Sprintf("%*d%%", pctCol-1, r.pct)
 	}
-	label := threadLabel(r.thread, r.title, lw)
-	if iw := ansi.StringWidth(r.thread); iw > cw-ld-rw {
+	label := threadLabel(r.name, r.title, lw)
+	if iw := ansi.StringWidth(r.name); iw > cw-ld-rw {
 		pct = ""
-		label = threadLabel(r.thread, "", max(cw-ld-2, 0))
+		label = threadLabel(r.name, "", max(cw-ld-2, 0))
 		if iw == cw-ld-1 {
-			// The id fits only right up against the glyph.
+			// The name fits only right up against the glyph.
 			if r.here {
-				return lead + sel.Render(r.thread+g)
+				return lead + sel.Render(r.name+g)
 			}
-			return lead + r.thread + st.Render(g)
+			return lead + r.name + st.Render(g)
 		}
 	}
 	if r.here {
@@ -959,9 +962,10 @@ const sideHint = "sidebar: ↑ ↓ move · → ← in/out · enter open · esc b
 // pctCol is the width of a thread row's percent column: " 100%".
 const pctCol = 5
 
-// threadLabel is a thread row's label w cells wide: "t-0001 Title",
-// the title cut to fit (or left out when not even a letter of it fits)
-// and the id never cut. An id wider than w leaves the label blank.
+// threadLabel is a thread row's label w cells wide: "T12 Title" (a
+// thread without a task: "t-0001 Title"), the title cut to fit (or left
+// out when not even a letter of it fits) and the name never cut. A name
+// wider than w leaves the label blank.
 func threadLabel(id, title string, w int) string {
 	iw := ansi.StringWidth(id)
 	switch {

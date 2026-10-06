@@ -71,7 +71,7 @@ func sessionName(s proto.SessionInfo) string {
 	case s.Role == proto.RoleCoordinator:
 		return "coordinator"
 	case s.Role == proto.RoleThread && s.Thread != "":
-		return s.Thread
+		return threadName(s.Task, s.Thread)
 	case s.Agent != "":
 		return s.Agent
 	case s.Title != "":
@@ -80,6 +80,17 @@ func sessionName(s proto.SessionInfo) string {
 		return strings.Join(s.Argv, " ")
 	}
 	return "shell"
+}
+
+// threadName is how the UI names a thread (docs/SPEC.md §4): by its
+// task's id ("T12"), which is what the user and the coordinator talk
+// in; a thread without a task (ad hoc, adopted) by its own id. The
+// thread id shows in the details: the info panel, tm thread show.
+func threadName(task, id string) string {
+	if task != "" {
+		return task
+	}
+	return id
 }
 
 // age is a short duration: "4s", "3m", "2h", "5d".

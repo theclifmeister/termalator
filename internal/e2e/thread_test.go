@@ -263,7 +263,7 @@ func TestSmokeThreadLifecycle(t *testing.T) {
 		t.Fatalf("thread list: %+v", list)
 	}
 	inbox := env.MustCLI("inbox", "list", "--project", "demo")
-	for _, w := range []string{"report: t-0001 (T1 Fix the login) handed in report 1", "thread-done: t-0001 (T1 Fix the login) is done"} {
+	for _, w := range []string{"report: T1 Fix the login (t-0001) handed in report 1", "thread-done: T1 Fix the login (t-0001) is done"} {
 		if !strings.Contains(inbox, w) {
 			t.Errorf("inbox lacks %q:\n%s", w, inbox)
 		}
@@ -278,9 +278,19 @@ func TestSmokeThreadLifecycle(t *testing.T) {
 		t.Errorf("worktree not clean (%v): %q", err, st)
 	}
 	// The attachment is named, by name only, for the coordinator to
-	// point the user at.
-	if show := env.MustCLI("thread", "show", "t-0001", "--project", "demo"); !strings.Contains(show, "attached:  notes.md") {
-		t.Errorf("thread show lacks the attachment:\n%s", show)
+	// point the user at. The task id names the task's open thread, and
+	// the thread leads with its task, its id in brackets and details.
+	show := env.MustCLI("thread", "show", "T1", "--project", "demo")
+	for _, w := range []string{"attached:  notes.md", "thread:    t-0001"} {
+		if !strings.Contains(show, w) {
+			t.Errorf("thread show lacks %q:\n%s", w, show)
+		}
+	}
+	if !strings.HasPrefix(show, "T1 (t-0001) Fix the login  ") {
+		t.Errorf("thread show doesn't lead with the task:\n%s", show)
+	}
+	if r := env.CLI("thread", "show", "T2", "--project", "demo"); r.Code != 1 || !strings.Contains(r.Stderr, "T2 has no thread") {
+		t.Errorf("thread show T2: %+v", r)
 	}
 	env.MustCLI("thread", "ack", "t-0001", "--project", "demo")
 

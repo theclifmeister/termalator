@@ -36,7 +36,8 @@ const threadUsage = `usage: tm thread <command> [--project <slug>] [--json]
   adopt <session> [--task T12] [--title "…"] [--approved-by-user]
                                  make a running agent session outside the projects a thread
   list
-  show <id>
+  show <id>                      <id> is a thread id (t-0003) or a task id (T12):
+                                 the task's open thread
   read <id> [--lines N]          the thread's screen as text
   prompt <id> "text" | --next N  queue a prompt (sent when idle; refused while blocked)
   approve <id> [--choice N]      answer a permission prompt with "allow once"
@@ -232,6 +233,12 @@ func runThread(e *Env, args []string) error {
 	p, err := e.openProject(*slug)
 	if err != nil {
 		return err
+	}
+	if sub != "start" && sub != "adopt" && sub != "list" && sub != "ls" && len(pos) > 0 {
+		// A task id names its open thread (docs/SPEC.md §9).
+		if pos[0], err = thread.ByRef(p, pos[0]); err != nil {
+			return err
+		}
 	}
 	return run(p, pos)
 }
@@ -689,7 +696,12 @@ func (e *Env) liveSessions() map[string]proto.SessionInfo {
 func (row threadRow) Line() string {
 	st := row.Status
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s %-4s %s  %s", row.ID, row.Task, row.Title, row.AgentState)
+	// A thread leads with its task, its id in brackets.
+	if row.Task != "" {
+		fmt.Fprintf(&b, "%s (%s) %s  %s", row.Task, row.ID, row.Title, row.AgentState)
+	} else {
+		fmt.Fprintf(&b, "%s %s  %s", row.ID, row.Title, row.AgentState)
+	}
 	if row.Reason != "" {
 		b.WriteString("/" + row.Reason)
 	}
@@ -780,7 +792,7 @@ func (e *Env) threadShow(p *project.Project, id string, asJSON bool) error {
 	case r.Adopted:
 		adopted = "yes"
 	}
-	for _, kv := range [][2]string{{"worktree", r.Worktree}, {"branch", r.Branch}, {"base", r.Base}, {"repo", r.Repo}, {"adopted", adopted},
+	for _, kv := range [][2]string{{"thread", r.ID}, {"task", r.Task}, {"worktree", r.Worktree}, {"branch", r.Branch}, {"base", r.Base}, {"repo", r.Repo}, {"adopted", adopted},
 		{"agent", r.Agent}, {"model", r.Model}, {"session", r.Session}, {"state", r.State}, {"folder", thread.Dir(p, id)},
 		{"attached", strings.Join(thread.Attachments(p, id), ", ")}} {
 		if kv[1] != "" {

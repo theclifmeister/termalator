@@ -53,10 +53,10 @@ type Ticked struct {
 
 // HeldQueue is one session's held prompt queue.
 type HeldQueue struct {
-	Session, Role, Thread string
-	Queued                int
-	Why                   string
-	Since                 time.Time
+	Session, Role, Thread, Task string
+	Queued                      int
+	Why                         string
+	Since                       time.Time
 }
 
 // Context builds `tm context`. It only reads files, and the same files
@@ -99,7 +99,10 @@ func (p *Project) Context(seen Ticked) ([]Section, error) {
 	}
 	for _, q := range seen.Queues {
 		who := q.Role
-		if q.Thread != "" {
+		switch {
+		case q.Task != "":
+			who += " " + q.Task + " (" + q.Thread + ")"
+		case q.Thread != "":
 			who += " " + q.Thread
 		}
 		head = append(head, fmt.Sprintf("Prompt queue: %s (%s) has %d prompt(s) held since %s (%s): nothing is pasted, and the coordinator gets no nudges, until it clears; after its bound the server drops a held prompt, or writes its own fixed-word ones to the agent's socket, unconfirmed (JOURNAL.md prompt.sent, prompt.dropped)",
@@ -277,8 +280,12 @@ func (p *Project) threadSection(prs map[string]string) (Section, error) {
 		}
 		var rec map[string]any
 		toml.DecodeFile(p.Path("threads", id, "thread.toml"), &rec)
+		// A thread leads with its task, its id in brackets.
 		line := id
-		for _, k := range []string{"task", "title", "state"} {
+		if v, ok := rec["task"].(string); ok && v != "" {
+			line = v + " (" + id + ")"
+		}
+		for _, k := range []string{"title", "state"} {
 			if v, ok := rec[k].(string); ok && v != "" {
 				line += "  " + v
 			}

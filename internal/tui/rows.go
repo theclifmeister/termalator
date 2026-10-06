@@ -302,9 +302,11 @@ func buildRows(d Data, project string) []row {
 			case t.ReportState() == "new":
 				tr.lead = "report new"
 			}
+			// A thread leads with its task; its own id follows in
+			// brackets (threadName).
 			rest := threadProgress(t.Status)
 			if t.Task != "" {
-				rest = joinSp(t.Task, rest)
+				rest = joinSp("("+t.ID+")", rest)
 			}
 			if t.Status != nil && !t.Status.Updated.IsZero() {
 				rest = joinSp(rest, age(now.Sub(t.Status.Updated)))
@@ -312,7 +314,7 @@ func buildRows(d Data, project string) []row {
 			if t.Report != nil && t.Report.PR != "" {
 				rest = joinSp(rest, "PR "+prRef(t.Report.PR))
 			}
-			tr.what, tr.rest = t.ID+" "+oneLine(t.Title), rest
+			tr.what, tr.rest = threadName(t.Task, t.ID)+" "+oneLine(t.Title), rest
 			projs = append(projs, tr)
 		}
 		sort.SliceStable(members, func(i, j int) bool { return members[i].Thread < members[j].Thread })
