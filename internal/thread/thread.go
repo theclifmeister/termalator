@@ -59,6 +59,9 @@ type Record struct {
 	ReportAck  int       `toml:"report_acked" json:"report_acked"`
 	Done       bool      `toml:"done,omitempty" json:"done,omitempty"`
 	DoneAt     time.Time `toml:"done_at,omitempty" json:"done_at,omitzero"`
+	// ResolvedAt is when tm thread resolve resolved it; the ticker
+	// archives the thread some days later (archive.go).
+	ResolvedAt time.Time `toml:"resolved_at,omitempty" json:"resolved_at,omitzero"`
 	// Adopted: the thread was a running agent session made a thread by
 	// tm thread adopt, not started by tm (docs/SPEC.md §9, Adopt).
 	// Checkout: its worktree is a repository's main checkout, which
@@ -203,8 +206,14 @@ func Create(p *project.Project, rec Record) (*Record, error) {
 		return nil, err
 	}
 	next := 1
+	names := archivedIDs(p) // archived threads keep their ids
 	for _, e := range entries {
-		if n, ok := strings.CutPrefix(e.Name(), "t-"); ok && e.IsDir() {
+		if e.IsDir() {
+			names = append(names, e.Name())
+		}
+	}
+	for _, name := range names {
+		if n, ok := strings.CutPrefix(name, "t-"); ok {
 			if v, err := strconv.Atoi(n); err == nil && v >= next {
 				next = v + 1
 			}

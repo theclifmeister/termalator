@@ -2,6 +2,7 @@ package thread
 
 import (
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/theclifmeister/terminatr/internal/project"
@@ -39,6 +40,14 @@ func ByRef(p *project.Project, ref string) (string, error) {
 		}
 	}
 	task := (&tasks.Task{ID: n}).Ref()
+	if archived, _ := ListArchived(p); len(open) == 0 {
+		for _, a := range archived {
+			if id, _ := tasks.ParseRef(a.Task); id == n {
+				closed = append(closed, a.ID)
+			}
+		}
+		sort.Strings(closed)
+	}
 	switch {
 	case len(open) == 1:
 		return open[0], nil

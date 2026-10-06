@@ -50,10 +50,10 @@ fast_forward_checkout = false
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s, _ := c.Safety("demo"); !reflect.DeepEqual(s, Safety{StartThreads: "auto", Yolo: true, CoordinatorApproves: true, ParallelThreads: 10, AutoClose: "merged", AutoCloseDays: 7, PRFollowup: true, CompleteTasks: "merged", FastForwardCheckout: true, Merge: "coordinator", Guard: true}) {
+	if s, _ := c.Safety("demo"); !reflect.DeepEqual(s, Safety{StartThreads: "auto", Yolo: true, CoordinatorApproves: true, ParallelThreads: 10, AutoClose: "merged", AutoCloseDays: 7, PRFollowup: true, CompleteTasks: "merged", FastForwardCheckout: true, Merge: "coordinator", Guard: true, ArchiveTasksDays: 30, ArchiveThreadsDays: 30, ArchiveInboxDays: 30, ArchiveJournalDays: 30}) {
 		t.Fatalf("demo %+v", s)
 	}
-	if s, _ := c.Safety("other"); !reflect.DeepEqual(s, Safety{StartThreads: "propose", ParallelThreads: 10, AutoClose: "off", AutoCloseDays: 7, CompleteTasks: "user", CoordinatorRemoteControl: true, Merge: "coordinator", Guard: true}) {
+	if s, _ := c.Safety("other"); !reflect.DeepEqual(s, Safety{StartThreads: "propose", ParallelThreads: 10, AutoClose: "off", AutoCloseDays: 7, CompleteTasks: "user", CoordinatorRemoteControl: true, Merge: "coordinator", Guard: true, ArchiveTasksDays: 30, ArchiveThreadsDays: 30, ArchiveInboxDays: 30, ArchiveJournalDays: 30}) {
 		t.Fatalf("other %+v", s)
 	}
 }
@@ -112,6 +112,8 @@ func TestBadSettings(t *testing.T) {
 		"[projects.demo]\nparallel_threads = 0\n":          "parallel_threads must be 1 to 99",
 		"[projects.demo]\nauto_close = \"never\"\n":        "auto_close must be",
 		"[projects.demo]\nauto_close_days = 0\n":           "auto_close_days must be 1 to 365",
+		"[projects.demo]\narchive_inbox_days = 0\n":        "archive_inbox_days must be 1 to 365",
+		"[defaults]\narchive_journal_days = 400\n":         "defaults.archive_journal_days must be 1 to 365",
 		"[projects.demo]\ncomplete_tasks = \"later\"\n":    "complete_tasks must be",
 		"[defaults]\nyoloo = true\n":                       "unknown setting defaults.yoloo",
 		"[defaults]\narchived = true\n":                    "defaults can't set paused or archived",
@@ -161,10 +163,12 @@ start_threads = "auto"
 parallel_threads = 4
 auto_close = "off"
 complete_tasks = "merged"
+archive_threads_days = 14
 
 [projects.demo]
 parallel_threads = 2
 complete_tasks = "user"
+archive_journal_days = 90
 
 [projects.old]
 auto_resolve = true
@@ -173,7 +177,8 @@ auto_resolve = true
 	if err != nil {
 		t.Fatal(err)
 	}
-	all := Safety{StartThreads: "auto", CoordinatorApproves: true, ParallelThreads: 4, AutoClose: "off", AutoCloseDays: 7, PRFollowup: true, CompleteTasks: "merged", FastForwardCheckout: true, Merge: "coordinator", Guard: true}
+	all := Safety{StartThreads: "auto", CoordinatorApproves: true, ParallelThreads: 4, AutoClose: "off", AutoCloseDays: 7, PRFollowup: true, CompleteTasks: "merged", FastForwardCheckout: true, Merge: "coordinator", Guard: true,
+		ArchiveTasksDays: 30, ArchiveThreadsDays: 14, ArchiveInboxDays: 30, ArchiveJournalDays: 30}
 	if s, _ := c.AllProjects(); !reflect.DeepEqual(s, all) {
 		t.Fatalf("all projects %+v", s)
 	}
@@ -181,7 +186,7 @@ auto_resolve = true
 		t.Fatalf("a new project %+v, want all projects", s)
 	}
 	want := all
-	want.ParallelThreads, want.CompleteTasks = 2, "user"
+	want.ParallelThreads, want.CompleteTasks, want.ArchiveJournalDays = 2, "user", 90
 	if s, _ := c.Safety("demo"); !reflect.DeepEqual(s, want) {
 		t.Fatalf("demo %+v", s)
 	}
@@ -189,7 +194,7 @@ auto_resolve = true
 	if s, _ := c.Safety("old"); s.AutoClose != CloseMerged || s.ParallelThreads != 4 {
 		t.Fatalf("old %+v", s)
 	}
-	if got := strings.Join(c.Own("demo"), " "); got != "parallel_threads complete_tasks" {
+	if got := strings.Join(c.Own("demo"), " "); got != "parallel_threads complete_tasks archive_journal_days" {
 		t.Fatalf("Own(demo) = %q", got)
 	}
 	if got := strings.Join(c.Own("old"), " "); got != "auto_close" {

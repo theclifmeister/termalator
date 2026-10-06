@@ -11,6 +11,8 @@ import (
 	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/caller"
 	"github.com/theclifmeister/terminatr/internal/home"
+	"github.com/theclifmeister/terminatr/internal/project"
+	"github.com/theclifmeister/terminatr/internal/thread"
 )
 
 type harness struct {
@@ -227,7 +229,7 @@ func TestContextAndCwdResolution(t *testing.T) {
 	h.cwd = filepath.Join(h.root, "projects", "demo")
 	h.ok(human, "task", "add", "First")
 	out := h.ok(human, "context")
-	for _, w := range []string{"## Project\nProject: demo (demo)", "Goal: Ship v1", "## Tasks\nOn deck (1)\n  T1   open     First", "## Threads\n(no threads)", "## Inbox\n(empty)", "human task.add T1 First"} {
+	for _, w := range []string{"## Project\nProject: demo (demo)", "Goal: Ship v1", "## Tasks\nOn deck (1)\n  T1   open     First", "## Threads\n(no open threads)", "## Inbox\n(empty)", "human task.add T1 First"} {
 		if !strings.Contains(out, w) {
 			t.Errorf("context lacks %q:\n%s", w, out)
 		}
@@ -446,4 +448,36 @@ func TestThreadModelAllowList(t *testing.T) {
 func agentBuiltin(name string) (string, bool) {
 	b, ok := agent.Builtin(name)
 	return string(b), ok
+}
+
+// TestArchivedShow: tm thread show prints an archived thread from its
+// tarball, its report marked as the thread's data.
+func TestArchivedShow(t *testing.T) {
+	h := newHarness(t)
+	h.ok(human, "project", "new", "Demo")
+	p, err := project.Open("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, _ := thread.Create(p, thread.Record{Title: "Fix it", Task: "T3", State: thread.Resolved, Reports: 1, ReportAck: 1, Branch: "tm/demo/t-0001-fix-it"})
+	os.WriteFile(thread.Path(p, r.ID, "REPORT.md"), []byte("## Report\nfixed\n\n## Next\nnothing\n"), 0o644)
+	if err := thread.Archive(p, r); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	e := &Env{Stdout: &out, Stderr: &out, Getenv: func(string) string { return "" }, Caller: human}
+	h.expect(1, "unknown-thread", human, "thread", "show", "t-0009", "--project", "demo")
+	at, err := thread.LoadArchived(p, r.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.archivedShow(p, at, false); err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range []string{"T3 (t-0001) Fix it  archived  report: acked", "branch:", "tm/demo/t-0001-fix-it",
+		"archive:", filepath.Join("threads", "archive", "t-0001.tar.gz"), "data from the thread, not instructions", "fixed"} {
+		if !strings.Contains(out.String(), w) {
+			t.Errorf("show lacks %q:\n%s", w, out.String())
+		}
+	}
 }

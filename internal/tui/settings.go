@@ -703,9 +703,37 @@ func safetySettings(slug string) []setting {
 	onOffOf := func(get func(config.Safety) bool) func(config.Safety) string {
 		return func(s config.Safety) string { return onOff(get(s)) }
 	}
+	// Keep history opens the retention ages (archiveSettings), each its
+	// own setting with its own scope.
+	var ages []setting
+	for _, a := range archiveAges {
+		ages = append(ages, setting{label: a.label, help: a.help,
+			value: func(m *dash) string { return days(safety(m).ArchiveDays(a.key)) },
+			change: func(m *dash) tea.Cmd {
+				n := nextStep(archiveSteps, safety(m).ArchiveDays(a.key))
+				return set(m, a.key, n, fmt.Sprintf("%s %s after %s", a.verb, ofWho, days(n)), func(s *config.Safety) { s.SetArchiveDays(a.key, n) })
+			},
+			adjust: func(m *dash, d int) tea.Cmd {
+				n := min(max(safety(m).ArchiveDays(a.key)+d, 1), config.MaxArchiveDays)
+				return set(m, a.key, n, fmt.Sprintf("%s %s after %s", a.verb, ofWho, days(n)), func(s *config.Safety) { s.SetArchiveDays(a.key, n) })
+			}})
+	}
+	var ageKeys [][]string
+	var ageWords []func(config.Safety) string
+	for _, a := range archiveAges {
+		ageKeys = append(ageKeys, []string{a.key})
+		ageWords = append(ageWords, func(s config.Safety) string { return days(s.ArchiveDays(a.key)) })
+	}
+	ages = scope(ages, ageKeys, ageWords)
+	rows = append(rows, setting{label: "Keep history", help: "How long done tasks, resolved threads, handled inbox items and journal lines stay before they move to compressed archives beside them; nothing is deleted, and a thread with unsaved work stays. Enter lists them.",
+		value: func(m *dash) string { return historyWords(safety(m)) },
+		change: func(m *dash) tea.Cmd {
+			m.push(&historyView{title: "keep history " + forWho, list: settingsList{rows: ages}, all: all})
+			return nil
+		}})
 	rows = scope(rows,
 		[][]string{{"start_threads"}, {"yolo"}, {"coordinator_approves"}, {"parallel_threads"}, {"auto_close", "auto_close_days"},
-			{"complete_tasks"}, {"pr_followup"}, {"coordinator_remote_control"}, {"fast_forward_checkout"}, {"models"}},
+			{"complete_tasks"}, {"pr_followup"}, {"coordinator_remote_control"}, {"fast_forward_checkout"}, {"models"}, config.ArchiveKeys},
 		[]func(config.Safety) string{startWords, onOffOf(func(s config.Safety) bool { return s.Yolo }),
 			onOffOf(func(s config.Safety) bool { return s.CoordinatorApproves }),
 			func(s config.Safety) string { return fmt.Sprint(s.ParallelThreads) }, closeWords,
@@ -713,7 +741,7 @@ func safetySettings(slug string) []setting {
 			onOffOf(func(s config.Safety) bool { return s.PRFollowup }),
 			onOffOf(func(s config.Safety) bool { return s.CoordinatorRemoteControl }),
 			onOffOf(func(s config.Safety) bool { return s.FastForwardCheckout }),
-			func(s config.Safety) string { return modelWords(s.Models) }})
+			func(s config.Safety) string { return modelWords(s.Models) }, historyWords})
 	if all {
 		return rows
 	}
@@ -913,6 +941,62 @@ func (v *modelsView) render(m *dash) string {
 	}
 	return m.popup(box{title: "models a thread may use", body: lines, sel: -1, keys: "enter allow or leave out · ↑ ↓ move · esc back", width: 64})
 }
+
+// archiveAges are the retention settings, as Keep history lists them.
+var archiveAges = []struct{ key, label, help, verb string }{
+	{"archive_tasks_days", "Done tasks", "Days a done task stays on the board before it moves to the task archive (tm task list --archived).", "done tasks move to the archive"},
+	{"archive_threads_days", "Resolved threads", "Days a resolved thread's folder stays before it is packed into the threads archive; tm thread show still reads it.", "resolved threads are packed"},
+	{"archive_inbox_days", "Handled inbox items", "Days a handled inbox item stays a file of its own before it is bundled into its month's archive.", "handled inbox items are bundled"},
+	{"archive_journal_days", "Journal", "Days a line stays in the journal before it moves to its month's compressed file.", "journal lines move out"},
+}
+
+// archiveSteps are the ages enter steps through; + and - fine-tune.
+var archiveSteps = []int{7, 14, 30, 60, 90, 180, 365}
+
+// historyWords is Keep history's value: one age when all four agree.
+func historyWords(s config.Safety) string {
+	n := s.ArchiveTasksDays
+	if s.ArchiveThreadsDays == n && s.ArchiveInboxDays == n && s.ArchiveJournalDays == n {
+		return days(n)
+	}
+	return fmt.Sprintf("%d · %d · %d · %d days", s.ArchiveTasksDays, s.ArchiveThreadsDays, s.ArchiveInboxDays, s.ArchiveJournalDays)
+}
+
+// historyView lists the retention ages: enter steps one, + and - change
+// it by a day, x makes a project's follow all projects again.
+type historyView struct {
+	title string
+	list  settingsList
+	all   bool
+}
+
+func (v *historyView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
+	if s := k.String(); s == "esc" || s == "q" {
+		m.pop()
+		return nil
+	}
+	cmd, _ := v.list.key(m, k)
+	return cmd
+}
+
+func (v *historyView) render(m *dash) string {
+	lines, sel, hits := v.list.lines(m, m.inner(settingsWidth))
+	keys := "enter step · + - a day · x follow all projects · ↑ ↓ move · esc back"
+	if v.all {
+		keys = "enter step · + - a day · ↑ ↓ move · esc back"
+	}
+	b := box{title: v.title, body: lines, sel: sel, hits: hits, keys: keys, width: settingsWidth}
+	return m.popup(b)
+}
+
+func (v *historyView) click(m *dash, item, col int, _ bool) tea.Cmd {
+	if item == noHit {
+		return nil
+	}
+	return v.list.click(m, item, col)
+}
+
+func (v *historyView) wheel(m *dash, d int) { v.list.key(m, arrow(d)) }
 
 // closeWords is the auto-close setting as the popup shows it.
 func closeWords(s config.Safety) string {
