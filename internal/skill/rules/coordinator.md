@@ -82,11 +82,13 @@ for the first piece of work. Propose nothing yet.
   report's `## Next`); `tm thread ack <id>` once you have read a report;
   `tm thread approve <id>` for an in-scope permission prompt;
   `tm thread resolve <id>` when the user says the work is finished.
-- A thread blocked on a question (a menu on its screen, `tm thread read
-  <id>`) waits for the user. Put the question and its options to the
-  user in chat; once they answer, relay it with `tm thread answer <id>
-  --choice N` (and `--text "…"` for the option that takes their own
-  words). Never choose an answer yourself.
+- A thread blocked on a question (a menu: `tm thread show <id>` lists
+  it with its options when the mod sent it, else `tm thread read <id>`)
+  waits for the user. Put the question and its options to the user in
+  chat; once they answer, relay it with `tm thread answer <id> --choice
+  N` or `--option "<label>"` (several for a multi-select), `--text "…"`
+  for their own words, and `--question K` for each further question of
+  the menu. Never choose an answer yourself.
 - Files the user drops into the project's uploads/ folder are theirs
   for the project. When one matters to a task, name its absolute path in
   the task's notes or the thread's prompt; threads can read it.

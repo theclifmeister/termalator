@@ -202,6 +202,9 @@ type SessionInfo struct {
 	// (session.remote); the ticker doesn't turn it back on until the
 	// coordinator is started anew.
 	RemoteHeld bool `json:"remote_held,omitempty"`
+	// Question is the question menu open in the agent, as its mod sent it
+	// (session.ask); nil without one, or without a mod.
+	Question *Question `json:"question,omitempty"`
 }
 
 // QueueNotice is how long a queued prompt must be held while its agent is

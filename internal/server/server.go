@@ -117,6 +117,8 @@ type Server struct {
 	watch watchers
 	// versions caches agent versions for the mod guard (mods.go).
 	versions versions
+	// asks are the sessions' open questions (ask.go).
+	asks asks
 	// mods are the sessions' mod listeners by session id (modchan.go).
 	mods map[string]*http.Server
 
@@ -442,6 +444,9 @@ func (s *Server) serveControl(c net.Conn, br *bufio.Reader, peerPID int) {
 		case proto.MethodSessionWatch:
 			s.serveWatch(c, br, req)
 			return
+		case proto.MethodSessionAsk:
+			s.serveAsk(c, br, req)
+			return
 		}
 		result, perr := s.dispatch(req, peerPID)
 		resp := proto.Response{ID: req.ID, Error: perr}
@@ -559,6 +564,17 @@ func (s *Server) dispatch(req proto.Request, peerPID int) (any, *proto.Error) {
 			return nil, err
 		}
 		return s.hookEvent(p), nil
+	case proto.MethodSessionAnswer:
+		var p proto.SessionAnswerParams
+		if err := decodeParams(req.Params, &p); err != nil {
+			return nil, err
+		}
+		if _, perr := s.session(p.ID); perr != nil {
+			return nil, perr
+		}
+		res, perr := s.asks.answer(p.ID, p.Index, p.Answer)
+		s.watch.wake()
+		return res, perr
 	case proto.MethodSessionRemote:
 		var p proto.SessionRemoteParams
 		if err := decodeParams(req.Params, &p); err != nil {
@@ -637,6 +653,7 @@ func (s *Server) list() proto.SessionListResult {
 // info is sess's info with its thread's task.
 func (s *Server) info(sess *session.Session) proto.SessionInfo {
 	info := sess.Info()
+	info.Question = s.asks.of(info.ID)
 	if info.Role == proto.RoleThread && thread.ValidID(info.Thread) {
 		info.Task = s.taskRef(info.Project, info.Thread)
 	}

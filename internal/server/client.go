@@ -424,3 +424,30 @@ func (s *WatchStream) Next() (proto.Watch, error) {
 
 // Close ends the watch.
 func (s *WatchStream) Close() error { return s.c.Close() }
+
+// AskSession opens question q on session id (session.ask) and waits
+// until it ends: the answers by question text once every question has
+// one, or nil when it closed without (replaced, or the session ended).
+// The caller ending takes the question down with its connection.
+func AskSession(p Paths, id string, q proto.Question) (map[string]string, error) {
+	c, err := Dial(p, proto.KindControl)
+	if err != nil {
+		return nil, err
+	}
+	defer c.Close()
+	if err := c.Call(proto.MethodSessionAsk, proto.SessionAskParams{ID: id, Question: q}, nil); err != nil {
+		return nil, err
+	}
+	for {
+		var ev proto.AskEvent
+		if err := readJSONLine(c.br, &ev); err != nil {
+			return nil, err
+		}
+		switch ev.Event {
+		case proto.EventAskAnswered:
+			return ev.Answers, nil
+		case proto.EventAskClosed:
+			return nil, nil
+		}
+	}
+}

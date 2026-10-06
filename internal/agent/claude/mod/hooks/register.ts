@@ -12,11 +12,16 @@
 // keeps a status entry under it: the thread's task, steps, current item,
 // PR and what waits for the user; and it toasts when the PR's CI run
 // finishes.
+//
+// It sends each AskUserQuestion menu to the server (`tm session ask`) and
+// answers it with what `tm thread answer` gave, unless the user answers
+// in the pane first.
 
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { TerminatrTurn, TerminatrWatch } from '../types'
+import { answers, question } from './ask'
 import { drawBand } from './band'
 import { feed } from './feed'
 import { initialTurn, stateOf, step, waitKey } from './turn'
@@ -43,6 +48,34 @@ export const register: Register = on => {
     await startReports($)
     if (bin && id) void follow($, bin, id, isBand)
     return started
+  })
+
+  // The menu is open while next(e) is pending; whichever answers first,
+  // the user in the pane or tm, answers the call. Returning with next(e)
+  // pending takes the menu down; ending the loop kills `tm session ask`,
+  // which takes the question off the server.
+  on('tool.call', { tool: 'AskUserQuestion' }, async ($, e, next) => {
+    const bin = await $.env.get('TERMINATR_BIN')
+    const id = await $.env.get('TERMINATR_SESSION')
+    if (!bin || !id) return next(e)
+    const menu = next(e)
+    menu.catch(() => undefined)
+    const ask = $.process.spawn({ argv: [bin, 'session', 'ask', id], input: question(e.tool, e.questions) })[Symbol.asyncIterator]()
+    const fromTm = (async () => {
+      let out = ''
+      for (;;) {
+        const r = await ask.next()
+        if (r.done) return answers(out)
+        if (r.value.stream === 'stdout') out += r.value.text
+      }
+    })().catch(() => null)
+    const first = await Promise.race([menu.then(r => ({ r })), fromTm.then(a => ({ a }))])
+    if ('r' in first) {
+      void ask.return?.({ code: null, signal: null })
+      return first.r
+    }
+    if (!first.a) return menu
+    return { result: { questions: e.questions, answers: first.a } }
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
