@@ -218,7 +218,10 @@ type Summary struct {
 	Repos  []string       `json:"repos"`
 	Counts map[string]int `json:"tasks"`
 	Safety *config.Safety `json:"safety,omitempty"`
-	Error  string         `json:"error,omitempty"`
+	// Own are the settings the project sets itself; it follows all
+	// projects in the rest (config.Own).
+	Own   []string `json:"own_settings,omitempty"`
+	Error string   `json:"error,omitempty"`
 }
 
 // List returns every project, by slug. A project whose files can't be
@@ -258,6 +261,7 @@ func List() ([]Summary, error) {
 		if safety, err := cfg.Safety(p.Slug); err == nil {
 			s.Safety = &safety
 		}
+		s.Own = cfg.Own(p.Slug)
 		if b, err := p.Tasks().Load(); err != nil {
 			s.Error = err.Error()
 		} else {

@@ -169,6 +169,22 @@ func StoreReport(p *project.Project, id, text string, attach []string, now time.
 	return n, err
 }
 
+// Attachments lists the names of the files reports attached (library/),
+// sorted; none when there are none.
+func Attachments(p *project.Project, id string) []string {
+	ents, err := os.ReadDir(Path(p, id, "library"))
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range ents {
+		if e.Type().IsRegular() && !strings.HasPrefix(e.Name(), ".") {
+			out = append(out, e.Name())
+		}
+	}
+	return out
+}
+
 func copyFile(src, dst string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err

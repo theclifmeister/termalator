@@ -119,6 +119,18 @@ func (p *Project) Context(seen Ticked) ([]Section, error) {
 		}
 		out = append(out, capLines(f.title, splitLines(string(data)), f.cap, f.file))
 	}
+	// Context files over their size budget (upkeep.go); only when some are.
+	over, err := p.Oversized()
+	if err != nil {
+		return nil, err
+	}
+	if len(over) > 0 {
+		up := Section{Title: "Upkeep"}
+		for _, o := range over {
+			up.Lines = append(up.Lines, o.String())
+		}
+		out = append(out, up)
+	}
 
 	ts, err := p.taskSection()
 	if err != nil {

@@ -886,6 +886,107 @@ func TestNeedsYouNarrow(t *testing.T) {
 	}
 }
 
+// TestAllProjectsSettings: the , popup's All projects tab writes the
+// settings every project follows; a project's Settings tab says which
+// of its settings follow them, a change there makes it the project's
+// own, and x makes it follow all projects again.
+func TestAllProjectsSettings(t *testing.T) {
+	src, m := popupData(t)
+	keyPress(m, ",")
+	keyPress(m, "2")
+	if out := screen(m); !strings.Contains(out, "2 All projects") || !strings.Contains(out, "Parallel threads") {
+		t.Fatalf("all projects tab:\n%s", out)
+	}
+	// Pausing, archiving and deleting are each project's own.
+	for _, r := range m.top().(*settingsView).tabs[1].rows {
+		if r.label == "Paused" || r.label == "Archive" || r.label == "Delete" {
+			t.Fatalf("all projects has a %s row", r.label)
+		}
+	}
+	for range 3 {
+		keyPress(m, "down")
+	}
+	act(m, src, "enter") // 10 → 15
+	if out := screen(m); !strings.Contains(out, "Parallel threads             15") || strings.Contains(out, "working now") {
+		t.Fatalf("all projects' parallel threads:\n%s", out)
+	}
+	cfg, _ := config.Load()
+	if s := must(cfg.Safety("beta")); s.ParallelThreads != 15 {
+		t.Fatalf("beta doesn't follow all projects: %+v", s)
+	}
+
+	// The project's tab: the value and where it comes from.
+	keyPress(m, "esc")
+	keyPress(m, "a")
+	keyPress(m, "4")
+	for range 3 {
+		keyPress(m, "down")
+	}
+	if out := screen(m); !strings.Contains(out, "15 · 1 working now  −  + · all projects") {
+		t.Fatalf("project follows all projects:\n%s", out)
+	}
+	act(m, src, "-")
+	if out := screen(m); !strings.Contains(out, "14 · 1 working now  −  +") || strings.Contains(out, "+ · all projects") || !strings.Contains(out, "x follow all projects") {
+		t.Fatalf("project's own value:\n%s", out)
+	}
+	if cfg, _ := config.Load(); must(cfg.Safety("alpha")).ParallelThreads != 14 || must(cfg.Safety("beta")).ParallelThreads != 15 {
+		t.Fatal("alpha's own value not saved, or reached beta")
+	}
+
+	// All projects names the projects that set their own.
+	keyPress(m, "esc")
+	keyPress(m, ",")
+	keyPress(m, "2")
+	if out := screen(m); !strings.Contains(out, "alpha sets its own") {
+		t.Fatalf("no own note:\n%s", out)
+	}
+	keyPress(m, "esc")
+
+	// x: alpha follows all projects again.
+	keyPress(m, "a")
+	keyPress(m, "4")
+	act(m, src, "x")
+	if !strings.Contains(m.msg, "already follows all projects") {
+		t.Fatalf("x on a following setting: %q", m.msg)
+	}
+	for range 3 {
+		keyPress(m, "down")
+	}
+	// Only x: delete and backspace aren't its aliases.
+	act(m, src, "delete")
+	act(m, src, "backspace")
+	if cfg, _ := config.Load(); must(cfg.Safety("alpha")).ParallelThreads != 14 {
+		t.Fatal("delete or backspace dropped alpha's own value")
+	}
+	act(m, src, "x")
+	if !strings.Contains(m.msg, "alpha follows all projects in parallel threads: 15") {
+		t.Fatalf("x message: %q", m.msg)
+	}
+	if out := screen(m); !strings.Contains(out, "15 · 1 working now  −  + · all projects") {
+		t.Fatalf("after x:\n%s", out)
+	}
+	path, _ := config.Path()
+	data, _ := os.ReadFile(path)
+	if want := "[defaults]\nparallel_threads = 15\n"; !strings.HasPrefix(string(data), want) || strings.Contains(string(data), "parallel_threads = 14") {
+		t.Fatalf("file:\n%s", data)
+	}
+
+	// Yolo for all projects asks first, naming the projects it reaches.
+	keyPress(m, "esc")
+	keyPress(m, ",")
+	keyPress(m, "2")
+	keyPress(m, "down")
+	act(m, src, "enter")
+	cv, ok := m.top().(*confirmView)
+	if !ok || !strings.Contains(cv.question, "alpha, beta") && !strings.Contains(cv.question, "alpha and beta") {
+		t.Fatalf("yolo for all projects didn't ask: %T %+v", m.top(), cv)
+	}
+	act(m, src, "y")
+	if cfg, _ := config.Load(); !must(cfg.Safety("beta")).Yolo {
+		t.Fatal("yolo for all projects not saved")
+	}
+}
+
 // TestMemoryTab: tab 6 shows the project's CONTEXT.md, MEMORY.md and
 // memory notes' titles, read-only, as text: a link shows its text only,
 // the files' own titles are left out, and no file path shows.
@@ -990,8 +1091,8 @@ func TestListsPage(t *testing.T) {
 	keyPress(m, ",")
 	sv := m.top().(*settingsView)
 	keyPress(m, "pgdown")
-	if sv.list.sel == 0 {
-		t.Errorf("settings pgdown: %d", sv.list.sel)
+	if sv.tabs[sv.tab].sel == 0 {
+		t.Errorf("settings pgdown: %d", sv.tabs[sv.tab].sel)
 	}
 }
 

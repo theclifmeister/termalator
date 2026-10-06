@@ -112,6 +112,11 @@ func TestBadSettings(t *testing.T) {
 		"[projects.demo]\nauto_close = \"never\"\n":        "auto_close must be",
 		"[projects.demo]\nauto_close_days = 0\n":           "auto_close_days must be 1 to 365",
 		"[projects.demo]\ncomplete_tasks = \"later\"\n":    "complete_tasks must be",
+		"[defaults]\nyoloo = true\n":                       "unknown setting defaults.yoloo",
+		"[defaults]\narchived = true\n":                    "defaults can't set paused or archived",
+		"[defaults]\npaused = false\n":                     "defaults can't set paused or archived",
+		"[defaults]\nparallel_threads = 100\n":             "defaults.parallel_threads must be 1 to 99",
+		"[defaults]\nauto_close = \"never\"\n":             "defaults.auto_close must be",
 	} {
 		write(t, body)
 		if _, err := Load(); err == nil || !strings.Contains(err.Error(), want) {
@@ -139,5 +144,70 @@ func TestKeysAndUI(t *testing.T) {
 	write(t, "[keys]\nprefix = \"ctrl+o\"\n[projects.demo]\nyoloo = true\n")
 	if c, err = Load(); err == nil || c == nil || c.Prefix != "ctrl+o" {
 		t.Fatalf("bad project: %v, %+v", err, c)
+	}
+}
+
+// TestAllProjects: each setting is the project's own value, else the
+// all-projects one ([defaults]), else the built-in default; a project
+// without a table follows all projects in everything.
+func TestAllProjects(t *testing.T) {
+	write(t, `
+[defaults]
+start_threads = "auto"
+parallel_threads = 4
+auto_close = "off"
+complete_tasks = "merged"
+
+[projects.demo]
+parallel_threads = 2
+complete_tasks = "user"
+
+[projects.old]
+auto_resolve = true
+`)
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	all := Safety{StartThreads: "auto", CoordinatorApproves: true, ParallelThreads: 4, AutoClose: "off", AutoCloseDays: 7, PRFollowup: true, CompleteTasks: "merged", FastForwardCheckout: true}
+	if s, _ := c.AllProjects(); s != all {
+		t.Fatalf("all projects %+v", s)
+	}
+	if s, _ := c.Safety("new"); s != all {
+		t.Fatalf("a new project %+v, want all projects", s)
+	}
+	want := all
+	want.ParallelThreads, want.CompleteTasks = 2, "user"
+	if s, _ := c.Safety("demo"); s != want {
+		t.Fatalf("demo %+v", s)
+	}
+	// A project's older auto_resolve overrides the defaults' auto_close.
+	if s, _ := c.Safety("old"); s.AutoClose != CloseMerged || s.ParallelThreads != 4 {
+		t.Fatalf("old %+v", s)
+	}
+	if got := strings.Join(c.Own("demo"), " "); got != "parallel_threads complete_tasks" {
+		t.Fatalf("Own(demo) = %q", got)
+	}
+	if got := strings.Join(c.Own("old"), " "); got != "auto_close" {
+		t.Fatalf("Own(old) = %q", got)
+	}
+	if got := c.Own("new"); got != nil {
+		t.Fatalf("Own(new) = %q", got)
+	}
+}
+
+// TestAllProjectsReleasedRemoved: "released" in [defaults] is read as
+// "user" and named first by Removed.
+func TestAllProjectsReleasedRemoved(t *testing.T) {
+	write(t, "[defaults]\ncomplete_tasks = \"released\"\n\n[projects.a]\ncomplete_tasks = \"released\"\n")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := c.Safety("b"); s.CompleteTasks != CompleteUser {
+		t.Fatalf("b %+v", s)
+	}
+	if got := strings.Join(c.Removed(), ","); got != "all projects,a" {
+		t.Fatalf("Removed = %q", got)
 	}
 }

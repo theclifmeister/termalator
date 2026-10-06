@@ -32,7 +32,8 @@ func sampleInfo(now time.Time) *infoData {
 			Text: "PR: https://github.com/o/r/pull/70\n\n## Report\n\nLayout done.\nContent done.\nTests next.\nMore.\n\n## Next\n\nMerge PR #70\nRelease it\n"},
 		task: &tasks.Task{ID: 26, Title: "Info panel on thread panes", Status: tasks.Started, Steps: []tasks.Step{
 			{N: 1, Text: "Layout", Done: true}, {N: 2, Text: "Content", Done: true}, {N: 3, Text: "Toggle"}, {N: 4, Text: "Clicks"}}},
-		pr: ticker.PR{Number: 70, URL: "https://github.com/o/r/pull/70", State: "OPEN", Checks: "pending", MergeState: "BEHIND", Base: "main"},
+		pr:       ticker.PR{Number: 70, URL: "https://github.com/o/r/pull/70", State: "OPEN", Checks: "pending", MergeState: "BEHIND", Base: "main"},
+		attached: []string{"chart.png", "plan.md"},
 	}
 }
 
@@ -61,11 +62,15 @@ func TestInfoLines(t *testing.T) {
 		"thread    t-0002", "working", "model     sonnet", "now       ▸ Write the tests", "needs you Which key toggles it?",
 		"PR        #70 open, checks pending,\n           behind main",
 		"Last report · 5m ago", "Layout done.", "Tests next.",
+		"attached  chart.png, plan.md",
 		"branch    tm/demo/t-0002-info", "worktree  /tmp/wt/t-0002", "active    2m ago",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("no %q in\n%s", want, text)
 		}
+	}
+	if strings.Contains(text, "library") {
+		t.Errorf("an attachment's path in the panel:\n%s", text)
 	}
 	for _, next := range []string{"Merge PR #70", "Release it"} {
 		if strings.Contains(text, next) {

@@ -218,6 +218,8 @@ type dialog struct {
 	question string
 	options  []string
 	sel      int
+	textOpt  int    // question: the option that is a text field once focused, or -1
+	text     []rune // what was typed into it
 	shownAt  time.Time
 	debounce time.Duration
 	result   chan int // the chosen option, 1-based; 0 to exit
@@ -231,6 +233,9 @@ func (d *dialog) lines() []string {
 			mark := "  "
 			if i == d.sel {
 				mark = "❯ "
+			}
+			if d.kind == "question" && i == d.textOpt && len(d.text) > 0 {
+				o = string(d.text)
 			}
 			out = append(out, fmt.Sprintf(" %s%d. %s", mark, i+1, o))
 		}

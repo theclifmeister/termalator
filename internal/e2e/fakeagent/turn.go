@@ -383,10 +383,35 @@ func (a *app) dialogKeyLocked(d *dialog, k key) {
 		default:
 		}
 	}
+	// A question's text option is a text field while focused: it takes
+	// the typed text, and Enter sends it (empty, Enter does nothing).
+	if d.kind == "question" && d.textOpt >= 0 && d.sel == d.textOpt {
+		switch k.kind {
+		case kRune:
+			d.text = append(d.text, k.r)
+			return
+		case kPaste:
+			d.text = append(d.text, []rune(k.text)...)
+			return
+		case kBackspace:
+			if len(d.text) > 0 {
+				d.text = d.text[:len(d.text)-1]
+			}
+			return
+		case kEnter:
+			if len(d.text) > 0 {
+				choose(d.sel + 1)
+			}
+			return
+		}
+	}
 	switch k.kind {
 	case kRune:
 		if k.r >= '1' && k.r <= '9' && int(k.r-'0') <= len(d.options) {
 			d.sel = int(k.r - '1')
+			if d.kind == "question" && d.sel == d.textOpt {
+				return // focused: type the text next
+			}
 			choose(d.sel + 1)
 		}
 	case kUp:

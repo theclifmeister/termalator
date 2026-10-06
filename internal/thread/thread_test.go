@@ -3,6 +3,7 @@ package thread
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -186,7 +187,7 @@ func TestFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	b, _ = os.ReadFile(brief)
-	for _, w := range []string{p.Path("TASKS.md"), "tm skill thread", "previous attempt", "also this"} {
+	for _, w := range []string{p.Path("TASKS.md"), p.Path("uploads") + "/ (files the user uploaded", "tm skill thread", "previous attempt", "also this"} {
 		if !strings.Contains(string(b), w) {
 			t.Errorf("brief lacks %q", w)
 		}
@@ -200,11 +201,24 @@ func TestFiles(t *testing.T) {
 	if _, err := os.Stat(Path(p, r.ID, "reports", "1.md")); err != nil {
 		t.Fatal("earlier report not kept")
 	}
+	if a := Attachments(p, r.ID); len(a) != 0 {
+		t.Fatalf("attachments before any: %v", a)
+	}
+	src := t.TempDir()
+	for _, n := range []string{"plan.md", "chart.png"} {
+		os.WriteFile(filepath.Join(src, n), []byte(n), 0o644)
+	}
+	if _, err := StoreReport(p, r.ID, report, []string{filepath.Join(src, "plan.md"), filepath.Join(src, "chart.png")}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if a := Attachments(p, r.ID); strings.Join(a, ",") != "chart.png,plan.md" {
+		t.Fatalf("attachments %v", a)
+	}
 	if _, err := StoreReport(p, r.ID, "## Report\n", nil, time.Now()); err == nil {
 		t.Fatal("invalid report stored")
 	}
 	got, _ := Load(p, r.ID)
-	if got.Reports != 2 || got.ReportState() != "new" {
+	if got.Reports != 3 || got.ReportState() != "new" {
 		t.Fatalf("record %+v", got)
 	}
 	if ctx := ResetContext(p, r.ID); !strings.Contains(ctx, "brief.md") || !strings.Contains(ctx, "Report: new") {

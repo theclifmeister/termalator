@@ -446,12 +446,17 @@ func (a *app) questionStep(ctx context.Context, st step) error {
 		return err
 	}
 	all := append(append([]string(nil), opts...), "Type something.")
-	d := &dialog{kind: "question", header: st.Header, question: st.Question, options: all}
+	d := &dialog{kind: "question", header: st.Header, question: st.Question, options: all, textOpt: len(all) - 1}
 	n, err := a.waitDialog(ctx, d)
 	if err != nil {
 		return err
 	}
 	answer := all[n-1]
+	if n-1 == d.textOpt {
+		a.mu.Lock()
+		answer = string(d.text)
+		a.mu.Unlock()
+	}
 	resp := map[string]any{"questions": input["questions"], "answers": map[string]any{st.Question: answer}}
 	if _, err := a.fireHook(ctx, "PostToolUse", map[string]any{"tool_name": "AskUserQuestion", "tool_input": input, "tool_response": resp, "tool_use_id": id}); err != nil {
 		return err

@@ -601,6 +601,39 @@ func TestClaudeRemoteControl(t *testing.T) {
 	}
 }
 
+func TestManifestAnswer(t *testing.T) {
+	const base = "manifest_version = 1\nname = \"a\"\n[launch]\ncommand = \"a\"\n" +
+		"[[rules]]\nid = \"q\"\nstate = \"blocked\"\nreason = \"question\"\nregion = \"screen\"\ncontains = [\"Enter to select\"]\n" +
+		"[[rules]]\nid = \"idle\"\nstate = \"idle\"\nregion = \"screen\"\ncontains = [\"❯\"]\n"
+	for _, c := range []struct {
+		answer string
+		has    bool
+		ok     bool
+	}{
+		{"", false, true},
+		{"[answer]\nrule = \"q\"\n", true, true},
+		{"[answer]\nrule = \"q\"\ntext_option = \"Type something\"\nsubmit = \"\\r\"\n", true, true},
+		{"[answer]\nrule = \"q\"\ntext_option = \"Type something\"\n", false, false},
+		{"[answer]\nrule = \"idle\"\n", false, false},
+		{"[answer]\nrule = \"nope\"\n", false, false},
+		{"[answer]\ntext_option = \"x\"\nsubmit = \"\\r\"\n", false, false},
+	} {
+		m, err := ParseManifest([]byte(base + c.answer))
+		if (err == nil) != c.ok {
+			t.Errorf("%q: err = %v, want ok %v", c.answer, err, c.ok)
+			continue
+		}
+		if err == nil && (AnswerOf(FromManifest(m)) != nil) != c.has {
+			t.Errorf("%q: has answer = %v", c.answer, !c.has)
+		}
+	}
+	r, _ := Load("")
+	a, _ := r.Get("claude")
+	if ans := AnswerOf(a); ans == nil || ans.Rule != "blocked-question" || ans.TextOption == "" {
+		t.Fatalf("claude answer %+v", ans)
+	}
+}
+
 func TestManifestModels(t *testing.T) {
 	const base = "manifest_version = 1\nname = \"a\"\n[launch]\ncommand = \"a\"\n"
 	const args = "model_args = [\"--model\", \"{{.Model}}\"]\n"
