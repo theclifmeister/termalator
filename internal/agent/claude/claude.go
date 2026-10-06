@@ -34,13 +34,20 @@ type Agent struct {
 // Manifest exposes the manifest (agent.ManifestOf).
 func (a *Agent) Manifest() *agent.Manifest { return a.m }
 
-// Injector is the manifest's choice. The socket channel is opt-in
-// (inject.prompt = "channel"): Claude 2.1.289 frames a message from the
-// socket as coming from "another Claude session … not typed by your
-// user", with caveats against treating it as the user's approval, which
-// is wrong for a prompt the human sends. The core falls back to paste
-// whenever Prompt fails.
-func (a *Agent) Injector() agent.Injector { return a.Agent.Injector() }
+// Injector is the manifest's choice, except that the socket never
+// carries every prompt: inject.prompt = "channel" reads as paste. Claude
+// frames a message from the socket as coming from "another Claude
+// session … not typed by your user", with caveats against treating it as
+// the user's approval, which is wrong for a prompt the human sends; it
+// can't run slash commands, and it never says whether the message was
+// delivered (2.1.291). The socket stays for the server's own fixed-word
+// prompts once held (session.PromptOptions.Channel) and for Probe.
+func (a *Agent) Injector() agent.Injector {
+	if inj := a.Agent.Injector(); inj != agent.InjectChannel {
+		return inj
+	}
+	return agent.InjectPaste
+}
 
 // ErrNoSocket means the status file named no usable messaging socket.
 var ErrNoSocket = errors.New("claude: no messaging socket")
@@ -50,6 +57,13 @@ var ErrNoSocket = errors.New("claude: no messaging socket")
 // it correctly both idle and mid-turn (spike t-0004). It is used only for
 // a tested version with a socket named in a trusted status file; the
 // connect is the feature probe.
+//
+// With a token (the CLAUDE_CODE_MESSAGING_TOKEN Claude gives its
+// children, which tm's hooks report), an {"type":"auth","token":…} line
+// goes first: Claude 2.1.291 may require it, and silently drops lines
+// from a connection without it. Claude never answers on the sending
+// connection, so nil means the lines were written, not that the message
+// was delivered: it may still be held for approval or dropped.
 func (a *Agent) Prompt(ctx context.Context, t agent.PromptTarget, text string) error {
 	path := t.Fields[SocketField]
 	if path == "" {
@@ -65,15 +79,35 @@ func (a *Agent) Prompt(ctx context.Context, t agent.PromptTarget, text string) e
 	}
 	defer c.Close()
 	c.SetWriteDeadline(time.Now().Add(dialTimeout))
+	msg, err := lines(t.Token, text)
+	if err != nil {
+		return err
+	}
+	// One write: the inbox reads whole lines, and the auth line must not
+	// arrive alone.
+	if _, err := c.Write(msg); err != nil {
+		return fmt.Errorf("claude: messaging socket: %w", err)
+	}
+	return nil
+}
+
+// lines is what Prompt writes: the auth line when there is a token, then
+// the user line, each ending in a newline.
+func lines(token, text string) ([]byte, error) {
+	var out []byte
+	if token != "" {
+		auth, err := json.Marshal(map[string]any{"type": "auth", "token": token})
+		if err != nil {
+			return nil, err
+		}
+		out = append(auth, '\n')
+	}
 	line, err := json.Marshal(map[string]any{
 		"type":    "user",
 		"message": map[string]any{"role": "user", "content": text},
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if _, err := c.Write(append(line, '\n')); err != nil {
-		return fmt.Errorf("claude: messaging socket: %w", err)
-	}
-	return nil
+	return append(append(out, line...), '\n'), nil
 }

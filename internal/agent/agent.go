@@ -179,6 +179,10 @@ type PromptTarget struct {
 	PID       int
 	Version   string            // the agent's version, when the status file says
 	Fields    map[string]string // from the status file; nil when it isn't trusted
+	// Token authenticates to the channel (Claude's messaging token), as
+	// the agent's hooks last reported it (inject.token_env); empty when
+	// none did.
+	Token string
 }
 
 // Agent is the whole contract between the core and one agent harness.

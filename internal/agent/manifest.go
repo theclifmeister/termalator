@@ -47,6 +47,11 @@ type Manifest struct {
 		// prompt box is empty. The paste injector waits for it, so it
 		// never appends to a restored or half-typed prompt.
 		EmptyRule string `toml:"empty_rule"`
+		// TokenEnv names a variable of the hook's environment that tm hook
+		// hands to the server with every event, for the prompt channel
+		// (PromptTarget.Token): Claude's messaging token. The server
+		// keeps it in memory only and never logs it.
+		TokenEnv string `toml:"token_env"`
 	} `toml:"inject"`
 
 	// RemoteControl: reaching the session from another device, e.g.

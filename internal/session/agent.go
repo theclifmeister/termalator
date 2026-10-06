@@ -76,7 +76,10 @@ type PromptOptions struct {
 // PromptResolution is what became of a prompt held for PromptHold.
 type PromptResolution struct {
 	Text   string
-	Via    string // "channel", "dropped" or "stale" (Refresh said so)
+	// Via is "sent" (written to the agent's channel, which may not
+	// confirm delivery: Claude's socket never answers), "dropped" or
+	// "stale" (Refresh said so).
+	Via    string
 	Why    string // HeldBox or HeldDialog
 	Held   time.Duration
 	Queued time.Time
@@ -122,6 +125,7 @@ type agentRT struct {
 	statusSize int64
 	statusRead time.Time
 	fields     map[string]string // status-file fields while trusted
+	token      string            // the prompt channel's token, from the hooks
 	version    string
 	prompts    []queuedPrompt
 	heldSince  time.Time // the head prompt has been held while idle since
@@ -519,12 +523,8 @@ func (s *Session) PromptWith(text string, o PromptOptions) (string, error) {
 	case agent.InjectNone:
 		return "", fmt.Errorf("agent %s takes no prompts", rt.a.Name())
 	case agent.InjectChannel:
-		rt.mu.Lock()
-		fields := rt.fields
-		t := agent.PromptTarget{SessionID: s.cfg.ID, AgentSID: rt.tr.AgentSID(), PID: rt.pid, Version: rt.version, Fields: fields}
-		rt.mu.Unlock()
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		err := rt.a.Prompt(ctx, t, text)
+		err := rt.a.Prompt(ctx, s.promptTarget(rt), text)
 		cancel()
 		if err == nil {
 			return "channel", nil
@@ -535,6 +535,27 @@ func (s *Session) PromptWith(text string, o PromptOptions) (string, error) {
 	rt.prompts = append(rt.prompts, queuedPrompt{text: text, at: time.Now(), channel: o.Channel, refresh: o.Refresh})
 	rt.mu.Unlock()
 	return "queued", nil
+}
+
+// promptTarget is what the agent's channel needs to reach it now.
+func (s *Session) promptTarget(rt *agentRT) agent.PromptTarget {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	return agent.PromptTarget{SessionID: s.cfg.ID, AgentSID: rt.tr.AgentSID(), PID: rt.pid,
+		Version: rt.version, Fields: rt.fields, Token: rt.token}
+}
+
+// SetPromptToken records the prompt channel's token that the agent's
+// hooks reported (agent.PromptTarget.Token). It lives only as long as
+// the agent does, and is never logged.
+func (s *Session) SetPromptToken(token string) {
+	rt := s.agentRT()
+	if rt == nil || rt.observed {
+		return
+	}
+	rt.mu.Lock()
+	rt.token = token
+	rt.mu.Unlock()
 }
 
 // deliverPrompts pastes the first queued prompt when it is safe: idle,
@@ -619,14 +640,11 @@ func (rt *agentRT) promptHold() time.Duration {
 func (s *Session) resolveHeld(rt *agentRT, p queuedPrompt, why string, held time.Duration) {
 	res := PromptResolution{Text: p.text, Via: "dropped", Why: why, Held: held, Queued: p.at}
 	if p.channel {
-		rt.mu.Lock()
-		t := agent.PromptTarget{SessionID: s.cfg.ID, AgentSID: rt.tr.AgentSID(), PID: rt.pid, Version: rt.version, Fields: rt.fields}
-		rt.mu.Unlock()
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		res.Err = rt.a.Prompt(ctx, t, p.text)
+		res.Err = rt.a.Prompt(ctx, s.promptTarget(rt), p.text)
 		cancel()
 		if res.Err == nil {
-			res.Via = "channel"
+			res.Via = "sent"
 		}
 	}
 	s.cfg.Logf("session %s: queued prompt held %s (%s): %s", s.cfg.ID, held.Round(time.Second), why, res.Via)

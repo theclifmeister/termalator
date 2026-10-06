@@ -18,20 +18,28 @@ type chanAgent struct {
 	m   *agent.Manifest
 	err error
 
-	mu   sync.Mutex
-	sent []string
+	mu     sync.Mutex
+	sent   []string
+	tokens []string // PromptTarget.Token of each send
 }
 
 func (a *chanAgent) Manifest() *agent.Manifest { return a.m }
 
-func (a *chanAgent) Prompt(_ context.Context, _ agent.PromptTarget, text string) error {
+func (a *chanAgent) Prompt(_ context.Context, t agent.PromptTarget, text string) error {
 	if a.err != nil {
 		return a.err
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.sent = append(a.sent, text)
+	a.tokens = append(a.tokens, t.Token)
 	return nil
+}
+
+func (a *chanAgent) Tokens() []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]string(nil), a.tokens...)
 }
 
 func (a *chanAgent) Sent() []string {
@@ -132,18 +140,20 @@ func TestHeldPromptDropped(t *testing.T) {
 }
 
 // TestHeldPromptChannel: a server prompt that may take the channel goes
-// through it once held for PromptHold; one whose channel fails is
-// dropped with the error.
+// through it once held for PromptHold, with the token the hooks
+// reported, and reads as sent (the channel can't confirm delivery); one
+// whose channel fails is dropped with the error.
 func TestHeldPromptChannel(t *testing.T) {
 	a := claudeLike(t)
 	resolved := make(chan PromptResolution, 1)
 	s := startBox(t, a, "draft", 500*time.Millisecond, resolved)
+	s.SetPromptToken("child-token")
 	if _, err := s.PromptWith("[tm] nudge", PromptOptions{Channel: true}); err != nil {
 		t.Fatal(err)
 	}
 	select {
 	case r := <-resolved:
-		if r.Via != "channel" || r.Err != nil {
+		if r.Via != "sent" || r.Err != nil {
 			t.Fatalf("resolution %+v", r)
 		}
 	case <-time.After(10 * time.Second):
@@ -151,6 +161,9 @@ func TestHeldPromptChannel(t *testing.T) {
 	}
 	if got := a.Sent(); len(got) != 1 || got[0] != "[tm] nudge" {
 		t.Fatalf("channel got %q", got)
+	}
+	if got := a.Tokens(); len(got) != 1 || got[0] != "child-token" {
+		t.Fatalf("channel tokens %q", got)
 	}
 
 	a.err = context.DeadlineExceeded
