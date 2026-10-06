@@ -13,7 +13,10 @@
 // a slash command; Claude runs it once idle, leaving the prompt box
 // alone), then acks "submitted", or "refused" so the server pastes it.
 // An offer whose id is the one kept was handed on before a reload: it is
-// only acked again.
+// only acked again. A loop that throws tells the server why (POST
+// /v1/log) and starts again; one that stops going round is started again
+// by the heartbeat; and a /clear, which may wipe $.state and starts no
+// session.start, leaves the loop running (T82).
 //
 // It also follows the session's `tm watch --json` feed for the session's
 // life and keeps the latest line in $.state. From it, unless [mods] band
@@ -80,6 +83,11 @@ const END_WAIT_MS = 500
 const POLL_S = 20
 const POLL_GAP_MS = 250
 const RETRY_MS = 5_000
+
+// LOOP_STALL_MS is how long the prompt loop may go without a round, a
+// prompt being handed on aside, before the heartbeat starts it again: a
+// poll takes POLL_S at most.
+const LOOP_STALL_MS = 60_000
 
 // CONTEXT_WAIT_MS bounds the fetch of the role's context.
 const CONTEXT_WAIT_MS = 2_000
@@ -279,6 +287,14 @@ let pending: string | null = null
 let last = ''
 let loops = 0
 
+// The prompt loop: whether one runs, when it last went round, whether it
+// is handing a prompt on (which may wait a whole turn), and whether the
+// server said the session is gone.
+let looping = false
+let loopAt = 0
+let handing = false
+let loopGone = false
+
 // startReports opens the channel, in a terminatr session with the mod's
 // socket: it reports the state the turn is in (a reload carries on),
 // then beats.
@@ -291,9 +307,23 @@ async function startReports($: EngineInterface) {
   void report($, now, 'session.start')
   $.clock.every(BEAT_MS, () => {
     void read($, turn).then(t => report($, t, 'beat'))
+    watchLoop($).catch(() => {})
   })
+  loopGone = false
   // An unload ends the loop mid-call: nothing to report.
-  deliver($).catch(() => {})
+  keepDelivering($).catch(() => {})
+}
+
+// watchLoop starts the prompt loop again when it stopped going round
+// while not handing a prompt on: nothing else would, and the beats would
+// go on telling the server the mod takes its prompts.
+async function watchLoop($: EngineInterface) {
+  if (!looping || handing || loopGone) return
+  const now = await $.clock.now()
+  if (now - loopAt < LOOP_STALL_MS) return
+  loopAt = now
+  void modLog($, `the prompt loop made no round for ${Math.round(LOOP_STALL_MS / 1000)}s: started again`)
+  keepDelivering($).catch(() => {})
 }
 
 // registerTools lists the thread's tools for the model; one that fails
@@ -308,13 +338,50 @@ async function registerTools($: EngineInterface) {
   }
 }
 
-// deliver takes the server's prompts until the session is gone. A
-// reload starts a new loop; the old one stops at its next turn round.
-async function deliver($: EngineInterface) {
-  const me = (await $.clock.now()) * 1000 + (++loops % 1000)
-  await update($, deliverer, () => me)
+// keepDelivering runs the prompt loop until the session is gone or a
+// newer loop took over (a reload's, or the heartbeat's), and runs it
+// again when it throws, telling the server why. An unload ends it
+// mid-call: nothing to report.
+async function keepDelivering($: EngineInterface) {
+  let me = 0
+  try {
+    me = (await $.clock.now()) * 1000 + (loops++ % 1000) + 1 // never 0, a wiped atom's
+    looping = true
+    loopAt = await $.clock.now()
+    await update($, deliverer, () => me)
+  } catch (err) {
+    await modLog($, `the prompt loop didn't start: ${errorText(err)}`)
+    return
+  }
   for (;;) {
-    if ((await read($, deliverer)) !== me) return
+    try {
+      await deliver($, me)
+      return
+    } catch (err) {
+      await modLog($, `the prompt loop failed: ${errorText(err)}; starting it again`)
+    }
+    await $.clock.sleep(RETRY_MS)
+  }
+}
+
+// mine says whether loop me still takes the prompts: another id in the
+// atom is a newer loop's. A wiped atom (a /clear may start the session's
+// state afresh) is claimed back.
+async function mine($: EngineInterface, me: number): Promise<boolean> {
+  const owner = await read($, deliverer)
+  if (owner === me) return true
+  if (owner) return false
+  await update($, deliverer, v => v || me)
+  return (await read($, deliverer)) === me
+}
+
+// deliver takes the server's prompts until the session is gone or a newer
+// loop took over: a reload's loop, or one the heartbeat started; the old
+// one stops at its next round.
+async function deliver($: EngineInterface, me: number) {
+  for (;;) {
+    if (!(await mine($, me))) return
+    loopAt = await $.clock.now()
     let r
     try {
       r = await $.http.fetch(`http://terminatr/v1/prompts?wait=${POLL_S}`, { socketPath: socket })
@@ -323,7 +390,11 @@ async function deliver($: EngineInterface) {
       await $.clock.sleep(RETRY_MS)
       continue
     }
-    if (r.status === 410) return
+    if (r.status === 410) {
+      looping = false
+      loopGone = true
+      return
+    }
     if (r.status === 204) {
       await $.clock.sleep(POLL_GAP_MS)
       continue
@@ -334,7 +405,7 @@ async function deliver($: EngineInterface) {
       await $.clock.sleep(RETRY_MS)
       continue
     }
-    if ((await read($, deliverer)) !== me) return
+    if (!(await mine($, me))) return
     if (handled(offer, await read($, delivering))) {
       if (!(await ack($, offer.id, { result: 'submitted' }))) await $.clock.sleep(POLL_GAP_MS)
       continue
@@ -346,7 +417,8 @@ async function deliver($: EngineInterface) {
       continue
     }
     await update($, delivering, () => offer.id)
-    const done = await handOn($, offer)
+    handing = true
+    const done = await handOn($, offer).finally(() => (handing = false))
     // Claude didn't take it: offered again, it is handed on again.
     if (done.result === 'refused') await update($, delivering, () => '')
     await ack($, offer.id, done)
@@ -379,6 +451,21 @@ async function ack($: EngineInterface, id: string, a: Ack): Promise<boolean> {
   } catch (err) {
     $.ui.log(`terminatr: prompt ${id} ${a.result}: ${String(err)}`, { to: 'debug' })
     return false
+  }
+}
+
+// modLog puts a line in the server's log for this session (POST
+// /v1/log); a failure goes to the debug log.
+async function modLog($: EngineInterface, text: string) {
+  $.ui.log(`terminatr: ${text}`, { to: 'debug' })
+  if (!socket) return
+  try {
+    const r = await $.http.fetch('http://terminatr/v1/log', {
+      method: 'POST', socketPath: socket, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }),
+    })
+    if (!r.ok) $.ui.log(`terminatr: log: ${r.status} ${r.text}`, { to: 'debug' })
+  } catch (err) {
+    $.ui.log(`terminatr: log: ${String(err)}`, { to: 'debug' })
   }
 }
 

@@ -28,6 +28,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
@@ -55,6 +56,15 @@ type ModAck struct {
 	Result string `json:"result"` // session.ModTaken, ModSubmitted or ModRefused
 	Error  string `json:"error,omitempty"`
 }
+
+// ModLog is the body of POST /v1/log: one line for the server's log,
+// cut to maxModLog.
+type ModLog struct {
+	Text string `json:"text"`
+}
+
+// maxModLog bounds a logged line.
+const maxModLog = 300
 
 // ModReport is the body of POST /v1/state: the state the mod holds, and
 // the event that moved it there ("beat" for a heartbeat).
@@ -215,6 +225,27 @@ func (s *Server) modHandler(id string) http.Handler {
 		if ack.Result == session.ModSubmitted {
 			s.watch.wake()
 		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	// A line for the server's log: the mod's prompt loop failing or
+	// started again (T82), which nothing else would show.
+	mux.HandleFunc("POST /v1/log", func(w http.ResponseWriter, r *http.Request) {
+		var l ModLog
+		b, err := io.ReadAll(io.LimitReader(r.Body, maxModReport))
+		if err == nil {
+			err = json.Unmarshal(b, &l)
+		}
+		if err == nil && strings.TrimSpace(l.Text) == "" {
+			err = errors.New("text is required")
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if s.modSession(w, id) == nil {
+			return
+		}
+		s.log.Printf("session %s: mod: %s", id, oneLine(l.Text, maxModLog))
 		w.WriteHeader(http.StatusNoContent)
 	})
 	// The role's context, fresh (§7.8): the mod adds it to the
