@@ -82,7 +82,7 @@ cmd = 'printf "## Report\nSome work.\n" | "$TERMILATOR_BIN" report > "$OUT/badre
 
 [[step]]
 do = "run"
-cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDid it.\n\n## Next\nMerge the PR\n\n## Remember\n- a lesson\n" | "$TERMILATOR_BIN" report > "$OUT/report" 2>&1; echo "exit $?" >> "$OUT/report"'
+cmd = 'printf "notes\n" > "$OUT/notes.md"; printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDid it.\n\n## Next\nMerge the PR\n\n## Remember\n- a lesson\n" | "$TERMILATOR_BIN" report --attach "$OUT/notes.md" > "$OUT/report" 2>&1; echo "exit $?" >> "$OUT/report"'
 
 [[step]]
 do = "run"
@@ -132,8 +132,8 @@ func threadEnv(t *testing.T) (env *Env, projDir, out string) {
 	}
 	real, _ := filepath.EvalSymlinks(p.Dir)
 	env.Setenv("FAKEAGENT_DENY_PATH", real)
-	os.MkdirAll(filepath.Join(env.Home, "worktrees"), 0o755)
-	env.Trust(p.Dir, filepath.Join(env.Home, "worktrees"))
+	// Not the worktrees: the server trusts each thread's own (§8.6).
+	env.Trust(p.Dir)
 	return env, p.Dir, out
 }
 
@@ -195,6 +195,22 @@ func TestSmokeThreadLifecycle(t *testing.T) {
 	env.WaitFake("prompt", agentWait, func(r FakeRecord) bool {
 		return r.Str("via") == "kickoff" && strings.Contains(r.Str("text"), filepath.Join(tdir, "brief.md"))
 	})
+	// It got there without a trust screen: the server trusted the
+	// worktree, and only it, in the agent's config.
+	var claudeCfg struct {
+		Projects map[string]struct {
+			HasTrustDialogAccepted bool
+		}
+	}
+	b, _ := os.ReadFile(filepath.Join(env.HomeDir(), ".claude.json"))
+	if err := json.Unmarshal(b, &claudeCfg); err != nil || !claudeCfg.Projects[rec.Worktree].HasTrustDialogAccepted {
+		t.Errorf("worktree not trusted (%v): %s", err, b)
+	}
+	for d := range claudeCfg.Projects {
+		if r, _ := filepath.EvalSymlinks(rec.Worktree); d != rec.Worktree && d != r && strings.HasPrefix(d, filepath.Join(env.Home, "worktrees")) {
+			t.Errorf("trusted more than the worktree: %s", d)
+		}
+	}
 	env.WaitFake("context", agentWait, func(r FakeRecord) bool {
 		return r.Str("source") == "startup" && strings.Contains(r.Str("text"), "tm skill thread") && strings.Contains(r.Str("text"), "Task T1 Fix the login")
 	})
@@ -260,6 +276,11 @@ func TestSmokeThreadLifecycle(t *testing.T) {
 	// Nothing termilator-owned in the worktree: it is a clean checkout.
 	if st, err := exec.Command("git", "-C", rec.Worktree, "status", "--porcelain", "--ignored").Output(); err != nil || len(st) != 0 {
 		t.Errorf("worktree not clean (%v): %q", err, st)
+	}
+	// The attachment is named, by name only, for the coordinator to
+	// point the user at.
+	if show := env.MustCLI("thread", "show", "t-0001", "--project", "demo"); !strings.Contains(show, "attached:  notes.md") {
+		t.Errorf("thread show lacks the attachment:\n%s", show)
 	}
 	env.MustCLI("thread", "ack", "t-0001", "--project", "demo")
 

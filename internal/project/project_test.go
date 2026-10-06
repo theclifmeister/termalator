@@ -333,6 +333,60 @@ func TestAskAcceptSendBack(t *testing.T) {
 	}
 }
 
+// TestUpkeep: context files over their budget are named in tm context's
+// Upkeep section (and only then); done tasks leave the board after
+// ArchiveDoneAfter, journaled as the caller's.
+func TestUpkeep(t *testing.T) {
+	setup(t)
+	p, _ := New(Options{Name: "demo app"})
+	render := func() string {
+		secs, err := p.Context(Ticked{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return RenderContext(secs)
+	}
+	if over, err := p.Oversized(); err != nil || len(over) != 0 {
+		t.Fatalf("fresh project: %v %v", over, err)
+	}
+	if strings.Contains(render(), "## Upkeep") {
+		t.Fatal("an Upkeep section without anything over budget")
+	}
+	os.WriteFile(p.Path("CONTEXT.md"), []byte(strings.Repeat("x", BudgetContext+512)), 0o644)
+	os.MkdirAll(p.Path("memory", "old"), 0o755)
+	os.WriteFile(p.Path("memory", "old", "decisions.md"), []byte(strings.Repeat("y", BudgetMemory+1024)), 0o644)
+	os.WriteFile(p.Path("memory", "small.md"), []byte("ok\n"), 0o644)
+	ctx := render()
+	for _, w := range []string{"## Upkeep", "CONTEXT.md is 6.5 KB, over its 6 KB budget: consolidate it",
+		"memory/old/decisions.md is 7 KB, over its 6 KB budget"} {
+		if !strings.Contains(ctx, w) {
+			t.Errorf("context lacks %q:\n%s", w, ctx)
+		}
+	}
+	if strings.Contains(ctx, "small.md") {
+		t.Error("a file within budget named")
+	}
+
+	s := p.Tasks()
+	s.Add(human, []tasks.NewTask{{Title: "Old"}, {Title: "Open"}})
+	s.SetStatus(human, 1, tasks.Done, "")
+	day := now()
+	ticker := caller.Caller{Kind: caller.Ticker}
+	if ids, err := p.ArchiveOldDone(ticker, day.Add(ArchiveDoneAfter-24*time.Hour), ArchiveDoneAfter); err != nil || len(ids) != 0 {
+		t.Fatalf("archived too early: %v %v", ids, err)
+	}
+	if ids, err := p.ArchiveOldDone(ticker, day.Add(ArchiveDoneAfter+24*time.Hour), ArchiveDoneAfter); err != nil || len(ids) != 1 || ids[0] != 1 {
+		t.Fatalf("archive: %v %v", ids, err)
+	}
+	if b, _ := s.Load(); b.Find(1) != nil || b.Find(2) == nil {
+		t.Fatalf("board after archiving: %+v", b.Tasks)
+	}
+	lines, _, _ := p.JournalTail(5)
+	if j := strings.Join(lines, "\n"); !strings.Contains(j, "ticker task.archive T1") {
+		t.Errorf("journal:\n%s", j)
+	}
+}
+
 // TestReadMemory: a project's memory is its CONTEXT.md, its MEMORY.md
 // and its memory notes' titles (the first heading, else the file name),
 // sorted; other files in memory/ are left out.

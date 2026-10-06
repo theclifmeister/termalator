@@ -182,7 +182,7 @@ func cleanEnv(env []string) []string {
 		k, _, _ := strings.Cut(kv, "=")
 		switch {
 		case strings.HasPrefix(k, "TERMILATOR"), strings.HasPrefix(k, "LC_"),
-			k == "HOME", k == "PATH", k == "LANG", k == "PS1", k == "SHELL", k == "TMUX", k == "ENV",
+			k == "HOME", k == "CLAUDE_CONFIG_DIR", k == "PATH", k == "LANG", k == "PS1", k == "SHELL", k == "TMUX", k == "ENV",
 			k == "TERM_PROGRAM": // icons auto would pick Nerd Font icons under Ghostty
 			continue
 		}

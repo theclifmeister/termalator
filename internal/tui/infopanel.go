@@ -41,6 +41,9 @@ type infoData struct {
 	report  *thread.Report
 	task    *tasks.Task
 	pr      ticker.PR
+	// attached: the names of the files its reports attached for the
+	// user. Names only: the UI shows no file paths (§4).
+	attached []string
 }
 
 // loadInfo reads the panel's data for thread session s; nil when s is no
@@ -57,6 +60,7 @@ func loadInfo(paths server.Paths, s proto.SessionInfo) *infoData {
 	d.rec, _ = thread.Load(p, s.Thread)
 	d.status, _ = thread.ReadStatus(p, s.Thread)
 	d.report, _ = thread.ReadReport(p, s.Thread)
+	d.attached = thread.Attachments(p, s.Thread)
 	if d.rec != nil && d.rec.TaskID() > 0 {
 		d.task, _ = p.Tasks().Get(d.rec.TaskID())
 	}
@@ -198,6 +202,13 @@ func infoLines(d *infoData, w int, now time.Time) ([]string, []infoHit) {
 		for _, l := range reportHead(r.Text, 3) {
 			pl.wrap(oneLine(l))
 		}
+	}
+	if len(d.attached) > 0 {
+		names := make([]string, len(d.attached))
+		for i, n := range d.attached {
+			names[i] = oneLine(n)
+		}
+		hang(pl, styleFaint.Render(fmt.Sprintf("%-9s", "attached"))+" ", strings.Join(names, ", "))
 	}
 	// Where it works.
 	pl.gap()

@@ -29,6 +29,26 @@ func TestWorked(t *testing.T) {
 	}
 }
 
+// TestOwnWorktree: only a worktree tm made (worktrees/<slug>/<dir>) is
+// trusted ahead of launch, never the folder above it or elsewhere.
+func TestOwnWorktree(t *testing.T) {
+	home := t.TempDir()
+	s := &Server{opts: Options{Paths: Paths{Home: home}}}
+	for dir, want := range map[string]bool{
+		home + "/worktrees/demo/t-0001-fix":       true,
+		home + "/worktrees/demo/t-0001-fix/sub":   false,
+		home + "/worktrees/demo":                  false,
+		home + "/worktrees":                       false,
+		home + "/projects/demo":                   false,
+		home + "/worktrees/demo/../../projects/x": false,
+		"/tmp/elsewhere":                          false,
+	} {
+		if got := s.ownWorktree(dir); got != want {
+			t.Errorf("ownWorktree(%s) = %v", dir, got)
+		}
+	}
+}
+
 // TestWriteLaunchFilesFails: a runtime dir that can't be written to is an
 // error, not a session started without its hooks and settings.
 func TestWriteLaunchFilesFails(t *testing.T) {

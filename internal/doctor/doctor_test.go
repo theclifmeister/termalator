@@ -397,6 +397,25 @@ func TestSettingsRemovedComplete(t *testing.T) {
 	}
 }
 
+func TestUpkeep(t *testing.T) {
+	d := testDeps(t)
+	if got := Upkeep(d); len(got) != 0 {
+		t.Fatalf("no projects: %+v", got)
+	}
+	p, err := project.New(project.Options{Name: "demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := Upkeep(d); len(got) != 1 || got[0].Status != OK {
+		t.Fatalf("within budget: %+v", got)
+	}
+	os.WriteFile(p.Path("memory", "big.md"), make([]byte, project.BudgetMemory+1), 0o644)
+	got := Upkeep(d)
+	if len(got) != 1 || got[0].Status != Warn || got[0].Name != "demo" || !strings.Contains(got[0].Detail, "memory/big.md is 6.0 KB, over its 6 KB budget") || got[0].Fix != nil {
+		t.Fatalf("over budget: %+v", got)
+	}
+}
+
 // TestSettingsUnknownKeys: a key tm doesn't know under [keys] or [ui]
 // is a warning, not an error that stops tm.
 func TestSettingsUnknownKeys(t *testing.T) {

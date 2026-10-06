@@ -107,7 +107,11 @@ func TestSmokeProjectPopup(t *testing.T) {
 	// coordinator's context.
 	w.Key(Enter)
 	w.WaitFor("automatically", wait)
-	if out := env.MustCLI("context", "--project", slug); !strings.Contains(out, "start_threads=auto") {
+	// The popup shows a change before its write to config.toml lands.
+	if out := ""; !Poll(wait, func() bool {
+		out = env.MustCLI("context", "--project", slug)
+		return strings.Contains(out, "start_threads=auto")
+	}) {
 		t.Fatalf("context after the toggle:\n%s", out)
 	}
 	// Parallel threads: - takes it to 9, with the working count beside
@@ -124,7 +128,11 @@ func TestSmokeProjectPopup(t *testing.T) {
 	w.WaitFor("7 days after it finishes", wait)
 	w.Type("+")
 	w.WaitFor("8 days after it finishes", wait)
-	if out := env.MustCLI("context", "--project", slug); !strings.Contains(out, "parallel_threads=9 · auto_close=8 days after done or merged") {
+	// The popup shows a change before its write to config.toml lands.
+	if out := ""; !Poll(wait, func() bool {
+		out = env.MustCLI("context", "--project", slug)
+		return strings.Contains(out, "parallel_threads=9 · auto_close=8 days after done or merged")
+	}) {
 		t.Fatalf("context after the numbers:\n%s", out)
 	}
 	// Complete tasks: by you → when merged, in the coordinator's context.
@@ -133,7 +141,11 @@ func TestSmokeProjectPopup(t *testing.T) {
 	w.WaitUntil("complete tasks when merged", wait, func(sc string) bool {
 		return regexp.MustCompile(`Complete tasks\s+when merged`).MatchString(sc)
 	})
-	if out := env.MustCLI("context", "--project", slug); !strings.Contains(out, "complete_tasks=merged") {
+	// The popup shows a change before its write to config.toml lands.
+	if out := ""; !Poll(wait, func() bool {
+		out = env.MustCLI("context", "--project", slug)
+		return strings.Contains(out, "complete_tasks=merged")
+	}) {
 		t.Fatalf("context after complete tasks:\n%s", out)
 	}
 	// Remote control: on, and saved.

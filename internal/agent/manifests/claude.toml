@@ -113,6 +113,15 @@ disable = "/remote-control"
 status_field = "remote_control"
 disable_dialog = { contains = "Disconnect this session", keys = "\u001b[A\u001b[A\r", done = "Remote Control disconnected" }
 
+# tm thread answer (docs/SPEC.md §11.2): the coordinator relays the
+# user's answer to an AskUserQuestion menu. A number picks that option;
+# the last one, "Type something.", is a text field once focused: its
+# number focuses it, then the text and Enter.
+[answer]
+rule = "blocked-question"
+text_option = "Type something"
+submit = "\r"
+
 # The models a thread may be started with (tm thread start --model): the
 # aliases `claude --model` accepts, which follow each family's latest
 # model. Without --model a thread runs the user's own default.

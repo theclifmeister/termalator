@@ -223,6 +223,15 @@ type Agent interface {
 	Sources() *Sources
 }
 
+// Truster is an Agent that can mark a directory as trusted ahead of
+// launch, so its folder-trust screen never shows there (docs/SPEC.md
+// §8.6). The core calls it only for a thread's own worktree, which tm
+// created; home is the user's home directory. An error is logged and the
+// launch goes on: the trust screen then shows as blocked / trust.
+type Truster interface {
+	TrustDir(home, dir string) error
+}
+
 // Rule is one screen rule. It is plain data, evaluated by package detect.
 type Rule struct {
 	ID       string   `toml:"id"`
