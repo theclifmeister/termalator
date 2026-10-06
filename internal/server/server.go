@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -116,6 +117,8 @@ type Server struct {
 	watch watchers
 	// versions caches agent versions for the mod guard (mods.go).
 	versions versions
+	// mods are the sessions' mod listeners by session id (modchan.go).
+	mods map[string]*http.Server
 
 	// protocol is the protocol the hello claims, and deaf hangs up on
 	// every hello: test hooks (testhooks.go).
@@ -349,6 +352,7 @@ func (s *Server) shutdown() {
 		}()
 	}
 	wg.Wait()
+	s.closeMods()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -792,6 +796,7 @@ func (s *Server) sessionExited(sess *session.Session) {
 	}()
 	delete(s.sessions, sess.ID())
 	delete(s.blocked, sess.ID())
+	s.closeModLocked(sess.ID())
 	if s.tick != nil {
 		s.tick.Kick()
 	}

@@ -233,28 +233,41 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		return nil, proto.Errorf(proto.ErrBadParams, "%v", err)
 	}
 	rt := s.runtimeDir(r.ID)
+	s.closeModLocked(r.ID)
 	os.RemoveAll(rt)
 	if err := os.MkdirAll(rt, 0o700); err != nil {
 		return nil, proto.Errorf(proto.ErrInternal, "%v", err)
+	}
+	modSock := ""
+	if s.modsFor(a, r.ID) {
+		// Without its channel the mod can't report state: no mod then.
+		if modSock, err = s.listenMod(r.ID, rt); err != nil {
+			s.log.Printf("session %s: no mod: %v", r.ID, err)
+		}
 	}
 	spec := agent.LaunchSpec{
 		Role: agent.Role(r.Role), SessionID: r.ID, AgentSID: r.AgentSessionID,
 		Cwd: r.Cwd, RuntimeDir: rt, BriefPath: r.Brief, Kickoff: l.kick, Resume: l.resume,
 		Yolo: r.Yolo, Model: r.Model, TMBin: s.opts.Bin, Socket: s.opts.Paths.Socket, Access: access,
 		RemoteControl: r.RemoteControl, RemoteName: remoteName(r),
-		Mods: s.modsFor(a, r.ID),
+		Mods: modSock != "",
 	}
 	launch, err := a.Launch(spec)
 	if err != nil {
+		s.closeModLocked(r.ID)
 		return nil, proto.Errorf(proto.ErrRefused, "%v", err)
 	}
 	if err := writeLaunchFiles(rt, launch.Files); err != nil {
+		s.closeModLocked(r.ID)
 		os.RemoveAll(rt)
 		return nil, proto.Errorf(proto.ErrInternal, "%v", err)
 	}
 	set := s.terminatrEnv(r)
-	if spec.Mods && !bandSetting() {
-		set[envBand] = "off"
+	if spec.Mods {
+		set[envModSocket] = modSock
+		if !bandSetting() {
+			set[envBand] = "off"
+		}
 	}
 	for _, kv := range launch.Env {
 		k, v, _ := strings.Cut(kv, "=")
@@ -285,9 +298,11 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 			Context:    s.contextOf(r.ID),
 			OnChange:   s.agentChanged,
 			PromptHold: envDuration(envPromptHold), OnPromptResolved: s.promptResolved,
+			ModSocket: modSock,
 		},
 	})
 	if err != nil {
+		s.closeModLocked(r.ID)
 		os.RemoveAll(rt)
 		return nil, proto.Errorf(proto.ErrRefused, "%v", err)
 	}
