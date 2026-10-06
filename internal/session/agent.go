@@ -66,12 +66,17 @@ type PromptOptions struct {
 	// may arrive framed as from another session. A slash command or the
 	// human's own words never take it.
 	Channel bool
+	// Refresh, when set, is called right before the prompt is delivered
+	// (pasted or sent through the channel), however long it waited: it
+	// returns the text to deliver, or false when the prompt is stale and
+	// is dropped (e.g. a nudge whose items were all handled meanwhile).
+	Refresh func() (string, bool)
 }
 
 // PromptResolution is what became of a prompt held for PromptHold.
 type PromptResolution struct {
 	Text   string
-	Via    string // "channel" or "dropped"
+	Via    string // "channel", "dropped" or "stale" (Refresh said so)
 	Why    string // HeldBox or HeldDialog
 	Held   time.Duration
 	Queued time.Time
@@ -83,6 +88,7 @@ type queuedPrompt struct {
 	text    string
 	at      time.Time
 	channel bool
+	refresh func() (string, bool)
 }
 
 // Timings of the agent sources (docs/SPEC.md §8.3–8.4).
@@ -526,7 +532,7 @@ func (s *Session) PromptWith(text string, o PromptOptions) (string, error) {
 		s.cfg.Logf("session %s: prompt channel failed, pasting instead: %v", s.cfg.ID, err)
 	}
 	rt.mu.Lock()
-	rt.prompts = append(rt.prompts, queuedPrompt{text: text, at: time.Now(), channel: o.Channel})
+	rt.prompts = append(rt.prompts, queuedPrompt{text: text, at: time.Now(), channel: o.Channel, refresh: o.Refresh})
 	rt.mu.Unlock()
 	return "queued", nil
 }
@@ -574,13 +580,25 @@ func (s *Session) deliverPrompts(rt *agentRT, now time.Time) {
 	rt.prompts = rt.prompts[1:]
 	held := now.Sub(rt.heldSince)
 	rt.heldSince, rt.heldWhy = time.Time{}, ""
+	if why == "" {
+		rt.emptyBox = false // until the screen says so again
+	}
+	rt.mu.Unlock()
+	if p.refresh != nil {
+		text, ok := p.refresh()
+		if !ok {
+			s.cfg.Logf("session %s: queued prompt (queued %s) is stale: not delivered", s.cfg.ID, p.at.Format(time.DateTime))
+			if rt.cfg.OnPromptResolved != nil {
+				rt.cfg.OnPromptResolved(s, PromptResolution{Text: p.text, Via: "stale", Queued: p.at})
+			}
+			return
+		}
+		p.text = text
+	}
 	if why != "" {
-		rt.mu.Unlock()
 		s.resolveHeld(rt, p, why, held)
 		return
 	}
-	rt.emptyBox = false // until the screen says so again
-	rt.mu.Unlock()
 	text := strings.ReplaceAll(p.text, "\x1b[201~", "")
 	s.Input([]byte("\x1b[200~" + text + "\x1b[201~"))
 	go func() {

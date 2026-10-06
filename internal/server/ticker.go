@@ -52,6 +52,14 @@ func (h tickerHost) Prompt(id, text string) error {
 	return nil
 }
 
+// Nudge is Prompt for a nudge: refresh rebuilds its text at delivery.
+func (h tickerHost) Nudge(id, text string, refresh func() (string, bool)) error {
+	if _, perr := h.s.promptWith(proto.SessionPromptParams{ID: id, Text: text}, session.PromptOptions{Channel: true, Refresh: refresh}); perr != nil {
+		return perr
+	}
+	return nil
+}
+
 func (h tickerHost) Alert(msg string) { h.s.alert(msg) }
 
 func (h tickerHost) Remote(id string, on bool) (proto.SessionRemoteResult, error) {

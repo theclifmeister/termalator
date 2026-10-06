@@ -192,3 +192,28 @@ func TestPromptNotHeldWhileWorking(t *testing.T) {
 		t.Fatalf("while working: %+v", st)
 	}
 }
+
+// TestPromptRefresh: Refresh runs at delivery; its text is what is
+// pasted, and a stale prompt is not delivered at all.
+func TestPromptRefresh(t *testing.T) {
+	resolved := make(chan PromptResolution, 1)
+	s := startBox(t, claudeLike(t), "", time.Hour, resolved)
+	if _, err := s.PromptWith("old-text", PromptOptions{Refresh: func() (string, bool) { return "", false }}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case r := <-resolved:
+		if r.Via != "stale" || r.Text != "old-text" {
+			t.Fatalf("resolution %+v", r)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the stale prompt was never resolved")
+	}
+	if _, err := s.PromptWith("old-text", PromptOptions{Refresh: func() (string, bool) { return "new-text", true }}); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "the refreshed paste", func() bool { return strings.Contains(screen(t, s), "new-text") })
+	if strings.Contains(screen(t, s), "old-text") {
+		t.Fatal("the stale text was pasted")
+	}
+}
