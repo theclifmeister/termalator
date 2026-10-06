@@ -11,7 +11,9 @@ package server
 //
 // The other way, the mod pulls: nothing can push into a mod. It long-polls
 // GET /v1/prompts for the head of the session's prompt queue and acks it
-// with POST /v1/prompts/{id}/ack (session/modprompt.go).
+// with POST /v1/prompts/{id}/ack (session/modprompt.go). It fetches the
+// guard's rules with GET /v1/rules and reports each refusal with POST
+// /v1/denied (guard.go).
 
 import (
 	"context"
@@ -231,6 +233,8 @@ func (s *Server) modHandler(id string) http.Handler {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Write(b)
 	})
+	// The guard's rules and refusals (guard.go).
+	s.guardRoutes(mux, id)
 	return mux
 }
 
