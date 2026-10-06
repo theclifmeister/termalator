@@ -38,6 +38,12 @@ Report only through tm:
   review) and an optional `## Remember`;
 - `tm done` when the task is finished and your report is in.
 
+When your tools list `mcp__terminatr__report`, `__status`, `__steps` and
+`__done`, use them instead of these commands: they take the same things
+as typed fields (the report's sections, step numbers to check, steps to
+add), need no shell permission, and answer what the server did or why it
+refused. Without them, the commands above do the same.
+
 A prompt starting with `[tm]` comes from the server: for example, your
 PR's checks failed. Fix what it names within your task, then report again.
 

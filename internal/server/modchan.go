@@ -12,6 +12,9 @@ package server
 // The other way, the mod pulls: nothing can push into a mod. It long-polls
 // GET /v1/prompts for the head of the session's prompt queue and acks it
 // with POST /v1/prompts/{id}/ack (session/modprompt.go).
+//
+// In a thread session the mod's tools call POST /v1/tools/{name}
+// (modtools.go).
 
 import (
 	"context"
@@ -177,6 +180,9 @@ func (s *Server) modHandler(id string) http.Handler {
 			s.watch.wake()
 		}
 		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /v1/tools/{name}", func(w http.ResponseWriter, r *http.Request) {
+		s.modTool(w, r, id)
 	})
 	return mux
 }
