@@ -357,7 +357,8 @@ func treeSel(r treeRow, focused bool) (bool, lipgloss.Style) {
 // The slim strip shows projects alone, "▸●ter", the current one marked
 // and its coordinator's glyph (or the hint) after it.
 // A coordinator with remote control on gets "⌁" in its row's count
-// column, right beside its state glyph; never on the project's row, so
+// column, one blank before its state glyph (two in the Nerd set, whose
+// icon draws wide); never on the project's row, so
 // not in the slim strip either.
 // A paused project gets "∥" after its name, in either width.
 // The row you are on is in reverse video (and, in the slim strip, marked),
@@ -449,17 +450,23 @@ func treeCells(r treeRow, cw int, slim, focused bool) string {
 		// "⌁" sits at the right of the count column; "coordinator" may
 		// take the rest of it.
 		lw := max(cw-ld-2, 0) // the label column and the count's
-		label, rc := fit("coordinator", lw), ""
+		// A Nerd Font's remote icon draws two cells wide, over the blank
+		// after it, so that set gets a second one: a blank always shows
+		// between the icon and the state glyph, and the label gives way.
+		label, rc, gap := fit("coordinator", lw), "", " "
 		if r.remote {
-			label, rc = fit("coordinator", max(lw-2, 0))+" ", i.remote
+			if i.name == IconsNerd {
+				gap = "  "
+			}
+			label, rc = fit("coordinator", max(lw-1-len(gap), 0))+" ", i.remote
 		}
 		if r.here {
-			return lead + sel.Render(fit(label+rc+" "+g, cw-ld))
+			return lead + sel.Render(fit(label+rc+gap+g, cw-ld))
 		}
 		if r.state == "" {
 			label = styleFaint.Render(label)
 		}
-		return fit(lead+label+styleAccent.Render(rc)+" "+st.Render(g), cw)
+		return fit(lead+label+styleAccent.Render(rc)+gap+st.Render(g), cw)
 	}
 	g, st := stateLook(r.state)
 	if g == "" {

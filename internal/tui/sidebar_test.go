@@ -451,8 +451,14 @@ func TestTreeHighlightRunsToBorder(t *testing.T) {
 					if r.remote {
 						// "⌁ ●  ": the remote glyph and the cell its Nerd
 						// Font icon draws into are highlighted too (T16).
-						if string(plain[cw-4]) != ic().remote || rev[cw-4] != hl || rev[cw-3] != hl {
-							t.Errorf("%s: remote glyph %q reverse %v %v, want %v", name, string(plain[cw-4]), rev[cw-4], rev[cw-3], hl)
+						// A Nerd Font icon draws two cells wide, so that set
+						// keeps two blanks: one always shows before the state.
+						at := cw - 4
+						if ic().name == IconsNerd {
+							at--
+						}
+						if string(plain[at]) != ic().remote || rev[at] != hl || rev[at+1] != hl || string(plain[at+1:cw-2]) != strings.Repeat(" ", cw-2-at-1) {
+							t.Errorf("%s: remote glyph %q reverse %v %v, want %v", name, string(plain[at]), rev[at], rev[at+1], hl)
 						}
 					}
 				}
