@@ -34,6 +34,20 @@ type ProjectWatch struct {
 	// Ready are the tasks on deck (open or ready), which the user may
 	// delegate, in board order.
 	Ready []WatchTodo `json:"ready"`
+	// Context is the coordinator's context window use; nil when no
+	// coordinator runs or its mod hasn't reported a turn.
+	Context *WatchContext `json:"context,omitempty"`
+}
+
+// WatchContext is how full the coordinator's context window is.
+type WatchContext struct {
+	Tokens  int64 `json:"tokens"`
+	Window  int64 `json:"window"`
+	Percent int   `json:"percent"`
+	// Threshold is [ui] context_hint (0: never); Hint says Percent has
+	// reached it, so the coordinator should consider /clear.
+	Threshold int  `json:"threshold"`
+	Hint      bool `json:"hint,omitempty"`
 }
 
 // Why a WatchNeed waits for the user, in the order they are listed.

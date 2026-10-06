@@ -299,3 +299,28 @@ func TestGuard(t *testing.T) {
 		t.Errorf("c %+v", s)
 	}
 }
+
+// TestContextHint: [ui] context_hint is 40 unless set; 0 is never, and
+// a percent past 100 is an error.
+func TestContextHint(t *testing.T) {
+	write(t, "")
+	if c, _ := Load(); c.ContextHint != DefaultContextHint || DefaultContextHint != 40 {
+		t.Fatalf("without a file: %d", c.ContextHint)
+	}
+	write(t, "[ui]\nicons = \"ascii\"\n")
+	if c, err := Load(); err != nil || c.ContextHint != 40 || len(c.Unknown) != 0 {
+		t.Fatalf("unset: %v %+v", err, c)
+	}
+	write(t, "[ui]\ncontext_hint = 55\n")
+	if c, err := Load(); err != nil || c.ContextHint != 55 || len(c.Unknown) != 0 {
+		t.Fatalf("55: %v %+v", err, c)
+	}
+	write(t, "[ui]\ncontext_hint = 0\n")
+	if c, err := Load(); err != nil || c.ContextHint != 0 {
+		t.Fatalf("0 means never: %v %+v", err, c)
+	}
+	write(t, "[ui]\ncontext_hint = 140\n")
+	if _, err := Load(); err == nil {
+		t.Fatal("140% loaded")
+	}
+}

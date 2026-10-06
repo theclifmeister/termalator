@@ -294,6 +294,18 @@ func globalSettings() []setting {
 				setIcons(next)
 				return m.setSetting("ui", "icons", next, "icons: "+next+"; consoles started earlier pick them up when they next open")
 			}},
+		{label: "Context hint", help: "Tell a coordinator to consider /clear once its context window is this full: a toast in its pane, a bell and a yellow percent on its sidebar row (red from 80%). Its context lives in files, so a clear loses nothing. Off never says it.",
+			value: func(m *dash) string {
+				if m.data.ContextHint <= 0 {
+					return "off"
+				}
+				return fmt.Sprintf("%d%%", m.data.ContextHint)
+			},
+			change: func(m *dash) tea.Cmd {
+				next := ContextHintChoices[(slices.Index(ContextHintChoices, m.data.ContextHint)+1)%len(ContextHintChoices)]
+				m.data.ContextHint = next
+				return m.setSetting("ui", "context_hint", next, "context hint "+contextHintWords(next))
+			}},
 		{label: "Mods", help: "Load terminatr's mod in Claude panes (early access). Needs Claude Code " + claude.ModsMinVersion + " or newer. Applies to sessions launched after the change.",
 			value: func(m *dash) string { return onOff(m.data.Mods) },
 			change: func(m *dash) tea.Cmd {
@@ -1061,4 +1073,15 @@ func (m *dash) projectData(slug string) *ProjectData {
 		}
 	}
 	return nil
+}
+
+// ContextHintChoices are the percents the Context hint setting steps
+// through; 0 is never.
+var ContextHintChoices = []int{0, 30, 40, 50, 60, 70, 80}
+
+func contextHintWords(n int) string {
+	if n <= 0 {
+		return "off"
+	}
+	return fmt.Sprintf("at %d%% of the context window", n)
 }

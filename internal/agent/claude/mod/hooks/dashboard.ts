@@ -1,4 +1,4 @@
-import type { TerminatrAsk, TerminatrItem, TerminatrNeed, TerminatrProject, TerminatrThread, TerminatrTodo } from '../types'
+import type { TerminatrAsk, TerminatrContext, TerminatrItem, TerminatrNeed, TerminatrProject, TerminatrThread, TerminatrTodo } from '../types'
 
 // The coordinator's /tm pane (docs/SPEC.md §8.6, Mods): what it says
 // about a line of `tm watch --project --json`, and what its buttons ask.
@@ -157,6 +157,26 @@ export function summary(p: TerminatrProject): string {
   if (p.inbox.length > 0) parts.push(`${p.inbox.length} in inbox`)
   parts.push(`${p.threads.length} thread${p.threads.length === 1 ? '' : 's'}`)
   return parts.join(' · ')
+}
+
+// contextLine is the coordinator's context use for the pane: "context
+// 84k / 200k · 42%", with the hint past the threshold. tone is the
+// colour's name: ok below, warning from the threshold, error from 80%.
+export function contextLine(c: TerminatrContext): { text: string; tone: 'ok' | 'warning' | 'error'; hint: string } {
+  const k = (n: number) => (n >= 1_000_000 ? `${(n / 1e6).toFixed(1)}M` : n >= 1_000 ? `${Math.round(n / 1e3)}k` : String(n))
+  const tone = c.percent >= 80 ? 'error' : c.hint ? 'warning' : 'ok'
+  return {
+    text: `context ${k(c.tokens)} / ${k(c.window)} · ${c.percent}%`,
+    tone,
+    hint: c.hint ? 'consider /clear: the context lives in files (tm context)' : '',
+  }
+}
+
+// contextToast is the toast for a context that reached its threshold
+// since the line before, once per crossing; undefined otherwise.
+export function contextToast(was: boolean, c: TerminatrContext | undefined): string | undefined {
+  if (!c?.hint || was) return undefined
+  return `Context ${c.percent}% full: consider /clear (the context lives in files)`
 }
 
 // projectFeed reads `tm watch --project --json` output: what is left of

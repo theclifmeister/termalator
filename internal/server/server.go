@@ -78,6 +78,8 @@ type Server struct {
 	// taskOf caches each thread's task ref by "<project>/<thread>"
 	// (taskRef); a thread's task never changes.
 	taskOf sync.Map
+	// ctxOf is each session's latest context use (setContext), by id.
+	ctxOf sync.Map
 
 	mu       sync.Mutex
 	sessions map[string]*session.Session
@@ -658,6 +660,10 @@ func (s *Server) list() proto.SessionListResult {
 func (s *Server) info(sess *session.Session) proto.SessionInfo {
 	info := sess.Info()
 	info.Question = s.asks.of(info.ID)
+	if v, ok := s.ctxOf.Load(info.ID); ok {
+		c := v.(ctxUse)
+		info.Context, info.ContextWindow = c.tokens, c.window
+	}
 	if info.Role == proto.RoleThread && thread.ValidID(info.Thread) {
 		info.Task = s.taskRef(info.Project, info.Thread)
 	}

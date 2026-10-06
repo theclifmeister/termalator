@@ -53,6 +53,17 @@ export type TerminatrProject = {
   inbox: TerminatrItem[]
   threads: TerminatrThread[]
   ready: TerminatrTodo[]
+  context?: TerminatrContext
+}
+
+// How full the coordinator's context window is; hint says it reached
+// the threshold (percent, 0 for never) and /clear is worth considering.
+export type TerminatrContext = {
+  tokens: number
+  window: number
+  percent: number
+  threshold: number
+  hint?: boolean
 }
 
 // What waits for the user, most pressing first; 'queue' is a session

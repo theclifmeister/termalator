@@ -19,6 +19,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"golang.org/x/term"
 
+	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/emu"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
@@ -1716,14 +1717,18 @@ func (c *client) pollState(ctx context.Context) {
 			alerts, first = res.Alerts, false
 		}
 		var projects []ProjectData
+		ctxHint := config.DefaultContextHint
 		if c.side != nil {
 			projects = loadSideProjects()
+			if cfg, err := config.Load(); err == nil {
+				ctxHint = cfg.ContextHint
+			}
 		}
 		statuses := threadStatuses(res.Sessions)
 		c.pollInfo(res.Sessions)
 		if c.lock() {
 			if c.side != nil {
-				c.side.projects, c.side.sessions = projects, res.Sessions
+				c.side.projects, c.side.sessions, c.side.ctxHint = projects, res.Sessions, ctxHint
 			}
 			for _, p := range c.panes {
 				for _, s := range res.Sessions {
