@@ -115,3 +115,27 @@ func TestTrackerNoMod(t *testing.T) {
 		t.Fatal("explain shows a mod")
 	}
 }
+
+// TestTrackerModLive: the mod delivers prompts only in a session that
+// runs it, while its heartbeat holds.
+func TestTrackerModLive(t *testing.T) {
+	r := newRig(t)
+	r.mod(StateIdle, "", "session.start")
+	if r.tr.ModLive() {
+		t.Fatal("live in a session without the mod")
+	}
+	r.tr.ExpectMod()
+	if !r.tr.ModLive() {
+		t.Fatal("not live after a report")
+	}
+	r.tick(ModTimeout - time.Second)
+	r.mod(StateIdle, "", "beat")
+	r.tick(ModTimeout - time.Second)
+	if !r.tr.ModLive() {
+		t.Fatal("a beat didn't keep it live")
+	}
+	r.tick(2 * time.Second)
+	if r.tr.ModLive() {
+		t.Fatal("live after the heartbeat stopped")
+	}
+}
