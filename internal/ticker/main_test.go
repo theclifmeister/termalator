@@ -130,8 +130,7 @@ func TestFollowMain(t *testing.T) {
 	}
 	r.handleAll()
 
-	main := push(t, other, "g", "two\n", "Merge pull request #61 from a/b")
-	r.sweep(2 * time.Minute)
+	push(t, other, "g", "two\n", "Merge pull request #61 from a/b")
 	r.sweep(2 * time.Minute)
 	if len(r.host.prompts) != 0 {
 		t.Fatalf("prompted a PR that is only behind: %q", r.host.prompts)
@@ -140,7 +139,7 @@ func TestFollowMain(t *testing.T) {
 		t.Fatalf("items for a PR that is only behind: %s", k)
 	}
 
-	main = push(t, other, "h", "main's\n", "Clash (#62)")
+	main := push(t, other, "h", "main's\n", "Clash (#62)")
 	r.sweep(2 * time.Minute)
 	if len(r.host.prompts) != 1 || !strings.Contains(r.host.prompts[0], "main moved to "+main[:7]+" (#62 merged), and your PR #9 conflicts with it.") {
 		t.Fatalf("prompts %q", r.host.prompts)
