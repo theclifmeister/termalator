@@ -38,7 +38,7 @@ Everything is under `~/.terminatr`, or `$TERMINATR_HOME` when that is set. Nothi
 
 | Path | What |
 |---|---|
-| `config.toml` | your settings: the default agent, the prefix key (`[keys]`), the icons (`[ui]`), terminatr's mod for Claude (`[mods] enabled`, `band`), and the project settings for all projects (`[defaults]`) and per project (`[projects.<slug>]`, which wins key by key). The settings popups (`,` and a project's Settings tab) write it; so do `tm project pause`, `archive` and `delete` |
+| `config.toml` | your settings: the default agent, the prefix key (`[keys]`), the icons (`[ui]`), terminatr's mod for Claude (`[mods] enabled`, `band`), and the project settings for all projects (`[defaults]`) and per project (`[projects.<slug>]`, which wins key by key). The settings popups (`,` and a project's Settings tab) write it; so do `tm project pause`, `archive`, `delete` and `rename` |
 | `ui.json` | this console's layout: the details panel, the list width, and the sidebar and info panel widths new views start with |
 | `agents/<name>.toml` | your own agent manifests (they override the built-in ones) |
 | `projects/<slug>/` | one folder per project: `PROJECT.md`, `CONTEXT.md`, `MEMORY.md` and `memory/`, `TASKS.md`, `JOURNAL.md`, `inbox/`, `threads/<id>/` (brief, reports, status, attached files), `uploads/` |
@@ -55,6 +55,24 @@ Everything is under `~/.terminatr`, or `$TERMINATR_HOME` when that is set. Nothi
 The run directory is `$XDG_RUNTIME_DIR/terminatr` on Linux when that variable is set (and `TERMINATR_HOME` isn't), and falls back to `/tmp/terminatr-<uid>-<hash>` when the path to the socket would be too long. `tm server status` and `tm doctor` print the one in use. `$TERMINATR_SOCKET` overrides the socket path.
 
 Agents keep their own files too: Claude Code stores conversations under `~/.claude/`, which is what resume uses.
+
+### Renaming a project
+
+`tm project rename <slug> <new-slug> [--name "…"]` renames a project's slug, the name of its folder (`--name` changes the display name too; with the same slug, only the name):
+
+```sh
+tm thread stop t-0012 --project termilator        # every running thread first; tm says which
+tm project rename termilator terminatr --name Terminatr
+tm thread restart t-0012 --project terminatr      # back in its moved worktree, its conversation resumed
+```
+
+It moves `projects/<slug>/` and `worktrees/<slug>/`, reconnects git with each moved worktree (`git worktree repair`), renames `[projects.<slug>]` in `config.toml` (comments and order stay), rewrites the worktree paths in the thread records, carries the ticker's memos over and Claude's conversations and folder settings for the moved folders, and journals `project.rename` in the project. The journal, inbox, tasks and memory move with the folder unchanged. It is refused while a thread of the project runs (stop them; the error names them), and when the new slug is taken by a project, a `worktrees/<new-slug>/` folder or a `[projects.<new-slug>]` table. A running coordinator is stopped and started again under the new slug. Branches keep their names: `tm/<old-slug>/…` stays on existing threads, and only new threads get `tm/<new-slug>/…`. With no server running, the CLI does the same itself.
+
+### Moving a repository
+
+When a project's repository moves (renamed folder, new disk), tell the project: `tm project repo add NEW --project <slug>` and `tm project repo remove OLD --project <slug>`. A thread whose recorded repo is gone then follows its branch to the repo that has it on `tm thread restart` and `tm thread resolve` (its worktree reconnected with `git worktree repair`, its record updated). When no repo of the project has the branch, restart refuses with `no-repo`, and resolve says the repo is gone and keeps the worktree, without running git.
+
+The build directory moves with a checkout: libghostty-vt's pkg-config files name their prefix relative to themselves (`${pcfiledir}`), which `make` rewrites once after building it, so a `.build/` built before that still links the library at the path it was built at until the next `make` there. A thread's worktree has no `.build/` of its own; `make` and `make env` in it use the main checkout's.
 
 ## The server
 

@@ -23,6 +23,8 @@ type harness struct {
 func newHarness(t *testing.T) *harness {
 	root := t.TempDir()
 	t.Setenv(home.Env, root)
+	// Never the user's server: a session's socket would win over the home.
+	t.Setenv("TERMINATR_SOCKET", "")
 	return &harness{t: t, root: root, env: map[string]string{}, cwd: t.TempDir()}
 }
 

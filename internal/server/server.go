@@ -478,6 +478,12 @@ func (s *Server) dispatch(req proto.Request, peerPID int) (any, *proto.Error) {
 		res, perr := s.cliRun(p, peerPID)
 		s.kick()
 		return res, perr
+	case proto.MethodProjectRename:
+		var p proto.ProjectRenameParams
+		if err := decodeParams(req.Params, &p); err != nil {
+			return nil, err
+		}
+		return s.renameProject(p, s.callerOf(peerPID))
 	case proto.MethodPing:
 		return map[string]bool{"pong": true}, nil
 	case proto.MethodServerStatus:
