@@ -188,7 +188,7 @@ export const register: Register = on => {
   on('turn.complete', async ($, e, next) => {
     // A subagent's run is part of its spawner's turn.
     if (!e.agentId) await saw($, { kind: 'turn.complete', reason: e.reason }, 'turn.complete')
-    void spent($, e.turnId, e.usage)
+    void spent($, e.turnId, e.usage, !!e.agentId)
     return next(e)
   })
 
@@ -250,8 +250,8 @@ export const register: Register = on => {
 }
 
 // spent sends what the turn cost, numbers only, a subagent's turns
-// included: they are spend too. Failures are logged and dropped.
-async function spent($: EngineInterface, turnId: string, u: TurnUsageIn | undefined) {
+// included: they are spend too (but not context: that is the session's). Failures are logged and dropped.
+async function spent($: EngineInterface, turnId: string, u: TurnUsageIn | undefined, subagent: boolean) {
   if (!socket || !u) return
   try {
     const ledger = (await $.session.usage()).cost?.usd
@@ -262,6 +262,8 @@ async function spent($: EngineInterface, turnId: string, u: TurnUsageIn | undefi
       return r.now
     })
     if (!out) return
+    // A subagent's context is its own, not the session's.
+    if (subagent) (out as UsageReport).context = 0
     const r = await $.http.fetch('http://terminatr/v1/usage', {
       method: 'POST', socketPath: socket, headers: { 'content-type': 'application/json' }, body: JSON.stringify(out),
     })

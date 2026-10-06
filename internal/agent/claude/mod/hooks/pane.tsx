@@ -21,7 +21,7 @@ import type { Elements, EngineInterface, On, RenderSurface, RenderViewport } fro
 
 import type { TerminatrItem, TerminatrNeed, TerminatrProject, TerminatrThread } from '../types'
 import {
-  BUTTON_LABELS, MAX_READY, askLine, asked, isNarrow, itemParts, itemTone, needButtons, needDetail, needHead, needKey, oneLine, projectFeed,
+  BUTTON_LABELS, MAX_READY, askLine, asked, contextLine, contextToast, isNarrow, itemParts, itemTone, needButtons, needDetail, needHead, needKey, oneLine, projectFeed,
   reportTextOf,
   sentWords, summary, threadLine, todoLine,
 } from './dashboard'
@@ -48,6 +48,10 @@ const RETRY_MS = 5_000
 // fullscreen is what the last drawing said of the layout: true where a
 // pane docks beside the transcript, undefined before any said.
 let fullscreen: boolean | undefined
+
+// hinted is whether the last line of the feed had the context past its
+// threshold.
+let hinted = false
 
 // sawViewport keeps what a drawing's viewport says of the layout; the
 // band's hook (register.ts) hands it every one.
@@ -119,7 +123,14 @@ async function followProject($: EngineInterface, bin: string, slug: string) {
         const got = projectFeed(rest, text)
         rest = got.rest
         const p = got.projects.at(-1)
-        if (p) await update($, project, () => p)
+        if (p) {
+          // One toast per crossing: not again until the context fell
+          // below the threshold (a /clear) and reached it anew.
+          const toast = contextToast(hinted, p.context)
+          hinted = p.context?.hint === true
+          if (toast) $.ui.toast(toast)
+          await update($, project, () => p)
+        }
       }
     } catch (err) {
       $.ui.log(`terminatr: tm watch --project: ${String(err)}`, { to: 'debug' })
@@ -206,6 +217,7 @@ function drawPane($: EngineInterface, els: Elements[RenderSurface], hasInput: bo
   return (
     <Box flexDirection="column">
       <Text bold wrap="truncate-end">{p.project + ' · ' + summary(p)}</Text>
+      {p.context ? drawContext(els, contextLine(p.context)) : null}
       {p.needs_you.length === 0 ? <Text dimColor>Nothing waits for you.</Text> : <Text bold color="warning">Needs you</Text>}
       {p.needs_you.map(n => drawNeed($, els, hasInput, bodyColumns, n, asked(n.task, n.status, n.asked, sent), editing))}
       {p.inbox.length > 0 ? <Text bold>Inbox</Text> : null}
@@ -225,6 +237,19 @@ function drawPane($: EngineInterface, els: Elements[RenderSurface], hasInput: bo
         )
       })}
       {p.ready.length > MAX_READY ? <Text dimColor>{`  and ${p.ready.length - MAX_READY} more`}</Text> : null}
+    </Box>
+  )
+}
+
+// drawContext draws the coordinator's context use, coloured, and the
+// hint past the threshold.
+function drawContext(els: Elements[RenderSurface], c: ReturnType<typeof contextLine>) {
+  const { Box, Text } = els
+  const color = c.tone === 'ok' ? undefined : c.tone
+  return (
+    <Box flexDirection="column">
+      <Text wrap="truncate-end" color={color} dimColor={c.tone === 'ok'}>{c.text}</Text>
+      {c.hint ? <Text wrap="truncate-end" color={color}>{c.hint}</Text> : null}
     </Box>
   )
 }

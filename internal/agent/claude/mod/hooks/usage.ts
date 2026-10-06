@@ -22,6 +22,9 @@ export type UsageReport = {
   cache_read: number
   cache_creation: number
   cost_usd: number
+  // What the turn read as context: input plus both cache counts, the
+  // size of the conversation then, not a running total.
+  context: number
 }
 
 export const initialUsage: TerminatrUsage = { usd: 0 }
@@ -37,13 +40,17 @@ export function reportOf(
   const usd = typeof ledger === 'number' && Number.isFinite(ledger) && ledger >= 0 ? ledger : before.usd
   const now = { usd }
   if (!u) return { report: null, now }
+  const input = count(u.input_tokens)
+  const cacheRead = count(u.cache_read_input_tokens)
+  const cacheCreation = count(u.cache_creation_input_tokens)
   const report: UsageReport = {
     turn,
     model: String(u.model ?? '').slice(0, 64),
-    input: count(u.input_tokens),
+    input,
     output: count(u.output_tokens),
-    cache_read: count(u.cache_read_input_tokens),
-    cache_creation: count(u.cache_creation_input_tokens),
+    cache_read: cacheRead,
+    cache_creation: cacheCreation,
+    context: input + cacheRead + cacheCreation,
     cost_usd: Math.max(0, Math.round((usd - before.usd) * 1e6) / 1e6),
   }
   return { report, now }

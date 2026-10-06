@@ -36,7 +36,10 @@ type Data struct {
 	// band and Mods pane (docs/SPEC.md §8.6); the band and the pane are
 	// on unless set off.
 	Mods, ModsBand, ModsPane bool
-	Err                      string // why the poll failed, shown in the header
+	// ContextHint is [ui] context_hint: the percent of its context window
+	// from which a coordinator is told to consider /clear; 0 for never.
+	ContextHint int
+	Err         string // why the poll failed, shown in the header
 }
 
 // ProjectData is one project's rows.
@@ -194,7 +197,7 @@ func (s *ServerSource) Close() {
 }
 
 func (s *ServerSource) Load() Data {
-	d := Data{ModsBand: true, ModsPane: true}
+	d := Data{ModsBand: true, ModsPane: true, ContextHint: config.DefaultContextHint}
 	var res proto.SessionListResult
 	if err := s.call(proto.MethodSessionList, nil, &res); err != nil {
 		d.Err = err.Error()
@@ -202,7 +205,7 @@ func (s *ServerSource) Load() Data {
 		d.ServerOK, d.Sessions, d.Alerts = true, res.Sessions, res.Alerts
 	}
 	if cfg, err := config.Load(); err == nil {
-		d.Mods, d.ModsBand, d.ModsPane = cfg.Mods, cfg.ModsBand, cfg.ModsPane
+		d.Mods, d.ModsBand, d.ModsPane, d.ContextHint = cfg.Mods, cfg.ModsBand, cfg.ModsPane, cfg.ContextHint
 		if all, err := cfg.AllProjects(); err == nil {
 			d.Defaults = &all
 		}

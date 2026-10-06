@@ -6,7 +6,7 @@ const turn = { model: 'm', input_tokens: 10, output_tokens: 20, cache_read_input
 
 test('a turn reports its counts and the rise of the ledger', () => {
   const { report, now } = reportOf('t1', turn, 0.75, { usd: 0.5 })
-  expect(report).toEqual({ turn: 't1', model: 'm', input: 10, output: 20, cache_read: 30, cache_creation: 40, cost_usd: 0.25 })
+  expect(report).toEqual({ turn: 't1', model: 'm', input: 10, output: 20, cache_read: 30, cache_creation: 40, cost_usd: 0.25, context: 80 })
   expect(now).toEqual({ usd: 0.75 })
 })
 
@@ -21,4 +21,8 @@ test('only numbers go: junk counts read as zero, the model is clipped', () => {
   expect(r?.input).toBe(0)
   expect(r?.output).toBe(0)
   expect(r?.model.length).toBe(64)
+})
+
+test('the context is the turn\'s input and cache counts, not the output', () => {
+  expect(reportOf('t', turn, 0, { usd: 0 }).report?.context).toBe(80)
 })
