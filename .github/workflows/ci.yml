@@ -19,9 +19,11 @@ permissions:
   contents: read
 
 # A newer push to a pull request supersedes the run in flight; main keeps
-# running every commit, so each one has a result.
+# running every commit, so each one has a result. GitHub keeps only one
+# pending run per group, so main's group includes the sha: a newer pending
+# run would otherwise cancel an older pending one.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
