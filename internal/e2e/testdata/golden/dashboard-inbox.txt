@@ -10,7 +10,7 @@
                                │ OTHER SESSIONS ──────────────────────────────────────────────────────────────────────────────────────────────
                                │  none outside the projects (1 in them); s starts a shell
                                │   ╭─ demo inbox ─────────────────────────────────────────────────────────────────────────────────────────╮
-                               │   │ report           <duration>     T1 Fix the login (t-0001) handed in report 1                                 │
+                               │   │ report           <duration>     T1 handed in report 1 Fix the login                                          │
                                │   │                                                                                                      │
                                │   │ The coordinator handles these (tm inbox done).                                                       │
                                │   ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯

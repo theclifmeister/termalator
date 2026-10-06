@@ -422,7 +422,7 @@ func (in *inboxView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	case "esc":
 		m.pop()
 	case "up", "k", "down", "j", "pgup", "pgdown":
-		in.sel = moveSel(in.sel, scrollKeys[k.String()], len(in.items(m)))
+		in.sel = moveSel(in.sel, scrollKeys[k.String()], len(project.Rows(in.items(m))))
 	}
 	return nil
 }

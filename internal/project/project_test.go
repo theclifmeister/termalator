@@ -1,8 +1,10 @@
 package project
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -184,7 +186,7 @@ func TestContextDeterministicAndCapped(t *testing.T) {
 	os.WriteFile(p.Path("threads", "t-0002", "thread.toml"), []byte("title = \"Docs\"\n"), 0o644)
 	os.WriteFile(p.Path("threads", "t-0002", "REPORT.md"), []byte("PR: https://github.com/o/r/pull/9\n## Report\nok\n\n## Next\nReview it\n"), 0o644)
 	prs := map[string]string{"t-0001": "#8 open, checks pass"}
-	p.AddItem("thread-done", "t-0001", "t-0001 reported", false)
+	p.AddItem("report", "t-0001", "t-0001 reported", false)
 
 	seen := Ticked{PRs: prs, Checkouts: map[string]string{p.Meta.Repos[0]: "local main is 3 behind origin (uncommitted changes)"},
 		Queues: []HeldQueue{{Session: "s-28", Role: "coordinator", Queued: 1, Why: "prompt box not empty", Since: time.Date(2026, 10, 5, 19, 45, 49, 0, time.UTC)}}}
@@ -207,7 +209,7 @@ func TestContextDeterministicAndCapped(t *testing.T) {
 		"[… 5 done tasks not shown (tm task list)]",
 		"T16 (t-0001)  Fix login  report: yes  PR: #8 open, checks pass\n    next: Merge the PR",
 		"t-0002  Docs  report: yes  PR: https://github.com/o/r/pull/9\n    next: Review it",
-		"thread-done: t-0001 reported",
+		"report: t-0001 reported",
 		"human task.add T16 Fix login",
 	} {
 		if !strings.Contains(out, want) {
@@ -422,5 +424,50 @@ func TestReadMemory(t *testing.T) {
 	os.Remove(p.Path("CONTEXT.md"))
 	if m, err := p.ReadMemory(); err != nil || m.Context != "" {
 		t.Fatalf("without CONTEXT.md: %+v, %v", m, err)
+	}
+}
+
+func TestInboxRows(t *testing.T) {
+	items := []Item{
+		{ID: "a", Kind: "report", Subject: "t-0001", Summary: "T1 Fix the login (t-0001) handed in report 1"},
+		{ID: "b", Kind: "idle", Subject: "t-0001", Summary: "t-0001 is idle"},
+		{ID: "c", Kind: "report", Subject: "t-0002", Summary: "t-0002 (Docs) handed in report 1"},
+		{ID: "d", Kind: "report", Subject: "t-0001", Summary: "T1 Fix the login (t-0001) handed in report 2"},
+	}
+	rows := Rows(items)
+	var got []string
+	for _, r := range rows {
+		got = append(got, fmt.Sprintf("%s %d %q|%q|%q", r.ID, r.Count, r.Task, r.What, r.Title))
+	}
+	want := []string{
+		`b 1 ""|"t-0001 is idle"|""`,
+		`c 1 ""|"t-0002 (Docs) handed in report 1"|""`,
+		`d 2 "T1"|"handed in report 2"|"Fix the login"`,
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("rows:\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestDoneItems(t *testing.T) {
+	t.Setenv("TERMINATR_HOME", t.TempDir())
+	p, err := New(Options{Name: "Demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.AddItem("report", "t-0001", "r1", false)
+	p.AddItem("report", "t-0002", "other", false)
+	p.AddItem("idle", "t-0001", "idle", false)
+	if err := p.DoneItems("report", "t-0001"); err != nil {
+		t.Fatal(err)
+	}
+	items, _ := p.Inbox()
+	var got []string
+	for _, it := range items {
+		got = append(got, it.Summary)
+	}
+	slices.Sort(got)
+	if !slices.Equal(got, []string{"idle", "other"}) {
+		t.Fatalf("inbox: %+v", items)
 	}
 }

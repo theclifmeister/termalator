@@ -26,7 +26,8 @@ type ProjectWatch struct {
 	// (Why*): held prompt queues, tasks to accept, threads' questions,
 	// red CI, blocked tasks.
 	NeedsYou []WatchNeed `json:"needs_you"`
-	// Inbox is the coordinator's unhandled inbox, oldest first.
+	// Inbox is the coordinator's unhandled inbox, oldest first, an item
+	// kind of a subject once (project.Rows).
 	Inbox []WatchItem `json:"inbox"`
 	// Threads are the project's unresolved threads, in id order.
 	Threads []WatchThread `json:"threads"`
@@ -78,6 +79,13 @@ type WatchItem struct {
 	Subject   string `json:"subject"`
 	Summary   string `json:"summary"`
 	NeedsUser bool   `json:"needs_user,omitempty"`
+	// Count is how many unhandled items of this kind the subject has
+	// (the item is the latest); Task, What and Title are the summary
+	// taken apart (project.Parts), for a row.
+	Count int    `json:"count"`
+	Task  string `json:"task,omitempty"`
+	What  string `json:"what"`
+	Title string `json:"title,omitempty"`
 }
 
 // WatchThread is one thread, compact.

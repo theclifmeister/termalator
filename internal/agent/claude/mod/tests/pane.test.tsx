@@ -3,7 +3,7 @@ import type { On, RenderViewport } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 
 import type { TerminatrProject } from '../types'
-import { askLine, asked, needButtons, projectFeed, threadLine } from '../hooks/dashboard'
+import { askLine, asked, itemParts, itemTone, needButtons, projectFeed, threadLine } from '../hooks/dashboard'
 
 const project = (over: Partial<TerminatrProject> = {}): TerminatrProject => ({
   project: 'demo',
@@ -15,7 +15,10 @@ const project = (over: Partial<TerminatrProject> = {}): TerminatrProject => ({
     { why: 'ci', task: 'T67', title: 'CI log', status: 'started', thread: 't-0060', pr: '#119 open, 2 checks failed', pr_number: 119 },
     { why: 'blocked', task: 'T70', title: 'Stuck', status: 'blocked' },
   ],
-  inbox: [{ id: 'i1', kind: 'accept', subject: 'T61', summary: 'the user accepts T61' }],
+  inbox: [
+    { id: 'i1', kind: 'accept', subject: 'T61', summary: 'the user accepts T61', count: 1, what: 'the user accepts T61' },
+    { id: 'i2', kind: 'report', subject: 't-0059', summary: 'T64 Tools (t-0059) handed in report 3', count: 3, task: 'T64', what: 'handed in report 3', title: 'Tools' },
+  ],
   threads: [
     { id: 't-0059', title: 'tools', session: 's-9', state: 'working',
       task: { id: 'T64', title: 'Tools', status: 'started', steps_done: 3, steps_total: 5, current: 'mod tools' }, pr: '#121 open, checks pending' },
@@ -209,7 +212,7 @@ test('the pane lists what needs the user first, then inbox, threads and the deck
       const ui = await $.ui.mount({ plugin: 'terminatr', surface, ...pane(cols) })
       const t = await texts(ui)
       const at = (s: string) => t.findIndex(x => x.includes(s))
-      expect(t[0]).toBe('demo · 5 need you · 1 in inbox · 2 threads')
+      expect(t[0]).toBe('demo · 5 need you · 2 in inbox · 2 threads')
       expect(at('Needs you')).toBeLessThan(at('T63'))
       expect(at('T63')).toBeLessThan(at('T61'))
       expect(at('T61')).toBeLessThan(at('T66'))
@@ -219,6 +222,7 @@ test('the pane lists what needs the user first, then inbox, threads and the deck
       expect(at('Inbox')).toBeLessThan(at('Threads'))
       expect(at('Threads')).toBeLessThan(at('On deck'))
       expect(t).toContain('  “which file?”')
+      expect(t).toContain('  report x3 T64 handed in report 3 Tools')
       expect(t).toContain('  asked the coordinator: accept')
       expect((await ui.find({ key: 'merge-T63' }))?.text).toBe('Merge')
       expect(await ui.find({ key: 'accept-T61' })).toBeUndefined()
@@ -280,4 +284,11 @@ test('Report opens the thread\'s report in a pane of its own', async ($, on) => 
   await r.press({ key: 'close-report' })
   expect(seen.closed).toContain('tm-report')
   await r.unmount()
+})
+
+test('an inbox row reads count, task, what happened, then the title', () => {
+  const [, report] = project().inbox
+  expect(itemParts(report!)).toEqual({ head: 'x3 T64 handed in report 3', title: 'Tools' })
+  expect(itemParts({ id: 'i', kind: 'idle', subject: 't-1', summary: 'plain', count: 1, what: 'plain' })).toEqual({ head: 'plain', title: '' })
+  expect(['report', 'pr-conflict', 'accept'].map(itemTone)).toEqual(['success', 'error', 'warning'])
 })
