@@ -62,7 +62,7 @@ jobs:
       - name: repeat the T53 scenarios x20, and the shard x3
         if: matrix.shard == 2
         run: |
-          make e2e-smoke E2E_FLAGS="-count=20 -timeout 40m -run '^(TestSmokeMouseDashboard|TestSmokeProjectPopup|TestSmokeMousePopupsAndAttach|TestSmokeWindowWholeFrames)$$'"
+          make e2e-smoke E2E_FLAGS="-count=20 -timeout 40m -run '^TestSmoke(MouseDashboard|ProjectPopup|MousePopupsAndAttach|WindowWholeFrames)'"
           make e2e-smoke E2E_SHARD=2/2 E2E_FLAGS="-count=3 -timeout 40m"
         env:
           E2E_ARTIFACTS: ${{ runner.temp }}/e2e-artifacts
