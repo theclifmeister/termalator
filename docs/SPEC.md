@@ -161,7 +161,7 @@ The types are in `internal/proto`.
 // client → server
 {"protocol": 9, "version": "v0.8.1", "build": "v0.8.1+33da6848d63b+3f2a…", "kind": "control" | "attach" | "hook"}
 // server → client
-{"protocol": 9, "version": "v0.8.1", "build": "v0.8.1+33da6848d63b+3f2a…", "bin": "~/.terminatr/server-bin/tm-…", "pid": 4242}
+{"protocol": 9, "version": "v0.8.1", "build": "v0.8.1+33da6848d63b+3f2a…", "bin": "~/.terminatr/run/bin/tm-…", "pid": 4242}
 ```
 
 `build` is `version.BuildID()`: the version, the Ghostty commit, and a hash of the executable.
@@ -308,7 +308,7 @@ The processes die with the server, because the PTY master closes and the childre
 - **Reporting.** Each restart writes an inbox item (`kind = "server-restart"`, raised by the ticker, §7.5) to every affected project with the counts of resumed and lost sessions; the server log names them: "server restarted after crash; resumed coordinator, t-0003; lost shell s-12". The coordinator decides what to re-prompt.
 - **Upgrade.**
   - Installing a new `tm` doesn't touch a running server. Attach keeps working, because the client re-execs the server's binary (§3.3).
-  - The server pins that binary: on start it hard-links its executable to `~/.terminatr/server-bin/tm-<build>` (copies it across file systems) and removes the other pins. That path, not the installed one, is what the hello advertises for re-exec and what sessions get as `TERMINATR_BIN` for their hooks, so both keep working after `tm update` renames a new binary over the old one or `brew upgrade` deletes the old keg.
+  - The server pins that binary: on start it hard-links its executable to `<run dir>/bin/tm-<build>` (copies it across file systems) and removes the other pins. It then removes a leftover `~/.terminatr/server-bin/` from older versions, except files a live process still runs (an older dashboard during an upgrade); those stay for the next start. That path, not the installed one, is what the hello advertises for re-exec and what sessions get as `TERMINATR_BIN` for their hooks, so both keep working after `tm update` renames a new binary over the old one or `brew upgrade` deletes the old keg.
   - A control client with a newer protocol asks the human to run `tm server restart`, which works whatever the server speaks (§3.3, Stopping across protocols). Restart warns about how many agents are mid-turn and asks for confirmation on a TTY.
   - **Later, not v0.1:** a live handoff. The old server passes each PTY master to the new one over `SCM_RIGHTS`, with a snapshot of each emulator, so no agent has to restart. Snapshots make this feasible; it needs its own small spike.
 - **Views.** The server-owned views come back from `views.json` (§3.3, Views), with the panes whose sessions were resumed.
@@ -474,7 +474,7 @@ The processes die with the server, because the PTY master closes and the childre
   .trash/<slug>-<UTC time>/            deleted projects' folders (tm project delete)  [tm, on the human's word]
   run/  tm.sock server.lock server.pid                                               [server]
   run/s/<id>/                          per-session launch files: the agent's settings and plugin (hooks, terminatr's mod), §8.6  [server]
-  server-bin/tm-<build>                the running server's pinned binary (§3.6)     [server]
+  run/bin/tm-<build>                   the running server's pinned binary (§3.6)     [server]
   state/sessions.json                  live sessions, for resume (§3.6)              [server]
   state/views.json                     the server-owned views but own ones: screen, the session shown, selection, current project, sidebar (§3.3)  [server]
   state/ticker.json                    what the ticker already reported: thread states, PRs, nudges, syncs (§7.5)  [server]

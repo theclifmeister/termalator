@@ -47,10 +47,9 @@ Everything is under `~/.terminatr`, or `$TERMINATR_HOME` when that is set. Nothi
 | `state/sessions.json` | the sessions the server runs, rewritten on every change; the next server resumes agents from it |
 | `state/views.json` | what the shared consoles show (screen, session, sidebar), restored after a restart |
 | `state/ticker.json` | what the ticker already reported (thread states, PRs, nudges, checkout syncs), so a restart repeats nothing |
-| `server-bin/` | the running server's own copy of its binary (`tm-<build>`), so `tm update` or `brew upgrade` can't pull it from under the server |
 | `logs/server.log` | the server log, rotated at 10 MB (`server.log.1` … `.3` kept) |
 | `logs/service.log` | output of a server started by launchd (macOS service only) |
-| `run/` | `tm.sock`, `server.lock`, `server.pid` and per-session runtime dirs (`s/<id>/`: the agent's generated settings and plugin, with terminatr's mod when it is on) |
+| `run/` | `tm.sock`, `server.lock`, `server.pid` and per-session runtime dirs (`s/<id>/`: the agent's generated settings and plugin, with terminatr's mod when it is on) and `bin/`: the running server's own copy of its binary (`tm-<build>`), so `tm update` or `brew upgrade` can't pull it from under the server; a leftover `server-bin/` from older versions is removed on start |
 
 The run directory is `$XDG_RUNTIME_DIR/terminatr` on Linux when that variable is set (and `TERMINATR_HOME` isn't), and falls back to `/tmp/terminatr-<uid>-<hash>` when the path to the socket would be too long. `tm server status` and `tm doctor` print the one in use. `$TERMINATR_SOCKET` overrides the socket path.
 
@@ -165,7 +164,7 @@ tm update --check    # only says whether there is one
 - **Homebrew:** `tm update` never touches Homebrew's files: it shows `brew upgrade terminatr` and runs it if you say yes.
 - **Built from source:** `tm update` refuses; `git pull && make`.
 
-The running server keeps the old build until it restarts, and keeps working meanwhile: it runs from its own copy of its binary (`~/.terminatr/server-bin/`), so attaching and agent hooks are unaffected. Restarting switches it to the new build but stops every session: agents are resumed and lose only the turn they are in, shells are lost. So `tm update` asks before restarting (or restarts with `--restart`), and otherwise leaves it to you:
+The running server keeps the old build until it restarts, and keeps working meanwhile: it runs from its own copy of its binary (`~/.terminatr/run/bin/`), so attaching and agent hooks are unaffected. Restarting switches it to the new build but stops every session: agents are resumed and lose only the turn they are in, shells are lost. So `tm update` asks before restarting (or restarts with `--restart`), and otherwise leaves it to you:
 
 ```sh
 tm server restart
