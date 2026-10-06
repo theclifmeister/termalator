@@ -33,8 +33,9 @@ const (
 	minGap = 200 * time.Millisecond
 )
 
-// Inbox item kinds the ticker raises. tm report, tm done and tm thread
-// resolve raise "report", "thread-done" and "thread-resolved" themselves.
+// Inbox item kinds the ticker raises. tm report and tm thread resolve
+// raise "report" and "thread-resolved" themselves; tm done raises none
+// (its report's item says it).
 const (
 	KindBlocked       = "blocked"
 	KindIdle          = "idle"
@@ -707,7 +708,7 @@ var subjectRE = regexp.MustCompile(`^(t-[0-9]{4,}|T[0-9]{1,9})$`)
 
 // verbs are the nudge's words per item kind: fixed text.
 var verbs = map[string]string{
-	"report": "reported", "thread-done": "done", "thread-resolved": "resolved", "needs-you": "waiting for the user",
+	"report": "reported", "thread-resolved": "resolved", "needs-you": "waiting for the user",
 	KindBlocked: "blocked", KindIdle: "idle with a report", KindExited: "exited", KindServerRestart: "server restarted",
 	KindPROpened: "opened a PR", KindPRChecks: "PR checks failed", KindPRReview: "PR reviewed",
 	KindPRMerged: "PR merged", KindPRClosed: "PR closed", KindTaskDone: "done by the user's setting", KindPRConflict: "PR conflicts with main", KindCloseHeld: "not auto-closed", KindGHFailing: "gh failing", project.KindTakeover: "taken over by the user",

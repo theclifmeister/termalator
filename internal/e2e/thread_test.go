@@ -263,10 +263,11 @@ func TestSmokeThreadLifecycle(t *testing.T) {
 		t.Fatalf("thread list: %+v", list)
 	}
 	inbox := env.MustCLI("inbox", "list", "--project", "demo")
-	for _, w := range []string{"report: T1 Fix the login (t-0001) handed in report 1", "thread-done: T1 Fix the login (t-0001) is done"} {
-		if !strings.Contains(inbox, w) {
-			t.Errorf("inbox lacks %q:\n%s", w, inbox)
-		}
+	if !strings.Contains(inbox, "report: T1 Fix the login (t-0001) handed in report 1") {
+		t.Errorf("inbox lacks the report:\n%s", inbox)
+	}
+	if strings.Contains(inbox, "thread-done") {
+		t.Errorf("tm done raised an item:\n%s", inbox)
 	}
 	task := env.MustCLI("task", "show", "T1", "--project", "demo")
 	if !strings.Contains(task, "status: started") || !strings.Contains(task, "thread: t-0001") || !strings.Contains(task, "[x] Write the code") {

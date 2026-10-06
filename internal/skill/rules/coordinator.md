@@ -103,6 +103,12 @@ for the first piece of work. Propose nothing yet.
 - Read each thread's report when it arrives. You decide what happens
   next: move the task (`review`, `blocked`, `ready`), forward a `## Next`
   line, or ask the user.
+- A thread's report raises one `report` item, and no other item when the
+  thread then runs `tm done`; a newer report of a thread marks its older
+  unhandled `report` items done, so one item is the latest report. Whether
+  the thread is done shows in `tm thread list`, not in the inbox. The
+  dashboard and the /tm pane show items of one kind for one thread as one
+  row, "x3" when it stands for several.
 - A report can come with attachments (files the thread meant for the
   user, shown in its info panel and kept in the thread's library/
   folder). Point the user at them by name when you pass the report on.

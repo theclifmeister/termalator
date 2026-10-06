@@ -1745,6 +1745,11 @@ func runReport(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
+	// One item per report: a newer one supersedes the thread's older
+	// unhandled report items.
+	if err := p.DoneItems("report", r.ID); err != nil {
+		return err
+	}
 	summary := fmt.Sprintf("%s handed in report %d", thread.Label(p, r.ID), n)
 	if _, err := p.AddItem("report", r.ID, summary, false); err != nil {
 		return err
@@ -1853,10 +1858,6 @@ func runDone(e *Env, args []string) error {
 		return err
 	}
 	if _, err := thread.UpdateStatus(p, r.ID, func(st *thread.Status) error { st.Done = true; return nil }); err != nil {
-		return err
-	}
-	summary := thread.Label(p, r.ID) + fmt.Sprintf(" is done; review report %d and move the task", r.Reports)
-	if _, err := p.AddItem("thread-done", r.ID, summary, false); err != nil {
 		return err
 	}
 	detail := ""
