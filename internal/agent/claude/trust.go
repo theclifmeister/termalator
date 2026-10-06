@@ -40,6 +40,34 @@ func (a *Agent) TrustDir(home, dir string) error {
 	if r, err := filepath.EvalSymlinks(dir); err == nil && r != dir {
 		dirs = append(dirs, r)
 	}
+	return editProjects(home, func(projects map[string]json.RawMessage, path string) (bool, error) {
+		changed := false
+		for _, d := range dirs {
+			entry := map[string]json.RawMessage{}
+			if raw, ok := projects[d]; ok && string(raw) != "null" {
+				if err := json.Unmarshal(raw, &entry); err != nil {
+					return false, fmt.Errorf("claude: %s: projects[%q]: %w", path, d, err)
+				}
+			}
+			if string(entry["hasTrustDialogAccepted"]) == "true" {
+				continue
+			}
+			entry["hasTrustDialogAccepted"] = json.RawMessage("true")
+			b, err := json.Marshal(entry)
+			if err != nil {
+				return false, err
+			}
+			projects[d] = b
+			changed = true
+		}
+		return changed, nil
+	})
+}
+
+// editProjects reads the projects map of Claude's config under its lock,
+// lets fn change it, and writes the file back when fn says it changed,
+// keeping every other key as it is.
+func editProjects(home string, fn func(projects map[string]json.RawMessage, path string) (bool, error)) error {
 	path := configPath(home)
 	if r, err := filepath.EvalSymlinks(path); err == nil {
 		path = r // a dotfiles symlink stays a symlink
@@ -70,27 +98,9 @@ func (a *Agent) TrustDir(home, dir string) error {
 			return fmt.Errorf("claude: %s: projects: %w", path, err)
 		}
 	}
-	changed := false
-	for _, d := range dirs {
-		entry := map[string]json.RawMessage{}
-		if raw, ok := projects[d]; ok && string(raw) != "null" {
-			if err := json.Unmarshal(raw, &entry); err != nil {
-				return fmt.Errorf("claude: %s: projects[%q]: %w", path, d, err)
-			}
-		}
-		if string(entry["hasTrustDialogAccepted"]) == "true" {
-			continue
-		}
-		entry["hasTrustDialogAccepted"] = json.RawMessage("true")
-		b, err := json.Marshal(entry)
-		if err != nil {
-			return err
-		}
-		projects[d] = b
-		changed = true
-	}
-	if !changed {
-		return nil
+	changed, err := fn(projects, path)
+	if err != nil || !changed {
+		return err
 	}
 	b, err := json.Marshal(projects)
 	if err != nil {

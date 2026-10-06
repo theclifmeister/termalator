@@ -1,11 +1,13 @@
-// Package service writes and loads the optional start-at-login service
-// for the server (docs/SPEC.md §3.1): a launchd agent on macOS, a systemd
-// user unit on Linux. Both run `tm server run` in the foreground. Nothing
-// depends on it, because any tm command starts the server on demand.
+// Package service writes and loads the server's service files (docs/SPEC.md
+// §3.1): the optional start-at-login service (a launchd agent on macOS, a
+// systemd user unit on Linux), and on macOS the launchd job every start
+// goes through (Start), so the server runs in the desktop's session
+// whatever session tm was started from.
 package service
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"html"
@@ -31,6 +33,15 @@ type Config struct {
 	Bin string
 	// Home is TERMINATR_HOME when set explicitly, else "".
 	Home string
+	// Socket is TERMINATR_SOCKET when set, else "".
+	Socket string
+	// RunDir is the server's run dir, where the launch file and the
+	// on-demand job's plist live (macOS).
+	RunDir string
+	// Env is the environment the server gets on macOS, written to the
+	// launch file: the starting tm's own, less what belongs to its
+	// terminal or login (LaunchEnv).
+	Env []string
 	// LogDir is where launchd writes the server's stdout and stderr.
 	LogDir string
 	// Path is the PATH the server and its agents get: services start
@@ -43,11 +54,21 @@ type Config struct {
 // ErrUnsupported means there is no service manager support for the OS.
 var ErrUnsupported = errors.New("start at login is supported on macOS (launchd) and Linux (systemd --user) only")
 
+// JobLabel is the launchd label: Label for the default home, and one per
+// home otherwise, so a dev or test server never takes the real one's.
+func (c Config) JobLabel() string {
+	if c.Home == "" {
+		return Label
+	}
+	h := sha256.Sum256([]byte(c.Home))
+	return fmt.Sprintf("%s.%x", Label, h[:4])
+}
+
 // File is the service file's path.
 func (c Config) File() (string, error) {
 	switch c.GOOS {
 	case "darwin":
-		return filepath.Join(c.UserHome, "Library", "LaunchAgents", Label+".plist"), nil
+		return filepath.Join(c.UserHome, "Library", "LaunchAgents", c.JobLabel()+".plist"), nil
 	case "linux":
 		return filepath.Join(c.UserHome, ".config", "systemd", "user", UnitName), nil
 	}
@@ -61,14 +82,17 @@ func (c Config) Render() ([]byte, error) {
 	}
 	switch c.GOOS {
 	case "darwin":
-		return c.plist(), nil
+		return c.plist(true), nil
 	case "linux":
 		return c.unit(), nil
 	}
 	return nil, ErrUnsupported
 }
 
-func (c Config) plist() []byte {
+// plist renders the launchd job: atLoad for the login service, which
+// starts the server when it is loaded; the on-demand job only starts on
+// kickstart. Neither has KeepAlive: tm server stop must leave it stopped.
+func (c Config) plist(atLoad bool) []byte {
 	x := html.EscapeString
 	var b bytes.Buffer
 	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?>
@@ -76,15 +100,20 @@ func (c Config) plist() []byte {
 <plist version="1.0">
 <dict>
 	<key>Label</key>
-	<string>` + Label + `</string>
+	<string>` + c.JobLabel() + `</string>
 	<key>ProgramArguments</key>
 	<array>
 		<string>` + x(c.Bin) + `</string>
 		<string>server</string>
 		<string>run</string>
-	</array>
+		<string>--launchd</string>
+`)
+	if c.RunDir != "" {
+		b.WriteString("\t\t<string>--launch-file</string>\n\t\t<string>" + x(c.LaunchFile()) + "</string>\n")
+	}
+	b.WriteString(`	</array>
 	<key>RunAtLoad</key>
-	<true/>
+	<` + fmt.Sprint(atLoad) + `/>
 	<key>KeepAlive</key>
 	<false/>
 	<key>ProcessType</key>
@@ -144,6 +173,9 @@ func (c Config) env() [][2]string {
 	if c.Home != "" {
 		out = append(out, [2]string{"TERMINATR_HOME", c.Home})
 	}
+	if c.Socket != "" && c.GOOS == "darwin" {
+		out = append(out, [2]string{"TERMINATR_SOCKET", c.Socket})
+	}
 	return out
 }
 
@@ -189,13 +221,17 @@ func (c Config) Install() (string, error) {
 	}
 	switch c.GOOS {
 	case "darwin":
+		if err := c.writeLaunchFile(); err != nil {
+			return "", err
+		}
 		// bootstrap refuses an already loaded label: unload a previous
-		// install first (an error just means it wasn't loaded).
-		c.run("launchctl", "bootout", c.domain()+"/"+Label)
+		// install, or the on-demand job, first (an error just means it
+		// wasn't loaded).
+		c.run("launchctl", "bootout", c.target())
 		if err := os.WriteFile(path, data, 0o644); err != nil {
 			return "", err
 		}
-		return path, c.run("launchctl", "bootstrap", c.domain(), path)
+		return path, c.bootstrap(path)
 	default:
 		if err := os.WriteFile(path, data, 0o644); err != nil {
 			return "", err
@@ -220,7 +256,7 @@ func (c Config) Uninstall() (string, error) {
 	}
 	switch c.GOOS {
 	case "darwin":
-		c.run("launchctl", "bootout", c.domain()+"/"+Label)
+		c.run("launchctl", "bootout", c.target())
 		return path, removeFile(path)
 	default:
 		c.run("systemctl", "--user", "disable", "--now", UnitName)
@@ -232,6 +268,8 @@ func (c Config) Uninstall() (string, error) {
 }
 
 func (c Config) domain() string { return fmt.Sprintf("gui/%d", c.UID) }
+
+func (c Config) target() string { return c.domain() + "/" + c.JobLabel() }
 
 func removeFile(path string) error {
 	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {

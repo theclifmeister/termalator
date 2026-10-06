@@ -31,15 +31,17 @@ func OverSSH(getenv func(string) string) bool {
 
 // Fix is what to do about a server whose sessions can't reach the
 // keychain.
-const Fix = "restart the server from a terminal on the Mac itself, not over SSH: tm server restart"
+const Fix = "tm server restart, which starts it in the desktop's session through launchd " +
+	"(someone must be logged in at the Mac; the screen can stay locked)"
 
 // StartWarning is the warning for starting a server from getenv's
-// environment on goos, or "" when there is nothing to warn about.
+// environment on goos without launchd (--no-launchd, TERMINATR_LAUNCHD=off),
+// or "" when there is nothing to warn about.
 func StartWarning(goos string, getenv func(string) string) string {
 	if goos != "darwin" || !OverSSH(getenv) {
 		return ""
 	}
-	return "warning: the server was started over SSH, so its sessions can't use the keychain " +
+	return "warning: the server was started over SSH without launchd, so its sessions can't use the keychain " +
 		"(gh, git push over https); " + Fix
 }
 

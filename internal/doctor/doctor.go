@@ -77,6 +77,10 @@ type Deps struct {
 	// keychain (keychain.Probe); nil offers no restart for a server that
 	// can't.
 	Keychain func() proto.KeychainStatus
+	// Launchd reports whether a restart from here starts the server
+	// through launchd's GUI domain (macOS), and so gives its sessions
+	// the keychain wherever doctor runs; nil means it doesn't.
+	Launchd func() bool
 }
 
 // DefaultDeps uses the real system.

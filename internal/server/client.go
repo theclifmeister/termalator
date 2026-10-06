@@ -8,10 +8,13 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"syscall"
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/service"
 	"github.com/theclifmeister/terminatr/internal/version"
 	"github.com/theclifmeister/terminatr/internal/view"
 )
@@ -140,9 +143,45 @@ func Connect(p Paths, autostart bool) (*Client, error) {
 	}
 }
 
-// StartDetached starts `tm server run --detached` as a new session with no
-// controlling terminal and stdio on /dev/null, and waits until it answers.
+// StartDetached starts the server and waits until it answers. On macOS it
+// goes through launchd's GUI domain (StartLaunchd), so the server runs in
+// the desktop's session, with the keychain, whatever session the caller
+// is in; elsewhere, or with TERMINATR_LAUNCHD=off, it starts it as a
+// child (StartChild).
 func StartDetached(p Paths) error {
+	if service.Wanted(runtime.GOOS, os.Getenv) {
+		return StartLaunchd(p)
+	}
+	return StartChild(p)
+}
+
+// LaunchdConfig is the launchd job for the server of p, handing it this
+// process's environment (docs/SPEC.md §3.1).
+func LaunchdConfig(p Paths) (service.Config, error) {
+	return service.Current(os.Getenv, os.Environ(), p.Home, p.RunDir, filepath.Dir(p.Log))
+}
+
+// StartLaunchd starts the server through launchd (service.Config.Start)
+// and waits until it answers. It fails with service.ErrNoConsole when
+// nobody is logged in at the Mac.
+func StartLaunchd(p Paths) error {
+	c, err := LaunchdConfig(p)
+	if err != nil {
+		return err
+	}
+	if err := c.Start(); err != nil {
+		if errors.Is(err, service.ErrNoConsole) {
+			return err
+		}
+		return fmt.Errorf("start the server through launchd: %w; tm server start --no-launchd starts it without (and without the keychain)", err)
+	}
+	return waitUp(p, nil, p.Log+" and "+c.ServiceLog())
+}
+
+// StartChild starts `tm server run --detached` as a new session with no
+// controlling terminal and stdio on /dev/null, and waits until it answers.
+// On macOS the server runs in the caller's security session.
+func StartChild(p Paths) error {
 	bin, err := os.Executable()
 	if err != nil {
 		return err
@@ -161,6 +200,12 @@ func StartDetached(p Paths) error {
 	}
 	exited := make(chan error, 1)
 	go func() { exited <- cmd.Wait() }()
+	return waitUp(p, exited, p.Log)
+}
+
+// waitUp waits until the server answers, or exited (nil when the server
+// isn't a child) says it ended; logs names where to look.
+func waitUp(p Paths, exited <-chan error, logs string) error {
 	deadline := time.Now().Add(AutoStartTimeout)
 	for time.Now().Before(deadline) {
 		if c, err := Dial(p, proto.KindControl); err == nil {
@@ -180,11 +225,11 @@ func StartDetached(p Paths) error {
 				c.Close()
 				return nil
 			}
-			return fmt.Errorf("server exited during start (%v); see %s", err, p.Log)
+			return fmt.Errorf("server exited during start (%v); see %s", err, logs)
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
-	return fmt.Errorf("server did not answer within %v; see %s", AutoStartTimeout, p.Log)
+	return fmt.Errorf("server did not answer within %v; see %s", AutoStartTimeout, logs)
 }
 
 // Call sends one request and decodes its result into result (which may be

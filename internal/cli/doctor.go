@@ -6,12 +6,14 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/doctor"
 	"github.com/theclifmeister/terminatr/internal/emu"
 	"github.com/theclifmeister/terminatr/internal/server"
+	"github.com/theclifmeister/terminatr/internal/service"
 	"github.com/theclifmeister/terminatr/internal/update"
 	"github.com/theclifmeister/terminatr/internal/version"
 )
@@ -56,6 +58,15 @@ func doctorCmd(e *Env, args []string) int {
 			return fmt.Errorf("tm server restart exited %d", code)
 		}
 		return nil
+	}
+	d.Launchd = func() bool {
+		// From inside one of the server's sessions the restart would
+		// end the session running it before the start.
+		if !service.Wanted(runtime.GOOS, e.Getenv) || e.Getenv("TERMINATR_SESSION") != "" {
+			return false
+		}
+		c, err := server.LaunchdConfig(p)
+		return err == nil && c.HasConsole()
 	}
 	checks := doctor.Run(d)
 	fixes := doctor.Fixes(checks)
