@@ -11,6 +11,8 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/theclifmeister/terminatr/internal/caller"
+	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/server"
 	"github.com/theclifmeister/terminatr/internal/tasks"
@@ -377,5 +379,51 @@ func TestQuestionOpenRow(t *testing.T) {
 	_, reason, _ = threadState(tr, map[string]proto.SessionInfo{"s-4": s})
 	if reason != "question open" {
 		t.Errorf("reason = %q", reason)
+	}
+}
+
+// TestInfoLinesGuardRefusals: the guard's latest refusals of the thread
+// show on the panel, newest last, and none without any.
+func TestInfoLinesGuardRefusals(t *testing.T) {
+	now := time.Now()
+	d := sampleInfo(now)
+	lines, _ := infoLines(d, 60, now)
+	if strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "Guard refused") {
+		t.Error("a Guard section without refusals")
+	}
+	d.refused = []refusal{{at: now.Add(-7 * time.Minute), what: "credentials Bash: printenv GITHUB_TOKEN"}, {at: now.Add(-1 * time.Minute), what: "merge Bash: gh pr merge"}}
+	lines, _ = infoLines(d, 60, now)
+	text := ansi.Strip(strings.Join(lines, "\n"))
+	for _, want := range []string{"Guard refused", "7m ago credentials Bash: printenv GITHUB_TOKEN", "1m ago merge Bash: gh pr merge"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("no %q in\n%s", want, text)
+		}
+	}
+}
+
+// TestGuardRefusals: only the thread's own guard.deny lines are read,
+// the last n of them.
+func TestGuardRefusals(t *testing.T) {
+	t.Setenv("TERMINATR_HOME", t.TempDir())
+	p, err := project.New(project.Options{Name: "Demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	th := caller.Caller{Kind: caller.Thread, Project: p.Slug, Thread: "t-0001"}
+	other := caller.Caller{Kind: caller.Thread, Project: p.Slug, Thread: "t-0002"}
+	for i, c := range []caller.Caller{th, other, th, th, th} {
+		if err := p.Journal(c, "guard.deny", c.Thread, "merge Bash: call "+strconv.Itoa(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := p.Journal(th, "report", "t-0001", "done"); err != nil {
+		t.Fatal(err)
+	}
+	got := guardRefusals(p, "t-0001", 3)
+	if len(got) != 3 || got[0].what != "merge Bash: call 2" || got[2].what != "merge Bash: call 4" {
+		t.Errorf("refusals %+v", got)
+	}
+	if got := guardRefusals(p, "t-0002", 3); len(got) != 1 {
+		t.Errorf("other thread: %+v", got)
 	}
 }

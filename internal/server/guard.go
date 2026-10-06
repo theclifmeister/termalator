@@ -6,7 +6,7 @@ package server
 // guard_off, merge) and the session's role, and serves them on the mod
 // socket as GET /v1/rules; the mod matches each call itself
 // (hooks/guard.ts) and reports a refusal with POST /v1/denied, which the
-// server journals and puts in the project's inbox.
+// server journals (and puts in the project's inbox only when a session is refused repeatedly).
 
 import (
 	"encoding/json"
@@ -62,9 +62,16 @@ type GuardDenial struct {
 	Summary string `json:"summary,omitempty"`
 }
 
-// guardInboxGap spaces a session's inbox items for one rule: a denial
-// is always journaled, but an agent that keeps trying files one item.
-const guardInboxGap = 10 * time.Minute
+// A refusal is journaled and shown on the thread's info panel, not put
+// in the inbox: only a session refused guardInboxCount times within
+// guardInboxWindow files one item, and the count starts again after it.
+const (
+	guardInboxCount  = 3
+	guardInboxWindow = 10 * time.Minute
+)
+
+// guardNow is the clock of the inbox window (a variable for tests).
+var guardNow = time.Now
 
 // guardSecrets are the credential stores, relative to home.
 var guardSecrets = []string{
@@ -205,16 +212,39 @@ func (s *Server) guardRoutes(mux *http.ServeMux, id string) {
 	})
 }
 
-// guardLast is when each session last filed an inbox item for a rule.
-var guardLast = struct {
+// guardRecent is when each session was last refused, within the window.
+var guardRecent = struct {
 	sync.Mutex
-	at map[string]time.Time
-}{at: map[string]time.Time{}}
+	at map[string][]time.Time
+}{at: map[string][]time.Time{}}
 
-// guardDenied journals denial d of session r's mod and, at most once a
-// guardInboxGap per session and rule, tells the coordinator in the
-// inbox. The tool's own words never reach either: the summary is the
-// mod's, cut short and folded to one line.
+// guardRepeated records a refusal of session id and says whether it is
+// the guardInboxCount-th within guardInboxWindow, which starts the count
+// again.
+func guardRepeated(id string) bool {
+	now := guardNow()
+	guardRecent.Lock()
+	defer guardRecent.Unlock()
+	keep := guardRecent.at[id][:0]
+	for _, t := range guardRecent.at[id] {
+		if now.Sub(t) < guardInboxWindow {
+			keep = append(keep, t)
+		}
+	}
+	keep = append(keep, now)
+	if len(keep) >= guardInboxCount {
+		delete(guardRecent.at, id)
+		return true
+	}
+	guardRecent.at[id] = keep
+	return false
+}
+
+// guardDenied journals denial d of session r's mod; the thread's info
+// panel shows it from there. Only when the session keeps being refused
+// (guardInboxCount times in guardInboxWindow) does it tell the
+// coordinator, with one inbox item. The tool's own words never reach
+// either: the summary is the mod's, cut short and folded to one line.
 func (s *Server) guardDenied(r SessionRecord, d GuardDenial) {
 	s.log.Printf("session %s: guard denied %s (%s)", r.ID, d.Rule, d.Tool)
 	if r.Project == "" {
@@ -235,18 +265,11 @@ func (s *Server) guardDenied(r SessionRecord, d GuardDenial) {
 	if err := p.Journal(who, "guard.deny", ref, fmt.Sprintf("%s %s: %s", d.Rule, tool, summary)); err != nil {
 		s.log.Printf("session %s: journal: %v", r.ID, err)
 	}
-	key := r.ID + "/" + d.Rule
-	now := time.Now()
-	guardLast.Lock()
-	fresh := now.Sub(guardLast.at[key]) >= guardInboxGap
-	if fresh {
-		guardLast.at[key] = now
-	}
-	guardLast.Unlock()
-	if !fresh {
+	if !guardRepeated(r.ID) {
 		return
 	}
-	msg := fmt.Sprintf("%s: the guard refused a %s call (%s): %s", ref, tool, d.Rule, summary)
+	msg := fmt.Sprintf("%s: the guard refused %d calls in %d minutes, the last a %s call (%s): %s",
+		ref, guardInboxCount, int(guardInboxWindow/time.Minute), tool, d.Rule, summary)
 	if _, err := p.AddItem("guard", ref, msg, false); err != nil {
 		s.log.Printf("session %s: inbox: %v", r.ID, err)
 	}

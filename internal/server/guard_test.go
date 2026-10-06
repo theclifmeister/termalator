@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/theclifmeister/terminatr/internal/proto"
 )
@@ -59,8 +60,8 @@ func writeConfig(t *testing.T, body string) {
 }
 
 // TestGuardRoutes: the mod fetches its rules over its socket, and each
-// refusal it reports is journaled, with one inbox item per rule while
-// the agent keeps trying.
+// refusal it reports is journaled, and a session refused three times in
+// ten minutes files one inbox item.
 func TestGuardRoutes(t *testing.T) {
 	testPaths(t)
 	p := newWatchProject(t)
@@ -104,35 +105,58 @@ func TestGuardRoutes(t *testing.T) {
 	if code := postMod(t, c, "/v1/denied", `{"rule":"nope","tool":"Bash"}`); code != http.StatusBadRequest {
 		t.Errorf("unknown rule: %d", code)
 	}
-	for range 3 {
-		if code := postMod(t, c, "/v1/denied", `{"rule":"merge","tool":"Bash","summary":"gh pr merge\n42"}`); code != http.StatusNoContent {
+	clock := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+	guardNow = func() time.Time { return clock }
+	t.Cleanup(func() { guardNow = time.Now })
+	deny := func(rule string) {
+		t.Helper()
+		body := `{"rule":"` + rule + `","tool":"Bash","summary":"gh pr merge\n42"}`
+		if code := postMod(t, c, "/v1/denied", body); code != http.StatusNoContent {
 			t.Fatalf("denied: %d", code)
 		}
 	}
-	if code := postMod(t, c, "/v1/denied", `{"rule":"force-push","tool":"Bash","summary":"git push -f"}`); code != http.StatusNoContent {
-		t.Fatalf("denied: %d", code)
+	guards := func() int {
+		items, err := p.Inbox()
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := 0
+		for _, it := range items {
+			if it.Kind == "guard" {
+				n++
+			}
+		}
+		return n
 	}
-	lines, _, _ := p.JournalTail(10)
+	// Two refusals are journaled only; the third within ten minutes
+	// raises one item, and the count starts again.
+	deny("merge")
+	clock = clock.Add(4 * time.Minute)
+	deny("force-push")
+	if n := guards(); n != 0 {
+		t.Fatalf("after 2 refusals: %d inbox items", n)
+	}
+	clock = clock.Add(4 * time.Minute)
+	deny("merge")
+	if n := guards(); n != 1 {
+		t.Fatalf("after 3 refusals: %d inbox items", n)
+	}
+	// Three spread over more than ten minutes raise nothing.
+	for range 3 {
+		clock = clock.Add(6 * time.Minute)
+		deny("merge")
+	}
+	if n := guards(); n != 1 {
+		t.Fatalf("slow refusals: %d inbox items", n)
+	}
+	lines, _, _ := p.JournalTail(20)
 	n := 0
 	for _, l := range lines {
 		if strings.Contains(l, "t-0001 guard.deny t-0001 merge Bash: gh pr merge 42") {
 			n++
 		}
 	}
-	if n != 3 {
+	if n != 5 {
 		t.Errorf("journal %q", lines)
-	}
-	items, err := p.Inbox()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var kinds []string
-	for _, it := range items {
-		if it.Kind == "guard" {
-			kinds = append(kinds, it.Summary)
-		}
-	}
-	if len(kinds) != 2 || !strings.Contains(kinds[0]+kinds[1], "(merge)") || !strings.Contains(kinds[0]+kinds[1], "(force-push)") {
-		t.Errorf("inbox %q", kinds)
 	}
 }

@@ -185,11 +185,23 @@ const READERS = new Set([
   'gzip', 'openssl', 'gpg', 'jq', 'yq', 'diff', 'cmp', 'source', '.', 'curl', 'dd',
 ])
 
+// Environment variable names that look like they hold a secret.
+const SECRET_NAME = /token|secret|key|password|passwd|credential/i
+
 function judgeSecret(r: Rules, cmd: string, args: string[], words: string[]): Denial | null {
   if (cmd === 'security' && /^(find-(generic|internet)-password|dump-keychain|export)$/.test(args[0] ?? '')) {
     return deny(r, 'credentials', `security ${args[0]}`)
   }
-  if (cmd === 'printenv' || (cmd === 'env' && args.every(a => a.startsWith('-')))) return deny(r, 'credentials', `${cmd} printing the environment`)
+  if (cmd === 'printenv') {
+    // printenv NAME... prints only what it is asked for: fine unless a
+    // name looks secret. With no name it prints everything.
+    const names = args.filter(a => !a.startsWith('-'))
+    if (!names.length) return deny(r, 'credentials', 'printenv printing the environment')
+    const secret = names.find(n => SECRET_NAME.test(n))
+    if (secret) return deny(r, 'credentials', `printenv ${safe(secret)}`)
+  } else if (cmd === 'env' && args.every(a => a.startsWith('-'))) {
+    return deny(r, 'credentials', 'env printing the environment')
+  }
   // A reader given a secret, or a secret redirected in.
   for (let i = 0; i < words.length; i++) {
     const w = words[i]
