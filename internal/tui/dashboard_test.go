@@ -88,6 +88,9 @@ func (f *fakeSource) Board(string) (*tasks.Board, error) {
 func (f *fakeSource) SetSetting(table, key string, value any) error {
 	f.settings = append(f.settings, fmt.Sprintf("%s.%s=%v", table, key, value))
 	if table == config.DefaultsTable {
+		if value == nil {
+			return config.UnsetDefaults(key)
+		}
 		return config.SetDefaults(key, value)
 	}
 	if slug, ok := strings.CutPrefix(table, "projects."); ok {
@@ -141,6 +144,7 @@ func (f *fakeSource) Ask(slug string, id int, kind, note string) (bool, error) {
 func (f *fakeSource) Review(slug string, t *tasks.Task) Review { return f.reviews[t.ID] }
 func (f *fakeSource) Memory(string) (project.Memory, error)    { return f.memory, nil }
 func (f *fakeSource) Agents() []string                         { return f.agents }
+func (f *fakeSource) Models() []string                         { return []string{"opus", "sonnet", "haiku"} }
 func (f *fakeSource) NewProject(name string) (string, error)   { return name, nil }
 func (f *fakeSource) StartShell(cwd string, c, r int) (string, error) {
 	f.started = append(f.started, "shell "+cwd)

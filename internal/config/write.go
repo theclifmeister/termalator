@@ -50,11 +50,21 @@ const DefaultsTable = "defaults"
 // UnsetProject removes a project's own value of key, so it follows all
 // projects again; for auto_close the older auto_resolve goes too. ErrForm
 // when the file sets it in a form the line editor doesn't change.
-func UnsetProject(slug, key string) error {
+func UnsetProject(slug, key string) error { return unset("projects."+slug, key) }
+
+// UnsetDefaults removes an all-projects setting's value ([defaults]), so
+// every project follows the built-in default again.
+func UnsetDefaults(key string) error {
+	if slices.Contains(ProjectOnly, key) {
+		return fmt.Errorf("%s is a project's own setting, not all projects'", key)
+	}
+	return unset(DefaultsTable, key)
+}
+
+func unset(table, key string) error {
 	if !validKey(key) {
 		return fmt.Errorf("unknown setting %q", key)
 	}
-	table := "projects." + slug
 	keys := []string{key}
 	if key == "auto_close" {
 		keys = append(keys, "auto_resolve")
@@ -110,6 +120,12 @@ func setSafety(table, key string, value any) error {
 	if n, ok := value.(int); key == "auto_close_days" && (!ok || n < 1 || n > MaxAutoCloseDays) {
 		return fmt.Errorf("auto-close days must be 1 to %d", MaxAutoCloseDays)
 	}
+	if v, ok := value.([]string); key == "models" && (!ok || CheckModels(v) != nil) {
+		if ok {
+			return fmt.Errorf("models %w", CheckModels(v))
+		}
+		return errors.New("models must be a list of names")
+	}
 	if key == "auto_close" {
 		// auto_close replaces the older auto_resolve: its line goes in the
 		// same write, so nothing obsolete is left ignored in the file.
@@ -136,7 +152,7 @@ func validKey(key string) bool {
 
 // ProjectKeys are the settings of a [projects.<slug>] table; all but
 // ProjectOnly are also those of [defaults].
-var ProjectKeys = []string{"start_threads", "yolo", "coordinator_approves", "parallel_threads", "auto_close", "auto_close_days", "auto_resolve", "pr_followup", "complete_tasks", "coordinator_remote_control", "fast_forward_checkout", "paused", "archived"}
+var ProjectKeys = []string{"start_threads", "yolo", "coordinator_approves", "parallel_threads", "auto_close", "auto_close_days", "auto_resolve", "pr_followup", "complete_tasks", "coordinator_remote_control", "fast_forward_checkout", "models", "paused", "archived"}
 
 // ProjectOnly are a project's own state, never all projects': a paused
 // or archived [defaults] would stop or hide every project.
@@ -260,6 +276,19 @@ func Edit(data []byte, table, key string, value any) ([]byte, error) {
 	if n, ok := value.(int); ok {
 		value = int64(n)
 	}
+	if want, ok := value.([]string); ok {
+		// A TOML array decodes as []any.
+		arr, _ := v.([]any)
+		if len(arr) != len(want) {
+			return nil, ErrForm
+		}
+		for i, x := range arr {
+			if x != any(want[i]) {
+				return nil, ErrForm
+			}
+		}
+		return res, nil
+	}
 	if v != value {
 		return nil, ErrForm
 	}
@@ -322,6 +351,16 @@ func tomlValue(v any) (string, error) {
 		return strconv.FormatBool(v), nil
 	case int:
 		return strconv.Itoa(v), nil
+	case []string:
+		parts := make([]string, len(v))
+		for i, x := range v {
+			q, err := tomlValue(x)
+			if err != nil {
+				return "", err
+			}
+			parts[i] = q
+		}
+		return "[" + strings.Join(parts, ", ") + "]", nil
 	case string:
 		var b strings.Builder
 		b.WriteByte('"')

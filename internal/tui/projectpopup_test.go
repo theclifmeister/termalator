@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -1146,5 +1147,49 @@ func TestSettingsKeysQueueDuringSave(t *testing.T) {
 	cfg, _ := config.Load()
 	if s := must(cfg.Safety("alpha")); s.ParallelThreads != 11 {
 		t.Fatalf("saved %+v", s)
+	}
+}
+
+// TestModelsSetting: the Thread models row opens a list; leaving a model
+// out saves the rest, the last one can't go, and all projects drops the
+// line once every model is allowed again.
+func TestModelsSetting(t *testing.T) {
+	src, m := popupData(t)
+	m.Update(tea.WindowSizeMsg{Width: 160, Height: 60})
+	keyPress(m, "a")
+	keyPress(m, "4")
+	pv := m.top().(*projectView)
+	i := slices.IndexFunc(pv.settings.rows, func(r setting) bool { return r.label == "Thread models" })
+	if i < 0 {
+		t.Fatal("no Thread models row")
+	}
+	pv.settings.sel = i
+	if got := pv.settings.rows[i].value(m); got != "any" {
+		t.Fatalf("value %q", got)
+	}
+	keyPress(m, "enter")
+	if _, ok := m.top().(*modelsView); !ok {
+		t.Fatalf("enter opened %T", m.top())
+	}
+	keyPress(m, "j")
+	keyPress(m, "j")
+	run(m, keyPress(m, "enter")) // haiku out
+	if n := len(src.settings); n != 1 || src.settings[0] != "projects.alpha.models=[opus sonnet]" {
+		t.Fatalf("settings %v", src.settings)
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := cfg.Safety("alpha"); !slices.Equal(s.Models, []string{"opus", "sonnet"}) {
+		t.Fatalf("saved %v", s.Models)
+	}
+	keyPress(m, "k")
+	run(m, keyPress(m, "enter")) // sonnet out
+	keyPress(m, "k")
+	run(m, keyPress(m, "enter")) // the last one stays
+	mv := m.top().(*modelsView)
+	if mv.err == "" || !slices.Equal(mv.allow, []string{"opus"}) {
+		t.Fatalf("last model left out: %q %v", mv.err, mv.allow)
 	}
 }

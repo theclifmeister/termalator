@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -24,7 +25,7 @@ func TestDefaultsWithoutFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s, _ := c.Safety("demo"); s != Defaults {
+	if s, _ := c.Safety("demo"); !reflect.DeepEqual(s, Defaults) {
 		t.Fatalf("got %+v", s)
 	}
 }
@@ -49,10 +50,10 @@ fast_forward_checkout = false
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s, _ := c.Safety("demo"); s != (Safety{StartThreads: "auto", Yolo: true, CoordinatorApproves: true, ParallelThreads: 10, AutoClose: "merged", AutoCloseDays: 7, PRFollowup: true, CompleteTasks: "merged", FastForwardCheckout: true}) {
+	if s, _ := c.Safety("demo"); !reflect.DeepEqual(s, (Safety{StartThreads: "auto", Yolo: true, CoordinatorApproves: true, ParallelThreads: 10, AutoClose: "merged", AutoCloseDays: 7, PRFollowup: true, CompleteTasks: "merged", FastForwardCheckout: true})) {
 		t.Fatalf("demo %+v", s)
 	}
-	if s, _ := c.Safety("other"); s != (Safety{StartThreads: "propose", ParallelThreads: 10, AutoClose: "off", AutoCloseDays: 7, CompleteTasks: "user", CoordinatorRemoteControl: true}) {
+	if s, _ := c.Safety("other"); !reflect.DeepEqual(s, (Safety{StartThreads: "propose", ParallelThreads: 10, AutoClose: "off", AutoCloseDays: 7, CompleteTasks: "user", CoordinatorRemoteControl: true})) {
 		t.Fatalf("other %+v", s)
 	}
 }
@@ -170,15 +171,15 @@ auto_resolve = true
 		t.Fatal(err)
 	}
 	all := Safety{StartThreads: "auto", CoordinatorApproves: true, ParallelThreads: 4, AutoClose: "off", AutoCloseDays: 7, PRFollowup: true, CompleteTasks: "merged", FastForwardCheckout: true}
-	if s, _ := c.AllProjects(); s != all {
+	if s, _ := c.AllProjects(); !reflect.DeepEqual(s, all) {
 		t.Fatalf("all projects %+v", s)
 	}
-	if s, _ := c.Safety("new"); s != all {
+	if s, _ := c.Safety("new"); !reflect.DeepEqual(s, all) {
 		t.Fatalf("a new project %+v, want all projects", s)
 	}
 	want := all
 	want.ParallelThreads, want.CompleteTasks = 2, "user"
-	if s, _ := c.Safety("demo"); s != want {
+	if s, _ := c.Safety("demo"); !reflect.DeepEqual(s, want) {
 		t.Fatalf("demo %+v", s)
 	}
 	// A project's older auto_resolve overrides the defaults' auto_close.
@@ -230,5 +231,40 @@ func TestMods(t *testing.T) {
 	write(t, "[mods]\nenabled = true\nband = false\n")
 	if c, err := Load(); err != nil || !c.Mods || c.ModsBand || len(c.Unknown) != 0 {
 		t.Fatalf("band = false: %v, %+v", err, c)
+	}
+}
+
+func TestModelsAllowList(t *testing.T) {
+	write(t, `
+[defaults]
+models = ["opus", "sonnet"]
+
+[projects.demo]
+models = ["opus"]
+
+[projects.other]
+yolo = true
+`)
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := c.Safety("demo"); !reflect.DeepEqual(s.Models, []string{"opus"}) || !s.AllowsModel("opus") || s.AllowsModel("sonnet") {
+		t.Fatalf("demo: %v", s.Models)
+	}
+	if s, _ := c.Safety("other"); !reflect.DeepEqual(s.Models, []string{"opus", "sonnet"}) || s.AllowsModel("haiku") {
+		t.Fatalf("other: %v", s.Models)
+	}
+	if got := c.Own("demo"); !reflect.DeepEqual(got, []string{"models"}) {
+		t.Fatalf("own: %v", got)
+	}
+	if s, _ := (*Config)(nil).AllProjects(); s.Models != nil || !s.AllowsModel("haiku") {
+		t.Fatal("no setting allows every model")
+	}
+	for _, bad := range []string{`models = []`, `models = ["a b"]`, `models = ["opus", "opus"]`, `models = "opus"`} {
+		write(t, "[defaults]\n"+bad+"\n")
+		if _, err := Load(); err == nil {
+			t.Errorf("%s accepted", bad)
+		}
 	}
 }
