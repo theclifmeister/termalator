@@ -42,6 +42,17 @@ func bandSetting() bool {
 	return err != nil || cfg.ModsBand
 }
 
+// envPane is set to "off" in a coordinator session with the mod when
+// [mods] pane is false: the mod then opens its /tm pane only when asked.
+const envPane = "TERMINATR_PANE"
+
+// paneSetting is [mods] pane; a config.toml that doesn't load leaves it
+// on, as when unset.
+func paneSetting() bool {
+	cfg, err := config.Load()
+	return err != nil || cfg.ModsPane
+}
+
 // modsFor reports whether a session of a gets terminatr's mod, and logs
 // why not when the setting asks for it.
 func (s *Server) modsFor(a agent.Agent, id string) bool {
