@@ -67,18 +67,28 @@ template = '''
 # Every event goes to `tm hook --agent claude`: a command hook (an http hook
 # shows a red error in Claude's UI whenever the server is down), synchronous
 # so events stay in order (~4 ms each), always exit 0, never stderr.
+# With .Mods the mod reports the turn's state itself (docs/SPEC.md §8.6,
+# Mods), so only what it doesn't cover stays a process spawn: the
+# context at SessionStart, the todo tools, the background counters and
+# the exit.
 [[launch.files]]
 path = "claude-plugin/hooks/hooks.json"
 template = '''
-{{- $h := printf `[{"hooks":[{"type":"command","command":%s,"timeout":5}]}]` (json (printf "%q hook --agent claude" .TMBin)) -}}
-{ {{- if .Mods}}"modules": ["./register.ts"], {{end -}}
-"hooks": {
+{{- $cmd := json (printf "%q hook --agent claude" .TMBin) -}}
+{{- $h := printf `[{"hooks":[{"type":"command","command":%s,"timeout":5}]}]` $cmd -}}
+{{- $todo := printf `[{"matcher":"TaskCreate|TaskUpdate|TodoWrite","hooks":[{"type":"command","command":%s,"timeout":5}]}]` $cmd -}}
+{{- if .Mods}}{"modules": ["./register.ts"], "hooks": {
+  "SessionStart": {{$h}}, "PostToolUse": {{$todo}},
+  "SubagentStart": {{$h}}, "SubagentStop": {{$h}}, "SessionEnd": {{$h}}
+}}
+{{- else}}{"hooks": {
   "SessionStart": {{$h}}, "UserPromptSubmit": {{$h}},
   "PreToolUse": {{$h}}, "PostToolUse": {{$h}}, "PostToolUseFailure": {{$h}},
   "PermissionRequest": {{$h}}, "PermissionDenied": {{$h}}, "Notification": {{$h}},
   "Stop": {{$h}}, "StopFailure": {{$h}}, "SubagentStart": {{$h}}, "SubagentStop": {{$h}},
   "TaskCreated": {{$h}}, "TaskCompleted": {{$h}}, "PreCompact": {{$h}}, "SessionEnd": {{$h}}
 }}
+{{- end}}
 '''
 
 # Access policy (docs/SPEC.md §5.2). Rules name real paths, because Claude

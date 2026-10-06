@@ -1,6 +1,7 @@
 // The terminatr mod's state contract: one line of `tm watch --json`
-// (proto.Watch, docs/SPEC.md §3.3), kept as the session's latest, and
-// whether the band and status entry show ([mods] band).
+// (proto.Watch, docs/SPEC.md §3.3), kept as the session's latest,
+// whether the band and status entry show ([mods] band), and the turn it
+// reports to the server.
 
 export type TerminatrWatch = {
   session: {
@@ -28,8 +29,21 @@ export type TerminatrWatch = {
   queued_prompts: number
 }
 
+// The session's turn as the mod's own events left it (hooks/turn.ts),
+// kept across reloads: a turn running, the dialog waiting on the user
+// (its tool and loop, and why), a compaction, why it last went idle,
+// and whether the session ended.
+export type TerminatrTurn = {
+  turn: boolean
+  wait: string
+  waitReason: string
+  compacting: boolean
+  idleReason: string
+  exited: boolean
+}
+
 declare module 'claude-code' {
   interface PluginState {
-    terminatr: { watch: TerminatrWatch | null; band: boolean }
+    terminatr: { watch: TerminatrWatch | null; band: boolean; turn: TerminatrTurn }
   }
 }

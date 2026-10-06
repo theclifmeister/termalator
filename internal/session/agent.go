@@ -48,6 +48,9 @@ type AgentConfig struct {
 	// OnPromptResolved is called (without locks held) when a held prompt
 	// was resolved after PromptHold.
 	OnPromptResolved func(*Session, PromptResolution)
+	// ModSocket, when set, says the agent runs terminatr's mod, which
+	// reports its state over this socket (ModState; docs/SPEC.md §8.6).
+	ModSocket string
 }
 
 // DefaultPromptHold is AgentConfig.PromptHold's default.
@@ -164,6 +167,9 @@ func newAgentRT(cfg AgentConfig, pid int, observed bool) (*agentRT, error) {
 	if cfg.Kickoff && !observed {
 		rt.tr.AwaitKickoff()
 	}
+	if cfg.ModSocket != "" && !observed {
+		rt.tr.ExpectMod()
+	}
 	return rt, nil
 }
 
@@ -247,6 +253,9 @@ func (s *Session) Explain() (agent.Explanation, bool) {
 	if rt.version != "" {
 		e.Extra["version"] = rt.version
 	}
+	if rt.cfg.ModSocket != "" {
+		e.Extra["mod_socket"] = rt.cfg.ModSocket
+	}
 	if rt.observed {
 		e.Extra["identified"] = "by process"
 	}
@@ -295,6 +304,23 @@ func (s *Session) Hook(event string, payload map[string]any) (agent.HookResult, 
 	}
 	s.agentChanged(rt)
 	return res, err
+}
+
+// ModState takes a state report from the agent's mod: a transition it
+// saw (event names it, e.g. "turn.complete"), or its heartbeat ("beat",
+// with the state it holds). A turn's end re-reads the todo snapshot, as
+// the hooks' Stop did.
+func (s *Session) ModState(state agent.State, reason, event string) error {
+	rt := s.agentRT()
+	if rt == nil || rt.observed {
+		return ErrNoAgent
+	}
+	rt.tr.Mod(state, reason, event)
+	if event == "turn.complete" && rt.src.TodoSnapshot != nil {
+		rt.healTodos()
+	}
+	s.agentChanged(rt)
+	return nil
 }
 
 // setTail follows a new JSONL file from its current end: what is already

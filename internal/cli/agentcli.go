@@ -239,6 +239,20 @@ func printExplain(e *Env, r server.ExplainResult) {
 	}
 	fmt.Fprintln(w, "sources, highest rank first:")
 	src("exit", r.Exit, "")
+	if m := r.Mod; m != nil {
+		var v *agent.SourceView
+		note := "  (not heard from: the other sources decide)"
+		if !m.Seen.IsZero() {
+			v = &m.SourceView
+			note = "  (" + m.Event + "; heard " + ago(m.Seen)
+			if m.Live {
+				note += ": decides)"
+			} else {
+				note += ": heartbeat lost, the other sources decide)"
+			}
+		}
+		src("mod", v, note)
+	}
 	note := ""
 	if r.StatusErr != "" {
 		note = "  (not used: " + r.StatusErr + ")"
@@ -271,12 +285,12 @@ func printExplain(e *Env, r server.ExplainResult) {
 		}
 	}
 	if len(r.Events) > 0 {
-		fmt.Fprintln(w, "recent hook events:")
+		fmt.Fprintln(w, "recent hook and mod events:")
 		for _, ev := range r.Events {
 			fmt.Fprintf(w, "  #%-4d %-20s %-34s %s\n", ev.Seq, ev.Event, ev.Detail, strings.Join(ev.Signals, ", "))
 		}
 	}
-	for _, k := range []string{"pid", "status_file", "version", "jsonl_tail", "identified", "queued_prompts"} {
+	for _, k := range []string{"pid", "status_file", "version", "jsonl_tail", "mod_socket", "identified", "queued_prompts"} {
 		if v := r.Extra[k]; v != "" {
 			fmt.Fprintf(w, "%-14s %s\n", strings.ReplaceAll(k, "_", " "), v)
 		}
