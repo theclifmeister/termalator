@@ -73,10 +73,10 @@ test('credentials are not read', () => {
   expect(judge(coordinator, 'Grep', { pattern: 'token', path: '/h/.config/gh' })?.rule).toBe('credentials')
   expect(judge(thread, 'Glob', { pattern: '/h/.aws/*' })?.rule).toBe('credentials')
   expect(judge(thread, 'Read', { file_path: `${WT}/README.md` })).toBe(null)
-  for (const c of ['cat ~/.ssh/id_rsa', 'base64 < $HOME/.aws/credentials', 'gh auth token', 'gh auth status --show-token', 'security find-generic-password -s x -w', 'printenv', 'env | grep TOKEN', 'git credential fill']) {
+  for (const c of ['cat ~/.ssh/id_rsa', 'base64 < $HOME/.aws/credentials', 'gh auth token', 'gh auth status --show-token', 'security find-generic-password -s x -w', 'printenv', 'printenv -0', 'printenv PATH GITHUB_TOKEN', 'printenv aws_secret_access_key', 'printenv MY_PASSWORD', 'env', 'env | grep TOKEN', 'git credential fill']) {
     expect([c, bash(thread, c)]).toEqual([c, 'credentials'])
   }
-  for (const c of ['gh auth status', 'cat README.md', 'env GOOS=linux go build ./...', 'ssh -T git@github.com']) {
+  for (const c of ['gh auth status', 'cat README.md', 'env GOOS=linux go build ./...', 'printenv HOME', 'printenv HOME PATH TERM', 'printenv -0 SHELL', 'ssh -T git@github.com']) {
     expect([c, bash(thread, c)]).toEqual([c, null])
   }
 })

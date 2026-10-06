@@ -44,6 +44,9 @@ type infoData struct {
 	// attached: the names of the files its reports attached for the
 	// user. Names only: the UI shows no file paths (§4).
 	attached []string
+	// refused are the guard's latest refusals of the thread, oldest
+	// first, from the journal.
+	refused []refusal
 	// watch is a coordinator's project as the /tm pane shows it
 	// (project.watch); set only beside a coordinator, which has none of
 	// the above but slug and session.
@@ -69,6 +72,7 @@ func loadInfo(paths server.Paths, s proto.SessionInfo, sessions []proto.SessionI
 	d.status, _ = thread.ReadStatus(p, s.Thread)
 	d.report, _ = thread.ReadReport(p, s.Thread)
 	d.attached = thread.Attachments(p, s.Thread)
+	d.refused = guardRefusals(p, s.Thread, maxRefusals)
 	if d.rec != nil && d.rec.TaskID() > 0 {
 		d.task, _ = p.Tasks().Get(d.rec.TaskID())
 	}
@@ -242,6 +246,14 @@ func infoLines(d *infoData, w int, now time.Time) ([]string, []infoHit) {
 		}
 		hang(pl, styleFaint.Render(fmt.Sprintf("%-9s", "attached"))+" ", strings.Join(names, ", "))
 	}
+	// What the guard refused: journaled, not sent to the inbox.
+	if len(d.refused) > 0 {
+		pl.gap()
+		pl.add(styleHead.Render("Guard refused"))
+		for _, r := range d.refused {
+			hang(pl, styleFaint.Render(age(now.Sub(r.at))+" ago")+" ", styleWarn.Render(oneLine(r.what)))
+		}
+	}
 	// Where it works.
 	pl.gap()
 	if rec := d.rec; rec != nil {
@@ -255,6 +267,38 @@ func infoLines(d *infoData, w int, now time.Time) ([]string, []infoHit) {
 		hits = append(hits, infoHit{})
 	}
 	return pl.lines, hits
+}
+
+// maxRefusals is how many of the guard's refusals the panel lists.
+const maxRefusals = 3
+
+// refusal is one guard.deny line of the journal.
+type refusal struct {
+	at   time.Time
+	what string // "<rule> <tool>: <summary>"
+}
+
+// guardRefusals is the last n guard.deny lines the journal holds for
+// thread id, oldest first.
+func guardRefusals(p *project.Project, id string, n int) []refusal {
+	lines, _, err := p.JournalTail(500)
+	if err != nil {
+		return nil
+	}
+	var out []refusal
+	for _, l := range lines {
+		// "<time> <who> guard.deny <ref> <detail>"
+		f := strings.SplitN(l, " ", 5)
+		if len(f) < 5 || f[2] != "guard.deny" || f[3] != id {
+			continue
+		}
+		at, err := time.Parse(time.RFC3339, f[0])
+		if err != nil {
+			continue
+		}
+		out = append(out, refusal{at: at, what: f[4]})
+	}
+	return out[max(len(out)-n, 0):]
 }
 
 // lastActive is when the thread last did something it tells tm about:
