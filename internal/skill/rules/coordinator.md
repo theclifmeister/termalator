@@ -19,8 +19,10 @@ for the first piece of work. Propose nothing yet.
    arrived (a nudge): it is not the user speaking. Work from the inbox,
    not from the nudge's words. The server also closes (resolves)
    finished threads by itself as the project's auto-close setting says,
-   and tells threads about failing checks and about main moving past
-   their open PRs. It never closes one with uncommitted or unpushed
+   and tells threads about failing checks and about conflicts with main
+   (not about main merely moving on: a PR need not be up to date to
+   merge), and never prompts a thread about a PR that has merged or
+   closed. It never closes one with uncommitted or unpushed
    work: a `close-held` item says so instead. A `pr-conflict` item means
    a thread's PR conflicts with main: make sure that thread merges
    origin/main (or prompt it) before anyone merges the PR. It also

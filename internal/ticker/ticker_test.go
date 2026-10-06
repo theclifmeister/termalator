@@ -38,7 +38,7 @@ func (h *fakeHost) Prompt(id, text string) error {
 	h.prompts = append(h.prompts, id+" "+text)
 	return nil
 }
-func (h *fakeHost) Nudge(id, text string, refresh func() (string, bool)) error {
+func (h *fakeHost) PromptFresh(id, text string, refresh func() (string, bool)) error {
 	h.refresh = refresh
 	return h.Prompt(id, text)
 }
