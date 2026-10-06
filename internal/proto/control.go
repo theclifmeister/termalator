@@ -69,7 +69,20 @@ const (
 	// MethodSessionRemote turns a coordinator's remote control on or off
 	// in the running session (docs/SPEC.md §8.2).
 	MethodSessionRemote = "session.remote"
+	// MethodSessionAdopt makes a plain agent session a project thread's
+	// (docs/SPEC.md §9, Adopt).
+	MethodSessionAdopt = "session.adopt"
 )
+
+// SessionAdoptParams are the params of session.adopt: the session, and
+// the project and thread it now belongs to. Brief is the thread's brief,
+// attached as the system prompt when the server resumes it.
+type SessionAdoptParams struct {
+	ID      string `json:"id"`
+	Project string `json:"project"`
+	Thread  string `json:"thread"`
+	Brief   string `json:"brief,omitempty"`
+}
 
 // ClosedRestarting is the FrameClosed reason of a session that the server
 // relaunches at once under the same id (a remote control change): a

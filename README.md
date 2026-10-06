@@ -11,7 +11,7 @@ Claude Code is the first supported agent. Other agents plug in through a manifes
 - the dashboard (milestone M4): `tm` lists every session and project with live state, attaches with `enter` and comes back with Ctrl+B then `d`; a projects sidebar on the left of every screen is a folder-style project tree, always expanded: each project with its coordinator and threads on tree connectors (state and progress in aligned columns); a click on a project shows its dashboard, on a coordinator attaches it, on a thread watches it;
 - server-owned views: every `tm` you open, in any terminal, shows the same screen, as tmux's sessions do. Open a session or move the sidebar in one, and the others follow; `tm --own` opens one that keeps to itself;
 - projects and tasks (milestone M5): `tm project new|list|open`, `tm skill`, `tm task …`, `tm context` and `tm inbox list|done`;
-- threads (milestone M6): `tm thread start|prompt|restart|resolve`, agents in git worktrees reporting through `tm`;
+- threads (milestone M6): `tm thread start|adopt|prompt|restart|resolve`, agents in git worktrees reporting through `tm`; `tm thread adopt` (or `T` on the dashboard) makes an agent you started yourself a thread;
 - hardening (milestone M8): agents resume after a server crash or restart, `tm doctor [--fix]`, an optional login service (`tm server service install`), signed release archives, a Homebrew formula and `tm update`.
 
 ## Install

@@ -79,6 +79,8 @@ type Session struct {
 	sized  atomic.Bool
 	remote atomic.Bool // remote control is on
 	held   atomic.Bool // the user turned it off (RemoteHeld)
+	// ident is the role, project and thread set by Adopt; nil until then.
+	ident atomic.Pointer[Identity]
 	// closeNote, when set, replaces "session exited: …" as the reason
 	// subscribers are given when the process ends.
 	closeNote string
@@ -187,6 +189,14 @@ func (s *Session) SetRemoteControl(on bool) { s.remote.Store(on) }
 // SetRemoteHeld records whether the user turned remote control off.
 func (s *Session) SetRemoteHeld(held bool) { s.held.Store(held) }
 
+// Identity is a session's role, project and thread.
+type Identity struct{ Role, Project, Thread string }
+
+// Adopt gives the running session another role, project and thread
+// (docs/SPEC.md §9, Adopt): Config and Info report it from now on. The
+// process's own environment stays as it was started.
+func (s *Session) Adopt(id Identity) { s.ident.Store(&id) }
+
 // SetCloseNote sets the reason attached clients are given when the
 // process ends, e.g. proto.ClosedRestarting.
 func (s *Session) SetCloseNote(note string) {
@@ -202,17 +212,25 @@ func (s *Session) ExitStatus() string {
 	return s.exitStatus
 }
 
-// Config returns the configuration the session was started with.
-func (s *Session) Config() Config { return s.cfg }
+// Config returns the configuration the session was started with, with
+// the identity Adopt gave it.
+func (s *Session) Config() Config {
+	c := s.cfg
+	if id := s.ident.Load(); id != nil {
+		c.Role, c.Project, c.Thread = id.Role, id.Project, id.Thread
+	}
+	return c
+}
 
 // Info describes the session for session.list.
 func (s *Session) Info() proto.SessionInfo {
 	s.mu.Lock()
+	cfg := s.Config()
 	info := proto.SessionInfo{
 		ID:      s.cfg.ID,
-		Role:    s.cfg.Role,
-		Project: s.cfg.Project,
-		Thread:  s.cfg.Thread,
+		Role:    cfg.Role,
+		Project: cfg.Project,
+		Thread:  cfg.Thread,
 		Argv:    s.cfg.Argv,
 		Cwd:     s.cfg.Cwd,
 		PID:     s.cmd.Process.Pid,

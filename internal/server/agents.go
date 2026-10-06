@@ -180,6 +180,17 @@ func contextFor(role, slug, threadID, brief, tickerState string) func() ([]byte,
 	}
 }
 
+// contextOf is contextFor the session's current record, so that a
+// session adopted as a thread gets a thread's context (§9, Adopt).
+func (s *Server) contextOf(id string) func() ([]byte, error) {
+	return func() ([]byte, error) {
+		s.mu.Lock()
+		r := s.records[id]
+		s.mu.Unlock()
+		return contextFor(r.Role, r.Project, r.Thread, r.Brief, ticker.StatePath(s.opts.Paths.Sessions))()
+	}
+}
+
 // agentLaunch is everything needed to (re)start one agent session.
 type agentLaunch struct {
 	rec    SessionRecord
@@ -247,7 +258,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		RemoteControl: r.RemoteControl, RemoteHeld: r.RemoteHeld,
 		Agent: &session.AgentConfig{
 			Agent: a, AgentSID: r.AgentSessionID, Kickoff: launch.Kickoff, Home: home,
-			Context:  contextFor(r.Role, r.Project, r.Thread, r.Brief, ticker.StatePath(s.opts.Paths.Sessions)),
+			Context:  s.contextOf(r.ID),
 			OnChange: s.agentChanged,
 		},
 	})
@@ -308,7 +319,7 @@ func (s *Server) agentChanged(sess *session.Session) {
 	s.mu.Lock()
 	r, ok := s.records[sess.ID()]
 	s.mu.Unlock()
-	if ok && r.Role == proto.RoleThread && !st.Observed {
+	if ok && r.Role == proto.RoleThread {
 		s.syncThread(r, st)
 	}
 	s.mu.Lock()
@@ -326,7 +337,9 @@ func (s *Server) agentChanged(sess *session.Session) {
 		}
 	}
 	r, ok = s.records[sess.ID()]
-	if !ok || st.Observed {
+	// An agent found in a shell is the shell's business, unless the
+	// shell was adopted as a thread: then resume needs its ids.
+	if !ok || (st.Observed && r.Role != proto.RoleThread) {
 		return
 	}
 	prompted := r.Prompted || worked(st)

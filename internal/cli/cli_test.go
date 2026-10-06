@@ -340,6 +340,7 @@ func TestProjectLifecycle(t *testing.T) {
 	h.expect(1, "project-paused", coord, "thread", "start", "Fix it", "--project", "demo")
 	h.ok(human, "task", "add", "Fix it", "--project", "demo")
 	h.expect(1, "project-paused", coord, "task", "delegate", "T1", "--project", "demo")
+	h.expect(1, "project-paused", coord, "thread", "adopt", "s-9", "--project", "demo")
 	if out := h.ok(human, "project", "resume", "demo"); !strings.Contains(out, "resumed demo") {
 		t.Fatalf("resume: %q", out)
 	}

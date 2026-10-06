@@ -224,3 +224,36 @@ func MergeCommit(repo string, n int) string {
 	}
 	return ""
 }
+
+// Place is where a directory sits in git, for a thread adopted in it
+// (docs/SPEC.md §9, Adopt).
+type Place struct {
+	Top    string // the checkout's top directory
+	Repo   string // the repository's main checkout
+	Branch string // the branch checked out; "" when HEAD is detached
+	Linked bool   // Top is a linked worktree, not the main checkout
+}
+
+// Locate tells where dir sits in git; ok is false outside a repository
+// (or in a bare one).
+func Locate(dir string) (pl Place, ok bool) {
+	out, err := git(dir, "rev-parse", "--path-format=absolute", "--show-toplevel", "--git-dir", "--git-common-dir")
+	if err != nil {
+		return Place{}, false
+	}
+	f := strings.Split(out, "\n")
+	if len(f) != 3 || f[0] == "" {
+		return Place{}, false
+	}
+	gitDir, common := filepath.Clean(f[1]), filepath.Clean(f[2])
+	pl = Place{Top: filepath.Clean(f[0]), Linked: gitDir != common}
+	pl.Repo = pl.Top
+	if pl.Linked {
+		if filepath.Base(common) != ".git" {
+			return Place{}, false // a bare repository's worktree: no main checkout
+		}
+		pl.Repo = filepath.Dir(common)
+	}
+	pl.Branch, _ = git(dir, "symbolic-ref", "--quiet", "--short", "HEAD")
+	return pl, true
+}
