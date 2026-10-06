@@ -163,6 +163,9 @@ func New(t testing.TB) *Env {
 		"TERMINATR_ATTACH_LOG="+e.AttachLog,
 		// No release checks against GitHub (tm doctor, tm update).
 		"TERMINATR_UPDATE_URL=off",
+		// Servers start as children, never through the user's launchd
+		// (macOS, docs/SPEC.md §3.1).
+		"TERMINATR_LAUNCHD=off",
 		// The server stops itself once this test process is gone, even
 		// when a timeout or ^C skips the cleanup (docs/OPERATIONS.md).
 		"TERMINATR_TEST_OWNER="+strconv.Itoa(os.Getpid()),

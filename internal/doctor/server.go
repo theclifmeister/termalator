@@ -172,8 +172,9 @@ func queueChecks(sessions []proto.SessionInfo, now time.Time) []Check {
 }
 
 // keychainCheck reports whether the server's sessions can reach the
-// macOS login keychain (server.keychain). A restart is offered only when
-// this tm can reach it itself: a restart from an SSH login, or from a
+// macOS login keychain (server.keychain). A restart is offered when it
+// starts the server through launchd's GUI domain, or when this tm can
+// reach the keychain itself: a direct restart from an SSH login, or from a
 // session of the same server, would start the server where it was.
 func keychainCheck(d Deps, ks proto.KeychainStatus, err error) []Check {
 	const g, name = "server", "keychain"
@@ -190,7 +191,12 @@ func keychainCheck(d Deps, ks proto.KeychainStatus, err error) []Check {
 	}
 	c := Check{Group: g, Name: name, Status: Warn,
 		Detail: ks.Detail + "; gh and git push over https fail in its sessions: " + keychain.Fix}
-	if d.Restart != nil && d.Keychain != nil {
+	switch {
+	case d.Restart == nil:
+	case d.Launchd != nil && d.Launchd():
+		c.Fix = &Fix{Desc: "restart the server in the desktop's session (through launchd), so its sessions can reach the keychain; agents are resumed",
+			Apply: d.Restart}
+	case d.Keychain != nil:
 		if self := d.Keychain(); self.OK && !self.OverSSH {
 			c.Fix = &Fix{Desc: "restart the server from this terminal, so its sessions can reach the keychain; agents are resumed",
 				Apply: d.Restart}

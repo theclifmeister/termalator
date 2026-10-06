@@ -18,6 +18,7 @@ import (
 	"github.com/theclifmeister/terminatr/internal/keychain"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/server"
+	"github.com/theclifmeister/terminatr/internal/service"
 )
 
 func init() {
@@ -43,6 +44,8 @@ func (e *Env) srvFail(cmd string, err error) int {
 	var perr *proto.Error
 	var verr *proto.MismatchError
 	switch {
+	case errors.Is(err, service.ErrNoConsole):
+		return ExitRefused
 	case errors.As(err, &verr):
 		return ExitIO
 	case errors.As(err, &perr):
@@ -72,14 +75,15 @@ func (e *Env) srvJSON(v any) int {
 }
 
 // connect opens a control connection, starting the server if needed,
-// with a warning when that start is over SSH (warnSSH).
+// with a warning when that start is over SSH and not through launchd
+// (warnSSH).
 func connect(autostart bool) (*server.Client, server.Paths, error) {
 	p, err := server.ResolvePaths()
 	if err != nil {
 		return nil, p, err
 	}
 	c, err := server.Connect(p, autostart)
-	if c != nil && c.Started {
+	if c != nil && c.Started && !service.Wanted(runtime.GOOS, os.Getenv) {
 		warnSSH(os.Stderr, runtime.GOOS, os.Getenv)
 	}
 	return c, p, err

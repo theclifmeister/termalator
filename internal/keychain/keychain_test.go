@@ -21,7 +21,7 @@ func TestOverSSH(t *testing.T) {
 
 func TestStartWarning(t *testing.T) {
 	ssh := env(map[string]string{"SSH_CONNECTION": "10.0.0.2 51000 10.0.0.1 22"})
-	if w := StartWarning("darwin", ssh); !strings.Contains(w, "keychain") || !strings.Contains(w, "from a terminal on the Mac") {
+	if w := StartWarning("darwin", ssh); !strings.Contains(w, "keychain") || !strings.Contains(w, "without launchd") || !strings.Contains(w, "logged in at the Mac") {
 		t.Errorf("darwin over SSH: %q", w)
 	}
 	if w := StartWarning("darwin", env(nil)); w != "" {
