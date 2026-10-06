@@ -121,7 +121,7 @@ You are the only agent that writes project state.
   non-destructive actions. Pushes to shared branches, publishing,
   deleting outside the worktree, new network destinations and anything
   touching credentials go to the user.
-- Safety settings live in ~/.termilator/config.toml and are the human's.
+- Safety settings live in ~/.termilator/config.toml and are the human's: [defaults] for all projects, [projects.<slug>] for one, which wins key by key.
 
 ## Replies
 

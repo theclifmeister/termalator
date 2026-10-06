@@ -70,7 +70,10 @@ func (f *fakeSource) Load() Data {
 			for i := range f.data.Projects {
 				s, _ := cfg.Safety(f.data.Projects[i].Slug)
 				f.data.Projects[i].Safety = &s
+				f.data.Projects[i].Own = cfg.Own(f.data.Projects[i].Slug)
 			}
+			all, _ := cfg.AllProjects()
+			f.data.Defaults = &all
 		}
 	}
 	return f.data
@@ -83,7 +86,13 @@ func (f *fakeSource) Board(string) (*tasks.Board, error) {
 }
 func (f *fakeSource) SetSetting(table, key string, value any) error {
 	f.settings = append(f.settings, fmt.Sprintf("%s.%s=%v", table, key, value))
+	if table == config.DefaultsTable {
+		return config.SetDefaults(key, value)
+	}
 	if slug, ok := strings.CutPrefix(table, "projects."); ok {
+		if value == nil {
+			return config.UnsetProject(slug, key)
+		}
 		return config.SetProject(slug, key, value)
 	}
 	return config.Set(table, key, value)

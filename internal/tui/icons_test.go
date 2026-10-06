@@ -97,9 +97,9 @@ func TestIconsSetting(t *testing.T) {
 		t.Fatalf("settings:\n%s", screen(m))
 	}
 	sv := m.top().(*settingsView)
-	for i, r := range sv.list.rows {
+	for i, r := range sv.tabs[0].rows {
 		if r.label == "Icons" {
-			sv.list.sel = i
+			sv.tabs[0].sel = i
 		}
 	}
 	for _, want := range []string{IconsNerd, IconsUnicode, IconsASCII, IconsAuto} {

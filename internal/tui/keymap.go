@@ -40,7 +40,7 @@ var sessionKeys = []keyHelp{
 var popupKeys = []keyHelp{
 	{"← → 1-6", "previous / next tab, or pick one"},
 	{"↑ ↓ pgup pgdown", "move in the tab, or scroll it (Keys, Memory)"},
-	{"enter space + -", "on the Settings tab: as in the settings, below"},
+	{"enter space + - x", "on the Settings tab: as in the settings, below"},
 	{"+ x", "on the overview: add a repository / remove the selected one (asks first)"},
 	{"enter", "on a task (Tasks tab): show it, with what it is blocked on, or how to check it and whether its pull request merged"},
 	{"D", "on an open, ready or blocked task (Tasks tab, or the t list): delegate it; the coordinator starts a thread for it (asks first)"},
@@ -56,6 +56,8 @@ var settingsKeys = []keyHelp{
 	{"↑ ↓ pgup pgdown", "move through the settings"},
 	{"enter space", "change the selected setting (yolo mode asks first); on the prefix key, the next ctrl+<key> is the new prefix"},
 	{"+ -", "on a number: one step up / down"},
+	{"← → 1 2", "the , settings: General, or All projects (the settings every project follows unless it sets its own)"},
+	{"x", "on a project's setting it sets itself (its Settings tab): follow all projects again"},
 	{"esc", "close"},
 }
 
