@@ -443,7 +443,49 @@ func projectSettings(slug string) []setting {
 		{label: "Keep my checkout current", help: "Fast-forward your own checkout of each repository when its default branch is checked out, clean and only behind origin; else the overview says how far behind.",
 			value:  func(m *dash) string { return onOff(safety(m).FastForwardCheckout) },
 			change: toggle("fast_forward_checkout", func(s config.Safety) bool { return s.FastForwardCheckout }, "keeping your checkout current")},
+		{label: "Paused", help: "While paused the coordinator gets no nudges, threads get no pull request follow-up, and no new thread starts; the dashboard still follows their state.",
+			value: func(m *dash) string { return onOff(safety(m).Paused) },
+			change: func(m *dash) tea.Cmd {
+				verb := "pause"
+				if safety(m).Paused {
+					verb = "resume"
+				}
+				if p := m.projectData(slug); p != nil {
+					s := safety(m)
+					s.Paused = verb == "pause"
+					p.Safety = &s
+				}
+				return m.lifecycle(slug, verb)
+			}},
+		{label: "Archive", help: "Hide the project from the sidebar and the switcher, and stop all background work for it; tm project unarchive brings it back. Not while its coordinator or threads run. Asks first.",
+			value: func(m *dash) string { return "enter archives" },
+			change: func(m *dash) tea.Cmd {
+				m.confirmNo("Archive "+slug+"? It leaves the sidebar and the switcher, and nothing runs for it until tm project unarchive "+slug+".", "not archived", func() tea.Cmd {
+					m.pop() // the project popup
+					return m.lifecycle(slug, "archive")
+				})
+				return nil
+			}},
+		{label: "Delete", help: "Move the project's folder to the trash; its worktrees and branches stay. Not while its coordinator or threads run. Asks first.",
+			value: func(m *dash) string { return "enter deletes" },
+			change: func(m *dash) tea.Cmd {
+				m.confirmNo("Delete "+slug+"? Its folder (tasks, memory, threads' reports) moves to the trash; its worktrees and branches stay.", "not deleted", func() tea.Cmd {
+					m.pop() // the project popup
+					return m.lifecycle(slug, "delete")
+				})
+				return nil
+			}},
 	}
+}
+
+// lifecycle pauses, resumes, archives or deletes a project in the
+// background, then reloads.
+func (m *dash) lifecycle(slug, verb string) tea.Cmd {
+	src := m.src
+	return m.act(func() actionMsg {
+		msg, err := src.Lifecycle(slug, verb)
+		return actionMsg{msg: msg, err: err}
+	})
 }
 
 // capSteps are the caps enter steps through; + and - fine-tune.

@@ -102,6 +102,10 @@ type Source interface {
 	// SetRemote turns remote control of the project's running
 	// coordinator on or off (prefix+r), saying what it did.
 	SetRemote(slug string, on bool) (string, error)
+	// Lifecycle pauses, resumes, archives or deletes a project (verb
+	// "pause", "resume", "archive", "delete"), saying what it did
+	// (lifecycle.go).
+	Lifecycle(slug, verb string) (string, error)
 	// Memory is the project's CONTEXT.md, MEMORY.md and memory notes'
 	// titles, for the project popup's Memory tab.
 	Memory(slug string) (project.Memory, error)
@@ -182,6 +186,9 @@ func (s *ServerSource) Load() Data {
 		d.Err = err.Error()
 	}
 	for _, sum := range list {
+		if sum.Safety != nil && sum.Safety.Archived {
+			continue // hidden: tm project unarchive brings it back
+		}
 		pd := ProjectData{Slug: sum.Slug, Name: sum.Name, Goal: sum.Goal, Repos: sum.Repos,
 			Counts: sum.Counts, Safety: sum.Safety, Err: sum.Error,
 			Checkouts: ticker.Checkouts(ticker.StatePath(s.Paths.Sessions), sum.Slug)}
@@ -285,6 +292,18 @@ func (s *ServerSource) SetSetting(table, key string, value any) error {
 		p.Journal(s.Caller, "settings."+key, slug, fmt.Sprint(value))
 	}
 	return nil
+}
+
+func (s *ServerSource) Lifecycle(slug, verb string) (string, error) {
+	switch verb {
+	case "pause", "resume":
+		return PauseProject(s.Caller, slug, verb == "pause")
+	case "archive":
+		return ArchiveProject(s.call, s.Caller, slug, true)
+	case "delete":
+		return DeleteProject(s.call, s.Caller, slug)
+	}
+	return "", fmt.Errorf("unknown project action %q", verb)
 }
 
 func (s *ServerSource) SetRepo(slug, path string, add bool) error {

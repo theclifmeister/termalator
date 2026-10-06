@@ -69,6 +69,7 @@ type treeRow struct {
 	current bool // a project: the current one
 	hint    bool // a project: one of its threads is blocked or waiting, or a task needs you
 	remote  bool // a coordinator row: its remote control is on
+	paused  bool // a project: paused (no nudges, follow-up or new threads)
 	threads int  // a project: its open threads
 	here    bool // the row you are on
 	// cursor is the keyboard's row, set while the sidebar has this
@@ -152,7 +153,7 @@ func buildTree(ps []ProjectData, sessions []proto.SessionInfo, in treeIn) []tree
 	var out []treeRow
 	for _, p := range ps {
 		pr := treeRow{kind: treeProject, slug: p.Slug, pct: -1, threads: len(p.Threads), current: p.Slug == in.current,
-			hint: p.Counts["needs_you"] > 0}
+			hint: p.Counts["needs_you"] > 0, paused: p.Safety != nil && p.Safety.Paused}
 		remote := false
 		for _, s := range sessions {
 			if s.Role == proto.RoleCoordinator && s.Project == p.Slug {
@@ -355,6 +356,7 @@ func treeSel(r treeRow, focused bool) (bool, lipgloss.Style) {
 // A coordinator with remote control on gets "⌁" in its row's count
 // column, right beside its state glyph; never on the project's row, so
 // not in the slim strip either.
+// A paused project gets "∥" after its name, in either width.
 // The row you are on is in reverse video (and, in the slim strip, marked),
 // so colour is never the only signal. While the sidebar has the keyboard
 // focus, the keyboard's row is instead, in the accent colour.
@@ -362,6 +364,10 @@ func treeCells(r treeRow, cw int, slim, focused bool) string {
 	i := ic()
 	var sel lipgloss.Style
 	r.here, sel = treeSel(r, focused)
+	pz := ""
+	if r.paused && r.kind == treeProject {
+		pz = i.paused
+	}
 	if slim {
 		mark := " "
 		if r.current {
@@ -372,11 +378,11 @@ func treeCells(r treeRow, cw int, slim, focused bool) string {
 			g, st = i.hint, styleWarn
 		}
 		name := []rune(r.slug)
-		name = name[:min(len(name), max(cw-2, 0))]
+		name = name[:min(len(name), max(cw-2-len([]rune(pz)), 0))]
 		if r.here {
-			return sel.Render(fit(mark+g+string(name), cw))
+			return sel.Render(fit(mark+g+string(name)+pz, cw))
 		}
-		return fit(mark+st.Render(g)+string(name), cw)
+		return fit(mark+st.Render(g)+string(name)+pz, cw)
 	}
 	// The right-hand columns: a count or percent, then a glyph.
 	right := func(num string, g string, st lipgloss.Style, hl bool) string {
@@ -398,7 +404,7 @@ func treeCells(r treeRow, cw int, slim, focused bool) string {
 			folder = i.folderOpen
 		}
 		nw := max(cw-3-rw, 1)
-		name := fit(ansi.Truncate(r.slug, nw, "…"), nw)
+		name := fit(ansi.Truncate(r.slug, max(nw-ansi.StringWidth(pz), 0), "…")+pz, nw)
 		if r.here {
 			return " " + sel.Render(fit(folder+" "+name+right(count, hint, hst, true), cw-1))
 		}
@@ -562,7 +568,10 @@ func loadSideProjects() []ProjectData {
 	list, _ := project.List()
 	out := make([]ProjectData, 0, len(list))
 	for _, sum := range list {
-		pd := ProjectData{Slug: sum.Slug, Name: sum.Name}
+		if sum.Safety != nil && sum.Safety.Archived {
+			continue
+		}
+		pd := ProjectData{Slug: sum.Slug, Name: sum.Name, Safety: sum.Safety}
 		if p, err := project.Open(sum.Slug); err == nil {
 			recs, _ := thread.List(p)
 			for _, r := range recs {

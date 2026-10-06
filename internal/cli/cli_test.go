@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/theclifmeister/termilator/internal/agent"
 	"github.com/theclifmeister/termilator/internal/caller"
 	"github.com/theclifmeister/termilator/internal/home"
 )
@@ -317,4 +318,104 @@ func TestWarnSSH(t *testing.T) {
 	if b.Len() != 0 {
 		t.Fatalf("warned without cause: %q", b.String())
 	}
+}
+
+func TestProjectLifecycle(t *testing.T) {
+	h := newHarness(t)
+	h.ok(human, "project", "new", "Demo")
+	for _, args := range [][]string{{"pause", "demo"}, {"archive", "demo"}, {"delete", "demo", "--yes"}} {
+		h.expect(1, "human-only", coord, append([]string{"project"}, args...)...)
+	}
+
+	// Pause: no thread starts, a mark in the list; idempotent.
+	if out := h.ok(human, "project", "pause", "demo"); !strings.Contains(out, "paused demo") {
+		t.Fatalf("pause: %q", out)
+	}
+	if out := h.ok(human, "project", "pause", "demo"); !strings.Contains(out, "already paused") {
+		t.Fatalf("pause again: %q", out)
+	}
+	if out := h.ok(human, "project", "list"); !strings.Contains(out, "Demo (paused)") {
+		t.Fatalf("list: %q", out)
+	}
+	h.expect(1, "project-paused", coord, "thread", "start", "Fix it", "--project", "demo")
+	h.ok(human, "task", "add", "Fix it", "--project", "demo")
+	h.expect(1, "project-paused", coord, "task", "delegate", "T1", "--project", "demo")
+	h.expect(1, "project-paused", coord, "thread", "adopt", "s-9", "--project", "demo")
+	if out := h.ok(human, "project", "resume", "demo"); !strings.Contains(out, "resumed demo") {
+		t.Fatalf("resume: %q", out)
+	}
+
+	// Archive: hidden, marked in the list, back with unarchive.
+	h.ok(human, "project", "archive", "demo")
+	if out := h.ok(human, "project", "list"); !strings.Contains(out, "Demo (archived)") {
+		t.Fatalf("list: %q", out)
+	}
+	var list []struct {
+		Slug   string
+		Safety struct{ Archived bool }
+	}
+	if err := json.Unmarshal([]byte(h.ok(human, "project", "list", "--json")), &list); err != nil || len(list) != 1 || !list[0].Safety.Archived {
+		t.Fatalf("json: %v %+v", err, list)
+	}
+	h.ok(human, "project", "unarchive", "demo")
+	if out := h.ok(human, "project", "list"); strings.Contains(out, "archived") {
+		t.Fatalf("still archived: %q", out)
+	}
+
+	// Delete: --yes without a terminal; the folder moves to the trash and
+	// its settings go, so a new project of the slug starts clean.
+	h.ok(human, "project", "pause", "demo")
+	h.expect(2, "--yes", human, "project", "delete", "demo")
+	out := h.ok(human, "project", "delete", "demo", "--yes")
+	if !strings.Contains(out, "moved to "+filepath.Join(h.root, ".trash", "demo-")) {
+		t.Fatalf("delete: %q", out)
+	}
+	if _, err := os.Stat(filepath.Join(h.root, "projects", "demo")); !os.IsNotExist(err) {
+		t.Fatalf("folder still there: %v", err)
+	}
+	trash, _ := filepath.Glob(filepath.Join(h.root, ".trash", "demo-*", "PROJECT.md"))
+	if len(trash) != 1 {
+		t.Fatalf("trash %v", trash)
+	}
+	h.expect(1, "unknown-project", human, "project", "archive", "demo")
+	h.ok(human, "project", "new", "Demo")
+	if out := h.ok(human, "project", "list"); strings.Contains(out, "paused") {
+		t.Fatalf("new project inherited pause: %q", out)
+	}
+}
+
+func TestThreadModel(t *testing.T) {
+	h := newHarness(t)
+	h.ok(human, "project", "new", "Demo")
+	h.expect(1, "unknown-model", coord, "thread", "start", "Fix it", "--model", "gpt-9", "--project", "demo")
+	h.expect(1, "opus, sonnet, haiku", coord, "thread", "start", "Fix it", "--model", "gpt-9", "--project", "demo")
+	h.expect(1, "unknown-agent", coord, "thread", "start", "Fix it", "--agent", "nope", "--model", "opus", "--project", "demo")
+	h.ok(human, "task", "add", "Fix it", "--project", "demo")
+	h.expect(1, "unknown-model", coord, "task", "delegate", "T1", "--model", "gpt-9", "--project", "demo")
+	if err := checkModel("claude", "haiku"); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkModel("claude", ""); err != nil {
+		t.Fatal(err)
+	}
+	// A user manifest can change the list.
+	os.MkdirAll(filepath.Join(h.root, "agents"), 0o700)
+	b, _ := agentBuiltin("claude")
+	b = strings.Replace(b, "name = \"haiku\"", "name = \"tiny\"", 1)
+	os.WriteFile(filepath.Join(h.root, "agents", "claude.toml"), []byte(b), 0o600)
+	if err := checkModel("claude", "tiny"); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkModel("claude", "haiku"); err == nil {
+		t.Fatal("haiku still allowed")
+	}
+	out := h.ok(coord, "context", "--project", "demo")
+	if !strings.Contains(out, "Models of claude") || !strings.Contains(out, "  tiny: fastest and cheapest") {
+		t.Fatalf("context:\n%s", out)
+	}
+}
+
+func agentBuiltin(name string) (string, bool) {
+	b, ok := agent.Builtin(name)
+	return string(b), ok
 }
