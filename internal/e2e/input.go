@@ -236,25 +236,31 @@ func (w *Window) Mouse(ms ...emu.Mouse) {
 
 // ClickText clicks the first cell of the first place text shows on the
 // screen, searching the rows from row from; it fails the test when it
-// doesn't show.
+// doesn't show within DefaultTimeout.
 func (w *Window) ClickText(text string, from int) {
 	w.env.T.Helper()
 	x, y := w.TextAt(text, from)
 	w.Click(x, y)
 }
 
-// TextAt is the cell where text first shows at or below row from.
+// TextAt is the cell where text first shows at or below row from. It
+// waits for it to show: a frame comes in pieces, and the program may
+// still be drawing what the test waited for (TestSmokeMouseDashboard
+// found the dashboard's top rows drawn, not yet its footer).
 func (w *Window) TextAt(text string, from int) (int, int) {
 	w.env.T.Helper()
-	sc := w.Screen()
-	for y, l := range strings.Split(sc, "\n") {
-		if y < from {
-			continue
+	x, y := -1, -1
+	w.WaitUntil(fmt.Sprintf("%q at or below row %d", text, from), DefaultTimeout, func(sc string) bool {
+		for i, l := range strings.Split(sc, "\n") {
+			if i < from {
+				continue
+			}
+			if j := strings.Index(l, text); j >= 0 {
+				x, y = len([]rune(l[:j])), i
+				return true
+			}
 		}
-		if i := strings.Index(l, text); i >= 0 {
-			return len([]rune(l[:i])), y
-		}
-	}
-	w.env.T.Fatalf("%q isn't on the screen:\n%s", text, sc)
-	return 0, 0
+		return false
+	})
+	return x, y
 }
