@@ -166,7 +166,7 @@ func queueChecks(sessions []proto.SessionInfo, now time.Time) []Check {
 		}
 		out = append(out, Check{Group: "server", Name: "prompt queue", Status: Warn,
 			Detail: fmt.Sprintf("%s: %d queued prompt(s), %s; nothing is pasted until it clears, and a coordinator gets no nudges meanwhile. "+
-				"The server sends or drops it once it has been held for its bound (journaled); tm agent explain %s shows the queue", who, s.Queued, n, s.ID)})
+				"Once it has been held for its bound the server drops it, or writes a tm prompt to the agent's socket, unconfirmed (journaled); tm agent explain %s shows the queue", who, s.Queued, n, s.ID)})
 	}
 	return out
 }
