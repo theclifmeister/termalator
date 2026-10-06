@@ -55,7 +55,7 @@ func runHook(e *Env, args []string) error {
 		return nil
 	}
 	event, _ := payload["hook_event_name"].(string)
-	respond := false
+	respond, token := false, ""
 	paths, err := server.ResolvePaths()
 	if err != nil {
 		return nil
@@ -64,6 +64,9 @@ func runHook(e *Env, args []string) error {
 		if a, ok := reg.Get(name); ok {
 			payload = a.Sources().Hook.Trim(payload)
 			if m := agent.ManifestOf(a); m != nil {
+				if m.Inject.TokenEnv != "" {
+					token = e.Getenv(m.Inject.TokenEnv)
+				}
 				for _, h := range m.Hooks {
 					respond = respond || (h.Event == event && h.Respond != "")
 				}
@@ -75,7 +78,7 @@ func runHook(e *Env, args []string) error {
 		total = hookResponse
 	}
 	params := proto.HookEventParams{Session: session, Agent: name, Event: event,
-		PPID: os.Getppid(), At: time.Now(), Payload: payload}
+		PPID: os.Getppid(), At: time.Now(), Payload: payload, Token: token}
 	if out := sendHook(paths.Socket, params, total); out != "" {
 		io.WriteString(e.Stdout, out)
 	}

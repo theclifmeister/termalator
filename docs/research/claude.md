@@ -15,7 +15,7 @@ Tested 2026-10-04 against **Claude Code 2.1.289** (native build, `~/.local/bin/c
 4. The **transcript JSONL** marks interrupts explicitly: a user entry with `[Request interrupted by user]` or `[Request interrupted by user for tool use]`. It also writes a `system/turn_duration` entry at every normal turn end. That makes it a second structured cross-check.
 5. **Context re-injection works.** `SessionStart` fires with `source` = `startup` | `resume` | `clear` | `compact` | `fork`, and `hookSpecificOutput.additionalContext` reaches the model. The context can be fetched fresh from the daemon on every clear or compact. `--append-system-prompt-file` **survives `/clear`**.
 6. **Use stream sockets for delivery, not datagrams.** macOS caps unix datagrams at **2048 bytes** (`net.local.dgram.maxdgram`), and larger hook payloads were silently dropped. A Go hook over a stream socket costs about 4 ms per event and exits 0 in about 3.5 ms when the daemon is down, crashed or stalled. A python3 sender costs about 18 ms.
-7. **Prompt injection:** a bracketed paste followed by a separate Enter works, and prompts typed while Claude works get queued. Claude also has an undocumented **`uds-messaging` socket** (`CLAUDE_CODE_MESSAGING_SOCKET`, also in the session file) that takes `{"type":"user",...}` lines and queues them properly, both idle and mid-turn.
+7. **Prompt injection:** a bracketed paste followed by a separate Enter works, and prompts typed while Claude works get queued. Claude also has an undocumented **`uds-messaging` socket** (`CLAUDE_CODE_MESSAGING_SOCKET`, also in the session file) that takes `{"type":"user",...}` lines and queues them properly, both idle and mid-turn. In **2.1.291** it may require an auth line, never answers the sender, and may hold or drop a message silently, so tm uses it only for its own fixed-word prompts and as a liveness probe (§4a).
 8. **Todos:** this version has **no `TodoWrite`**. The list is managed with **`TaskCreate` / `TaskUpdate`**, which send *diffs*, not the whole list. They come with `TaskCreated` / `TaskCompleted` hook events. The full list lives in `~/.claude/tasks/<session_id>/<n>.json`. Subagents don't get these tools. SPEC §8.6's `TodoWrite` mapping and §8.2's "replace the stored list" model have to change (see the todo mirroring section below).
 9. Some screens appear **before any hook can run**: the workspace trust dialog and the bypass-permissions warning. Both default to **"No, exit"**. Hooks are skipped until trust is accepted, so these screens can only be seen through screen rules.
 
@@ -192,7 +192,7 @@ Results (s08, 200–400 runs each, macOS arm64):
 | `SessionStart` `hookSpecificOutput.additionalContext` | ✔ for `startup`, `clear` and `compact`, and it is **fetched fresh from the daemon each time**: after `/compact` the model answered with the context file's new value | dynamic context (`tm context`, task, steps) |
 | Bracketed paste (`ESC[200~…ESC[201~`), then Enter as a separate write 150 ms later | ✔ Multi-line text arrives as one prompt and Enter submits it | follow-ups (`paste` injector) |
 | Paste while working | Queued (`Press up to edit queued messages`); delivered mid-turn after the next tool result | acceptable, but the server should wait for idle |
-| **uds-messaging socket** | ✔ idle and mid-turn (queued). One NDJSON line `{"type":"user","message":{"role":"user","content":"…"}}` sent to `CLAUDE_CODE_MESSAGING_SOCKET` (also `messagingSocketPath` in the session file). An optional `{"type":"auth","token":…}` line first. **In this version a message without the token was accepted too.** The socket dir `/tmp/cc-socks` is mode 0700 (same user only). It is announced only in `--debug` output, i.e. undocumented | structured `channel` injector, behind a feature check |
+| **uds-messaging socket** | ✔ idle and mid-turn (queued). One NDJSON line `{"type":"user","message":{"role":"user","content":"…"}}` sent to `CLAUDE_CODE_MESSAGING_SOCKET` (also `messagingSocketPath` in the session file). An optional `{"type":"auth","token":…}` line first. **In this version a message without the token was accepted too** (2.1.291 may require it: §4a). The socket dir `/tmp/cc-socks` is mode 0700 (same user only). It is announced only in `--debug` output, i.e. undocumented | structured `channel` injector, behind a feature check |
 
 **Re-injection after `/clear` and compaction:** map `SessionStart` with `source ∈ {clear, compact}`, and also `startup` and `resume`, to a `respond` template that returns `tm hook`'s context. Keep the static brief in `--append-system-prompt-file`. Two things to handle:
 - `/clear` **changes the session id**, so update the stored agent session id from every `SessionStart`.
@@ -203,7 +203,23 @@ Results (s08, 200–400 runs each, macOS arm64):
 2. The prompt-suggestion ghost text looks like typed text unless cell attributes are checked.
 3. Never paste while a dialog is open: an Enter would answer it.
 
-The uds socket avoids all three, which is why it is the better injector if it is accepted at all.
+The uds socket avoids all three, which is why it looked like the better injector. It isn't one for the human's prompts: they would arrive framed as from another session, slash commands don't run, and 2.1.291 can't tell the sender whether a message landed (§4a).
+
+## 4a. The messaging socket in 2.1.291 (T47)
+
+From the **2.1.291** binary's uds-messaging module (spike T47, thread t-0038; not yet confirmed live — `threads/t-0038/library/t47-probe.sh` in the project folder runs the cases by hand):
+
+- **Wire:** one NDJSON line per message, `{"type":"user","message":{"role":"user","content":"…"}}`. Optional fields: `priority` (`now` jumps the queue, `next` is the default), `session_id` (a mismatch drops the message; `/clear` rotates it), `msg_id`, `from`, `file_attachments`.
+- **Auth:** an optional `{"type":"auth","token":…}` first line. Whether it is required is decided at start-up per platform; when it is, lines from an unauthenticated connection are **dropped and the connection closed after the client's write already succeeded**. The token Claude puts in its children's env, `CLAUDE_CODE_MESSAGING_TOKEN`, is valid (the message may then count as `selfSent`). Hooks are children, so `tm hook` sees it.
+- **No answer on the sending connection.** A successful connect and write means the inbox read the line, nothing more. Outcomes (`held` for approval, `denied`, `expired`, `delivered`, `refused`, `dropped` for rate limit, duplicate, relay loop or a full queue) go as `peer_message_status` receipts to the sender's own Claude-style inbox (`from: "uds:<path>"` under Claude's socket dir, pid-verified), which tm doesn't have. A message accepted at once gets no receipt.
+- **Framing:** queued with `origin.kind = "peer"`, `isMeta: true` and **`skipSlashCommands: true`**: the model sees a peer message, not the user, and a slash command sent this way doesn't run.
+- **Liveness:** Claude checks its peers with a plain connect (250 ms timeout) and closes a connection that sends no complete line. No socket file or a refused connection means the process is gone.
+
+What tm does with it (SPEC §8.6, T51):
+- `claude.toml` sets `inject.token_env = "CLAUDE_CODE_MESSAGING_TOKEN"`: `tm hook` hands the token to the server with each event, the session keeps it in memory only, and the channel writes the auth line first, in the same write as the message.
+- The socket carries only tm's own fixed-word prompts once held for the paste injector's bound; a send is journaled **`prompt.sent`**, never "delivered". The human's and the coordinator's prompts are always pasted (the Claude adapter ignores `inject.prompt = "channel"`).
+- The Claude adapter's `Probe` is a connect-only check, run every 5 s beside a pid check: a gone pid makes the status file stale, a gone socket keeps held prompts off the channel; `tm agent explain` shows `liveness`.
+- Not used: a fake inbox under Claude's socket dir to receive receipts (it would imitate Claude internals). Prompts from the human should move to a mod's `$.prompt.submit` once that lands (T48/T49).
 
 ## 5. Other findings
 

@@ -32,22 +32,45 @@ func (a *app) listen() {
 	}()
 }
 
-// serveConn reads NDJSON lines; user messages are queued as prompts.
+// messagingToken is the token the fake gives its children, as Claude
+// 2.1.291 does in CLAUDE_CODE_MESSAGING_TOKEN.
+func (a *app) messagingToken() string { return fmt.Sprintf("fa-token-%d", a.pid) }
+
+// serveConn reads NDJSON lines; user messages are queued as prompts. An
+// {"type":"auth","token":…} line authenticates the connection; with
+// FAKEAGENT_SOCKET_AUTH=required (Claude 2.1.291 on some platforms),
+// user lines from a connection without it are dropped silently. Nothing
+// is ever written back.
 func (a *app) serveConn(c net.Conn) {
 	defer c.Close()
+	required := os.Getenv("FAKEAGENT_SOCKET_AUTH") == "required"
+	authed := false
 	sc := bufio.NewScanner(c)
 	sc.Buffer(make([]byte, 64*1024), 16*1024*1024)
 	for sc.Scan() {
 		var m struct {
 			Type    string `json:"type"`
+			Token   string `json:"token"`
 			Message struct {
 				Content json.RawMessage `json:"content"`
 			} `json:"message"`
 		}
-		if json.Unmarshal(sc.Bytes(), &m) != nil || m.Type != "user" {
+		if json.Unmarshal(sc.Bytes(), &m) != nil {
 			continue
 		}
-		if text := contentText(m.Message.Content); text != "" {
+		if m.Type == "auth" {
+			authed = m.Token == a.messagingToken()
+			continue
+		}
+		if m.Type != "user" {
+			continue
+		}
+		text := contentText(m.Message.Content)
+		if required && !authed {
+			a.log("socket-drop", map[string]any{"text": text, "why": "unauthenticated"})
+			return
+		}
+		if text != "" {
 			a.enqueue(job{kind: "prompt", text: text, via: "socket"})
 		}
 	}

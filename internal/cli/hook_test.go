@@ -26,7 +26,7 @@ func hookEnv(t *testing.T, payload string) (*Env, *bytes.Buffer, *bytes.Buffer, 
 	t.Setenv("TERMINATR_HOME", filepath.Join(dir, "home"))
 	t.Setenv("TERMINATR_SOCKET", sock)
 	var out, errb bytes.Buffer
-	vars := map[string]string{"TERMINATR_SESSION": "s-1"}
+	vars := map[string]string{"TERMINATR_SESSION": "s-1", "CLAUDE_CODE_MESSAGING_TOKEN": "child-token"}
 	e := &Env{Stdin: strings.NewReader(payload), Stdout: &out, Stderr: &errb, Getenv: func(k string) string { return vars[k] }}
 	return e, &out, &errb, sock
 }
@@ -90,6 +90,10 @@ func TestHookDelivers(t *testing.T) {
 	p := <-got
 	if p.Session != "s-1" || p.Agent != "claude" || p.Event != "SessionStart" || p.PPID == 0 {
 		t.Fatalf("envelope %+v", p)
+	}
+	// The manifest's inject.token_env goes along, outside the payload.
+	if p.Token != "child-token" {
+		t.Errorf("token %q, want the hook's CLAUDE_CODE_MESSAGING_TOKEN", p.Token)
 	}
 	// Trimmed with the manifest's [hook] rules before it left.
 	if _, ok := p.Payload["secret_field"]; ok {
