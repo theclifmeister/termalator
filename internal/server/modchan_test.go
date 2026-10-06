@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -98,6 +99,28 @@ func TestModChannel(t *testing.T) {
 	}
 	if fi, err := os.Stat(sock); err != nil || fi.Mode().Perm() != 0o600 {
 		t.Fatalf("socket: %v %v", fi, err)
+	}
+
+	// The role's context: none outside a project, the thread's with its
+	// brief otherwise.
+	getContext := func() (int, string) {
+		t.Helper()
+		resp, err := c.Get("http://terminatr/v1/context")
+		if err != nil {
+			t.Fatalf("GET /v1/context: %v", err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(b)
+	}
+	if code, _ := getContext(); code != http.StatusNoContent {
+		t.Fatalf("context outside a project: %d", code)
+	}
+	s.mu.Lock()
+	s.records = map[string]SessionRecord{"s-1": {ID: "s-1", Role: proto.RoleThread, Brief: "/p/threads/t-1/brief.md"}}
+	s.mu.Unlock()
+	if code, text := getContext(); code != http.StatusOK || !strings.HasPrefix(text, "tm skill thread v") || !strings.Contains(text, "Your brief: /p/threads/t-1/brief.md") {
+		t.Fatalf("thread context: %d %q", code, text)
 	}
 
 	// The session ends: its socket goes with it.

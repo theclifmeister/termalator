@@ -178,6 +178,25 @@ func (s *Server) modHandler(id string) http.Handler {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+	// The role's context, fresh (§7.8): the mod adds it to the
+	// conversation's context, re-read after /clear and compaction. 204
+	// for a session outside a project.
+	mux.HandleFunc("GET /v1/context", func(w http.ResponseWriter, r *http.Request) {
+		if s.modSession(w, id) == nil {
+			return
+		}
+		b, err := s.contextOf(id)()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if len(b) == 0 {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write(b)
+	})
 	return mux
 }
 

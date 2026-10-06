@@ -2,7 +2,8 @@
 // (proto.Watch, docs/SPEC.md §3.3), kept as the session's latest,
 // whether the band and status entry show ([mods] band), the turn it
 // reports to the server, the id of the last prompt from the server it
-// handed to Claude, and which load of the module takes those prompts.
+// handed to Claude, which load of the module takes those prompts, and
+// the role's context as the SessionStart command hook last brought it.
 
 export type TerminatrWatch = {
   session: {
@@ -51,6 +52,7 @@ declare module 'claude-code' {
       turn: TerminatrTurn
       delivering: string
       deliverer: number
+      context: string
     }
   }
 }
