@@ -17,7 +17,7 @@ func modSpec(dir string, mods bool) agent.LaunchSpec {
 }
 
 // TestLaunchMods: with Mods the plugin folder also holds the mod, and
-// hooks.json names it beside the command hooks, which stay.
+// hooks.json names it beside the command hooks the mod doesn't replace.
 func TestLaunchMods(t *testing.T) {
 	a := load(t)
 	if _, ok := a.(agent.Modder); !ok {
@@ -39,8 +39,31 @@ func TestLaunchMods(t *testing.T) {
 		if err := json.Unmarshal(l.Files["claude-plugin/.claude-plugin/plugin.json"], &plugin); err != nil {
 			t.Fatalf("mods %v: plugin.json: %v", mods, err)
 		}
-		if len(hooks.Hooks) < 16 || plugin["name"] != "terminatr" {
-			t.Fatalf("mods %v: %d command hooks, plugin %v", mods, len(hooks.Hooks), plugin)
+		if plugin["name"] != "terminatr" {
+			t.Fatalf("mods %v: plugin %v", mods, plugin)
+		}
+		// With the mod, only what it doesn't report stays a command
+		// hook, the todo tools alone on PostToolUse.
+		want := 16
+		if mods {
+			want = 5
+		}
+		if len(hooks.Hooks) != want {
+			t.Fatalf("mods %v: %d command hooks, want %d", mods, len(hooks.Hooks), want)
+		}
+		for _, ev := range []string{"SessionStart", "PostToolUse", "SubagentStart", "SubagentStop", "SessionEnd"} {
+			if hooks.Hooks[ev] == nil {
+				t.Fatalf("mods %v: no %s hook", mods, ev)
+			}
+		}
+		var post []struct {
+			Matcher string `json:"matcher"`
+		}
+		if err := json.Unmarshal(hooks.Hooks["PostToolUse"], &post); err != nil || len(post) != 1 {
+			t.Fatalf("mods %v: PostToolUse %s: %v", mods, hooks.Hooks["PostToolUse"], err)
+		}
+		if m := post[0].Matcher; (m == "TaskCreate|TaskUpdate|TodoWrite") != mods {
+			t.Fatalf("mods %v: PostToolUse matcher %q", mods, m)
 		}
 		_, reg := l.Files["claude-plugin/hooks/register.ts"]
 		_, types := l.Files["claude-plugin/types/index.d.ts"]

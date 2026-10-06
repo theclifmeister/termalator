@@ -19,6 +19,11 @@ import (
 // statusUnconfirmed. A visible blocker on screen overrides any non-blocked state,
 // background counters turn idle into working, and so does a kickoff prompt
 // the agent hasn't started on yet (AwaitKickoff).
+//
+// A session with the agent's mod (ExpectMod) has one more source above
+// them all but exit: the mod's own state reports (Mod). While its
+// heartbeat holds, the mod decides; once it lapses, or before the mod is
+// heard from, the other sources do (docs/SPEC.md §8.4 rule 0).
 type Tracker struct {
 	mu  sync.Mutex
 	now func() time.Time
@@ -38,7 +43,26 @@ type Tracker struct {
 	todos    []Todo
 	events   []EventRecord
 	kickoff  kickoffWait
+	mod      modObs
 }
+
+// modObs is the mod source: its last state and when it was last heard
+// from (a transition or a heartbeat).
+type modObs struct {
+	on    bool    // the session runs the mod (ExpectMod)
+	last  *Signal // the last state reported; At is when it took that state
+	event string  // the mod event behind it, e.g. "turn.complete"
+	seen  time.Time
+}
+
+// ModTimeout is how long the mod's word stands without a heartbeat or a
+// report. The mod beats every ModBeat; a few missed beats mean it
+// crashed, was unloaded or its channel broke, and the tracker falls back
+// to the other sources.
+const (
+	ModBeat    = 10 * time.Second
+	ModTimeout = 3*ModBeat + 5*time.Second
+)
 
 // kickoffWait is a first prompt, given at launch, that the agent hasn't
 // started on yet. Claude reports idle at startup (SessionStart, its status
@@ -135,6 +159,41 @@ func (t *Tracker) sawState(s State, screen bool) {
 	}
 }
 
+// ExpectMod says the session runs the agent's mod. Its command hooks
+// then carry no turn events, so their level states (SessionStart's idle)
+// would only mislead the fallback: Hook ignores them, except exited.
+func (t *Tracker) ExpectMod() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.mod.on = true
+}
+
+// Mod records a state report from the mod (event names what it saw:
+// "turn.start", "beat" for a heartbeat). A report of the state the mod
+// already holds only renews its heartbeat.
+func (t *Tracker) Mod(s State, reason, event string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	now := t.now()
+	t.mod.seen = now
+	if l := t.mod.last; l != nil && l.State == s && l.Reason == reason {
+		return
+	}
+	t.mod.last = &Signal{Source: "mod", State: s, Reason: reason, At: now}
+	t.mod.event = event
+	t.sawState(s, false)
+	t.events = append(t.events, EventRecord{At: now, Event: "mod " + event, Signals: []string{stateText(s, reason)}})
+	if len(t.events) > maxEvents {
+		t.events = t.events[len(t.events)-maxEvents:]
+	}
+}
+
+// modLive reports whether the mod's word stands: heard from within
+// ModTimeout.
+func (t *Tracker) modLive(now time.Time) bool {
+	return t.mod.last != nil && now.Sub(t.mod.seen) < ModTimeout
+}
+
 // Exited records the process exit.
 func (t *Tracker) Exited(reason string) {
 	t.mu.Lock()
@@ -173,6 +232,8 @@ func (t *Tracker) Hook(ev HookEvent, sigs []Signal) (sidChanged bool) {
 		case s.Todo != nil:
 			t.todos = ApplyTodo(t.todos, *s.Todo)
 			rec.Signals = append(rec.Signals, "todo "+string(s.Todo.Op))
+		case s.State != "" && t.mod.on && s.State != StateExited:
+			rec.Signals = append(rec.Signals, stateText(s.State, s.Reason)+" (ignored: the mod reports state)")
 		case s.State != "":
 			sc := s
 			t.sawState(s.State, false)
@@ -342,6 +403,9 @@ func (t *Tracker) merge() Merged {
 	if t.hook != nil && t.hook.State == StateExited {
 		return Merged{State: StateExited, Reason: t.hook.Reason, Sources: "hooks"}
 	}
+	if t.modLive(t.now()) {
+		return t.mergeMod()
+	}
 	var m Merged
 	var used []string
 	scr := t.screen.stable
@@ -404,6 +468,41 @@ func (t *Tracker) merge() Merged {
 		m.State, m.Reason = StateBlocked, scr.Reason
 		used = append(used, "screen")
 	}
+	return t.settle(m, used)
+}
+
+// mergeMod is the state while the mod's word stands (rule 0): the mod's,
+// with two cross-checks for what it can't see, then rules 4 and 4b.
+func (t *Tracker) mergeMod() Merged {
+	l := t.mod.last
+	m := Merged{State: l.State, Reason: l.Reason}
+	used := []string{"mod"}
+	scr := t.screen.stable
+	switch {
+	case l.State == StateExited:
+		return Merged{State: StateExited, Reason: l.Reason, Sources: "mod"}
+	case l.State == StateBlocked:
+		// A permission granted fires nothing until the tool ends: the
+		// status file or the screen, newer than the mod's blocked,
+		// showing working ends it.
+		if s := t.status; s != nil && s.State == StateWorking && s.At.After(l.At) {
+			m.State, m.Reason = StateWorking, ""
+			used = append(used, "status_file")
+		} else if scr != nil && scr.State == StateWorking && t.screen.stableAt.After(l.At) {
+			m.State, m.Reason = StateWorking, ""
+			used = append(used, "screen")
+		}
+	case l.State == StateIdle && scr != nil && scr.State == StateBlocked:
+		// Rule 3, for idle only: a dialog no mod event covers (trust,
+		// a slash command's menu).
+		m.State, m.Reason = StateBlocked, scr.Reason
+		used = append(used, "screen")
+	}
+	return t.settle(m, used)
+}
+
+// settle applies rules 4 and 4b to a merged state and names its sources.
+func (t *Tracker) settle(m Merged, used []string) Merged {
 	// Rule 4: background activity.
 	if m.State == StateIdle && t.running() > 0 {
 		m.State, m.Reason = StateWorking, "background"
@@ -498,6 +597,18 @@ type Explanation struct {
 	Todos       []Todo            `json:"todos,omitempty"`
 	Events      []EventRecord     `json:"events,omitempty"`
 	Extra       map[string]string `json:"extra,omitempty"`
+
+	// Mod is the mod source, in a session that runs the mod.
+	Mod *ModView `json:"mod,omitempty"`
+}
+
+// ModView is the mod source for explain: its last state, the event
+// behind it, when it was last heard from, and whether its word stands.
+type ModView struct {
+	SourceView
+	Event string    `json:"event,omitempty"`
+	Seen  time.Time `json:"seen,omitempty"`
+	Live  bool      `json:"live"`
 }
 
 // SourceView is one source's last signal.
@@ -538,6 +649,12 @@ func (t *Tracker) Explain() Explanation {
 	}
 	if s := t.screen.last; s != nil {
 		e.ScreenLast = &SourceView{State: s.State, Reason: s.Reason, Rule: s.Rule, At: t.screen.evalAt}
+	}
+	if t.mod.on || t.mod.last != nil {
+		e.Mod = &ModView{Seen: t.mod.seen, Event: t.mod.event, Live: t.modLive(t.now())}
+		if l := t.mod.last; l != nil {
+			e.Mod.SourceView = *view(l)
+		}
 	}
 	for name, m := range t.counters {
 		if len(m) > 0 {

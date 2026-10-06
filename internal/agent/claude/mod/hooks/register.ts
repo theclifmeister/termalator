@@ -1,25 +1,42 @@
-// The terminatr mod (docs/SPEC.md §8.6, Mods): it follows the session's
-// `tm watch --json` feed for the session's life and keeps the latest
-// line in $.state. From it, unless [mods] band is off
-// (TERMINATR_BAND=off), it draws the band above the prompt and keeps a
-// status entry under it: the thread's task, steps, current item, PR and
-// what waits for the user; and it toasts when the PR's CI run finishes.
+// The terminatr mod (docs/SPEC.md §8.6, Mods). It reports the session's
+// state to the server from its own events, in place of most command
+// hooks: each transition, over the session's mod socket
+// (TERMINATR_MOD_SOCKET, a Unix socket that speaks HTTP), and a beat
+// every BEAT_MS with the state it holds; the server believes it while
+// the beats come and falls back to its other sources when they stop.
+// The turn lives in $.state, so a reload carries on (hooks/turn.ts).
+//
+// It also follows the session's `tm watch --json` feed for the session's
+// life and keeps the latest line in $.state. From it, unless [mods] band
+// is off (TERMINATR_BAND=off), it draws the band above the prompt and
+// keeps a status entry under it: the thread's task, steps, current item,
+// PR and what waits for the user; and it toasts when the PR's CI run
+// finishes.
+//
 // It sends each AskUserQuestion menu to the server (`tm session ask`) and
 // answers it with what `tm thread answer` gave, unless the user answers
-// in the pane first. The command hooks beside it in hooks.json stay the
-// source of the session's state.
+// in the pane first.
 
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { TerminatrWatch } from '../types'
+import type { TerminatrTurn, TerminatrWatch } from '../types'
 import { answers, question } from './ask'
 import { drawBand } from './band'
 import { feed } from './feed'
+import { initialTurn, stateOf, step, waitKey } from './turn'
+import type { Seen } from './turn'
 import { ciToast, shows, statusText } from './view'
 
 const watch = atom({ plugin: 'terminatr', key: 'watch' } as const, null)
 const band = atom({ plugin: 'terminatr', key: 'band' } as const, true)
+const turn = atom({ plugin: 'terminatr', key: 'turn' } as const, initialTurn)
+
+// BEAT_MS is the heartbeat: the server's ModBeat (internal/agent).
+const BEAT_MS = 10_000
+
+// END_WAIT_MS bounds the wait for the exited report at session.end.
+const END_WAIT_MS = 500
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
@@ -28,6 +45,7 @@ export const register: Register = on => {
     const id = await $.env.get('TERMINATR_SESSION')
     const isBand = (await $.env.get('TERMINATR_BAND')) !== 'off'
     await update($, band, () => isBand)
+    await startReports($)
     if (bin && id) void follow($, bin, id, isBand)
     return started
   })
@@ -65,6 +83,137 @@ export const register: Register = on => {
     if (e.props.hasSurvey || !(await read($, band)) || !shows(w)) return next(e)
     return drawBand($.ui.resolve(e), e.props.bodyColumns, w)
   })
+
+  on('turn.start', async ($, e, next) => {
+    const r = await next(e)
+    await saw($, { kind: 'turn.start' }, 'turn.start')
+    return r
+  })
+
+  on('turn.complete', async ($, e, next) => {
+    // A subagent's run is part of its spawner's turn.
+    if (!e.agentId) await saw($, { kind: 'turn.complete', reason: e.reason }, 'turn.complete')
+    return next(e)
+  })
+
+  // An AskUserQuestion menu is open for as long as its call runs.
+  on('tool.call', { tool: 'AskUserQuestion' }, async ($, e, next) => {
+    const key = waitKey(e.tool, e.agentId)
+    await saw($, { kind: 'wait', key, reason: 'question' }, 'tool.call')
+    try {
+      return await next(e)
+    } finally {
+      await saw($, { kind: 'unwait', key }, 'tool.call')
+    }
+  })
+
+  // A permission prompt opens unless a hook beneath decided; it closes
+  // when the tool ends or is denied.
+  on('classic.PermissionRequest', async ($, e, next) => {
+    const r = await next(e)
+    if (!r.decision) {
+      const reason = e.tool_name === 'AskUserQuestion' ? 'question' : 'permission'
+      await saw($, { kind: 'wait', key: waitKey(e.tool_name, e.agent_id), reason }, 'PermissionRequest')
+    }
+    return r
+  })
+  on('classic.PostToolUse', async ($, e, next) => {
+    await saw($, { kind: 'unwait', key: waitKey(e.tool_name, e.agent_id) }, 'PostToolUse')
+    return next(e)
+  })
+  on('classic.PostToolUseFailure', async ($, e, next) => {
+    await saw($, { kind: 'unwait', key: waitKey(e.tool_name, e.agent_id) }, 'PostToolUseFailure')
+    return next(e)
+  })
+  on('classic.PermissionDenied', async ($, e, next) => {
+    await saw($, { kind: 'unwait', key: waitKey(e.tool_name, e.agent_id) }, 'PermissionDenied')
+    return next(e)
+  })
+
+  // /compact runs no turn; ahead-of-time compaction doesn't hold the
+  // session up.
+  on('session.compact', async ($, e, next) => {
+    if (e.trigger === 'precompute') return next(e)
+    await saw($, { kind: 'compact', on: true }, 'session.compact')
+    try {
+      return await next(e)
+    } finally {
+      await saw($, { kind: 'compact', on: false }, 'session.compact')
+    }
+  })
+
+  // The last report goes before the process does, or after END_WAIT_MS
+  // at most.
+  on('session.end', async ($, e, next) => {
+    const { sent } = await saw($, e.reason === 'clear' ? { kind: 'clear' } : { kind: 'end' }, 'session.end')
+    await Promise.race([sent, $.clock.sleep(END_WAIT_MS)])
+    return next(e)
+  })
+}
+
+// The channel: the socket, and one report in flight at a time, the
+// latest waiting behind it (a report is the whole state, so the ones
+// between can go).
+let socket = ''
+let sending: Promise<void> | null = null
+let pending: string | null = null
+let last = ''
+
+// startReports opens the channel, in a terminatr session with the mod's
+// socket: it reports the state the turn is in (a reload carries on),
+// then beats.
+async function startReports($: EngineInterface) {
+  socket = (await $.env.get('TERMINATR_MOD_SOCKET')) ?? ''
+  if (!socket) return
+  last = ''
+  let now = initialTurn
+  await update($, turn, t => (now = t.exited ? { ...initialTurn } : t))
+  void report($, now, 'session.start')
+  $.clock.every(BEAT_MS, () => {
+    void read($, turn).then(t => report($, t, 'beat'))
+  })
+}
+
+// saw moves the turn on and reports where it got to, without waiting
+// for the report: a hook never holds the session up on the server. It
+// answers the report, for session.end.
+async function saw($: EngineInterface, s: Seen, event: string): Promise<{ sent: Promise<void> }> {
+  let now = initialTurn
+  await update($, turn, t => (now = step(t, s)))
+  return { sent: report($, now, event) }
+}
+
+// report sends the state t is in, unless it is the one sent last (a
+// beat always goes), and resolves once it went.
+function report($: EngineInterface, t: TerminatrTurn, event: string): Promise<void> {
+  if (!socket) return Promise.resolve()
+  const s = stateOf(t)
+  const key = `${s.state}/${s.reason}`
+  if (key === last && event !== 'beat') return sending ?? Promise.resolve()
+  last = key
+  pending = JSON.stringify({ ...s, event })
+  if (!sending) {
+    sending = (async () => {
+      while (pending) {
+        const body = pending
+        pending = null
+        await post($, body)
+      }
+      sending = null
+    })()
+  }
+  return sending
+}
+
+async function post($: EngineInterface, body: string) {
+  try {
+    const r = await $.http.fetch('http://terminatr/v1/state', {
+      method: 'POST', socketPath: socket, headers: { 'content-type': 'application/json' }, body,
+    })
+    if (!r.ok) $.ui.log(`terminatr: state report: ${r.status} ${r.text}`, { to: 'debug' })
+  } catch (err) {
+    $.ui.log(`terminatr: state report: ${String(err)}`, { to: 'debug' })
+  }
 }
 
 // follow keeps the latest line of the feed, and the status entry and CI
