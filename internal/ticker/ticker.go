@@ -70,9 +70,10 @@ type Host interface {
 	Sessions() []proto.SessionInfo
 	// Prompt sends text to a session through its agent's injector.
 	Prompt(session, text string) error
-	// Nudge is Prompt for a coordinator's nudge: refresh is called right
+	// PromptFresh is Prompt for a prompt that may go stale in the queue (a
+	// coordinator's nudge, a PR follow-up): refresh is called right
 	// before delivery and returns the text then, or false to drop it.
-	Nudge(session, text string, refresh func() (string, bool)) error
+	PromptFresh(session, text string, refresh func() (string, bool)) error
 	// Alert rings every client's bell; msg goes to the server log.
 	Alert(msg string)
 	// Resolve runs `tm thread resolve` for the ticker and returns its
@@ -619,7 +620,7 @@ func (t *Ticker) refreshPR(p *project.Project, r *thread.Record, m *threadMemo, 
 		if !safety.PRFollowup || !live {
 			return
 		}
-		if err := t.o.Host.Prompt(info.ID, text); err != nil {
+		if err := t.promptPR(p, r, info, pr.Number, text); err != nil {
 			t.o.Log.Printf("ticker: %s: follow-up for %s: %v", p.Slug, r.ID, err)
 		}
 	}
@@ -830,7 +831,7 @@ func (t *Ticker) nudge(p *project.Project, sessions []proto.SessionInfo, now tim
 		}
 		return NudgeText(still, label), true
 	}
-	if err := t.o.Host.Nudge(coord.ID, text, refresh); err != nil {
+	if err := t.o.Host.PromptFresh(coord.ID, text, refresh); err != nil {
 		t.o.Log.Printf("ticker: %s: nudge: %v", p.Slug, err)
 		return
 	}

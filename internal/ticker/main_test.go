@@ -109,8 +109,9 @@ func TestSyncCheckout(t *testing.T) {
 	}
 }
 
-// TestFollowMain: when main moves, a thread whose open PR is behind
-// gets one prompt per main head; one that conflicts also raises a
+// TestFollowMain: when main moves, a thread whose open PR is only behind
+// is left alone (T77: PRs need not be up to date, and a merge is a push
+// and a CI run); one that conflicts gets one prompt per main head and a
 // pr-conflict item, which says when the thread could not be prompted.
 func TestFollowMain(t *testing.T) {
 	repo, other := gitFixture(t)
@@ -129,24 +130,23 @@ func TestFollowMain(t *testing.T) {
 	}
 	r.handleAll()
 
-	main := push(t, other, "g", "two\n", "Merge pull request #61 from a/b")
+	push(t, other, "g", "two\n", "Merge pull request #61 from a/b")
 	r.sweep(2 * time.Minute)
-	want := fmt.Sprintf("s-2 [tm] main moved to %s (#61 merged), and your PR #9 is behind it. Merge origin/main into your branch (no rebase, no force-push)", main[:7])
-	if len(r.host.prompts) != 1 || !strings.HasPrefix(r.host.prompts[0], want) {
-		t.Fatalf("prompts %q", r.host.prompts)
+	if len(r.host.prompts) != 0 {
+		t.Fatalf("prompted a PR that is only behind: %q", r.host.prompts)
 	}
 	if k := r.kinds(); k != "" {
 		t.Fatalf("items for a PR that is only behind: %s", k)
 	}
+
+	main := push(t, other, "h", "main's\n", "Clash (#62)")
+	r.sweep(2 * time.Minute)
+	if len(r.host.prompts) != 1 || !strings.Contains(r.host.prompts[0], "main moved to "+main[:7]+" (#62 merged), and your PR #9 conflicts with it.") {
+		t.Fatalf("prompts %q", r.host.prompts)
+	}
 	r.sweep(2 * time.Minute)
 	if len(r.host.prompts) != 1 {
 		t.Fatalf("prompted twice for one head: %q", r.host.prompts)
-	}
-
-	main = push(t, other, "h", "main's\n", "Clash (#62)")
-	r.sweep(2 * time.Minute)
-	if len(r.host.prompts) != 2 || !strings.Contains(r.host.prompts[1], "main moved to "+main[:7]+" (#62 merged), and your PR #9 conflicts with it.") {
-		t.Fatalf("prompts %q", r.host.prompts)
 	}
 	if s := r.summaries(); r.kinds() != KindPRConflict || !strings.Contains(s, "PR #9 of T1 Fix it (t-0001) conflicts with main at "+main[:7]+"; the thread was asked to merge it") {
 		t.Fatalf("items %s: %s", r.kinds(), s)
@@ -157,7 +157,7 @@ func TestFollowMain(t *testing.T) {
 	r.host.sessions = r.host.sessions[:1]
 	main = push(t, other, "h", "main's again\n", "Again")
 	r.sweep(2 * time.Minute)
-	if len(r.host.prompts) != 2 {
+	if len(r.host.prompts) != 1 {
 		t.Fatalf("prompted a thread without a session: %q", r.host.prompts)
 	}
 	if s := r.summaries(); !strings.Contains(s, "conflicts with main at "+main[:7]+"; the thread was not prompted") {
@@ -188,8 +188,8 @@ func TestFollowMainByGitHub(t *testing.T) {
 }
 
 // TestFollowMainOwnMerge: main moving to the merge of a thread's own PR
-// prompts nobody but the threads whose PRs it left behind, even while
-// gh still calls the merged PR open.
+// prompts nobody, even while gh still calls the merged PR open; a PR
+// that is only left behind is no reason to (T77).
 func TestFollowMainOwnMerge(t *testing.T) {
 	repo, other := gitFixture(t)
 	heads := map[string]string{}
@@ -217,12 +217,12 @@ func TestFollowMainOwnMerge(t *testing.T) {
 	gitT(t, other, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-ff", "-m", "Merge pull request #9 from o/tm/demo/t-0001-fix-it", "origin/tm/demo/t-0001-fix-it")
 	gitT(t, other, "push", "-q", "origin", "main")
 	r.sweep(2 * time.Minute)
-	if len(r.host.prompts) != 1 || !strings.HasPrefix(r.host.prompts[0], "s-3 [tm] main moved to ") || !strings.Contains(r.host.prompts[0], "(#9 merged), and your PR #10 is behind it.") {
+	if len(r.host.prompts) != 0 {
 		t.Fatalf("prompts %q", r.host.prompts)
 	}
 }
 
-// TestFollowMainRecheck: a PR the last poll called behind is asked
+// TestFollowMainRecheck: a PR the last poll called conflicting is asked
 // about again before the prompt; merged by then, it gets none.
 func TestFollowMainRecheck(t *testing.T) {
 	repo, other := gitFixture(t)
@@ -231,7 +231,7 @@ func TestFollowMainRecheck(t *testing.T) {
 	pr := func(state, mergeState string) string {
 		return fmt.Sprintf(`{"number":9,"url":"https://github.com/o/r/pull/9","state":%q,"statusCheckRollup":[],"headRefOid":%q,"baseRefName":"main","mergeable":"MERGEABLE","mergeStateStatus":%q}`, state, missing, mergeState)
 	}
-	r.gh = []string{pr("OPEN", "CLEAN"), pr("OPEN", "BEHIND"), pr("MERGED", "UNKNOWN")}
+	r.gh = []string{pr("OPEN", "CLEAN"), pr("OPEN", "DIRTY"), pr("MERGED", "UNKNOWN")}
 	r.sweep(0)
 	r.handleAll()
 	push(t, other, "g", "two\n", "Merge pull request #9 from a/b")
@@ -244,5 +244,42 @@ func TestFollowMainRecheck(t *testing.T) {
 	}
 	if k := r.kinds(); k != KindPRMerged {
 		t.Fatalf("items %s", k)
+	}
+}
+
+// TestConflictPromptRefresh (T77): a conflict prompt can wait in the
+// queue behind a busy thread; when it is delivered the PR is asked about
+// again, and one that has merged or closed since gets nothing, the drop
+// journaled.
+func TestConflictPromptRefresh(t *testing.T) {
+	repo, other := gitFixture(t)
+	r := newRigIn(t, repo, []string{repo})
+	missing := strings.Repeat("a", 40)
+	cur, mergeable, mstate := "OPEN", "MERGEABLE", "CLEAN"
+	r.ghFor = func(string) string {
+		return fmt.Sprintf(`{"number":9,"url":"https://github.com/o/r/pull/9","state":%q,"statusCheckRollup":[],"headRefOid":%q,"baseRefName":"main","mergeable":%q,"mergeStateStatus":%q}`, cur, missing, mergeable, mstate)
+	}
+	r.sweep(0)
+	r.handleAll()
+	push(t, other, "g", "two\n", "two")
+	mergeable, mstate = "CONFLICTING", "DIRTY"
+	r.sweep(2 * time.Minute)
+	if len(r.host.prompts) != 1 || !strings.Contains(r.host.prompts[0], "conflicts with it") || r.host.refresh == nil {
+		t.Fatalf("prompts %q", r.host.prompts)
+	}
+	want := strings.TrimPrefix(r.host.prompts[0], "s-2 ")
+	if text, ok := r.host.refresh(); !ok || text != want {
+		t.Fatalf("open PR: %q %v", text, ok)
+	}
+	cur = "MERGED"
+	if _, ok := r.host.refresh(); ok {
+		t.Fatal("a prompt for a merged PR is still delivered")
+	}
+	if j := r.journal(); !strings.Contains(j, "ticker prompt.dropped") || !strings.Contains(j, "#9 is merged") {
+		t.Fatalf("journal:\n%s", j)
+	}
+	cur = "CLOSED"
+	if _, ok := r.host.refresh(); ok {
+		t.Fatal("a prompt for a closed PR is still delivered")
 	}
 }

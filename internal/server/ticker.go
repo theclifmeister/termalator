@@ -52,8 +52,9 @@ func (h tickerHost) Prompt(id, text string) error {
 	return nil
 }
 
-// Nudge is Prompt for a nudge: refresh rebuilds its text at delivery.
-func (h tickerHost) Nudge(id, text string, refresh func() (string, bool)) error {
+// PromptFresh is Prompt for a prompt that may go stale in the queue:
+// refresh rebuilds its text at delivery, or says to drop it.
+func (h tickerHost) PromptFresh(id, text string, refresh func() (string, bool)) error {
 	if _, perr := h.s.promptWith(proto.SessionPromptParams{ID: id, Text: text}, session.PromptOptions{Channel: true, Refresh: refresh}); perr != nil {
 		return perr
 	}
