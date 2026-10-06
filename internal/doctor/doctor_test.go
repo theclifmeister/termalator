@@ -443,3 +443,46 @@ func TestQueueChecks(t *testing.T) {
 		t.Fatalf("checks %+v", got)
 	}
 }
+
+func TestPlugins(t *testing.T) {
+	d := testDeps(t)
+	d.LookPath = func(n string) (string, error) { return "/bin/" + n, nil }
+	list := `[{"id":"vercel@claude-plugins-official","enabled":true},{"id":"worktrees@supermods","enabled":false}]`
+	var listErr error
+	d.Run = func(dir, name string, args ...string) (string, error) {
+		if name == "/bin/claude" && strings.Join(args, " ") == "plugin list --json" {
+			return list, listErr
+		}
+		return "", errors.New("unexpected " + name)
+	}
+	if cs := Plugins(d); len(cs) != 1 || cs[0].Status != OK || !strings.Contains(cs[0].Detail, "worktrees@supermods") {
+		t.Fatalf("disabled: %+v", cs)
+	}
+	for _, l := range []string{
+		`[{"id":"worktrees@supermods","enabled":true}]`,
+		`[{"id":"worktrees@supermods","enabled":false,"projectEnabled":true}]`,
+	} {
+		list = l
+		cs := Plugins(d)
+		if len(cs) != 1 || cs[0].Status != Warn || cs[0].Name != "worktrees@supermods" || cs[0].Fix != nil ||
+			!strings.Contains(cs[0].Detail, "no commits ahead") || !strings.Contains(cs[0].Detail, "claude plugin disable worktrees@supermods") {
+			t.Fatalf("enabled %s: %+v", l, cs)
+		}
+	}
+	list = `[{"id":"worktrees@other","enabled":true}]`
+	if cs := Plugins(d); len(cs) != 1 || cs[0].Status != OK {
+		t.Fatalf("other marketplace: %+v", cs)
+	}
+	list = "not json"
+	if cs := Plugins(d); len(cs) != 1 || cs[0].Status != Warn || !strings.Contains(cs[0].Detail, "couldn't read") {
+		t.Fatalf("bad json: %+v", cs)
+	}
+	list, listErr = "boom", errors.New("claude plugin list --json: boom")
+	if cs := Plugins(d); len(cs) != 1 || cs[0].Status != Warn || !strings.Contains(cs[0].Detail, "couldn't list") {
+		t.Fatalf("list fails: %+v", cs)
+	}
+	d.LookPath = func(n string) (string, error) { return "", exec.ErrNotFound }
+	if cs := Plugins(d); len(cs) != 0 {
+		t.Fatalf("no claude: %+v", cs)
+	}
+}
