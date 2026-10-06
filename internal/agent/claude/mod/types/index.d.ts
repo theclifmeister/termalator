@@ -77,6 +77,10 @@ export type TerminatrItem = {
   subject: string
   summary: string
   needs_user?: boolean
+  count: number
+  task?: string
+  what: string
+  title?: string
 }
 
 export type TerminatrThread = {

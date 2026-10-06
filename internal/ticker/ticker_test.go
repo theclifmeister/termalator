@@ -260,13 +260,13 @@ func TestNudge(t *testing.T) {
 		t.Fatalf("nudge %q", r.host.prompts)
 	}
 	// A new item within the minute waits; nothing is told twice.
-	r.p.AddItem("thread-done", "t-0001", "t-0001 is done", false)
+	r.p.AddItem("thread-resolved", "t-0001", "t-0001 is resolved", false)
 	r.sweep(30 * time.Second)
 	if len(r.host.prompts) != 1 {
 		t.Fatalf("rate limit: %v", r.host.prompts)
 	}
 	r.sweep(31 * time.Second)
-	if len(r.host.prompts) != 2 || !strings.Contains(r.host.prompts[1], "1 new inbox item: T1 Fix it (t-0001) done.") {
+	if len(r.host.prompts) != 2 || !strings.Contains(r.host.prompts[1], "1 new inbox item: T1 Fix it (t-0001) resolved.") {
 		t.Fatalf("second nudge %q", r.host.prompts)
 	}
 	r.sweep(2 * time.Minute)
@@ -355,7 +355,7 @@ func TestPausedAndArchived(t *testing.T) {
 func TestNudgeRefresh(t *testing.T) {
 	r := newRig(t)
 	a, _ := r.p.AddItem("report", "t-0001", "x", false)
-	b, _ := r.p.AddItem("thread-done", "t-0001", "y", false)
+	b, _ := r.p.AddItem("thread-resolved", "t-0001", "y", false)
 	r.host.set("s-1", "idle", "")
 	r.sweep(time.Second)
 	if len(r.host.prompts) != 1 || !strings.Contains(r.host.prompts[0], "2 new inbox items") || r.host.refresh == nil {
@@ -365,7 +365,7 @@ func TestNudgeRefresh(t *testing.T) {
 		t.Fatalf("unchanged inbox: %q %v", text, ok)
 	}
 	r.p.DoneItem(a.ID)
-	if text, ok := r.host.refresh(); !ok || !strings.Contains(text, "1 new inbox item: T1 Fix it (t-0001) done.") {
+	if text, ok := r.host.refresh(); !ok || !strings.Contains(text, "1 new inbox item: T1 Fix it (t-0001) resolved.") {
 		t.Fatalf("one handled: %q %v", text, ok)
 	}
 	r.p.DoneItem(b.ID)

@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -295,4 +296,70 @@ type events struct{ p *Project }
 
 func (e events) Journal(c caller.Caller, action, ref, detail string) error {
 	return e.p.Journal(c, action, ref, detail)
+}
+
+// Row is one line of an inbox listing: the latest of the items of one
+// kind for one subject, with how many there are, and its summary taken
+// apart into the parts a row shows (Parts).
+type Row struct {
+	Item
+	// Count is how many unhandled items of this kind the subject has.
+	Count int
+	// Task is the task's ref ("T12"), What what happened, Title the
+	// task's title: the row shows them in this order, so the title is
+	// what a narrow row cuts.
+	Task, What, Title string
+}
+
+// labelled matches a summary that starts with a thread's label
+// (thread.Label): "T12 Title (t-0001) what happened".
+var labelled = regexp.MustCompile(`^(T[0-9]{1,9}) (.+?) \(t-[0-9]{4,}\)(.*)$`)
+
+// Parts splits a summary into the task ref, what happened and the task
+// title. A summary without a label is all "what".
+func Parts(summary string) (task, what, title string) {
+	m := labelled.FindStringSubmatch(summary)
+	if m == nil {
+		return "", summary, ""
+	}
+	return m[1], strings.TrimSpace(m[3]), m[2]
+}
+
+// Rows collapses items (oldest first) into rows: those of one kind for
+// one subject become the row of the latest, counted, at its place.
+func Rows(items []Item) []Row {
+	type key struct{ kind, subject string }
+	last := map[key]int{}
+	count := map[key]int{}
+	for i, it := range items {
+		k := key{it.Kind, it.Subject}
+		last[k], count[k] = i, count[k]+1
+	}
+	var rows []Row
+	for i, it := range items {
+		k := key{it.Kind, it.Subject}
+		if last[k] != i {
+			continue
+		}
+		r := Row{Item: it, Count: count[k]}
+		r.Task, r.What, r.Title = Parts(it.Summary)
+		rows = append(rows, r)
+	}
+	return rows
+}
+
+// DoneItems moves every unhandled item of kind for subject to inbox/done/.
+func (p *Project) DoneItems(kind, subject string) error {
+	items, err := p.Inbox()
+	if err != nil {
+		return err
+	}
+	for _, it := range items {
+		if it.Kind == kind && it.Subject == subject {
+			if err := p.DoneItem(it.ID); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
