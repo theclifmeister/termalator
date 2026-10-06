@@ -28,6 +28,8 @@ type fakeHost struct {
 	resolved []string
 	resolve  func(slug, id string) error
 	remote   []string              // "<session> on|off"
+	unstuck  []string              // sessions Unstick was called for
+	unstick  string                // what Unstick answers
 	refresh  func() (string, bool) // the last nudge's
 }
 
@@ -54,6 +56,11 @@ func (h *fakeHost) Resolve(slug, id string) (string, error) {
 func (h *fakeHost) Remote(id string, on bool) (proto.SessionRemoteResult, error) {
 	h.remote = append(h.remote, id+" "+map[bool]string{true: "on", false: "off"}[on])
 	return proto.SessionRemoteResult{RemoteControl: on, How: proto.RemotePrompted}, nil
+}
+
+func (h *fakeHost) Unstick(id string) string {
+	h.unstuck = append(h.unstuck, id)
+	return h.unstick
 }
 
 func (h *fakeHost) set(id, state, reason string) {
@@ -306,6 +313,53 @@ func TestNudgeStallLogged(t *testing.T) {
 	r.sweep(time.Second)
 	if len(r.host.prompts) != 1 {
 		t.Fatalf("not nudged once idle: %v", r.host.prompts)
+	}
+}
+
+// TestNudgeUnstick (T82): a nudge held by a coordinator idle with
+// prompts queued (its mod never took one) makes the ticker ask the server
+// to paste what the mod holds, and alert, once per stall; a busy
+// coordinator's queue is no stall.
+func TestNudgeUnstick(t *testing.T) {
+	r := newRig(t)
+	r.host.sessions[0].Queued = 1
+	r.p.AddItem("report", "t-0001", "x", false)
+	r.sweep(0)
+	r.sweep(5 * time.Minute)
+	if len(r.host.unstuck) != 0 || len(r.host.alerts) != 0 {
+		t.Fatalf("acted on a working coordinator: %v %v", r.host.unstuck, r.host.alerts)
+	}
+	r.host.set("s-1", "idle", "")
+	r.host.unstick = "prompt p-1, held 2m (the mod took it, the agent hasn't run it), is pasted instead"
+	r.sweep(time.Minute)
+	r.sweep(59 * time.Second)
+	if len(r.host.unstuck) != 0 {
+		t.Fatalf("acted before nudgeUnstick: %v", r.host.unstuck)
+	}
+	r.sweep(time.Second)
+	r.sweep(time.Minute)
+	want := "demo: nudge about 1 item(s) held 2m0s: coordinator s-1 is idle with 1 queued prompt(s) (nothing on screen holds it); " + r.host.unstick
+	if len(r.host.unstuck) != 1 || r.host.unstuck[0] != "s-1" || len(r.host.alerts) != 1 || r.host.alerts[0] != want {
+		t.Fatalf("unstuck %v alerts %q, want %q once", r.host.unstuck, r.host.alerts, want)
+	}
+	if len(r.host.prompts) != 0 {
+		t.Fatalf("nudged into a stuck queue: %v", r.host.prompts)
+	}
+
+	// The queue clears: the nudge goes. A later stall is a new one, and
+	// what holds it is named.
+	r.host.sessions[0].Queued = 0
+	r.sweep(time.Second)
+	if len(r.host.prompts) != 1 {
+		t.Fatalf("not nudged once the queue cleared: %v", r.host.prompts)
+	}
+	r.host.sessions[0].Queued, r.host.sessions[0].QueueHeld = 1, "prompt box not empty"
+	r.host.unstick = ""
+	r.p.AddItem("report", "t-0001", "y", false)
+	r.sweep(time.Hour)
+	r.sweep(2 * time.Minute)
+	if len(r.host.alerts) != 2 || !strings.Contains(r.host.alerts[1], "(prompt box not empty); see tm agent explain s-1") {
+		t.Fatalf("second stall: %q", r.host.alerts)
 	}
 }
 

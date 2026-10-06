@@ -166,6 +166,78 @@ func TestModPromptFallback(t *testing.T) {
 	eventually(t, "the paste after a refusal", func() bool { return strings.Contains(screen(t, s), "refused-one") })
 }
 
+// TestModPromptNotPolled (T82): a mod whose heartbeat goes on but which
+// stopped polling (its loop died after a /clear) gets no say: the head
+// waits ModPollTimeout without a poll, then is pasted. A poll that waited
+// longer than that still gets what is queued meanwhile.
+func TestModPromptNotPolled(t *testing.T) {
+	old := ModPollTimeout
+	ModPollTimeout = 300 * time.Millisecond
+	t.Cleanup(func() { ModPollTimeout = old })
+	s := startMod(t, "", true, make(chan PromptResolution, 1))
+
+	// A poll that waited past the bound: the prompt is the mod's.
+	ctx, cancel := context.WithCancel(context.Background())
+	got := make(chan ModPrompt, 1)
+	s.ModState(agent.StateWorking, "", "turn.start")
+	go func() {
+		if p, ok, _ := s.NextModPrompt(ctx); ok {
+			got <- p
+		}
+	}()
+	time.Sleep(500 * time.Millisecond)
+	s.Prompt("polled-for")
+	if p := <-got; p.Text != "polled-for" {
+		t.Fatalf("offer %+v", p)
+	}
+	ack(t, s, nextMod(t, s).ID, ModSubmitted)
+	cancel()
+
+	// The mod stops polling; the agent idles: the next prompt is pasted.
+	s.ModState(agent.StateIdle, "", "turn.complete")
+	s.Prompt("never-polled")
+	eventually(t, "the paste with no poll", func() bool { return strings.Contains(screen(t, s), "never-polled") })
+	if st, _ := s.AgentState(); st.Queued != 0 {
+		t.Fatalf("queued after the paste: %+v", st)
+	}
+}
+
+// TestModPromptTakenNotRun (T82): a prompt the mod took while the agent
+// idles and never ran is held (HeldMod): Unstick pastes it at once, and
+// PromptHold bounds it otherwise.
+func TestModPromptTakenNotRun(t *testing.T) {
+	s := startMod(t, "", true, make(chan PromptResolution, 1))
+	if s.Unstick() != "" {
+		t.Fatal("unstuck an empty queue")
+	}
+	s.Prompt("taken-lost")
+	ack(t, s, nextMod(t, s).ID, ModTaken)
+	eventually(t, "held by the mod", func() bool {
+		st, _ := s.AgentState()
+		return st.Held == HeldMod && !st.HeldSince.IsZero()
+	})
+	if did := s.Unstick(); !strings.Contains(did, "pasted instead") {
+		t.Fatalf("Unstick: %q", did)
+	}
+	eventually(t, "the paste after Unstick", func() bool { return strings.Contains(screen(t, s), "taken-lost") })
+
+	// Working, a taken prompt is no stall; idle past PromptHold it is
+	// pasted without Unstick.
+	s.ModState(agent.StateWorking, "", "turn.start")
+	s.Prompt("taken-again")
+	ack(t, s, nextMod(t, s).ID, ModTaken)
+	time.Sleep(300 * time.Millisecond)
+	if st, _ := s.AgentState(); st.Held != "" || st.Queued != 1 {
+		t.Fatalf("working: %+v", st)
+	}
+	rt := s.agentRT()
+	rt.mu.Lock()
+	rt.cfg.PromptHold = 300 * time.Millisecond
+	rt.mu.Unlock()
+	s.ModState(agent.StateIdle, "", "turn.complete")
+	eventually(t, "the paste after PromptHold", func() bool { return strings.Contains(screen(t, s), "taken-again") })
+}
+
 // TestModPromptNotLive: a session with the mod that never heard from it
 // (old Claude, mod failed to load) pastes as before, and the mod's poll
 // gets nothing.

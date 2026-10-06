@@ -15,15 +15,19 @@ package session
 //   - "submitted": Claude has it; the next prompt is offered.
 //   - "refused": Claude didn't take it; it goes to the paste injector.
 //
-// An offer not taken within ModAckTimeout, or the mod's heartbeat
-// stopping, hands the head to the paste injector too: a prompt is never
-// lost to a mod that restarted. A reloaded mod is offered the same head
+// An offer not taken within ModAckTimeout, the mod's heartbeat stopping,
+// or the mod not polling for ModPollTimeout while the head waits for it
+// (its loop died while the heartbeat went on: T82), hands the head to the
+// paste injector too: a prompt is never lost to a mod that restarted. A
+// head the mod took but Claude never ran is held (HeldMod) while the
+// agent is idle, and pasted after PromptHold, or at once by Unstick. A reloaded mod is offered the same head
 // again and acks it without handing it on when its stored id says it
 // had (at most once while the mod lives, at least once when it dies).
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -31,6 +35,12 @@ import (
 // ModAckTimeout bounds how long an offer to the mod may go without a
 // "taken" ack before the prompt is pasted instead. A variable for tests.
 var ModAckTimeout = 30 * time.Second
+
+// ModPollTimeout bounds how long the queue's head may wait for the mod
+// without a poll in flight or ending before it is pasted instead: the mod
+// polls again within a second of the last one ending. A variable for
+// tests.
+var ModPollTimeout = 30 * time.Second
 
 // modPollEvery is how often a waiting poll looks at the queue again.
 const modPollEvery = 250 * time.Millisecond
@@ -102,7 +112,46 @@ func (s *Session) modDeliversLocked(rt *agentRT, now time.Time) bool {
 		s.cfg.Logf("session %s: the mod didn't take prompt %s within %s: pasting it", s.cfg.ID, p.id, ModAckTimeout)
 		return false
 	}
+	if !p.taken && rt.modPolls == 0 && now.Sub(later(rt.modPolled, p.at)) >= ModPollTimeout {
+		p.paste = true
+		since := "it started"
+		if !rt.modPolled.IsZero() {
+			since = rt.modPolled.Format(time.DateTime)
+		}
+		s.cfg.Logf("session %s: the mod hasn't polled for prompts since %s: pasting prompt %s", s.cfg.ID, since, p.id)
+		return false
+	}
 	return true
+}
+
+func later(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
+}
+
+// Unstick hands the queue's head to the paste injector when the mod
+// holds it while the agent is idle (taken but never run, HeldMod), and
+// says what it did; "" when the mod holds nothing. The ticker calls it
+// for a coordinator whose nudges wait (T82).
+func (s *Session) Unstick() string {
+	rt := s.agentRT()
+	if rt == nil || rt.observed {
+		return ""
+	}
+	rt.mu.Lock()
+	if len(rt.prompts) == 0 || rt.heldWhy != HeldMod {
+		rt.mu.Unlock()
+		return ""
+	}
+	p := &rt.prompts[0]
+	p.paste, p.taken = true, false
+	id, held := p.id, time.Since(rt.heldSince).Round(time.Second)
+	rt.heldSince, rt.heldWhy = time.Time{}, ""
+	rt.mu.Unlock()
+	s.cfg.Logf("session %s: prompt %s held %s (%s): pasting it", s.cfg.ID, id, held, HeldMod)
+	return fmt.Sprintf("prompt %s, held %s (%s), is pasted instead", id, held, HeldMod)
 }
 
 // NextModPrompt waits until the mod delivers the queue's head and
@@ -113,6 +162,15 @@ func (s *Session) NextModPrompt(ctx context.Context) (ModPrompt, bool, error) {
 	if rt == nil || rt.observed {
 		return ModPrompt{}, false, ErrNoAgent
 	}
+	rt.mu.Lock()
+	rt.modPolls++
+	rt.mu.Unlock()
+	defer func() {
+		rt.mu.Lock()
+		rt.modPolls--
+		rt.modPolled = time.Now()
+		rt.mu.Unlock()
+	}()
 	for {
 		rt.mu.Lock()
 		if s.modDeliversLocked(rt, time.Now()) {
