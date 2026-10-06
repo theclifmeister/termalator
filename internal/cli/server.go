@@ -34,7 +34,11 @@ func serverCmd(e *Env, args []string) int {
 	case "start":
 		return serverStart(e, args[1:])
 	case "stop":
-		return serverStop(e, args[1:])
+		code := serverStop(e, args[1:])
+		if code == ExitOK {
+			unloadJob()
+		}
+		return code
 	case "restart":
 		var stop, start []string
 		for _, a := range args[1:] {
@@ -278,4 +282,16 @@ func serverStatus(e *Env, args []string) int {
 		fmt.Fprintf(e.Stderr, "note: the server runs another build than this tm (%s); 'tm server restart' switches it to this one\n", version.BuildID())
 	}
 	return ExitOK
+}
+
+// unloadJob boots out a dev or test home's on-demand launchd job after
+// its server stopped, so it isn't left loaded (T71). Best effort.
+func unloadJob() {
+	p, err := server.ResolvePaths()
+	if err != nil {
+		return
+	}
+	if c, err := server.LaunchdConfig(p); err == nil {
+		c.Unload()
+	}
 }
