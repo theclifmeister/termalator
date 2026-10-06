@@ -8,12 +8,13 @@
 #
 #   make            build bin/tm
 #   make run        build, start the server and open the dashboard
-#   make test       go test -race ./... (unit + integration + fuzz seed corpora)
+#   make test       go test ./... (unit + integration + fuzz seed corpora; every PR)
+#   make test-race  the same with -race (main and weekly in CI)
 #   make e2e        every end-to-end scenario (internal/e2e) against bin/tm
-#   make e2e-smoke  the core scenarios, as on every PR
-#   make e2e-smoke-race  the same with tm built with -race (nightly)
+#   make e2e-smoke  the core scenarios (every PR)
+#   make e2e-smoke-race  the same with tm built with -race (main and weekly)
 #   make test-claude  the scenarios against the real claude (needs a login; costs cents)
-#   make fuzz       run every fuzz target for FUZZTIME each (nightly)
+#   make fuzz       run every fuzz target for FUZZTIME each (weekly)
 #   make vet        go vet ./... and staticcheck ./...
 #   make toolchain  check Go, Zig, pkg-config and git
 #   make env        print the PKG_CONFIG_PATH export, for gopls or a plain `go build`
@@ -85,7 +86,7 @@ export CGO_ENABLED := 1
 CGO_CFLAGS ?= -O2 -g
 export CGO_CFLAGS += -DTM_LIBGHOSTTY=$(GHOSTTY_OUT)
 
-.PHONY: all build run test test-claude e2e e2e-smoke e2e-smoke-race fuzz vet ghostty toolchain env clean distclean zig-path release-ghostty release-snapshot release
+.PHONY: all build run test test-race test-claude e2e e2e-smoke e2e-smoke-race fuzz vet ghostty toolchain env clean distclean zig-path release-ghostty release-snapshot release
 
 all: build
 
@@ -99,6 +100,9 @@ run: build
 	@TM=bin/tm ./scripts/run.sh $(RUN_ARGS)
 
 test: $(READY)
+	$(GO) test ./...
+
+test-race: $(READY)
 	$(GO) test -race ./...
 
 FUZZTIME ?= 5m
@@ -116,8 +120,8 @@ fuzz: $(READY)
 # test with -race; the harness then fails a scenario whose tm printed
 # "WARNING: DATA RACE". A race-built tm takes about a second to start, and
 # every agent hook starts one, so PRs run the smoke set without -race
-# (`go test -race ./...` still covers the code) and nightly runs
-# e2e-smoke-race. E2E_SHARD=I/N runs only shard I of N of the smoke set
+# (`go test -race ./...` still covers the code); main runs e2e-smoke-race
+# on Linux and the weekly workflow on both. E2E_SHARD=I/N runs only shard I of N of the smoke set
 # (scripts/e2e-shard.sh), as CI does.
 E2E_RACE ?=
 E2E_SHARD ?=
@@ -135,7 +139,7 @@ e2e-smoke-race:
 	$(MAKE) e2e-smoke E2E_RACE=1
 
 # The real-Claude suite (docs/SPEC.md §16.4): build tag realclaude, the
-# claude on PATH, Haiku. On demand, and nightly where a login exists.
+# claude on PATH, Haiku. On demand, and on a machine with a login.
 test-claude: $(READY)
 	E2E=1 $(GO) test -tags realclaude -count=1 -timeout 30m -run '^TestReal' -v ./internal/e2e $(E2E_FLAGS)
 

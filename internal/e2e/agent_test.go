@@ -2,7 +2,7 @@ package e2e
 
 // M3 scenarios: agent sessions under the real claude.toml, with the
 // scripted fake agent standing in for Claude Code 2.1.289 (docs/SPEC.md
-// §15 M3, §16.3). TestSmoke* run on every PR, the rest nightly.
+// §15 M3, §16.3). TestSmoke* run on every PR, the rest weekly.
 
 import (
 	"encoding/json"

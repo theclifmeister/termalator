@@ -1,0 +1,109 @@
+name: weekly
+
+# Slow checks that don't run on pull requests (docs/SPEC.md §16): fuzzing,
+# the full end-to-end suite, and the smoke set with a race-built tm. Weekly
+# (and by hand), and only when main has changed since the last successful
+# scheduled run. Real-Claude tests need a logged-in claude, which GitHub-hosted
+# runners don't have, so they run by hand (make test-claude). No self-hosted
+# runner: the repository is public, and a fork PR could edit a workflow
+# to run its code there.
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      fuzztime:
+        description: Time per fuzz target (18 targets; 1m is about 20 minutes in all)
+        default: 1m
+
+permissions:
+  contents: read
+
+concurrency:
+  group: weekly
+  cancel-in-progress: false
+
+jobs:
+  # A scheduled run does nothing when the last successful scheduled run
+  # already covered this commit. A manual run always runs.
+  changed:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - name: Has main changed since the last successful run?
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != schedule ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          last=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/weekly.yml/runs?event=schedule&status=success&branch=main&per_page=1" --jq '.workflow_runs[0].head_sha // ""')
+          echo "last successful run: ${last:-none}; now: $GITHUB_SHA"
+          echo "run=$([ "$last" = "$GITHUB_SHA" ] && echo false || echo true)" >> "$GITHUB_OUTPUT"
+
+  # Capped: 18 targets at 1m each, about 20 minutes with setup.
+  fuzz:
+    needs: changed
+    if: needs.changed.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup
+
+      - name: fuzz
+        run: make fuzz FUZZTIME=${{ inputs.fuzztime || '1m' }}
+
+      # A crasher is written to testdata/fuzz/<Target>/; commit it so it
+      # becomes a regression test on every PR.
+      - name: Upload crashers
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-crashers
+          path: internal/**/testdata/fuzz/
+
+  e2e:
+    needs: changed
+    if: needs.changed.outputs.run == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup
+
+      # -race over everything, as main does on Linux.
+      - name: test (race)
+        run: make test-race
+
+      - name: e2e
+        run: make e2e
+        env:
+          E2E_ARTIFACTS: ${{ runner.temp }}/e2e-artifacts
+
+      # tm built with -race; the harness fails on "WARNING: DATA RACE".
+      - name: e2e smoke (race)
+        if: ${{ !cancelled() }}
+        run: make e2e-smoke-race
+        env:
+          E2E_ARTIFACTS: ${{ runner.temp }}/e2e-artifacts-race
+
+      - name: Upload e2e artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-artifacts-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/e2e-artifacts
+            ${{ runner.temp }}/e2e-artifacts-race
+          if-no-files-found: ignore

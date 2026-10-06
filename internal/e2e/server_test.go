@@ -1,7 +1,7 @@
 package e2e
 
 // M1 scenarios: the server lifecycle with real processes. TestSmoke* run
-// on every PR; the rest nightly (docs/SPEC.md §16.1).
+// on every PR; the rest weekly (docs/SPEC.md §16.1).
 
 import (
 	"bufio"

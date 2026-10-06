@@ -49,7 +49,7 @@ var (
 var apps = []string{"printer", "fullscreen", "termquery"}
 
 // build compiles tm and the apps once per test process. E2E_RACE=1 builds
-// tm with the race detector (make e2e-smoke-race, nightly in CI).
+// tm with the race detector (make e2e-smoke-race, main and weekly in CI).
 func build(t testing.TB) string {
 	t.Helper()
 	buildOnce.Do(func() {
