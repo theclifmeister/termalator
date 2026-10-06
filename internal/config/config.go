@@ -251,7 +251,8 @@ type Config struct {
 	ModsBand bool
 	// ModsPane is [mods] pane: with the mod loaded, a coordinator session
 	// opens its /tm dashboard pane by itself when it starts, where it
-	// would dock as a sidebar. On unless set false; /tm opens it anyway.
+	// would dock as a sidebar. Off unless set true (T90: the TUI's info
+	// panel shows the same beside the coordinator); /tm opens it anyway.
 	ModsPane bool
 	// ContextHint is [ui] context_hint: the percent of its model's
 	// context window at which a coordinator is told to consider /clear
@@ -303,14 +304,14 @@ func Load() (*Config, error) {
 	}
 	md, err := toml.DecodeFile(path, &raw)
 	if errors.Is(err, fs.ErrNotExist) {
-		return &Config{Path: path, ModsBand: true, ModsPane: true, ContextHint: DefaultContextHint}, nil
+		return &Config{Path: path, ModsBand: true, ContextHint: DefaultContextHint}, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	c := &Config{Path: path, projects: raw.Projects, defaults: raw.Defaults, agent: raw.DefaultAgent,
 		Prefix: cmp.Or(raw.Keys.Prefix, raw.Keys.Detach), Icons: raw.UI.Icons, Mods: raw.Mods.Enabled,
-		ModsBand: raw.Mods.Band == nil || *raw.Mods.Band, ModsPane: raw.Mods.Pane == nil || *raw.Mods.Pane,
+		ModsBand: raw.Mods.Band == nil || *raw.Mods.Band, ModsPane: raw.Mods.Pane != nil && *raw.Mods.Pane,
 		ContextHint: DefaultContextHint}
 	if h := raw.UI.ContextHint; h != nil {
 		if *h < 0 || *h > 100 {

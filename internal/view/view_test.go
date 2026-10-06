@@ -245,7 +245,7 @@ func TestInfo(t *testing.T) {
 	if g := v.Lay(200, 40); g.InfoW != 0 || g.Area.W != 200-SideDefault {
 		t.Fatalf("not a thread: %+v", g)
 	}
-	v.Thread = true
+	v.Panel = true
 	for _, c := range []struct{ cols, side, info int }{
 		{200, SideDefault, InfoDefault},                                  // room for everything
 		{SideDefault + SideRoom + InfoDefault, SideDefault, InfoDefault}, // just room
@@ -297,7 +297,7 @@ func TestInfo(t *testing.T) {
 		t.Fatalf("dashboard: %+v", g)
 	}
 	v.Remove("a")
-	if v.Thread {
+	if v.Panel {
 		t.Fatal("Thread stays without a session")
 	}
 }

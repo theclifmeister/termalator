@@ -269,15 +269,15 @@ func TestViewsLayoutActions(t *testing.T) {
 // subscriber's ui.json.
 func TestViewsInfo(t *testing.T) {
 	h := newFakeHost("s-1", "s-2")
-	h.panes["s-2"] = paneInfo{follows: true, thread: true}
+	h.panes["s-2"] = paneInfo{follows: true, panel: true}
 	vs := newViews(h, "", nil)
 	a, _ := join(t, vs, proto.ViewSubscribeParams{Cols: 200, Rows: 30, Info: &view.Info{Width: 50}})
 	v := mustDo(t, vs, proto.MethodViewAttach, proto.ViewParams{Client: a.id, Session: "s-1"})
-	if v.Thread || v.Info.Width != 50 || h.sizes["s-1"] != [2]uint16{200 - view.SideDefault, 28} {
+	if v.Panel || v.Info.Width != 50 || h.sizes["s-1"] != [2]uint16{200 - view.SideDefault, 28} {
 		t.Fatalf("a plain session: %+v %v", v, h.sizes["s-1"])
 	}
 	v = mustDo(t, vs, proto.MethodViewAttach, proto.ViewParams{Client: a.id, Session: "s-2"})
-	if !v.Thread || h.sizes["s-2"] != [2]uint16{200 - view.SideDefault - 50, 28} {
+	if !v.Panel || h.sizes["s-2"] != [2]uint16{200 - view.SideDefault - 50, 28} {
 		t.Fatalf("a thread: %+v %v", v, h.sizes["s-2"])
 	}
 	v = mustDo(t, vs, proto.MethodViewInfo, proto.ViewParams{Client: a.id, Info: &view.Info{Width: 50, Off: true}})
@@ -288,7 +288,7 @@ func TestViewsInfo(t *testing.T) {
 		t.Fatal("view.info without a panel answered")
 	}
 	vs.sessionGone("s-2")
-	if v, _ = vs.get(view.Main); v.Thread {
+	if v, _ = vs.get(view.Main); v.Panel {
 		t.Fatalf("after the thread ended: %+v", v)
 	}
 }
@@ -513,4 +513,14 @@ func FuzzViewActions(f *testing.F) {
 			v.Lay(int(v.Cols), int(v.Rows))
 		}
 	})
+}
+
+// TestHasPanel: threads' and coordinators' panes have the info panel
+// (T90); a plain session's has none.
+func TestHasPanel(t *testing.T) {
+	for role, want := range map[string]bool{proto.RoleThread: true, proto.RoleCoordinator: true, proto.RoleShell: false, "": false} {
+		if hasPanel(role) != want {
+			t.Errorf("hasPanel(%q) = %v", role, !want)
+		}
+	}
 }

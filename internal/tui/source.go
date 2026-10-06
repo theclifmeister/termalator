@@ -33,8 +33,8 @@ type Data struct {
 	// for each one it doesn't set; nil when they can't be read.
 	Defaults *config.Safety
 	// Mods, ModsBand and ModsPane are the settings popup's Mods, Mods
-	// band and Mods pane (docs/SPEC.md §8.6); the band and the pane are
-	// on unless set off.
+	// band and Mods pane (docs/SPEC.md §8.6); the band is on unless set
+	// off, the pane off unless set on.
 	Mods, ModsBand, ModsPane bool
 	// ContextHint is [ui] context_hint: the percent of its context window
 	// from which a coordinator is told to consider /clear; 0 for never.
@@ -197,7 +197,7 @@ func (s *ServerSource) Close() {
 }
 
 func (s *ServerSource) Load() Data {
-	d := Data{ModsBand: true, ModsPane: true, ContextHint: config.DefaultContextHint}
+	d := Data{ModsBand: true, ContextHint: config.DefaultContextHint}
 	var res proto.SessionListResult
 	if err := s.call(proto.MethodSessionList, nil, &res); err != nil {
 		d.Err = err.Error()

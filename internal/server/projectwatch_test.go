@@ -64,7 +64,7 @@ func TestProjectWatchOf(t *testing.T) {
 		{ID: "s-7", Role: proto.RoleThread, Project: p.Slug, State: "idle", Queued: 2,
 			QueueHeld: "prompt box not empty", QueueHeldSince: time.Now()},
 	}
-	w := projectWatchOf(p, sessions, ts)
+	w := ProjectWatchOf(p, sessions, ts)
 
 	type need struct{ why, task string }
 	var got []need

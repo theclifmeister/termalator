@@ -43,9 +43,9 @@ type paneInfo struct {
 	// sized is set once a console has sized the session; until then the
 	// first view showing it gives it its rectangle (fill).
 	sized bool
-	// thread: the session is a thread's, so a view showing it has the
-	// info panel (view.View.Thread).
-	thread bool
+	// panel: the session is a thread's or a coordinator's, so a view
+	// showing it has the info panel (view.View.Panel).
+	panel bool
 }
 
 type views struct {
@@ -326,11 +326,11 @@ func (vs *views) renameProject(from, to string) {
 	}
 }
 
-// tag marks whether v shows a thread's session, which has the info
-// panel beside it. vs.mu held.
+// tag marks whether v shows a thread's or a coordinator's session,
+// which has the info panel beside it. vs.mu held.
 func (vs *views) tag(v *view.View) {
 	info, ok := vs.host.pane(v.Focus)
-	v.Thread = v.Focus != "" && ok && info.thread
+	v.Panel = v.Focus != "" && ok && info.panel
 }
 
 // resize sizes the session lv shows to its pane at its size. With claim
@@ -468,7 +468,7 @@ func (s *Server) pane(id string) (paneInfo, bool) {
 	if perr != nil {
 		return paneInfo{}, false
 	}
-	return paneInfo{follows: agent.FollowsTyping(sess.Agent()), sized: sess.Sized(), thread: sess.Config().Role == proto.RoleThread}, true
+	return paneInfo{follows: agent.FollowsTyping(sess.Agent()), sized: sess.Sized(), panel: hasPanel(sess.Config().Role)}, true
 }
 
 func (s *Server) resizePane(id string, cols, rows uint16) {
@@ -533,3 +533,7 @@ func (s *Server) serveViewStream(c net.Conn, br *bufio.Reader, req proto.Request
 		}
 	}
 }
+
+// hasPanel says a session of role has the info panel beside its pane: a
+// thread's (its task and PR) or a coordinator's (its project, T90).
+func hasPanel(role string) bool { return role == proto.RoleThread || role == proto.RoleCoordinator }

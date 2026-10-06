@@ -83,9 +83,9 @@ func TestInfoLines(t *testing.T) {
 	if strings.Index(text, ic().todoNow+" Toggle") > strings.Index(text, ic().todoOpen+" Clicks") {
 		t.Error("steps out of order")
 	}
-	got := map[infoHit][]string{}
+	got := map[hitKind][]string{}
 	for i, h := range hits {
-		got[h] = append(got[h], plain[i])
+		got[h.kind] = append(got[h.kind], plain[i])
 	}
 	if len(got[hitTask]) == 0 || !strings.Contains(got[hitTask][0], "T26") {
 		t.Errorf("task lines %q", got[hitTask])
@@ -131,7 +131,7 @@ func infoClient(t *testing.T, cols int) *client {
 	c.vc = &ViewConn{}
 	c.dashboard = true
 	c.side, c.info = &sidebar{}, &infoPanel{data: sampleInfo(time.Now())}
-	c.v = view.View{Name: view.Main, Mode: view.ModeLayout, Focus: "s-4", Thread: true, Cols: uint16(cols), Rows: 30}
+	c.v = view.View{Name: view.Main, Mode: view.ModeLayout, Focus: "s-4", Panel: true, Cols: uint16(cols), Rows: 30}
 	c.v.Normalize()
 	c.setWindow(cols, 30)
 	c.relayout()
@@ -171,14 +171,14 @@ func TestInfoPanelLayout(t *testing.T) {
 	if c.infoW != 0 {
 		t.Error("off, the panel shows")
 	}
-	c.v.Info.Off, c.v.Thread = false, false
+	c.v.Info.Off, c.v.Panel = false, false
 	c.relayout()
 	if c.infoW != 0 {
 		t.Error("beside a plain session, the panel shows")
 	}
 	// prefix+| beside a plain session says why nothing happens.
 	c.infoToggle()
-	if !strings.Contains(c.flash, "beside a thread's pane") {
+	if !strings.Contains(c.flash, "beside a thread's or a coordinator's pane") {
 		t.Errorf("toggle beside a plain session: %q", c.flash)
 	}
 }
@@ -194,9 +194,9 @@ func TestInfoPanelMouse(t *testing.T) {
 	c.infoLayout()
 	lines := c.info.hits
 	c.mu.Unlock()
-	row := func(h infoHit) int {
+	row := func(h hitKind) int {
 		for i, x := range lines {
-			if x == h {
+			if x.kind == h {
 				return i
 			}
 		}
