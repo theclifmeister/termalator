@@ -668,16 +668,6 @@ func safetySettings(slug string) []setting {
 			value: func(m *dash) string { return onOff(safety(m).PRFollowup) },
 			change: toggle("pr_followup", func(s config.Safety) bool { return s.PRFollowup },
 				func(s *config.Safety, on bool) { s.PRFollowup = on }, "pull request follow-up")},
-		{label: "Archive done tasks", help: "Move a task off the board once it has been done this many days (it stays in the task archive); enter steps through common values, + and - change the days.",
-			value: func(m *dash) string { return days(safety(m).ArchiveDoneDays) + " after it is done" },
-			change: func(m *dash) tea.Cmd {
-				n := nextStep(archiveSteps, safety(m).ArchiveDoneDays)
-				return set(m, "archive_done_days", n, fmt.Sprintf("tasks %s are archived %s after they are done", ofWho, days(n)), func(s *config.Safety) { s.ArchiveDoneDays = n })
-			},
-			adjust: func(m *dash, d int) tea.Cmd {
-				n := min(max(safety(m).ArchiveDoneDays+d, 1), config.MaxArchiveDoneDays)
-				return set(m, "archive_done_days", n, fmt.Sprintf("tasks %s are archived %s after they are done", ofWho, days(n)), func(s *config.Safety) { s.ArchiveDoneDays = n })
-			}},
 		{label: "Remote control", help: "Coordinators keep remote control on, so you can continue them from another device: a new one starts with it, and tm turns it back on when it drops. prefix+r changes the running one; your off holds until it is started anew.",
 			value: func(m *dash) string { return onOff(safety(m).CoordinatorRemoteControl) },
 			change: toggle("coordinator_remote_control", func(s config.Safety) bool { return s.CoordinatorRemoteControl },
@@ -715,13 +705,12 @@ func safetySettings(slug string) []setting {
 	}
 	rows = scope(rows,
 		[][]string{{"start_threads"}, {"yolo"}, {"coordinator_approves"}, {"parallel_threads"}, {"auto_close", "auto_close_days"},
-			{"complete_tasks"}, {"pr_followup"}, {"archive_done_days"}, {"coordinator_remote_control"}, {"fast_forward_checkout"}, {"models"}},
+			{"complete_tasks"}, {"pr_followup"}, {"coordinator_remote_control"}, {"fast_forward_checkout"}, {"models"}},
 		[]func(config.Safety) string{startWords, onOffOf(func(s config.Safety) bool { return s.Yolo }),
 			onOffOf(func(s config.Safety) bool { return s.CoordinatorApproves }),
 			func(s config.Safety) string { return fmt.Sprint(s.ParallelThreads) }, closeWords,
 			func(s config.Safety) string { return completeWords(s.CompleteTasks) },
 			onOffOf(func(s config.Safety) bool { return s.PRFollowup }),
-			func(s config.Safety) string { return days(s.ArchiveDoneDays) },
 			onOffOf(func(s config.Safety) bool { return s.CoordinatorRemoteControl }),
 			onOffOf(func(s config.Safety) bool { return s.FastForwardCheckout }),
 			func(s config.Safety) string { return modelWords(s.Models) }})
@@ -837,9 +826,6 @@ func (m *dash) lifecycle(slug, verb string) tea.Cmd {
 
 // capSteps are the caps enter steps through; + and - fine-tune.
 var capSteps = []int{1, 2, 3, 5, 10, 15, 20}
-
-// archiveSteps are the days of archive_done_days enter steps through.
-var archiveSteps = []int{7, 14, 30, 60, 90, 180, 365}
 
 // nextStep is the first step above cur, or the first one.
 func nextStep(steps []int, cur int) int {

@@ -370,7 +370,7 @@ func (t *Ticker) Sweep() {
 		if prune {
 			// Done tasks leave the board after a while (§7.6); journaled
 			// as the ticker's task.archive.
-			if ids, err := p.ArchiveOldDone(caller.Caller{Kind: caller.Ticker}, now, time.Duration(safety.ArchiveDoneDays)*t.o.Day); err != nil {
+			if ids, err := p.ArchiveOldDone(caller.Caller{Kind: caller.Ticker}, now, project.ArchiveDoneAfter); err != nil {
 				t.o.Log.Printf("ticker: %s: archive done tasks: %v", p.Slug, err)
 			} else if len(ids) > 0 {
 				t.o.Log.Printf("ticker: %s: archived %d done tasks", p.Slug, len(ids))

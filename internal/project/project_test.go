@@ -337,9 +337,8 @@ func TestAskAcceptSendBack(t *testing.T) {
 
 // TestUpkeep: context files over their budget are named in tm context's
 // Upkeep section (and only then); done tasks leave the board after
-// 30 days, journaled as the caller's.
+// ArchiveDoneAfter, journaled as the caller's.
 func TestUpkeep(t *testing.T) {
-	const archiveAfter = 30 * 24 * time.Hour
 	setup(t)
 	p, _ := New(Options{Name: "demo app"})
 	render := func() string {
@@ -375,10 +374,10 @@ func TestUpkeep(t *testing.T) {
 	s.SetStatus(human, 1, tasks.Done, "")
 	day := now()
 	ticker := caller.Caller{Kind: caller.Ticker}
-	if ids, err := p.ArchiveOldDone(ticker, day.Add(archiveAfter-24*time.Hour), archiveAfter); err != nil || len(ids) != 0 {
+	if ids, err := p.ArchiveOldDone(ticker, day.Add(ArchiveDoneAfter-24*time.Hour), ArchiveDoneAfter); err != nil || len(ids) != 0 {
 		t.Fatalf("archived too early: %v %v", ids, err)
 	}
-	if ids, err := p.ArchiveOldDone(ticker, day.Add(archiveAfter+24*time.Hour), archiveAfter); err != nil || len(ids) != 1 || ids[0] != 1 {
+	if ids, err := p.ArchiveOldDone(ticker, day.Add(ArchiveDoneAfter+24*time.Hour), ArchiveDoneAfter); err != nil || len(ids) != 1 || ids[0] != 1 {
 		t.Fatalf("archive: %v %v", ids, err)
 	}
 	if b, _ := s.Load(); b.Find(1) != nil || b.Find(2) == nil {

@@ -70,7 +70,6 @@ var GuardRules = []string{"force-push", "push-default", "worktree-only", "delete
 const (
 	MaxParallelThreads = 99
 	MaxAutoCloseDays   = 365
-	MaxArchiveDoneDays = 3650
 )
 
 // Safety is one project's resolved safety settings.
@@ -87,9 +86,6 @@ type Safety struct {
 	// thread with uncommitted or unpushed work is never closed.
 	AutoClose     string `json:"auto_close"`
 	AutoCloseDays int    `json:"auto_close_days"`
-	// ArchiveDoneDays is how long a task stays on the board once done
-	// before the ticker archives it (§7.6).
-	ArchiveDoneDays int `json:"archive_done_days"`
 	// PRFollowup prompts a thread when its PR's checks fail or a reviewer
 	// asks for changes (§7.5).
 	PRFollowup bool `json:"pr_followup"`
@@ -128,7 +124,7 @@ type Safety struct {
 // Defaults are the settings of a project that neither its own table nor
 // [defaults] (all projects) name.
 var Defaults = Safety{StartThreads: StartPropose, Yolo: false, CoordinatorApproves: true,
-	ParallelThreads: 10, AutoClose: CloseMerged, AutoCloseDays: 7, ArchiveDoneDays: 30, PRFollowup: true,
+	ParallelThreads: 10, AutoClose: CloseMerged, AutoCloseDays: 7, PRFollowup: true,
 	CompleteTasks: CompleteUser, FastForwardCheckout: true, Merge: MergeCoordinator, Guard: true}
 
 type rawSafety struct {
@@ -138,7 +134,6 @@ type rawSafety struct {
 	ParallelThreads     *int    `toml:"parallel_threads"`
 	AutoClose           *string `toml:"auto_close"`
 	AutoCloseDays       *int    `toml:"auto_close_days"`
-	ArchiveDoneDays     *int    `toml:"archive_done_days"`
 	// AutoResolve is auto_close's older form: true is "merged", false
 	// "off"; auto_close wins when both are set.
 	AutoResolve   *bool     `toml:"auto_resolve"`
@@ -318,7 +313,7 @@ func (c *Config) Own(slug string) []string {
 	set := map[string]bool{
 		"start_threads": r.StartThreads != nil, "yolo": r.Yolo != nil,
 		"coordinator_approves": r.CoordinatorApproves != nil, "parallel_threads": r.ParallelThreads != nil,
-		"auto_close": r.AutoClose != nil || r.AutoResolve != nil, "auto_close_days": r.AutoCloseDays != nil, "archive_done_days": r.ArchiveDoneDays != nil,
+		"auto_close": r.AutoClose != nil || r.AutoResolve != nil, "auto_close_days": r.AutoCloseDays != nil,
 		"pr_followup": r.PRFollowup != nil, "complete_tasks": r.CompleteTasks != nil,
 		"coordinator_remote_control": r.CoordinatorRC != nil, "fast_forward_checkout": r.FastForward != nil,
 		"models": r.Models != nil,
@@ -371,12 +366,6 @@ func (r rawSafety) apply(s *Safety, path, table string) error {
 			return fmt.Errorf("%s: %s.auto_close_days must be 1 to %d, not %d", path, table, MaxAutoCloseDays, n)
 		}
 		s.AutoCloseDays = *r.AutoCloseDays
-	}
-	if r.ArchiveDoneDays != nil {
-		if n := *r.ArchiveDoneDays; n < 1 || n > MaxArchiveDoneDays {
-			return fmt.Errorf("%s: %s.archive_done_days must be 1 to %d, not %d", path, table, MaxArchiveDoneDays, n)
-		}
-		s.ArchiveDoneDays = *r.ArchiveDoneDays
 	}
 	if r.PRFollowup != nil {
 		s.PRFollowup = *r.PRFollowup
