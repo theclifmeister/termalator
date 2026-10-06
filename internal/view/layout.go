@@ -36,7 +36,7 @@ func (v *View) Chrome(cols int) (sideW, status int) {
 func (v *View) Lay(cols, rows int) Geometry {
 	sideW, status := v.Chrome(cols)
 	infoW := 0
-	if v.Thread && v.Mode == ModeLayout {
+	if v.Panel && v.Mode == ModeLayout {
 		infoW = v.Info.Cols(cols, sideW)
 	}
 	return Geometry{SideW: sideW, InfoW: infoW, Status: status, Pane: v.Shown(),

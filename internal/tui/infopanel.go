@@ -44,11 +44,19 @@ type infoData struct {
 	// attached: the names of the files its reports attached for the
 	// user. Names only: the UI shows no file paths (§4).
 	attached []string
+	// watch is a coordinator's project as the /tm pane shows it
+	// (project.watch); set only beside a coordinator, which has none of
+	// the above but slug and session.
+	watch *proto.ProjectWatch
 }
 
-// loadInfo reads the panel's data for thread session s; nil when s is no
-// thread's.
-func loadInfo(paths server.Paths, s proto.SessionInfo) *infoData {
+// loadInfo reads the panel's data for session s, one of sessions: a
+// thread's, or a coordinator's (its project, coordpanel.go); nil for any
+// other.
+func loadInfo(paths server.Paths, s proto.SessionInfo, sessions []proto.SessionInfo) *infoData {
+	if s.Role == proto.RoleCoordinator && s.Project != "" {
+		return loadCoordInfo(paths, s, sessions)
+	}
 	if s.Role != proto.RoleThread || s.Project == "" || !thread.ValidID(s.Thread) {
 		return nil
 	}
@@ -70,13 +78,23 @@ func loadInfo(paths server.Paths, s proto.SessionInfo) *infoData {
 	return d
 }
 
-// infoHit is what a click on a panel line does.
-type infoHit int
+// infoHit is what a click on a panel line does: its kind, and the task,
+// session or address it opens.
+type infoHit struct {
+	kind    hitKind
+	task    int    // hitTask: the task's number
+	session string // hitSession: the session to show
+	url     string // hitPR: the PR's address
+}
+
+// hitKind is the kind of an infoHit.
+type hitKind int
 
 const (
-	hitNone infoHit = iota
-	hitTask         // the task view over the session
-	hitPR           // the PR in the browser
+	hitNone    hitKind = iota
+	hitTask            // the task view over the session
+	hitPR              // the PR in the browser
+	hitSession         // that session in the pane (a coordinator's thread row)
 )
 
 // prURL is the thread's PR's address: the ticker's, else its report's.
@@ -113,7 +131,7 @@ func infoLines(d *infoData, w int, now time.Time) ([]string, []infoHit) {
 	// hit makes the lines added since line from clickable.
 	hit := func(from int, h infoHit) {
 		for len(hits) < len(pl.lines) {
-			hits = append(hits, hitNone)
+			hits = append(hits, infoHit{})
 		}
 		for i := from; i < len(hits); i++ {
 			hits[i] = h
@@ -123,6 +141,9 @@ func infoLines(d *infoData, w int, now time.Time) ([]string, []infoHit) {
 		pl.add(styleFaint.Render("no thread here"))
 		return pl.lines, nil
 	}
+	if d.watch != nil {
+		return coordLines(d.watch, w)
+	}
 	s := d.session
 	id := s.Thread
 	// The task, with its steps; the one under way marked.
@@ -131,7 +152,7 @@ func infoLines(d *infoData, w int, now time.Time) ([]string, []infoHit) {
 		pl.wrap(styleHead.Render(oneLine(t.Ref() + " " + t.Title)))
 		g, st := stateLook(string(t.Status))
 		pl.add(st.Render(strings.TrimSpace(g+" "+string(t.Status))) + styleFaint.Render(" · click to open"))
-		hit(0, hitTask)
+		hit(0, infoHit{kind: hitTask, task: t.ID})
 		if len(t.Steps) > 0 {
 			pl.gap()
 			pl.add(styleFaint.Render("steps ") + progressLine(thread.Progress{Percent: pctOf(t.StepsDone(), len(t.Steps)), Done: t.StepsDone(), Total: len(t.Steps)}))
@@ -198,7 +219,7 @@ func infoLines(d *infoData, w int, now time.Time) ([]string, []infoHit) {
 		from := len(pl.lines)
 		hang(pl, styleFaint.Render(fmt.Sprintf("%-9s", "PR"))+" ", look.Render(l))
 		if d.prURL() != "" {
-			hit(from, hitPR)
+			hit(from, infoHit{kind: hitPR, url: d.prURL()})
 		}
 	}
 	// The last report: its first lines. Its Next items are the
@@ -231,7 +252,7 @@ func infoLines(d *infoData, w int, now time.Time) ([]string, []infoHit) {
 		pl.field("active", age(now.Sub(at))+" ago")
 	}
 	for len(hits) < len(pl.lines) {
-		hits = append(hits, hitNone)
+		hits = append(hits, infoHit{})
 	}
 	return pl.lines, hits
 }
@@ -386,8 +407,8 @@ func (c *client) infoToggle() {
 	if !c.lock() {
 		return
 	}
-	if !c.v.Thread {
-		c.flash = "the info panel shows beside a thread's pane"
+	if !c.v.Panel {
+		c.flash = "the info panel shows beside a thread's or a coordinator's pane"
 		c.status()
 		c.mu.Unlock()
 		return
@@ -431,20 +452,27 @@ func (c *client) infoKeyboard(k uv.Key) {
 	c.mu.Unlock()
 	c.poke()
 	if task {
-		c.infoTask()
+		c.infoTask(0)
 	}
 }
 
-// infoTask opens the task view on the thread's task over the session.
-func (c *client) infoTask() {
+// infoTask opens the task view on task id over the session; 0 is the
+// thread's own task (enter).
+func (c *client) infoTask(id int) {
 	if !c.lock() {
 		return
 	}
 	d := c.info.data
-	if d == nil || d.task == nil || !c.dashboard {
-		if d != nil && d.task != nil {
-			c.flash = d.task.Ref() + ": tm shows tasks on the dashboard"
-		} else {
+	if id == 0 && d != nil && d.task != nil {
+		id = d.task.ID
+	}
+	if d == nil || id == 0 || !c.dashboard {
+		switch {
+		case id != 0:
+			c.flash = "T" + strconv.Itoa(id) + ": tm shows tasks on the dashboard"
+		case d != nil && d.watch != nil:
+			c.flash = "click a task to open it"
+		default:
 			c.flash = "no task"
 		}
 		c.status()
@@ -452,7 +480,7 @@ func (c *client) infoTask() {
 		c.poke()
 		return
 	}
-	slug, id := d.slug, d.task.ID
+	slug := d.slug
 	c.kb = areaMain
 	c.mu.Unlock()
 	c.popupTask(slug, id)
@@ -514,25 +542,27 @@ func (c *client) infoMouse(m emu.Mouse) {
 		c.mu.Unlock()
 		return
 	}
-	h := hitNone
+	var h infoHit
 	if i := ip.top + m.Y; i >= 0 && i < len(ip.hits) {
 		h = ip.hits[i]
 	}
 	// A click in the panel gives it the keyboard.
 	c.kb = areaInfo
-	url := ""
+	slug := ""
 	if ip.data != nil {
-		url = ip.data.prURL()
+		slug = ip.data.slug
 	}
 	c.status()
 	c.mu.Unlock()
 	c.poke()
-	switch h {
+	switch h.kind {
 	case hitTask:
-		c.infoTask()
+		c.infoTask(h.task)
+	case hitSession:
+		c.sideGo(Target{Project: slug, Session: h.session})
 	case hitPR:
-		if err := openURL(url); err != nil && c.lock() {
-			c.flash = "can't open the browser: " + err.Error() + "; the PR is " + url
+		if err := openURL(h.url); err != nil && c.lock() {
+			c.flash = "can't open the browser: " + err.Error() + "; the PR is " + h.url
 			c.status()
 			c.mu.Unlock()
 			c.poke()
@@ -553,7 +583,7 @@ func (c *client) pollInfo(sessions []proto.SessionInfo) {
 	var d *infoData
 	for _, s := range sessions {
 		if s.ID == id {
-			d = loadInfo(c.paths, s)
+			d = loadInfo(c.paths, s, sessions)
 		}
 	}
 	if c.lock() {

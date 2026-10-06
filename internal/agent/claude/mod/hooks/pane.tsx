@@ -5,11 +5,13 @@
 // tasks), then the inbox, the threads, compact, and the tasks on deck.
 //
 // It follows `tm watch --project <slug> --json` for the session's life
-// and keeps the latest line in $.state. Unless [mods] pane is off
-// (TERMINATR_PANE=off) it opens by itself once the session starts, where
-// it docks as a sidebar: the fullscreen layout, from 144 columns (the
-// engine seats a pane opened unasked from there). /tm opens or closes it
-// at any width, with no model turn.
+// and keeps the latest line in $.state. In tm the coordinator's info
+// panel shows the same (T90), so the pane is for Claude desktop and
+// Remote Control: only with [mods] pane on (the server sets
+// TERMINATR_PANE=off otherwise) it opens by itself once the session
+// starts, where it docks as a sidebar: the fullscreen layout, from 144
+// columns (the engine seats a pane opened unasked from there). /tm opens
+// or closes it at any width, with no model turn.
 //
 // Its buttons never act themselves: each sends the coordinator a fixed
 // line in the user's words ("accept T63", hooks/dashboard.ts), which the

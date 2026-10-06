@@ -130,12 +130,13 @@ func TestSmokeSidebar(t *testing.T) {
 		})
 	}
 	// beta's row, then its coordinator's row, starts and attaches the
-	// coordinator; the panes get the window less the sidebar.
+	// coordinator; the panes get the window less the sidebar and the
+	// coordinator's info panel.
 	clickCoordinator(t, w, beta)
 	w.WaitUntil("attached to beta", agentWait, func(sc string) bool { return lastLine(sc, beta+" coordinator") })
 	w.WaitFor("Fake Claude Code", agentWait)
 	b := coordinatorOf(t, env, beta)
-	waitPaneSize(t, env, b, paneCols(120), 28)
+	waitPaneSize(t, env, b, threadCols(120), 28)
 	border := SideCols(120) - 1
 	for i, l := range strings.Split(w.Screen(), "\n")[:28] {
 		if r := []rune(l); len(r) <= border || r[border] != '│' {
@@ -164,7 +165,7 @@ func TestSmokeSidebar(t *testing.T) {
 	// Prefix } widens the sidebar: a layout change, so the pane follows,
 	// and ui.json keeps the width.
 	w.Prefix("}")
-	waitPaneSize(t, env, b, uint16(120-sideDefault-2), 28)
+	waitPaneSize(t, env, b, besidePanel(120, sideDefault+2), 28)
 	if !Poll(wait, func() bool {
 		return strings.Contains(readFile(env.Home, "ui.json"), fmt.Sprintf(`"width": %d`, sideDefault+2))
 	}) {
@@ -172,7 +173,7 @@ func TestSmokeSidebar(t *testing.T) {
 	}
 	// Dragging its border 4 columns right makes it 4 wider.
 	w.Drag(sideDefault+1, sideDefault+5, 5)
-	waitPaneSize(t, env, b, uint16(120-sideDefault-6), 28)
+	waitPaneSize(t, env, b, besidePanel(120, sideDefault+6), 28)
 	if !Poll(wait, func() bool {
 		return strings.Contains(readFile(env.Home, "ui.json"), fmt.Sprintf(`"width": %d`, sideDefault+6))
 	}) {
@@ -182,7 +183,7 @@ func TestSmokeSidebar(t *testing.T) {
 	// A narrow window: the slim strip of projects, 7 columns, never
 	// nothing; beta, the focused pane's, is marked.
 	w.Resize(70, 30)
-	waitPaneSize(t, env, b, 63, 28)
+	waitPaneSize(t, env, b, besidePanel(70, 7), 28)
 	w.WaitFor("▸○bet │", wait)
 	w.WaitFor(" ·dem │", wait)
 	w.Resize(120, 30)

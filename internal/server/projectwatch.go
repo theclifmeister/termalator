@@ -32,12 +32,13 @@ func (s *Server) projectWatchState(slug string) (proto.ProjectWatch, error) {
 	if err != nil {
 		return proto.ProjectWatch{}, err
 	}
-	return projectWatchOf(p, s.list().Sessions, ticker.StatePath(s.opts.Paths.Sessions)), nil
+	return ProjectWatchOf(p, s.list().Sessions, ticker.StatePath(s.opts.Paths.Sessions)), nil
 }
 
-// projectWatchOf is project p's ProjectWatch, with sessions the server's
-// and tickerState the ticker's state file.
-func projectWatchOf(p *project.Project, sessions []proto.SessionInfo, tickerState string) proto.ProjectWatch {
+// ProjectWatchOf is project p's ProjectWatch, with sessions the server's
+// and tickerState the ticker's state file. The TUI's coordinator info
+// panel reads it too, with the sessions of its poll (T90).
+func ProjectWatchOf(p *project.Project, sessions []proto.SessionInfo, tickerState string) proto.ProjectWatch {
 	w := proto.ProjectWatch{Project: p.Slug, NeedsYou: []proto.WatchNeed{}, Inbox: []proto.WatchItem{},
 		Threads: []proto.WatchThread{}, Ready: []proto.WatchTodo{}}
 	items, _ := p.Inbox()

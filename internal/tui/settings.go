@@ -330,7 +330,7 @@ func globalSettings() []setting {
 				m.data.ModsBand = on
 				return m.setSetting("mods", "band", on, "mods band "+onOff(on)+"; sessions launched from now on follow it")
 			}},
-		{label: "Mods pane", help: "Open the /tm dashboard pane beside the coordinator when it starts, where it docks as a sidebar (fullscreen, 144+ columns). /tm opens or closes it either way. Only matters while Mods is on. Applies to coordinators launched after the change.",
+		{label: "Mods pane", help: "Open the /tm dashboard pane beside the coordinator when it starts, where it docks as a sidebar (fullscreen, 144+ columns). Off by default: in tm the info panel beside the coordinator shows the same; /tm is for Claude desktop and Remote Control, and opens or closes it either way. Only matters while Mods is on. Applies to coordinators launched after the change.",
 			value: func(m *dash) string { return onOff(m.data.ModsPane) },
 			from: func(m *dash) string {
 				if !m.data.Mods {
