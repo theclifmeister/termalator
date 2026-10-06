@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/agent"
 )
 
 // TestDeriveProgress: one rule for every view (docs/SPEC.md §7.3).

@@ -11,9 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/proto"
-	"github.com/theclifmeister/termilator/internal/version"
-	"github.com/theclifmeister/termilator/internal/view"
+	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/version"
+	"github.com/theclifmeister/terminatr/internal/view"
 )
 
 // Client timings (docs/SPEC.md §3.1, §3.2).

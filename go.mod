@@ -1,4 +1,4 @@
-module github.com/theclifmeister/termilator
+module github.com/theclifmeister/terminatr
 
 go 1.26.0
 

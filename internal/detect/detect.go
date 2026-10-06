@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/theclifmeister/termilator/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/agent"
 )
 
 // Screen is what rules look at: the window title and the visible rows,

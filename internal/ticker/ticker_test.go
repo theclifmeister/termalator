@@ -13,11 +13,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/config"
-	"github.com/theclifmeister/termilator/internal/project"
-	"github.com/theclifmeister/termilator/internal/proto"
-	"github.com/theclifmeister/termilator/internal/thread"
-	"github.com/theclifmeister/termilator/internal/worktree"
+	"github.com/theclifmeister/terminatr/internal/config"
+	"github.com/theclifmeister/terminatr/internal/project"
+	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/thread"
+	"github.com/theclifmeister/terminatr/internal/worktree"
 )
 
 // fakeHost records what the ticker does.
@@ -92,7 +92,7 @@ func newRig(t *testing.T) *rig {
 func newRigIn(t *testing.T, repo string, repos []string) *rig {
 	t.Helper()
 	home := t.TempDir()
-	t.Setenv("TERMILATOR_HOME", home)
+	t.Setenv("TERMINATR_HOME", home)
 	p, err := project.New(project.Options{Name: "Demo", Repos: repos})
 	if err != nil {
 		t.Fatal(err)
@@ -465,7 +465,7 @@ func TestGHFailing(t *testing.T) {
 
 func TestAutoResolveOff(t *testing.T) {
 	r := newRig(t)
-	cfg := filepath.Join(os.Getenv("TERMILATOR_HOME"), "config.toml")
+	cfg := filepath.Join(os.Getenv("TERMINATR_HOME"), "config.toml")
 	os.WriteFile(cfg, []byte("[projects.demo]\nauto_resolve = false\npr_followup = false\n"), 0o600)
 	r.gh = []string{prFailed, prMerged}
 	r.host.set("s-2", "idle", "")
@@ -528,7 +528,7 @@ func TestCloseDue(t *testing.T) {
 // TestAutoCloseDays: a done thread closes N days after tm done.
 func TestAutoCloseDays(t *testing.T) {
 	r := newRig(t)
-	cfg := filepath.Join(os.Getenv("TERMILATOR_HOME"), "config.toml")
+	cfg := filepath.Join(os.Getenv("TERMINATR_HOME"), "config.toml")
 	os.WriteFile(cfg, []byte("[projects.demo]\nauto_close = \"days\"\nauto_close_days = 3\n"), 0o600)
 	if _, err := thread.Update(r.p, "t-0001", func(x *thread.Record) error {
 		x.LastPrompt, x.Done, x.DoneAt = r.now.Add(-time.Hour), true, r.now

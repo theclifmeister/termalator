@@ -26,9 +26,9 @@ func claude(t *testing.T) Agent {
 func threadSpec() LaunchSpec {
 	return LaunchSpec{
 		Role: RoleThread, SessionID: "s1", AgentSID: "uuid-1",
-		Cwd: "/w", RuntimeDir: "/run/s1", BriefPath: "/h/.termilator/projects/p/threads/t-0001/brief.md",
+		Cwd: "/w", RuntimeDir: "/run/s1", BriefPath: "/h/.terminatr/projects/p/threads/t-0001/brief.md",
 		Kickoff: "Run tm skill thread.", TMBin: "/bin/tm", Socket: "/run/tm.sock",
-		Access: Access{Read: []string{"/h/.termilator/projects/p"}, NoWrite: []string{"/h/.termilator/projects/p"}},
+		Access: Access{Read: []string{"/h/.terminatr/projects/p"}, NoWrite: []string{"/h/.terminatr/projects/p"}},
 	}
 }
 
@@ -43,7 +43,7 @@ func TestClaudeLaunch(t *testing.T) {
 		"--plugin-dir", "/run/s1/claude-plugin",
 		"--settings", "/run/s1/claude-settings.json",
 		"--session-id", "uuid-1",
-		"--append-system-prompt-file", "/h/.termilator/projects/p/threads/t-0001/brief.md",
+		"--append-system-prompt-file", "/h/.terminatr/projects/p/threads/t-0001/brief.md",
 		"--", "Run tm skill thread."}
 	if !reflect.DeepEqual(l.Argv, want) {
 		t.Fatalf("argv\n got %q\nwant %q", l.Argv, want)
@@ -80,10 +80,10 @@ func TestClaudeLaunch(t *testing.T) {
 	}
 
 	settings := parseSettings(t, l.Files["claude-settings.json"])
-	if want := []string{"Read(//h/.termilator/projects/p/**)"}; !reflect.DeepEqual(settings.Permissions.Allow, want) {
+	if want := []string{"Read(//h/.terminatr/projects/p/**)"}; !reflect.DeepEqual(settings.Permissions.Allow, want) {
 		t.Fatalf("allow = %q, want %q", settings.Permissions.Allow, want)
 	}
-	if want := []string{"Edit(//h/.termilator/projects/p/**)"}; !reflect.DeepEqual(settings.Permissions.Deny, want) {
+	if want := []string{"Edit(//h/.terminatr/projects/p/**)"}; !reflect.DeepEqual(settings.Permissions.Deny, want) {
 		t.Fatalf("deny = %q, want %q (Edit rules only)", settings.Permissions.Deny, want)
 	}
 	if !settings.Sandbox.Enabled || !reflect.DeepEqual(settings.Sandbox.Network.AllowUnixSockets, []string{"/run/tm.sock"}) {
@@ -94,7 +94,7 @@ func TestClaudeLaunch(t *testing.T) {
 	}
 
 	coord := spec
-	coord.Role, coord.Access = Role("coordinator"), Access{Read: []string{"/h/.termilator/worktrees/p"}}
+	coord.Role, coord.Access = Role("coordinator"), Access{Read: []string{"/h/.terminatr/worktrees/p"}}
 	l, err = a.Launch(coord)
 	if err != nil {
 		t.Fatal(err)
@@ -112,7 +112,7 @@ func TestClaudeLaunch(t *testing.T) {
 	want = []string{"claude",
 		"--plugin-dir", "/run/s1/claude-plugin",
 		"--settings", "/run/s1/claude-settings.json",
-		"--append-system-prompt-file", "/h/.termilator/projects/p/threads/t-0001/brief.md",
+		"--append-system-prompt-file", "/h/.terminatr/projects/p/threads/t-0001/brief.md",
 		"--resume", "uuid-1", "--dangerously-skip-permissions"}
 	if !reflect.DeepEqual(l.Argv, want) {
 		t.Fatalf("resume argv\n got %q\nwant %q", l.Argv, want)
@@ -342,7 +342,7 @@ func TestStatusFile(t *testing.T) {
 	}
 
 	// "shell": idle at the prompt with a background shell running (seen
-	// on the termilator coordinator, T43). Unknown, it distrusted the
+	// on the terminatr coordinator, T43). Unknown, it distrusted the
 	// whole file, the socket and remote control with it.
 	r, err = f.Read([]byte(`{"status":"shell","version":"2.1.289","messagingSocketPath":"/tmp/x.sock","bridgeSessionId":"session_01"}`), src)
 	if err != nil || r.Signal.State != StateIdle || r.Fields[rc] == "" {

@@ -1,6 +1,6 @@
 # Contributing
 
-termilator is pre-alpha and changes quickly; [docs/SPEC.md](docs/SPEC.md) is the plan it follows. Issues and pull requests are welcome. For anything larger than a fix, open an issue first so we can agree on the approach before you write the code.
+terminatr is pre-alpha and changes quickly; [docs/SPEC.md](docs/SPEC.md) is the plan it follows. Issues and pull requests are welcome. For anything larger than a fix, open an issue first so we can agree on the approach before you write the code.
 
 ## Building and testing
 

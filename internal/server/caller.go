@@ -1,6 +1,6 @@
 package server
 
-import "github.com/theclifmeister/termilator/internal/proto"
+import "github.com/theclifmeister/terminatr/internal/proto"
 
 // whoIs answers caller.who (docs/SPEC.md §11.1) with callerOf, for
 // commands the CLI runs itself: the human's, and an agent's whose

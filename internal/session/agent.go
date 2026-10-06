@@ -14,9 +14,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/agent"
-	"github.com/theclifmeister/termilator/internal/detect"
-	"github.com/theclifmeister/termilator/internal/pty"
+	"github.com/theclifmeister/terminatr/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/detect"
+	"github.com/theclifmeister/terminatr/internal/pty"
 )
 
 // AgentConfig attaches an agent to a session: the session then runs the

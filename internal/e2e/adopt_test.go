@@ -25,15 +25,15 @@ active_form = "Doing alpha"
 
 [[step]]
 do = "run"
-cmd = '"$TERMILATOR_BIN" task status T1 review > "$OUT/adopt-taskstatus" 2>&1; echo "exit $?" >> "$OUT/adopt-taskstatus"'
+cmd = '"$TERMINATR_BIN" task status T1 review > "$OUT/adopt-taskstatus" 2>&1; echo "exit $?" >> "$OUT/adopt-taskstatus"'
 
 [[step]]
 do = "run"
-cmd = 'printf "## Report\nAdopted and done.\n\n## Next\nReview it\n" | "$TERMILATOR_BIN" report > "$OUT/adopt-report" 2>&1; echo "exit $?" >> "$OUT/adopt-report"'
+cmd = 'printf "## Report\nAdopted and done.\n\n## Next\nReview it\n" | "$TERMINATR_BIN" report > "$OUT/adopt-report" 2>&1; echo "exit $?" >> "$OUT/adopt-report"'
 
 [[step]]
 do = "run"
-cmd = '"$TERMILATOR_BIN" done > "$OUT/adopt-done" 2>&1; echo "exit $?" >> "$OUT/adopt-done"'
+cmd = '"$TERMINATR_BIN" done > "$OUT/adopt-done" 2>&1; echo "exit $?" >> "$OUT/adopt-done"'
 `
 
 func TestThreadAdopt(t *testing.T) {

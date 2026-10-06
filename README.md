@@ -1,6 +1,6 @@
-# termilator
+# terminatr
 
-`tm` is one binary that hosts coding-agent sessions in a background server and gives you a dashboard. It also runs projects in which a **coordinator** agent is your single point of contact. The coordinator hands work to **threads**: agents working in git worktrees. All progress lives in markdown under `~/.termilator/projects/<slug>/`, which every session can read, so clearing an agent's context loses nothing.
+`tm` is one binary that hosts coding-agent sessions in a background server and gives you a dashboard. It also runs projects in which a **coordinator** agent is your single point of contact. The coordinator hands work to **threads**: agents working in git worktrees. All progress lives in markdown under `~/.terminatr/projects/<slug>/`, which every session can read, so clearing an agent's context loses nothing.
 
 Claude Code is the first supported agent. Other agents plug in through a manifest; see [docs/SPEC.md §8](docs/SPEC.md#8-agents).
 
@@ -19,22 +19,22 @@ Claude Code is the first supported agent. Other agents plug in through a manifes
 On macOS 13+ or Linux with glibc 2.28+, with Homebrew:
 
 ```sh
-brew tap theclifmeister/termilator https://github.com/theclifmeister/termilator
-brew trust --formula theclifmeister/termilator/termilator
-brew install termilator
+brew tap theclifmeister/terminatr https://github.com/theclifmeister/terminatr
+brew trust --formula theclifmeister/terminatr/terminatr
+brew install theclifmeister/terminatr/terminatr
 ```
 
 Newer Homebrew refuses formulas from a tap it doesn't trust; `brew trust` once after tapping allows this one.
 
-Termilator was called Termalator up to v0.1.0; to upgrade from that, see [Upgrading from Termalator](docs/OPERATIONS.md#upgrading-from-termalator).
+Terminatr was called Termilator up to v0.6.2. To upgrade from that by hand: stop the server (`tm server stop --yes`); with Homebrew, `brew uninstall termilator`, `brew untap theclifmeister/termilator` and tap and install the new one as above; `mv ~/.termilator ~/.terminatr`, edit the paths inside `~/.terminatr/config.toml` and the project files that name `~/.termilator`, then start it again (`tm server start`); details and the login service in [Upgrading from Termilator](docs/OPERATIONS.md#upgrading-from-termilator). Older installs: [Upgrading from Termalator](docs/OPERATIONS.md#upgrading-from-termalator).
 
 or directly, into `~/.local/bin`:
 
 ```sh
-mkdir -p ~/.local/bin && curl -fsSL "https://github.com/theclifmeister/termilator/releases/latest/download/tm_$(uname -s | tr A-Z a-z)_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar -xz -C ~/.local/bin tm
+mkdir -p ~/.local/bin && curl -fsSL "https://github.com/theclifmeister/terminatr/releases/latest/download/tm_$(uname -s | tr A-Z a-z)_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar -xz -C ~/.local/bin tm
 ```
 
-Then `tm doctor`. macOS binaries are signed with a Developer ID and notarised. `tm update` installs new releases (with Homebrew it runs `brew upgrade termilator`). Where state lives, logs, the login service, upgrading and uninstalling: [docs/OPERATIONS.md](docs/OPERATIONS.md). To build from source, see below.
+Then `tm doctor`. macOS binaries are signed with a Developer ID and notarised. `tm update` installs new releases (with Homebrew it runs `brew upgrade terminatr`). Where state lives, logs, the login service, upgrading and uninstalling: [docs/OPERATIONS.md](docs/OPERATIONS.md). To build from source, see below.
 
 ## Try it
 
@@ -56,18 +56,18 @@ bin/tm session stop s-1
 bin/tm server status | stop
 ```
 
-`make run RUN_ARGS=top` also starts a session running `top`. Consoles of different sizes show the same screen: the one you type in, or resize, sizes the panes, and a larger one shows the frame padded, a smaller one cropped. A new pane fills the first console that shows it; after that, attaching and watching never resize anything. Shift+PgUp/PgDn scroll back through a shell's output; full-screen programs get the mouse wheel. The prefix key can be changed in the settings (`,` on the dashboard: `enter` on Prefix key, then press the new one, e.g. Ctrl+A); do that when you run `tm` inside tmux, which takes Ctrl+B itself. Ctrl+B twice sends Ctrl+B to the program (Claude Code uses it to background a running task). The projects sidebar is resizable: drag its border, or `{` `}` (Ctrl+B then `{` `}` in a session); `b` makes it a slim strip. It works from the keyboard too: `tab` on the dashboard (Ctrl+B then Tab in a session) moves the keyboard to it, the arrows move through the tree, `enter` opens the row and `esc` goes back. The Icons setting (`,`) picks the sidebar's and the lists' glyphs: Nerd Font icons, plain Unicode or ASCII; auto uses Nerd Font icons in Ghostty and Unicode elsewhere. Everything works with the mouse too: a click selects, a double-click opens, a right-click on a row or the sidebar opens a menu of its actions, the footer's hints and the status bar's buttons (`≡` menu, `prefix+d dashboard`) are buttons, popups take clicks (a click outside or on `×` closes them), the wheel scrolls, and the dividers drag; inside a pane, programs that use the mouse (Claude Code does) still get it, and Shift-drag selects text. When the dashboard has 120 columns or more beside the sidebar the dashboard shows the selected row's details beside the list (`<` `>` resize it, `|` hides it). `a` (Ctrl+B then `a` in a session) opens the project popup: its overview with the repositories, its inbox and tasks (read-only), its settings, changed in place with `enter` (and `+` / `-` for numbers, such as how many threads may work at once and after how many days a finished thread closes), and every key; `,` has the settings of every project, and its All projects tab the project settings every project follows (a new one too) unless it sets its own: a project's Settings tab marks those `· all projects`, and `x` on one it set itself makes it follow All projects again. In `~/.termilator/config.toml` they are the `[defaults]` table, with the same keys as `[projects.<slug>]`. The server keeps its state in `~/.termilator`; set `TERMILATOR_HOME` to use somewhere else.
+`make run RUN_ARGS=top` also starts a session running `top`. Consoles of different sizes show the same screen: the one you type in, or resize, sizes the panes, and a larger one shows the frame padded, a smaller one cropped. A new pane fills the first console that shows it; after that, attaching and watching never resize anything. Shift+PgUp/PgDn scroll back through a shell's output; full-screen programs get the mouse wheel. The prefix key can be changed in the settings (`,` on the dashboard: `enter` on Prefix key, then press the new one, e.g. Ctrl+A); do that when you run `tm` inside tmux, which takes Ctrl+B itself. Ctrl+B twice sends Ctrl+B to the program (Claude Code uses it to background a running task). The projects sidebar is resizable: drag its border, or `{` `}` (Ctrl+B then `{` `}` in a session); `b` makes it a slim strip. It works from the keyboard too: `tab` on the dashboard (Ctrl+B then Tab in a session) moves the keyboard to it, the arrows move through the tree, `enter` opens the row and `esc` goes back. The Icons setting (`,`) picks the sidebar's and the lists' glyphs: Nerd Font icons, plain Unicode or ASCII; auto uses Nerd Font icons in Ghostty and Unicode elsewhere. Everything works with the mouse too: a click selects, a double-click opens, a right-click on a row or the sidebar opens a menu of its actions, the footer's hints and the status bar's buttons (`≡` menu, `prefix+d dashboard`) are buttons, popups take clicks (a click outside or on `×` closes them), the wheel scrolls, and the dividers drag; inside a pane, programs that use the mouse (Claude Code does) still get it, and Shift-drag selects text. When the dashboard has 120 columns or more beside the sidebar the dashboard shows the selected row's details beside the list (`<` `>` resize it, `|` hides it). `a` (Ctrl+B then `a` in a session) opens the project popup: its overview with the repositories, its inbox and tasks (read-only), its settings, changed in place with `enter` (and `+` / `-` for numbers, such as how many threads may work at once and after how many days a finished thread closes), and every key; `,` has the settings of every project, and its All projects tab the project settings every project follows (a new one too) unless it sets its own: a project's Settings tab marks those `· all projects`, and `x` on one it set itself makes it follow All projects again. In `~/.terminatr/config.toml` they are the `[defaults]` table, with the same keys as `[projects.<slug>]`. The server keeps its state in `~/.terminatr`; set `TERMINATR_HOME` to use somewhere else.
 
-To pick up a coordinator from the Claude desktop or mobile app (Claude Code's Remote Control), turn on Remote control in the project popup's Settings tab (`a`, then `4`), or set `coordinator_remote_control = true` under `[projects.<slug>]` in `~/.termilator/config.toml`: the coordinator then starts with remote control, listed under the project's slug. Ctrl+B then `r` on the coordinator's pane (or with its project selected on the dashboard), or `tm project remote on|off <slug>`, turns it on or off in the running session, and the conversation continues; that lasts until the coordinator is started anew. The sidebar shows `⌁` after the project and the status bar says `remote control on` while it is.
+To pick up a coordinator from the Claude desktop or mobile app (Claude Code's Remote Control), turn on Remote control in the project popup's Settings tab (`a`, then `4`), or set `coordinator_remote_control = true` under `[projects.<slug>]` in `~/.terminatr/config.toml`: the coordinator then starts with remote control, listed under the project's slug. Ctrl+B then `r` on the coordinator's pane (or with its project selected on the dashboard), or `tm project remote on|off <slug>`, turns it on or off in the running session, and the conversation continues; that lasts until the coordinator is started anew. The sidebar shows `⌁` after the project and the status bar says `remote control on` while it is.
 
-To park a project, `tm project pause <slug>` (or Paused in the popup's Settings tab): its coordinator gets no nudges, its threads no pull request follow-up, and no new thread starts until `tm project resume <slug>`; the sidebar shows `∥` after it. `tm project archive <slug>` hides a finished project from the sidebar and stops all background work for it (`tm project unarchive` brings it back), and `tm project delete <slug>` moves its folder to `~/.termilator/.trash/`; both refuse while its coordinator or threads run. The coordinator can give a thread a smaller or larger model with `--model` on `tm task delegate` / `tm thread start`, from the list `tm context` shows (the agent manifest's `[[models]]`). When `gh` keeps failing (logged out, keychain refused), the coordinator gets a `gh-failing` inbox item, and `tm doctor` checks `gh auth status`.
+To park a project, `tm project pause <slug>` (or Paused in the popup's Settings tab): its coordinator gets no nudges, its threads no pull request follow-up, and no new thread starts until `tm project resume <slug>`; the sidebar shows `∥` after it. `tm project archive <slug>` hides a finished project from the sidebar and stops all background work for it (`tm project unarchive` brings it back), and `tm project delete <slug>` moves its folder to `~/.terminatr/.trash/`; both refuse while its coordinator or threads run. The coordinator can give a thread a smaller or larger model with `--model` on `tm task delegate` / `tm thread start`, from the list `tm context` shows (the agent manifest's `[[models]]`). When `gh` keeps failing (logged out, keychain refused), the coordinator gets a `gh-failing` inbox item, and `tm doctor` checks `gh auth status`.
 
 ## Try projects and tasks
 
 ```sh
-export TERMILATOR_HOME=$(mktemp -d)        # leave ~/.termilator alone while trying it
+export TERMINATR_HOME=$(mktemp -d)        # leave ~/.terminatr alone while trying it
 ./bin/tm project new "Demo" --goal "Try tm"
-export TERMILATOR_PROJECT=demo             # or cd into $TERMILATOR_HOME/projects/demo
+export TERMINATR_PROJECT=demo             # or cd into $TERMINATR_HOME/projects/demo
 ./bin/tm task add "Fix login redirect" --step "Reproduce" --step "Fix"
 ./bin/tm task status T1 started
 ./bin/tm task steps T1 check 1
@@ -113,7 +113,7 @@ make e2e        # every end-to-end scenario (nightly in CI); E2E_RACE=1 for a ra
 make fuzz       # every fuzz target, FUZZTIME=5m each (nightly in CI); e.g. make fuzz FUZZTIME=20s
 ```
 
-`internal/e2e` is the end-to-end harness that every milestone adds scenarios to. A scenario gets an isolated installation (its own `TERMILATOR_HOME` and a short socket path), runs the real `tm`, and looks at what a user would see. Sessions are read through the server; a virtual terminal (a PTY whose output libghostty-vt parses) plays the user's terminal window. The harness can type into that window, kill its client and close it. Screens can be compared with golden files in `internal/e2e/testdata/`; `make e2e E2E_FLAGS=-update` rewrites them. The M1 scenarios cover these cases: the server survives a killed client and a closed terminal, stale sockets, crash detection, a hung server, and the version handshake.
+`internal/e2e` is the end-to-end harness that every milestone adds scenarios to. A scenario gets an isolated installation (its own `TERMINATR_HOME` and a short socket path), runs the real `tm`, and looks at what a user would see. Sessions are read through the server; a virtual terminal (a PTY whose output libghostty-vt parses) plays the user's terminal window. The harness can type into that window, kill its client and close it. Screens can be compared with golden files in `internal/e2e/testdata/`; `make e2e E2E_FLAGS=-update` rewrites them. The M1 scenarios cover these cases: the server survives a killed client and a closed terminal, stale sockets, crash detection, a hung server, and the version handshake.
 
 ### Why libghostty-vt, and why these bindings
 

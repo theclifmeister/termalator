@@ -37,7 +37,7 @@ fi
 # JIT, no unsigned memory and loads no libraries, so it needs no
 # entitlements. The identifier is fixed, not the file name, so every
 # release has the same designated requirement.
-out=$(codesign --force --sign "$TM_SIGN_IDENTITY" --identifier dev.termilator.tm \
+out=$(codesign --force --sign "$TM_SIGN_IDENTITY" --identifier dev.terminatr.tm \
 	--options runtime --timestamp "$bin" 2>&1) || { echo "$out" >&2; exit 1; }
 codesign --verify --strict --verbose=2 "$bin"
 codesign -d --verbose=2 "$bin" 2>&1 | grep -q 'flags=.*runtime' || {

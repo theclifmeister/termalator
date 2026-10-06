@@ -10,14 +10,14 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/caller"
-	"github.com/theclifmeister/termilator/internal/config"
-	"github.com/theclifmeister/termilator/internal/project"
-	"github.com/theclifmeister/termilator/internal/proto"
-	"github.com/theclifmeister/termilator/internal/skill"
-	"github.com/theclifmeister/termilator/internal/ticker"
-	"github.com/theclifmeister/termilator/internal/tui"
-	"github.com/theclifmeister/termilator/internal/version"
+	"github.com/theclifmeister/terminatr/internal/caller"
+	"github.com/theclifmeister/terminatr/internal/config"
+	"github.com/theclifmeister/terminatr/internal/project"
+	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/skill"
+	"github.com/theclifmeister/terminatr/internal/ticker"
+	"github.com/theclifmeister/terminatr/internal/tui"
+	"github.com/theclifmeister/terminatr/internal/version"
 )
 
 const projectUsage = `usage: tm project new <name> [--goal "…"] [--repo PATH]... [--json]

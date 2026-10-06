@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/proto"
 )
 
 // TestWorking is the cap's counting rule (docs/SPEC.md §9): open, live,

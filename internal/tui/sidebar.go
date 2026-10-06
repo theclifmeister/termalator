@@ -12,13 +12,13 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 
-	"github.com/theclifmeister/termilator/internal/config"
-	"github.com/theclifmeister/termilator/internal/emu"
-	"github.com/theclifmeister/termilator/internal/project"
-	"github.com/theclifmeister/termilator/internal/proto"
-	"github.com/theclifmeister/termilator/internal/server"
-	"github.com/theclifmeister/termilator/internal/thread"
-	"github.com/theclifmeister/termilator/internal/view"
+	"github.com/theclifmeister/terminatr/internal/config"
+	"github.com/theclifmeister/terminatr/internal/emu"
+	"github.com/theclifmeister/terminatr/internal/project"
+	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/server"
+	"github.com/theclifmeister/terminatr/internal/thread"
+	"github.com/theclifmeister/terminatr/internal/view"
 )
 
 // The projects sidebar (docs/SPEC.md §4): a column on the left of every
@@ -334,7 +334,7 @@ func treeSel(r treeRow, focused bool) (bool, lipgloss.Style) {
 // treeCells is one tree row cw cells wide, in this console's icon set
 // (icons.go). In a sidebar 25 columns wide, in the unicode set:
 //
-//	" ■ termilator       2 ◆"  a project: its name, its open threads,
+//	" ■ terminatr       2 ◆"  a project: its name, its open threads,
 //	                           the hint that one of them is blocked or
 //	                           waiting, or that a task needs you
 //	" └─ coordinator     ⌁ ○"  its coordinator, ⌁ while its remote

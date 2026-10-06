@@ -22,12 +22,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/agent"
 )
 
 const realWait = 90 * time.Second
 
-// realEnv is an isolated termilator with the user's real HOME (Claude's
+// realEnv is an isolated terminatr with the user's real HOME (Claude's
 // login lives there) and claude on PATH.
 func realEnv(t *testing.T) *Env {
 	t.Helper()
@@ -182,7 +182,7 @@ func TestRealSession(t *testing.T) {
 
 // TestRealThreadAccess: a thread can read the project but not write it,
 // interactively and under yolo (docs/SPEC.md §5.2), with the settings
-// termilator generates.
+// terminatr generates.
 func TestRealThreadAccess(t *testing.T) {
 	env := realEnv(t)
 	var p struct{ Slug, Dir string }

@@ -1,4 +1,4 @@
-// Command tm is termilator: an agent session host, a dashboard and the CLI
+// Command tm is terminatr: an agent session host, a dashboard and the CLI
 // that coordinator and thread agents call. This is a placeholder; the
 // commands are specified in docs/SPEC.md.
 package main
@@ -8,10 +8,10 @@ import (
 	"os"
 
 	// The Go parts of built-in agents register themselves.
-	_ "github.com/theclifmeister/termilator/internal/agent/claude"
-	"github.com/theclifmeister/termilator/internal/cli"
-	"github.com/theclifmeister/termilator/internal/emu"
-	"github.com/theclifmeister/termilator/internal/version"
+	_ "github.com/theclifmeister/terminatr/internal/agent/claude"
+	"github.com/theclifmeister/terminatr/internal/cli"
+	"github.com/theclifmeister/terminatr/internal/emu"
+	"github.com/theclifmeister/terminatr/internal/version"
 )
 
 func main() {

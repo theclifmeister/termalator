@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/theclifmeister/termilator/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/agent"
 )
 
 var versionRE = regexp.MustCompile(`\d+\.\d+(\.\d+)?`)

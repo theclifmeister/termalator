@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/view"
+	"github.com/theclifmeister/terminatr/internal/view"
 )
 
 // paneSize returns a session's pane size as the server reports it.

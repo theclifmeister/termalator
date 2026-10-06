@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/agent"
-	"github.com/theclifmeister/termilator/internal/project"
-	"github.com/theclifmeister/termilator/internal/tasks"
+	"github.com/theclifmeister/terminatr/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/project"
+	"github.com/theclifmeister/terminatr/internal/tasks"
 )
 
 func steps(done ...bool) []tasks.Step {
@@ -159,7 +159,7 @@ func FuzzStatus(f *testing.F) {
 
 // TestFiles: create a thread, write task text and brief, store reports.
 func TestFiles(t *testing.T) {
-	t.Setenv("TERMILATOR_HOME", t.TempDir())
+	t.Setenv("TERMINATR_HOME", t.TempDir())
 	p, err := project.New(project.Options{Name: "demo"})
 	if err != nil {
 		t.Fatal(err)
@@ -229,7 +229,7 @@ func TestFiles(t *testing.T) {
 // TestReportPRs: every report's PR, oldest first, each once; reports
 // past the tenth sort by number.
 func TestReportPRs(t *testing.T) {
-	t.Setenv("TERMILATOR_HOME", t.TempDir())
+	t.Setenv("TERMINATR_HOME", t.TempDir())
 	p, err := project.New(project.Options{Name: "demo"})
 	if err != nil {
 		t.Fatal(err)

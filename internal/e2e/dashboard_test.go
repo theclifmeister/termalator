@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theclifmeister/termilator/internal/emu"
+	"github.com/theclifmeister/terminatr/internal/emu"
 )
 
 // Dashboard keys.

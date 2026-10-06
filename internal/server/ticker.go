@@ -10,24 +10,24 @@ import (
 	"os"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/caller"
-	"github.com/theclifmeister/termilator/internal/proto"
-	"github.com/theclifmeister/termilator/internal/session"
-	"github.com/theclifmeister/termilator/internal/ticker"
+	"github.com/theclifmeister/terminatr/internal/caller"
+	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/session"
+	"github.com/theclifmeister/terminatr/internal/ticker"
 )
 
 // Variables that shorten the ticker's intervals (tests).
 const (
-	envTickSweep = "TERMILATOR_TICK_SWEEP"
-	envTickPR    = "TERMILATOR_TICK_PR"
-	envTickNudge = "TERMILATOR_TICK_NUDGE"
-	envTickDay   = "TERMILATOR_TICK_DAY" // the length of an auto-close day
+	envTickSweep = "TERMINATR_TICK_SWEEP"
+	envTickPR    = "TERMINATR_TICK_PR"
+	envTickNudge = "TERMINATR_TICK_NUDGE"
+	envTickDay   = "TERMINATR_TICK_DAY" // the length of an auto-close day
 	// The remote control enforcement's pace and grace.
-	envTickRemote = "TERMILATOR_TICK_REMOTE"
-	envTickGrace  = "TERMILATOR_TICK_REMOTE_GRACE"
+	envTickRemote = "TERMINATR_TICK_REMOTE"
+	envTickGrace  = "TERMINATR_TICK_REMOTE_GRACE"
 	// How long a queued prompt may be held while the agent is idle
 	// (session.AgentConfig.PromptHold).
-	envPromptHold = "TERMILATOR_PROMPT_HOLD"
+	envPromptHold = "TERMINATR_PROMPT_HOLD"
 )
 
 func envDuration(k string) time.Duration {

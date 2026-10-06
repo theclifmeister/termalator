@@ -1,9 +1,9 @@
 #!/bin/sh
 # Writes the Homebrew formula for a release to stdout, from the release's
 # checksums.txt. The release workflow runs it after publishing and opens a
-# pull request with the result (Formula/termilator.rb):
+# pull request with the result (Formula/terminatr.rb):
 #
-#   scripts/release/formula.sh 0.2.0 dist/checksums.txt > Formula/termilator.rb
+#   scripts/release/formula.sh 0.2.0 dist/checksums.txt > Formula/terminatr.rb
 #
 # One formula for macOS and Linux, not a cask: casks are macOS-only, and a
 # formula installs the signed, notarised binary as it is. Homebrew sets no
@@ -26,9 +26,9 @@ cat <<RUBY
 # frozen_string_literal: true
 
 # Written by scripts/release/formula.sh for each release; don't edit by hand.
-class Termilator < Formula
+class Terminatr < Formula
   desc "Terminal workspace where coding agents work through a project's tasks"
-  homepage "https://github.com/theclifmeister/termilator"
+  homepage "https://github.com/theclifmeister/terminatr"
   version "$version"
   license "MIT"
 
@@ -39,22 +39,22 @@ class Termilator < Formula
 
   on_macos do
     on_arm do
-      url "https://github.com/theclifmeister/termilator/releases/download/v#{version}/tm_darwin_arm64.tar.gz"
+      url "https://github.com/theclifmeister/terminatr/releases/download/v#{version}/tm_darwin_arm64.tar.gz"
       sha256 "$darwin_arm64"
     end
     on_intel do
-      url "https://github.com/theclifmeister/termilator/releases/download/v#{version}/tm_darwin_amd64.tar.gz"
+      url "https://github.com/theclifmeister/terminatr/releases/download/v#{version}/tm_darwin_amd64.tar.gz"
       sha256 "$darwin_amd64"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/theclifmeister/termilator/releases/download/v#{version}/tm_linux_arm64.tar.gz"
+      url "https://github.com/theclifmeister/terminatr/releases/download/v#{version}/tm_linux_arm64.tar.gz"
       sha256 "$linux_arm64"
     end
     on_intel do
-      url "https://github.com/theclifmeister/termilator/releases/download/v#{version}/tm_linux_amd64.tar.gz"
+      url "https://github.com/theclifmeister/terminatr/releases/download/v#{version}/tm_linux_amd64.tar.gz"
       sha256 "$linux_amd64"
     end
   end

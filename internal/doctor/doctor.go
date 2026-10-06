@@ -20,10 +20,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/keychain"
-	"github.com/theclifmeister/termilator/internal/proto"
-	"github.com/theclifmeister/termilator/internal/server"
-	"github.com/theclifmeister/termilator/internal/update"
+	"github.com/theclifmeister/terminatr/internal/keychain"
+	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/server"
+	"github.com/theclifmeister/terminatr/internal/update"
 )
 
 // Status of one check.

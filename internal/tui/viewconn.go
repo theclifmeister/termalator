@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/proto"
-	"github.com/theclifmeister/termilator/internal/server"
-	"github.com/theclifmeister/termilator/internal/view"
+	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/server"
+	"github.com/theclifmeister/terminatr/internal/view"
 )
 
 // ViewConn is a console's membership of a server-owned view (docs/SPEC.md

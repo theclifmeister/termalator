@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/emu"
-	"github.com/theclifmeister/termilator/internal/proto"
-	"github.com/theclifmeister/termilator/internal/version"
+	"github.com/theclifmeister/terminatr/internal/emu"
+	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/version"
 )
 
 // testPaths gives a test its own home and a short socket path (a macOS
@@ -29,8 +29,8 @@ func testPaths(t *testing.T) Paths {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(sockDir) })
-	t.Setenv("TERMILATOR_HOME", home)
-	t.Setenv("TERMILATOR_SOCKET", filepath.Join(sockDir, "tm.sock"))
+	t.Setenv("TERMINATR_HOME", home)
+	t.Setenv("TERMINATR_SOCKET", filepath.Join(sockDir, "tm.sock"))
 	p, err := ResolvePaths()
 	if err != nil {
 		t.Fatal(err)
@@ -168,7 +168,7 @@ func TestControlSessionLifecycle(t *testing.T) {
 	}
 
 	call(t, c, proto.MethodSessionKeys, proto.SessionKeysParams{ID: id,
-		Data: "echo id=$TERMILATOR_SESSION cc=${CLAUDECODE:-none}${CLAUDE_CODE_SESSION_ID:-none} tmux=${TMUX:-none} keep=$KEEP term=$TERM\r"}, nil)
+		Data: "echo id=$TERMINATR_SESSION cc=${CLAUDECODE:-none}${CLAUDE_CODE_SESSION_ID:-none} tmux=${TMUX:-none} keep=$KEEP term=$TERM\r"}, nil)
 	want := "id=s-1 cc=nonenone tmux=none keep=me term=xterm-256color"
 	eventually(t, "the echo", func() bool {
 		var rr proto.SessionReadResult
@@ -563,8 +563,8 @@ func TestAttachStream(t *testing.T) {
 }
 
 func TestResolvePathsKeepsTestsIsolated(t *testing.T) {
-	t.Setenv("TERMILATOR_HOME", "/h/custom")
-	t.Setenv("TERMILATOR_SOCKET", "/tmp/x/tm.sock")
+	t.Setenv("TERMINATR_HOME", "/h/custom")
+	t.Setenv("TERMINATR_SOCKET", "/tmp/x/tm.sock")
 	t.Setenv("XDG_RUNTIME_DIR", "/run/user/1")
 	p, err := ResolvePaths()
 	if err != nil {
@@ -576,7 +576,7 @@ func TestResolvePathsKeepsTestsIsolated(t *testing.T) {
 	if p.Log != "/h/custom/logs/server.log" || p.Sessions != "/h/custom/state/sessions.json" {
 		t.Fatalf("home files: %+v", p)
 	}
-	t.Setenv("TERMILATOR_SOCKET", "")
+	t.Setenv("TERMINATR_SOCKET", "")
 	p, _ = ResolvePaths()
 	if p.Socket != "/h/custom/run/tm.sock" {
 		t.Fatalf("a custom home must not use XDG_RUNTIME_DIR: %s", p.Socket)
@@ -623,14 +623,14 @@ func TestLogRotation(t *testing.T) {
 
 func TestSessionEnvStripsInheritedIdentity(t *testing.T) {
 	env := sessionEnv([]string{"PATH=/bin", "CLAUDECODE=1", "CLAUDE_CODE_ENTRYPOINT=cli", "TMUX=x", "CLAUDE_CODE_USE_BEDROCK=1",
-		"TERMILATOR_SESSION=old", "TERM=screen", "HOME=/h"}, map[string]string{"TERM": "xterm-256color", "TERMILATOR_SESSION": "s-1"})
+		"TERMINATR_SESSION=old", "TERM=screen", "HOME=/h"}, map[string]string{"TERM": "xterm-256color", "TERMINATR_SESSION": "s-1"})
 	got := strings.Join(env, " ")
-	for _, bad := range []string{"CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "TMUX", "TERMILATOR_SESSION=old", "TERM=screen"} {
+	for _, bad := range []string{"CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "TMUX", "TERMINATR_SESSION=old", "TERM=screen"} {
 		if strings.Contains(got, bad) {
 			t.Errorf("%s leaked: %s", bad, got)
 		}
 	}
-	for _, good := range []string{"PATH=/bin", "HOME=/h", "TERM=xterm-256color", "TERMILATOR_SESSION=s-1", "CLAUDE_CODE_USE_BEDROCK=1"} {
+	for _, good := range []string{"PATH=/bin", "HOME=/h", "TERM=xterm-256color", "TERMINATR_SESSION=s-1", "CLAUDE_CODE_USE_BEDROCK=1"} {
 		if !strings.Contains(got, good) {
 			t.Errorf("%s missing: %s", good, got)
 		}

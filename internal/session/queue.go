@@ -3,7 +3,7 @@ package session
 import (
 	"sync"
 
-	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/proto"
 )
 
 // frameQueue holds encoded frames for one subscriber. Adjacent output

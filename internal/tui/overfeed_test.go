@@ -6,7 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/theclifmeister/termilator/internal/emu"
+	"github.com/theclifmeister/terminatr/internal/emu"
 )
 
 // TestDashboardOverLive: the popup over a session follows its output:

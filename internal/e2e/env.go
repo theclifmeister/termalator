@@ -1,4 +1,4 @@
-// Package e2e is termilator's end-to-end test harness (docs/SPEC.md §16.2).
+// Package e2e is terminatr's end-to-end test harness (docs/SPEC.md §16.2).
 // Scenarios run the real tm against an isolated server and look at what a
 // user would see: a Window is a PTY whose output a libghostty-vt emulator
 // parses, playing the user's terminal window.
@@ -35,7 +35,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/proto"
 )
 
 var (
@@ -98,7 +98,7 @@ func moduleRoot() (string, error) {
 	}
 	mod := strings.TrimSpace(string(out))
 	if mod == "" || mod == os.DevNull {
-		return "", fmt.Errorf("not inside the termilator module")
+		return "", fmt.Errorf("not inside the terminatr module")
 	}
 	return filepath.Dir(mod), nil
 }
@@ -106,17 +106,17 @@ func moduleRoot() (string, error) {
 // DefaultTimeout bounds waits that take no explicit timeout.
 var DefaultTimeout = 10 * time.Second
 
-// Env is one isolated termilator installation: its own TERMILATOR_HOME,
+// Env is one isolated terminatr installation: its own TERMINATR_HOME,
 // HOME and run dir, so its server never meets the user's. Cleanup stops
 // the server, fails the test if any process it started outlives it, and
 // saves artifacts when the test failed.
 type Env struct {
 	T      testing.TB
 	Bin    string // the tm under test
-	Home   string // TERMILATOR_HOME
-	Socket string // TERMILATOR_SOCKET, in a short run dir under /tmp
+	Home   string // TERMINATR_HOME
+	Socket string // TERMINATR_SOCKET, in a short run dir under /tmp
 	// AttachLog is where attach clients log digest checks and keys
-	// (TERMILATOR_ATTACH_LOG).
+	// (TERMINATR_ATTACH_LOG).
 	AttachLog string
 	// Vars is the environment of every tm command and window.
 	Vars []string
@@ -144,7 +144,7 @@ func New(t testing.TB) *Env {
 	e := &Env{
 		T:      t,
 		Bin:    filepath.Join(dir, "tm"),
-		Home:   filepath.Join(root, "termilator"),
+		Home:   filepath.Join(root, "terminatr"),
 		Socket: filepath.Join(runDir, "tm.sock"),
 		pids:   map[int]string{},
 	}
@@ -153,19 +153,19 @@ func New(t testing.TB) *Env {
 	os.MkdirAll(home, 0o700)
 	e.Vars = append(cleanEnv(os.Environ()),
 		"HOME="+home,
-		"TERMILATOR_HOME="+e.Home,
-		"TERMILATOR_SOCKET="+e.Socket,
+		"TERMINATR_HOME="+e.Home,
+		"TERMINATR_SOCKET="+e.Socket,
 		"PATH="+dir+":/usr/bin:/bin:/usr/sbin:/sbin",
 		"LANG=C.UTF-8",
 		"SHELL=/bin/sh",
 		"PS1=$ ",
 		"TM="+e.Bin,
-		"TERMILATOR_ATTACH_LOG="+e.AttachLog,
+		"TERMINATR_ATTACH_LOG="+e.AttachLog,
 		// No release checks against GitHub (tm doctor, tm update).
-		"TERMILATOR_UPDATE_URL=off",
+		"TERMINATR_UPDATE_URL=off",
 		// The server stops itself once this test process is gone, even
 		// when a timeout or ^C skips the cleanup (docs/OPERATIONS.md).
-		"TERMILATOR_TEST_OWNER="+strconv.Itoa(os.Getpid()),
+		"TERMINATR_TEST_OWNER="+strconv.Itoa(os.Getpid()),
 	)
 	t.Cleanup(func() {
 		e.cleanup()
@@ -181,7 +181,7 @@ func cleanEnv(env []string) []string {
 	for _, kv := range env {
 		k, _, _ := strings.Cut(kv, "=")
 		switch {
-		case strings.HasPrefix(k, "TERMILATOR"), strings.HasPrefix(k, "LC_"),
+		case strings.HasPrefix(k, "TERMINATR"), strings.HasPrefix(k, "LC_"),
 			k == "HOME", k == "CLAUDE_CONFIG_DIR", k == "PATH", k == "LANG", k == "PS1", k == "SHELL", k == "TMUX", k == "ENV",
 			k == "TERM_PROGRAM": // icons auto would pick Nerd Font icons under Ghostty
 			continue

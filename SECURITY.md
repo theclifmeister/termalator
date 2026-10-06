@@ -2,13 +2,13 @@
 
 ## Reporting a vulnerability
 
-Please report vulnerabilities privately through GitHub: [open a security advisory](https://github.com/theclifmeister/termilator/security/advisories/new) (Security tab → "Report a vulnerability"). Don't open a public issue or pull request for it.
+Please report vulnerabilities privately through GitHub: [open a security advisory](https://github.com/theclifmeister/terminatr/security/advisories/new) (Security tab → "Report a vulnerability"). Don't open a public issue or pull request for it.
 
 Include what you found, how to reproduce it, and which version or commit you tested. You should get an answer within a week. Once a fix is released, the advisory is published with credit to you, unless you'd rather stay anonymous.
 
 ## Supported versions
 
-termilator is pre-alpha. Only the latest release, and `main`, get security fixes.
+terminatr is pre-alpha. Only the latest release, and `main`, get security fixes.
 
 ## Scope
 

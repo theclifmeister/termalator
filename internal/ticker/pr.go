@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/worktree"
+	"github.com/theclifmeister/terminatr/internal/worktree"
 )
 
 // PR is the fixed set of fields the ticker keeps of a pull request

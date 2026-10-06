@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/proto"
 )
 
 // TestStopOlderProtocol: a server that claims an older protocol refuses
@@ -53,7 +53,7 @@ func TestIsServerArgv(t *testing.T) {
 		want bool
 	}{
 		{[]string{"/opt/homebrew/bin/tm", "server", "run", "--detached"}, true},
-		{[]string{"/Users/x/.termilator/bin/tm-abc", "server", "run"}, true},
+		{[]string{"/Users/x/.terminatr/bin/tm-abc", "server", "run"}, true},
 		{[]string{"tm", "server", "stop"}, false},
 		{[]string{"server", "run"}, false}, // argv[0] is the program
 		{[]string{"vim", "notes", "server", "run"}, false},

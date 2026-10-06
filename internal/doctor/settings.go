@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/theclifmeister/termilator/internal/config"
+	"github.com/theclifmeister/terminatr/internal/config"
 )
 
 // Settings checks config.toml for keys tm doesn't know under [keys] and

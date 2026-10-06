@@ -83,7 +83,7 @@ func TestIconsAuto(t *testing.T) {
 // nerd, unicode and ascii, saves each in the settings file and changes
 // this console's set at once; the next console reads it from the file.
 func TestIconsSetting(t *testing.T) {
-	t.Setenv("TERMILATOR_HOME", t.TempDir())
+	t.Setenv("TERMINATR_HOME", t.TempDir())
 	t.Setenv("TERM_PROGRAM", "Apple_Terminal")
 	defer setIcons(IconsUnicode)
 	if loadIcons() != IconsAuto || ic().name != IconsUnicode {

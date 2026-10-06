@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/doctor"
-	"github.com/theclifmeister/termilator/internal/emu"
-	"github.com/theclifmeister/termilator/internal/server"
-	"github.com/theclifmeister/termilator/internal/update"
-	"github.com/theclifmeister/termilator/internal/version"
+	"github.com/theclifmeister/terminatr/internal/doctor"
+	"github.com/theclifmeister/terminatr/internal/emu"
+	"github.com/theclifmeister/terminatr/internal/server"
+	"github.com/theclifmeister/terminatr/internal/update"
+	"github.com/theclifmeister/terminatr/internal/version"
 )
 
 const doctorUsage = `usage: tm doctor [--fix [--yes]] [--json]`

@@ -4,13 +4,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theclifmeister/termilator/internal/caller"
-	"github.com/theclifmeister/termilator/internal/project"
-	"github.com/theclifmeister/termilator/internal/tasks"
+	"github.com/theclifmeister/terminatr/internal/caller"
+	"github.com/theclifmeister/terminatr/internal/project"
+	"github.com/theclifmeister/terminatr/internal/tasks"
 )
 
 func TestLabel(t *testing.T) {
-	t.Setenv("TERMILATOR_HOME", t.TempDir())
+	t.Setenv("TERMINATR_HOME", t.TempDir())
 	p, err := project.New(project.Options{Name: "demo"})
 	if err != nil {
 		t.Fatal(err)

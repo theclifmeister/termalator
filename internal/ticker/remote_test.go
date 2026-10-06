@@ -13,7 +13,7 @@ import (
 func remoteRig(t *testing.T, on bool) *rig {
 	t.Helper()
 	r := newRig(t)
-	cfg := filepath.Join(os.Getenv("TERMILATOR_HOME"), "config.toml")
+	cfg := filepath.Join(os.Getenv("TERMINATR_HOME"), "config.toml")
 	val := map[bool]string{true: "true", false: "false"}[on]
 	if err := os.WriteFile(cfg, []byte("[projects.demo]\ncoordinator_remote_control = "+val+"\n"), 0o600); err != nil {
 		t.Fatal(err)

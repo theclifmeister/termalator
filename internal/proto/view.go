@@ -1,6 +1,6 @@
 package proto
 
-import "github.com/theclifmeister/termilator/internal/view"
+import "github.com/theclifmeister/terminatr/internal/view"
 
 // Views (docs/SPEC.md §3.3, Views): the server keeps what consoles show.
 // A console joins a view with view.subscribe, which turns its control

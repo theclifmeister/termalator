@@ -11,12 +11,12 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/theclifmeister/termilator/internal/config"
-	"github.com/theclifmeister/termilator/internal/project"
-	"github.com/theclifmeister/termilator/internal/proto"
-	"github.com/theclifmeister/termilator/internal/server"
-	"github.com/theclifmeister/termilator/internal/thread"
-	"github.com/theclifmeister/termilator/internal/tui"
+	"github.com/theclifmeister/terminatr/internal/config"
+	"github.com/theclifmeister/terminatr/internal/project"
+	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/server"
+	"github.com/theclifmeister/terminatr/internal/thread"
+	"github.com/theclifmeister/terminatr/internal/tui"
 )
 
 const attachUsage = `usage: tm attach [SESSION]   (the newest session when none is named; the prefix, Ctrl+B, then d detaches)
@@ -27,11 +27,11 @@ A click on the projects sidebar switches to that shared view.`
 
 // reexecEnv marks a tm that was re-executed as the server's binary, so a
 // build mismatch that survives the re-exec fails instead of looping.
-const reexecEnv = "TERMILATOR_REEXEC"
+const reexecEnv = "TERMINATR_REEXEC"
 
 // attachLogEnv names a file for the attach client's diagnostics (digest
 // checks, key encodings). Tests read it.
-const attachLogEnv = "TERMILATOR_ATTACH_LOG"
+const attachLogEnv = "TERMINATR_ATTACH_LOG"
 
 func init() { commands["attach"] = runAttach }
 

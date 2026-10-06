@@ -26,13 +26,13 @@ builds:
     flags: [-trimpath]
     ldflags:
       - -s -w
-      - -X github.com/theclifmeister/termilator/internal/version.Version={{ if .IsSnapshot }}v{{ .Version }}{{ else }}{{ .Tag }}{{ end }}
-      - -X github.com/theclifmeister/termilator/internal/version.LibGhostty={{ .Env.TM_GHOSTTY_REV }}
+      - -X github.com/theclifmeister/terminatr/internal/version.Version={{ if .IsSnapshot }}v{{ .Version }}{{ else }}{{ .Tag }}{{ end }}
+      - -X github.com/theclifmeister/terminatr/internal/version.LibGhostty={{ .Env.TM_GHOSTTY_REV }}
       # Marks a binary built here, so `tm update` can tell it from a
       # source build (internal/update).
-      - -X github.com/theclifmeister/termilator/internal/version.Channel={{ if .IsSnapshot }}snapshot{{ else }}release{{ end }}
+      - -X github.com/theclifmeister/terminatr/internal/version.Channel={{ if .IsSnapshot }}snapshot{{ else }}release{{ end }}
       # The signing team, which `tm update` requires of the next binary.
-      - -X github.com/theclifmeister/termilator/internal/version.TeamID={{ envOrDefault "TM_TEAM_ID" "" }}
+      - -X github.com/theclifmeister/terminatr/internal/version.TeamID={{ envOrDefault "TM_TEAM_ID" "" }}
     env:
       - CGO_ENABLED=1
       - CC={{ .Env.TM_ROOT }}/scripts/release/cc.sh
@@ -102,9 +102,9 @@ changelog:
 release:
   github:
     owner: theclifmeister
-    name: termilator
+    name: terminatr
   # Created as a draft; the release workflow publishes it once the
   # uploaded archives pass scripts/release/check.sh --signed, then bumps
-  # Formula/termilator.rb.
+  # Formula/terminatr.rb.
   draft: true
   prerelease: auto

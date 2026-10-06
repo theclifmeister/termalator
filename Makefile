@@ -1,4 +1,4 @@
-# termilator build.
+# terminatr build.
 #
 # tm links libghostty-vt statically through cgo (go.mitchellh.com/libghostty).
 # `make` fetches Ghostty at a pinned commit, builds libghostty-vt with Zig
@@ -61,8 +61,8 @@ GHOSTTY_OUT := $(BUILD)/ghostty-$(shell echo $(GHOSTTY_REV) | cut -c1-12)-$(GHOS
 STAMP       := $(GHOSTTY_OUT)/.built
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-LDFLAGS := -X github.com/theclifmeister/termilator/internal/version.Version=$(VERSION) \
-           -X github.com/theclifmeister/termilator/internal/version.LibGhostty=$(shell echo $(GHOSTTY_REV) | cut -c1-12)
+LDFLAGS := -X github.com/theclifmeister/terminatr/internal/version.Version=$(VERSION) \
+           -X github.com/theclifmeister/terminatr/internal/version.LibGhostty=$(shell echo $(GHOSTTY_REV) | cut -c1-12)
 
 export PKG_CONFIG_PATH := $(GHOSTTY_OUT)/share/pkgconfig$(if $(PKG_CONFIG_PATH),:$(PKG_CONFIG_PATH))
 export CGO_ENABLED := 1
@@ -82,7 +82,7 @@ all: build
 build: $(STAMP)
 	$(GO) build -ldflags '$(LDFLAGS)' -o bin/tm ./cmd/tm
 
-# `make run` is the way to try termilator: scripts/run.sh starts the server
+# `make run` is the way to try terminatr: scripts/run.sh starts the server
 # and opens the dashboard. RUN_ARGS starts a session with that command
 # first, e.g. make run RUN_ARGS="top".
 run: build

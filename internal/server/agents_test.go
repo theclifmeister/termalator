@@ -4,8 +4,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/theclifmeister/termilator/internal/agent"
-	"github.com/theclifmeister/termilator/internal/session"
+	"github.com/theclifmeister/terminatr/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/session"
 )
 
 // TestWorked: a kickoff the agent hasn't started on doesn't mark the

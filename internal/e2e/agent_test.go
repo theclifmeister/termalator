@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/agent"
 )
 
 // TestSmokeAgentPermission is M3's "Try it" 1: start Claude, prompt it,
@@ -352,7 +352,7 @@ func TestSmokeAgentThreadAccess(t *testing.T) {
 
 // TestAgentIdentifyByProcess: claude started by hand in a shell session
 // gets agent state while it runs in the foreground (from its status file
-// and the screen; it has no termilator hooks), and loses it after.
+// and the screen; it has no terminatr hooks), and loses it after.
 func TestAgentIdentifyByProcess(t *testing.T) {
 	env := New(t)
 	env.FakeClaude()

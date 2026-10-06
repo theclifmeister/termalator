@@ -5,7 +5,7 @@ import (
 	"slices"
 	"sync/atomic"
 
-	"github.com/theclifmeister/termilator/internal/config"
+	"github.com/theclifmeister/terminatr/internal/config"
 )
 
 // Icon sets (docs/SPEC.md §4): the glyphs of the sidebar's tree and of

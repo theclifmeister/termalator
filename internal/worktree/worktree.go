@@ -1,5 +1,5 @@
 // Package worktree creates and removes the git worktrees threads run in
-// (docs/SPEC.md §9). A worktree is a plain checkout: termilator puts
+// (docs/SPEC.md §9). A worktree is a plain checkout: terminatr puts
 // nothing in it, so removing it by any means loses nothing.
 package worktree
 

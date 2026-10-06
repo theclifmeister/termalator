@@ -1,4 +1,4 @@
-// Package config reads and writes ~/.termilator/config.toml, the human's
+// Package config reads and writes ~/.terminatr/config.toml, the human's
 // settings (docs/SPEC.md §5.1, §11.2): the per-project safety settings
 // under [projects.<slug>], the all-projects ones under [defaults] that a
 // project follows for every key it doesn't set, the default agent, and
@@ -20,7 +20,7 @@ import (
 	"sort"
 
 	"github.com/BurntSushi/toml"
-	"github.com/theclifmeister/termilator/internal/home"
+	"github.com/theclifmeister/terminatr/internal/home"
 )
 
 // Values of start_threads.

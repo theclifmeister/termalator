@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/theclifmeister/termilator/internal/ticker"
+	"github.com/theclifmeister/terminatr/internal/ticker"
 )
 
 // TestShipped: a task's PR is merged when the repo's history has its

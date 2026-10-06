@@ -12,10 +12,10 @@ const maxSocketPath = 100
 
 // Env is the part of the environment the paths depend on.
 type Env struct {
-	TermilatorSocket string // $TERMILATOR_SOCKET
-	TermilatorHome   string // $TERMILATOR_HOME, or ~/.termilator
-	XDGRuntimeDir    string // $XDG_RUNTIME_DIR (Linux)
-	UID              int
+	TerminatrSocket string // $TERMINATR_SOCKET
+	TerminatrHome   string // $TERMINATR_HOME, or ~/.terminatr
+	XDGRuntimeDir   string // $XDG_RUNTIME_DIR (Linux)
+	UID             int
 }
 
 // RunDir is the short, per-user directory for every socket and lock: the
@@ -23,16 +23,16 @@ type Env struct {
 // project path, which can be long (docs/SPEC.md §3.2).
 //
 // When the usual place would make the socket path too long, it falls back
-// to /tmp/termilator-<uid>-<hash>, the hash naming TERMILATOR_HOME: every
+// to /tmp/terminatr-<uid>-<hash>, the hash naming TERMINATR_HOME: every
 // home keeps its own server, even with the fallback.
 func RunDir(e Env) string {
-	dir := filepath.Join(e.TermilatorHome, "run")
+	dir := filepath.Join(e.TerminatrHome, "run")
 	if e.XDGRuntimeDir != "" {
-		dir = filepath.Join(e.XDGRuntimeDir, "termilator")
+		dir = filepath.Join(e.XDGRuntimeDir, "terminatr")
 	}
 	if len(dir)+len("/tm.sock") > maxSocketPath {
-		h := sha256.Sum256([]byte(resolve(e.TermilatorHome)))
-		dir = fmt.Sprintf("/tmp/termilator-%d-%x", e.UID, h[:4])
+		h := sha256.Sum256([]byte(resolve(e.TerminatrHome)))
+		dir = fmt.Sprintf("/tmp/terminatr-%d-%x", e.UID, h[:4])
 	}
 	return dir
 }
@@ -57,7 +57,7 @@ func resolve(path string) string {
 
 // SocketPath returns the server's socket path.
 func SocketPath(e Env) (string, error) {
-	p := e.TermilatorSocket
+	p := e.TerminatrSocket
 	if p == "" {
 		p = filepath.Join(RunDir(e), "tm.sock")
 	}

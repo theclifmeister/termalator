@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theclifmeister/termilator/internal/emu"
+	"github.com/theclifmeister/terminatr/internal/emu"
 )
 
 // popupBody is the text inside the popup's box: the lines between its
