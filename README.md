@@ -26,7 +26,7 @@ brew install terminatr
 
 Newer Homebrew refuses formulas from a tap it doesn't trust; `brew trust` once after tapping allows this one.
 
-Terminatr was called Termilator up to v0.6.1. To upgrade from that by hand: stop the server (`tm server stop --yes`), `mv ~/.termilator ~/.terminatr`, edit the paths inside `~/.terminatr/config.toml` and the project files that name `~/.termilator`, then start it again (`tm server start`); details, Homebrew and the login service in [Upgrading from Termilator](docs/OPERATIONS.md#upgrading-from-termilator). Older installs: [Upgrading from Termalator](docs/OPERATIONS.md#upgrading-from-termalator).
+Terminatr was called Termilator up to v0.6.2. To upgrade from that by hand: stop the server (`tm server stop --yes`), `mv ~/.termilator ~/.terminatr`, edit the paths inside `~/.terminatr/config.toml` and the project files that name `~/.termilator`, then start it again (`tm server start`); details, Homebrew and the login service in [Upgrading from Termilator](docs/OPERATIONS.md#upgrading-from-termilator). Older installs: [Upgrading from Termalator](docs/OPERATIONS.md#upgrading-from-termalator).
 
 or directly, into `~/.local/bin`:
 

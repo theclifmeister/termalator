@@ -145,7 +145,7 @@ On macOS, upgrade and restart from a terminal on the Mac, not over SSH: a server
 
 ### Upgrading from Termilator
 
-Terminatr was called Termilator up to v0.6.1 (`brew install termilator`, state in `~/.termilator`). Nothing moves such an install over; by hand, with the old `tm`:
+Terminatr was called Termilator up to v0.6.2 (`brew install termilator`, state in `~/.termilator`). Nothing moves such an install over; by hand, with the old `tm`:
 
 1. `tm server service uninstall` if you installed the login service, then `tm server stop --yes`.
 2. Homebrew: `brew uninstall termilator`, `brew untap theclifmeister/termilator`, then install Terminatr as above.
