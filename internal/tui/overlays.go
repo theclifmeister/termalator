@@ -276,7 +276,7 @@ func (b *boardView) render(m *dash) string {
 		if r, ok := b.reviews[t.ID]; ok {
 			rv = &r
 		}
-		taskPanelWith(d, t, rv, m.asked(b.slug, t))
+		taskPanelWith(d, t, rv, m.asked(b.slug, t), m.taskUsage(b.slug, t.ID))
 		for i, l := range d.lines {
 			d.lines[i] = strings.TrimPrefix(l, " ")
 		}

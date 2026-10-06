@@ -49,6 +49,8 @@ type Config struct {
 	Path string
 	// Run runs a service manager command; nil uses the real one.
 	Run func(name string, args ...string) error
+	// Output runs a command and returns its stdout; nil uses the real one.
+	Output func(name string, args ...string) (string, error)
 }
 
 // ErrUnsupported means there is no service manager support for the OS.

@@ -167,6 +167,13 @@ func TestBinaryLaunchdStart(t *testing.T) {
 
 	// Nobody at the console: refused, nothing started.
 	tm.ok("server", "stop", "--yes")
+	// A stop boots the dev home's on-demand job out; it isn't left loaded.
+	if c := calls(); !strings.Contains(c, fmt.Sprintf("bootout gui/%d/dev.terminatr.server.", uid)) {
+		t.Fatalf("stop calls:\n%s", c)
+	}
+	if _, err := os.Stat(filepath.Join(fake, "loaded")); err == nil {
+		t.Fatal("the job is still loaded after a stop")
+	}
 	os.WriteFile(filepath.Join(fake, "noconsole"), nil, 0o600)
 	tm.want(1, "nobody is logged in at the Mac's console", "server", "start")
 	if code, out, _ := tm.run("", "server", "status"); code == 0 {

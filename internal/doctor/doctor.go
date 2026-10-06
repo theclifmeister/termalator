@@ -24,6 +24,7 @@ import (
 	"github.com/theclifmeister/terminatr/internal/keychain"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/server"
+	"github.com/theclifmeister/terminatr/internal/service"
 	"github.com/theclifmeister/terminatr/internal/update"
 )
 
@@ -81,6 +82,10 @@ type Deps struct {
 	// through launchd's GUI domain (macOS), and so gives its sessions
 	// the keychain wherever doctor runs; nil means it doesn't.
 	Launchd func() bool
+	// Strays lists loaded launchd jobs named like the server's that no
+	// server needs, and Bootout unloads one by label (macOS); nil skips.
+	Strays  func() ([]service.Stray, error)
+	Bootout func(label string) error
 }
 
 // DefaultDeps uses the real system.
@@ -127,6 +132,7 @@ func Run(d Deps) []Check {
 	out = append(out, Plugins(d)...)
 	out = append(out, Sandbox(d)...)
 	out = append(out, Leftovers(d, live)...)
+	out = append(out, Launchd(d)...)
 	out = append(out, Settings(d)...)
 	out = append(out, Upkeep(d)...)
 	return out
@@ -226,6 +232,32 @@ func Install(d Deps) []Check {
 		default:
 			out = append(out, Check{Group: g, Name: "release", Status: OK, Detail: "up to date (" + latest + ")"})
 		}
+	}
+	return out
+}
+
+// Launchd warns about loaded dev.terminatr.server.* jobs no server needs
+// (a test or dev home's, left behind); the fix boots them out.
+func Launchd(d Deps) []Check {
+	const g = "launchd"
+	if d.Strays == nil {
+		return nil
+	}
+	strays, err := d.Strays()
+	if err != nil {
+		return []Check{{Group: g, Name: "jobs", Status: Warn, Detail: "can't list launchd jobs: " + err.Error()}}
+	}
+	if len(strays) == 0 {
+		return []Check{{Group: g, Name: "jobs", Status: OK, Detail: "no stray dev.terminatr.server.* jobs"}}
+	}
+	var out []Check
+	for _, s := range strays {
+		c := Check{Group: g, Name: "stray job", Status: Warn, Detail: s.Label + ": " + s.Reason}
+		if d.Bootout != nil {
+			label := s.Label
+			c.Fix = &Fix{Desc: "boot out launchd job " + label, Apply: func() error { return d.Bootout(label) }}
+		}
+		out = append(out, c)
 	}
 	return out
 }
