@@ -268,6 +268,9 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		if !bandSetting() {
 			set[envBand] = "off"
 		}
+		if !paneSetting() {
+			set[envPane] = "off"
+		}
 	}
 	for _, kv := range launch.Env {
 		k, v, _ := strings.Cut(kv, "=")

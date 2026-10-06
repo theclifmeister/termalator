@@ -38,7 +38,7 @@ Everything is under `~/.terminatr`, or `$TERMINATR_HOME` when that is set. Nothi
 
 | Path | What |
 |---|---|
-| `config.toml` | your settings: the default agent, the prefix key (`[keys]`), the icons (`[ui]`), terminatr's mod for Claude (`[mods] enabled`, `band`), and the project settings for all projects (`[defaults]`) and per project (`[projects.<slug>]`, which wins key by key). The settings popups (`,` and a project's Settings tab) write it; so do `tm project pause`, `archive`, `delete` and `rename` |
+| `config.toml` | your settings: the default agent, the prefix key (`[keys]`), the icons (`[ui]`), terminatr's mod for Claude (`[mods] enabled`, `band`, `pane`), and the project settings for all projects (`[defaults]`) and per project (`[projects.<slug>]`, which wins key by key). The settings popups (`,` and a project's Settings tab) write it; so do `tm project pause`, `archive`, `delete` and `rename` |
 | `ui.json` | this console's layout: the details panel, the list width, and the sidebar and info panel widths new views start with |
 | `agents/<name>.toml` | your own agent manifests (they override the built-in ones) |
 | `projects/<slug>/` | one folder per project: `PROJECT.md`, `CONTEXT.md`, `MEMORY.md` and `memory/`, `TASKS.md`, `JOURNAL.md`, `inbox/`, `threads/<id>/` (brief, reports, status, attached files), `uploads/` |

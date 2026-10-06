@@ -194,6 +194,10 @@ type Config struct {
 	// above the prompt, its status entry and the CI toast. On unless set
 	// false.
 	ModsBand bool
+	// ModsPane is [mods] pane: with the mod loaded, a coordinator session
+	// opens its /tm dashboard pane by itself when it starts, where it
+	// would dock as a sidebar. On unless set false; /tm opens it anyway.
+	ModsPane bool
 	projects map[string]rawSafety
 	// defaults is the [defaults] table: the all-projects settings.
 	defaults rawSafety
@@ -234,18 +238,19 @@ func Load() (*Config, error) {
 		Mods struct {
 			Enabled bool  `toml:"enabled"`
 			Band    *bool `toml:"band"`
+			Pane    *bool `toml:"pane"`
 		} `toml:"mods"`
 	}
 	md, err := toml.DecodeFile(path, &raw)
 	if errors.Is(err, fs.ErrNotExist) {
-		return &Config{Path: path, ModsBand: true}, nil
+		return &Config{Path: path, ModsBand: true, ModsPane: true}, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	c := &Config{Path: path, projects: raw.Projects, defaults: raw.Defaults, agent: raw.DefaultAgent,
 		Prefix: cmp.Or(raw.Keys.Prefix, raw.Keys.Detach), Icons: raw.UI.Icons, Mods: raw.Mods.Enabled,
-		ModsBand: raw.Mods.Band == nil || *raw.Mods.Band}
+		ModsBand: raw.Mods.Band == nil || *raw.Mods.Band, ModsPane: raw.Mods.Pane == nil || *raw.Mods.Pane}
 	for _, k := range md.Undecoded() {
 		switch {
 		case len(k) >= 3 && k[0] == "projects", len(k) >= 2 && k[0] == "defaults":

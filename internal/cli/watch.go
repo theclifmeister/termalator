@@ -14,7 +14,8 @@ import (
 	"github.com/theclifmeister/terminatr/internal/server"
 )
 
-const watchUsage = `usage: tm watch [--session ID] [--json]   (default: this session, $TERMINATR_SESSION)`
+const watchUsage = `usage: tm watch [--session ID] [--json]   (default: this session, $TERMINATR_SESSION)
+       tm watch --project <slug> [--json]`
 
 func init() {
 	commands["watch"] = func(e *Env, args []string) error { return codeErr(watchCmd(e, args)) }
@@ -28,12 +29,16 @@ func watchCmd(e *Env, args []string) int {
 	fs := flag.NewFlagSet("watch", flag.ContinueOnError)
 	fs.SetOutput(e.Stderr)
 	id := fs.String("session", "", "session id (default: $TERMINATR_SESSION)")
+	slug := fs.String("project", "", "watch a project instead: what its coordinator's /tm pane shows")
 	asJSON := fs.Bool("json", false, "print one JSON object per line")
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
-	if fs.NArg() != 0 {
+	if fs.NArg() != 0 || (*slug != "" && *id != "") {
 		return e.srvUsage("watch", watchUsage)
+	}
+	if *slug != "" {
+		return watchProject(e, *slug, *asJSON)
 	}
 	if *id == "" {
 		*id = e.Getenv(caller.EnvSession)
@@ -115,4 +120,48 @@ func watchLine(w proto.Watch) string {
 		parts = append(parts, fmt.Sprintf("%d queued", w.Queued))
 	}
 	return strings.Join(parts, " · ")
+}
+
+// watchProject is `tm watch --project`: the project's state, then a line
+// on each change, until the reader or the server goes. With asJSON each
+// line is a proto.ProjectWatch.
+func watchProject(e *Env, slug string, asJSON bool) int {
+	p, err := server.ResolvePaths()
+	if err != nil {
+		return e.srvFail("watch", err)
+	}
+	st, w, err := server.WatchProject(p, slug)
+	var perr *proto.Error
+	if errors.As(err, &perr) && perr.Code == proto.ErrUnknownMethod {
+		err = errors.New("the running server can't watch projects; restart it (tm server restart)")
+	}
+	if err != nil {
+		return e.srvFail("watch", err)
+	}
+	defer st.Close()
+	for {
+		var werr error
+		if asJSON {
+			b, _ := json.Marshal(w)
+			_, werr = e.Stdout.Write(append(b, '\n'))
+		} else {
+			_, werr = fmt.Fprintln(e.Stdout, projectWatchLine(w))
+		}
+		if werr != nil {
+			return ExitOK // the reader went away
+		}
+		if w, err = st.Next(); err != nil {
+			if errors.Is(err, io.EOF) {
+				err = errors.New("server hung up")
+			}
+			return e.srvFail("watch", err)
+		}
+	}
+}
+
+// projectWatchLine is a ProjectWatch in one line for people: "demo · 2
+// need you · 1 in inbox · 4 threads · 3 on deck".
+func projectWatchLine(w proto.ProjectWatch) string {
+	return fmt.Sprintf("%s · %d need you · %d in inbox · %d threads · %d on deck",
+		w.Project, len(w.NeedsYou), len(w.Inbox), len(w.Threads), len(w.Ready))
 }
