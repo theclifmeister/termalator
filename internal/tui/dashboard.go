@@ -168,10 +168,11 @@ type dash struct {
 	sideSent string
 	sideBusy bool
 	msg      string
-	errMsg   string    // msg when it reports a failure, drawn as one
-	busy     bool      // an action is running
-	stack    []overlay // views open on top of the list, topmost last
-	geo      *boxGeo   // where the topmost was drawn, for the mouse
+	errMsg   string                  // msg when it reports a failure, drawn as one
+	busy     bool                    // an action is running
+	queued   []func(m *dash) tea.Cmd // settings keys pressed while it runs, in order
+	stack    []overlay               // views open on top of the list, topmost last
+	geo      *boxGeo                 // where the topmost was drawn, for the mouse
 	// lastClick is the last left click, for double-clicks; detailTop is
 	// the details panel's first line, scrolled with the wheel, for the
 	// row detailKey (another row shows from the top).
@@ -549,8 +550,15 @@ func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.leaving = false
 		if msg.err != nil {
+			m.queued = nil
 			m.fail(msg.err)
 			return m, m.load()
+		}
+		if cmd := m.runQueued(); cmd != nil {
+			// Keys waited for this save: they build on it, and one
+			// reload follows the last.
+			m.msg = msg.msg
+			return m, cmd
 		}
 		if msg.sel != "" {
 			m.sel, m.userSel = msg.sel, true

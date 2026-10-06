@@ -1104,3 +1104,47 @@ func TestHelpNamesPrefix(t *testing.T) {
 		t.Fatalf("help header:\n%s", out)
 	}
 }
+
+// TestSettingsKeysQueueDuringSave: keys pressed while a save is in flight
+// wait their turn and build on the saved value; none is dropped.
+func TestSettingsKeysQueueDuringSave(t *testing.T) {
+	src, m := popupData(t)
+	keyPress(m, "a")
+	keyPress(m, "4")
+	for range 3 {
+		keyPress(m, "down")
+	}
+	run(m, keyPress(m, "enter")) // 10 → 15, saved
+	m.setData(src.Load())
+	cmd := keyPress(m, "-") // 14, in flight
+	if !m.busy || cmd == nil {
+		t.Fatal("the first press should start a save")
+	}
+	for range 3 {
+		if c := keyPress(m, "-"); c != nil {
+			t.Fatal("a press during a save should wait")
+		}
+	}
+	if len(m.queued) != 3 {
+		t.Fatalf("queued %d, want 3", len(m.queued))
+	}
+	// Each save's end starts the next, until none is left.
+	for i := 0; cmd != nil && i < 10; i++ {
+		msg := cmd()
+		if _, ok := msg.(actionMsg); !ok {
+			break
+		}
+		_, cmd = m.Update(msg)
+	}
+	m.setData(src.Load())
+	if len(m.queued) != 0 {
+		t.Fatalf("still queued: %d", len(m.queued))
+	}
+	if out := screen(m); !strings.Contains(out, "11 · 1 working now") {
+		t.Fatalf("parallel threads:\n%s", out)
+	}
+	cfg, _ := config.Load()
+	if s := must(cfg.Safety("alpha")); s.ParallelThreads != 11 {
+		t.Fatalf("saved %+v", s)
+	}
+}
