@@ -51,6 +51,7 @@ export function asked(task: string | undefined, status: string | undefined, from
 // whether its thread has a report to open.
 export function needButtons(n: TerminatrNeed, sent: string): (AskKind | 'report')[] {
   const out: (AskKind | 'report')[] = []
+  if (n.why === 'queue') return out
   if (n.task && !sent) {
     if (n.why === 'review' || n.status === 'review') {
       out.push('accept', 'send-back')
@@ -74,6 +75,7 @@ export const BUTTON_LABELS: Record<AskKind | 'report', string> = {
 
 // WHY_WORDS say why a need waits, short.
 const WHY_WORDS: Record<TerminatrNeed['why'], string> = {
+  queue: 'stuck',
   review: 'review',
   question: 'asks',
   ci: 'red CI',
@@ -82,12 +84,22 @@ const WHY_WORDS: Record<TerminatrNeed['why'], string> = {
 
 // needHead is a need's first row: "T63 review · /tm dashboard pane".
 export function needHead(n: TerminatrNeed): { ref: string; why: string; title: string } {
-  return { ref: n.task ?? n.thread ?? '', why: WHY_WORDS[n.why], title: n.title }
+  return { ref: n.task ?? n.thread ?? n.session ?? '', why: WHY_WORDS[n.why], title: n.title }
 }
 
-// needDetail is a need's second row: the thread's question, else its
-// PR in the ticker's words; "" for neither.
+// needKey tells needs apart in the pane: a held queue by its session, the
+// rest by task, thread or title.
+export function needKey(n: TerminatrNeed): string {
+  return n.why === 'queue' ? 'queue-' + (n.session ?? '') : n.task ?? n.thread ?? n.title
+}
+
+// needDetail is a need's second row: what a held queue keeps back, the
+// thread's question, else its PR in the ticker's words; "" for none.
 export function needDetail(n: TerminatrNeed): { text: string; tone: 'question' | 'bad' | 'ok' | '' } {
+  if (n.why === 'queue') {
+    const what = n.thread ? 'the thread gets nothing' : 'the coordinator hears of nothing'
+    return { text: `${what} until it clears; tm agent explain ${n.session ?? ''} says why`, tone: 'bad' }
+  }
   if (n.question) return { text: '“' + n.question + '”', tone: 'question' }
   if (n.pr) return { text: n.pr, tone: n.why === 'ci' || isBad(n.pr) ? 'bad' : 'ok' }
   return { text: '', tone: '' }

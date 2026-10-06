@@ -57,6 +57,12 @@ func TestProjectWatchOf(t *testing.T) {
 			Question: &proto.Question{Questions: []proto.QuestionItem{{Question: "done?", Answered: true}, {Question: "ship it?"}}}},
 		{ID: "s-3", Role: proto.RoleThread, Project: p.Slug, Thread: t3, State: "idle"},
 		{ID: "s-9", Role: proto.RoleThread, Project: "other", Thread: t4, State: "working"},
+		// A coordinator whose nudge sits in a box with text in it; a
+		// hold under QueueNotice is a box being typed into.
+		{ID: "s-1", Role: proto.RoleCoordinator, Project: p.Slug, State: "idle", Queued: 1,
+			QueueHeld: "prompt box not empty", QueueHeldSince: time.Now().Add(-3 * time.Minute)},
+		{ID: "s-7", Role: proto.RoleThread, Project: p.Slug, State: "idle", Queued: 2,
+			QueueHeld: "prompt box not empty", QueueHeldSince: time.Now()},
 	}
 	w := projectWatchOf(p, sessions, ts)
 
@@ -65,7 +71,7 @@ func TestProjectWatchOf(t *testing.T) {
 	for _, n := range w.NeedsYou {
 		got = append(got, need{n.Why, n.Task})
 	}
-	want := []need{{"review", "T2"}, {"review", "T1"}, {"question", "T3"}, {"question", "T8"}, {"ci", "T4"}, {"blocked", "T5"}}
+	want := []need{{"queue", ""}, {"review", "T2"}, {"review", "T1"}, {"question", "T3"}, {"question", "T8"}, {"ci", "T4"}, {"blocked", "T5"}}
 	if len(got) != len(want) {
 		t.Fatalf("needs %v, want %v", got, want)
 	}
@@ -74,6 +80,10 @@ func TestProjectWatchOf(t *testing.T) {
 			t.Fatalf("needs %v, want %v", got, want)
 		}
 	}
+	if n := w.NeedsYou[0]; n.Session != "s-1" || n.Thread != "" || n.Title != "1 queued prompt for the coordinator, held 3m0s: prompt box not empty" {
+		t.Errorf("held queue %+v", n)
+	}
+	w.NeedsYou = w.NeedsYou[1:]
 	if n := w.NeedsYou[0]; !n.Mergeable || n.PRNumber != 12 || n.PRURL != "https://x/12" || n.Thread != t2 || n.PR == "" {
 		t.Errorf("T2 %+v", n)
 	}

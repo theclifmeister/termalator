@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"cmp"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"slices"
@@ -133,6 +134,17 @@ func projectWatchOf(p *project.Project, sessions []proto.SessionInfo, tickerStat
 			w.NeedsYou = append(w.NeedsYou, n)
 		}
 	}
+	// Prompts held while the agent idles: a coordinator's nudges wait
+	// behind them.
+	now := time.Now()
+	for _, info := range sessions {
+		note := info.QueueNote(now)
+		if info.Project != p.Slug || note == "" {
+			continue
+		}
+		w.NeedsYou = append(w.NeedsYou, proto.WatchNeed{Why: proto.WhyQueue, Thread: info.Thread, Session: info.ID,
+			Title: queueTitle(info, note)})
+	}
 	slices.SortStableFunc(w.NeedsYou, func(a, b proto.WatchNeed) int {
 		if c := cmp.Compare(whyRank(a.Why), whyRank(b.Why)); c != 0 {
 			return c
@@ -143,8 +155,18 @@ func projectWatchOf(p *project.Project, sessions []proto.SessionInfo, tickerStat
 	return w
 }
 
+// queueTitle names a held queue: "1 queued prompt for the coordinator,
+// held 3m0s: prompt box not empty".
+func queueTitle(info proto.SessionInfo, note string) string {
+	s := ""
+	if info.Queued != 1 {
+		s = "s"
+	}
+	return fmt.Sprintf("%d queued prompt%s for the %s, %s", info.Queued, s, cmp.Or(info.Role, "session"), note)
+}
+
 func whyRank(why string) int {
-	return slices.Index([]string{proto.WhyReview, proto.WhyQuestion, proto.WhyCI, proto.WhyBlocked}, why)
+	return slices.Index([]string{proto.WhyQueue, proto.WhyReview, proto.WhyQuestion, proto.WhyCI, proto.WhyBlocked}, why)
 }
 
 func boolRank(b bool) int {

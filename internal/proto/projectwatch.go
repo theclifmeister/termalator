@@ -23,7 +23,8 @@ type ProjectWatchParams struct {
 type ProjectWatch struct {
 	Project string `json:"project"`
 	// NeedsYou is what waits for the user, most pressing first
-	// (Why*): tasks to accept, threads' questions, red CI, blocked tasks.
+	// (Why*): held prompt queues, tasks to accept, threads' questions,
+	// red CI, blocked tasks.
 	NeedsYou []WatchNeed `json:"needs_you"`
 	// Inbox is the coordinator's unhandled inbox, oldest first.
 	Inbox []WatchItem `json:"inbox"`
@@ -36,6 +37,10 @@ type ProjectWatch struct {
 
 // Why a WatchNeed waits for the user, in the order they are listed.
 const (
+	// WhyQueue: a session's queued prompts are held while its agent
+	// idles (SessionInfo.QueueNote); a coordinator's nudges wait behind
+	// them, so it hears of nothing meanwhile (T82).
+	WhyQueue    = "queue"
 	WhyReview   = "review"   // a task in review: accept, send back, merge
 	WhyQuestion = "question" // a thread asks the user something
 	WhyCI       = "ci"       // a thread's PR has failing checks or conflicts
@@ -49,6 +54,8 @@ type WatchNeed struct {
 	Title  string `json:"title"`
 	Status string `json:"status,omitempty"`
 	Thread string `json:"thread,omitempty"`
+	// Session is the session whose queue is held (WhyQueue).
+	Session string `json:"session,omitempty"`
 	// Question is the thread's question (tm status --needs-you, or the
 	// question menu open in its agent).
 	Question string `json:"question,omitempty"`

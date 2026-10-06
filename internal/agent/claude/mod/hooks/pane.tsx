@@ -21,7 +21,7 @@ import type { Elements, EngineInterface, On, RenderSurface, RenderViewport } fro
 
 import type { TerminatrNeed, TerminatrProject, TerminatrThread } from '../types'
 import {
-  BUTTON_LABELS, MAX_READY, askLine, asked, isNarrow, needButtons, needDetail, needHead, oneLine, projectFeed, reportTextOf,
+  BUTTON_LABELS, MAX_READY, askLine, asked, isNarrow, needButtons, needDetail, needHead, needKey, oneLine, projectFeed, reportTextOf,
   sentWords, summary, threadLine, todoLine,
 } from './dashboard'
 import type { AskKind } from './dashboard'
@@ -241,13 +241,13 @@ function drawNeed($: EngineInterface, els: Elements[RenderSurface], hasInput: bo
   const { Box, Text } = els
   const head = needHead(n)
   const detail = needDetail(n)
-  const id = n.task ?? n.thread ?? n.title
+  const id = needKey(n)
   const buttons = needButtons(n, was).map(b =>
     drawButton(els, `${b}-${id}`, BUTTON_LABELS[b], () => void press($, b, n, hasInput)))
   const headRow = (
     <Text wrap="truncate-end">
       <Text bold>{head.ref}</Text>
-      <Text color={n.why === 'ci' ? 'error' : 'warning'}>{' ' + head.why}</Text>
+      <Text color={n.why === 'ci' || n.why === 'queue' ? 'error' : 'warning'}>{' ' + head.why}</Text>
       {' ' + head.title}
     </Text>
   )
