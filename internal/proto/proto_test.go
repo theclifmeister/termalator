@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCheck(t *testing.T) {
@@ -81,6 +82,23 @@ func TestWriteFrameOneWrite(t *testing.T) {
 		}
 		if w.n != 1 {
 			t.Fatalf("WriteFrame with %d payload bytes made %d writes, want 1", len(payload), w.n)
+		}
+	}
+}
+
+func TestQueueNote(t *testing.T) {
+	now := time.Now()
+	s := SessionInfo{Queued: 1, QueueHeld: "prompt box not empty", QueueHeldSince: now.Add(-90 * time.Second)}
+	if got := s.QueueNote(now); got != "held 1m30s: prompt box not empty" {
+		t.Fatalf("note %q", got)
+	}
+	for _, c := range []SessionInfo{
+		{Queued: 1, QueueHeld: "prompt box not empty", QueueHeldSince: now.Add(-time.Second)}, // too fresh
+		{Queued: 1}, // waiting on a working agent
+		{QueueHeld: "dialog on screen", QueueHeldSince: now.Add(-time.Hour)}, // nothing queued
+	} {
+		if got := c.QueueNote(now); got != "" {
+			t.Errorf("%+v: note %q", c, got)
 		}
 	}
 }

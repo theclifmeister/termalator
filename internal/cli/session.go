@@ -260,6 +260,9 @@ func stateLine(s proto.SessionInfo) string {
 	}
 	if s.Queued > 0 {
 		st += fmt.Sprintf(" · %d queued", s.Queued)
+		if n := s.QueueNote(time.Now()); n != "" {
+			st += " (" + n + ")"
+		}
 	}
 	return st
 }

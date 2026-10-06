@@ -140,9 +140,35 @@ func Server(d Deps) ([]Check, Live) {
 		for _, s := range list.Sessions {
 			live.Sessions[s.ID] = true
 		}
+		out = append(out, queueChecks(list.Sessions, time.Now())...)
 		out = append(out, runtimeDirs(p, live)...)
 	}
 	return out, live
+}
+
+// queueChecks warns about sessions whose queued prompts are held while
+// the agent is idle (a prompt box with text in it, a dialog): the prompt
+// waits, and a coordinator's nudges with it (§7.5, §8.6).
+func queueChecks(sessions []proto.SessionInfo, now time.Time) []Check {
+	var out []Check
+	for _, s := range sessions {
+		n := s.QueueNote(now)
+		if n == "" {
+			continue
+		}
+		who := s.ID
+		if s.Project != "" {
+			who += " (" + s.Project + " " + s.Role
+			if s.Thread != "" {
+				who += " " + s.Thread
+			}
+			who += ")"
+		}
+		out = append(out, Check{Group: "server", Name: "prompt queue", Status: Warn,
+			Detail: fmt.Sprintf("%s: %d queued prompt(s), %s; nothing is pasted until it clears, and a coordinator gets no nudges meanwhile. "+
+				"The server sends or drops it once it has been held for its bound (journaled); tm agent explain %s shows the queue", who, s.Queued, n, s.ID)})
+	}
+	return out
 }
 
 // keychainCheck reports whether the server's sessions can reach the

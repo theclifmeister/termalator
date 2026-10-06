@@ -12,6 +12,7 @@ import (
 
 	"github.com/theclifmeister/termilator/internal/caller"
 	"github.com/theclifmeister/termilator/internal/proto"
+	"github.com/theclifmeister/termilator/internal/session"
 	"github.com/theclifmeister/termilator/internal/ticker"
 )
 
@@ -24,6 +25,9 @@ const (
 	// The remote control enforcement's pace and grace.
 	envTickRemote = "TERMILATOR_TICK_REMOTE"
 	envTickGrace  = "TERMILATOR_TICK_REMOTE_GRACE"
+	// How long a queued prompt may be held while the agent is idle
+	// (session.AgentConfig.PromptHold).
+	envPromptHold = "TERMILATOR_PROMPT_HOLD"
 )
 
 func envDuration(k string) time.Duration {
@@ -39,8 +43,10 @@ type tickerHost struct {
 
 func (h tickerHost) Sessions() []proto.SessionInfo { return h.s.list().Sessions }
 
+// Prompt sends the ticker's fixed-word prompts (nudges, PR follow-ups).
+// One held too long may go through the agent's channel (§8.6).
 func (h tickerHost) Prompt(id, text string) error {
-	if _, perr := h.s.prompt(proto.SessionPromptParams{ID: id, Text: text}); perr != nil {
+	if _, perr := h.s.promptWith(proto.SessionPromptParams{ID: id, Text: text}, session.PromptOptions{Channel: true}); perr != nil {
 		return perr
 	}
 	return nil

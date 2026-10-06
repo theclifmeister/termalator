@@ -38,6 +38,51 @@ type AgentConfig struct {
 	// OnChange is called (without locks held) when the merged state or
 	// the agent's session id changes.
 	OnChange func(*Session)
+	// PromptHold bounds how long a queued prompt may be held while the
+	// agent is idle (a prompt box with text in it, a dialog on screen)
+	// before it is resolved: sent through the agent's channel when it
+	// allows that, else dropped (docs/SPEC.md §8.6). Zero means
+	// DefaultPromptHold.
+	PromptHold time.Duration
+	// OnPromptResolved is called (without locks held) when a held prompt
+	// was resolved after PromptHold.
+	OnPromptResolved func(*Session, PromptResolution)
+}
+
+// DefaultPromptHold is AgentConfig.PromptHold's default.
+const DefaultPromptHold = 10 * time.Minute
+
+// Why a queued prompt is held while the agent is idle.
+const (
+	HeldBox    = "prompt box not empty"
+	HeldDialog = "dialog on screen"
+)
+
+// PromptOptions qualify a prompt.
+type PromptOptions struct {
+	// Channel lets a prompt that stays held go through the agent's
+	// structured channel (agent.Agent.Prompt), when it has one, instead
+	// of being dropped: for the server's own fixed-word prompts, which
+	// may arrive framed as from another session. A slash command or the
+	// human's own words never take it.
+	Channel bool
+}
+
+// PromptResolution is what became of a prompt held for PromptHold.
+type PromptResolution struct {
+	Text   string
+	Via    string // "channel" or "dropped"
+	Why    string // HeldBox or HeldDialog
+	Held   time.Duration
+	Queued time.Time
+	Err    error // why the channel failed, for a drop that tried it
+}
+
+// queuedPrompt is one prompt waiting for the paste injector.
+type queuedPrompt struct {
+	text    string
+	at      time.Time
+	channel bool
 }
 
 // Timings of the agent sources (docs/SPEC.md §8.3–8.4).
@@ -72,7 +117,9 @@ type agentRT struct {
 	statusRead time.Time
 	fields     map[string]string // status-file fields while trusted
 	version    string
-	prompts    []string
+	prompts    []queuedPrompt
+	heldSince  time.Time // the head prompt has been held while idle since
+	heldWhy    string
 	lastState  agent.Merged
 	lastSID    string
 	lastTodos  []agent.Todo
@@ -124,6 +171,12 @@ type AgentState struct {
 	AgentSID string
 	Todos    []agent.Todo
 	Queued   int // prompts waiting for the paste injector
+	// QueuedSince is when the oldest queued prompt was queued.
+	QueuedSince time.Time
+	// Held says why the next prompt isn't pasted although the agent is
+	// idle (HeldBox, HeldDialog), since HeldSince; empty while it isn't.
+	Held      string
+	HeldSince time.Time
 	// RemoteControl is the observed remote control state, when the
 	// manifest names a status_field and the status file was read.
 	RemoteControl, RemoteKnown bool
@@ -138,6 +191,11 @@ func (s *Session) AgentState() (st AgentState, ok bool) {
 	}
 	rt.mu.Lock()
 	queued := len(rt.prompts)
+	var since time.Time
+	if queued > 0 {
+		since = rt.prompts[0].at
+	}
+	held, heldSince := rt.heldWhy, rt.heldSince
 	var remote, known bool
 	if m := agent.ManifestOf(rt.a); m != nil && m.ObservesRemote() && rt.fields != nil {
 		remote, known = rt.fields[m.RemoteControl.StatusField] != "", true
@@ -146,6 +204,7 @@ func (s *Session) AgentState() (st AgentState, ok bool) {
 	return AgentState{
 		Agent: rt.a.Name(), Observed: rt.observed, Merged: rt.tr.State(),
 		AgentSID: rt.tr.AgentSID(), Todos: rt.tr.Todos(), Queued: queued,
+		QueuedSince: since, Held: held, HeldSince: heldSince,
 		RemoteControl: remote, RemoteKnown: known,
 	}, true
 }
@@ -172,7 +231,11 @@ func (s *Session) Explain() (agent.Explanation, bool) {
 		e.Extra["identified"] = "by process"
 	}
 	if len(rt.prompts) > 0 {
-		e.Extra["queued_prompts"] = fmt.Sprint(len(rt.prompts))
+		q := fmt.Sprintf("%d, oldest since %s", len(rt.prompts), rt.prompts[0].at.Format(time.DateTime))
+		if rt.heldWhy != "" {
+			q += fmt.Sprintf("; held since %s: %s", rt.heldSince.Format(time.DateTime), rt.heldWhy)
+		}
+		e.Extra["queued_prompts"] = q
 	}
 	rt.mu.Unlock()
 	return e, true
@@ -423,7 +486,7 @@ func (s *Session) runAgent(rt *agentRT) {
 				lastEval = now
 			}
 			s.agentChanged(rt)
-			s.deliverPrompts(rt)
+			s.deliverPrompts(rt, now)
 		}
 	}
 }
@@ -434,6 +497,11 @@ func (s *Session) runAgent(rt *agentRT) {
 // pastes it once the agent is idle, no dialog is visible and the prompt
 // box is empty. It returns "channel" or "queued".
 func (s *Session) Prompt(text string) (string, error) {
+	return s.PromptWith(text, PromptOptions{})
+}
+
+// PromptWith is Prompt with options.
+func (s *Session) PromptWith(text string, o PromptOptions) (string, error) {
 	rt := s.agentRT()
 	if rt == nil {
 		return "", ErrNoAgent
@@ -458,36 +526,95 @@ func (s *Session) Prompt(text string) (string, error) {
 		s.cfg.Logf("session %s: prompt channel failed, pasting instead: %v", s.cfg.ID, err)
 	}
 	rt.mu.Lock()
-	rt.prompts = append(rt.prompts, text)
+	rt.prompts = append(rt.prompts, queuedPrompt{text: text, at: time.Now(), channel: o.Channel})
 	rt.mu.Unlock()
 	return "queued", nil
 }
 
 // deliverPrompts pastes the first queued prompt when it is safe: idle,
 // no blocker on screen (an Enter would answer it) and, where the agent
-// names an empty-box rule, an empty box.
-func (s *Session) deliverPrompts(rt *agentRT) {
+// names an empty-box rule, an empty box. A prompt held that way while the
+// agent is idle for PromptHold (text left in the box, say, while the user
+// drives the agent from elsewhere) is resolved, so it can't hold the
+// queue forever: through the channel when it allows that, else dropped.
+func (s *Session) deliverPrompts(rt *agentRT, now time.Time) {
+	idle := rt.tr.State().State == agent.StateIdle
 	rt.mu.Lock()
 	if len(rt.prompts) == 0 {
+		rt.heldSince, rt.heldWhy = time.Time{}, ""
 		rt.mu.Unlock()
 		return
 	}
-	ready := !rt.blocker && (rt.man == nil || rt.man.Inject.EmptyRule == "" || rt.emptyBox)
-	rt.mu.Unlock()
-	if !ready || rt.tr.State().State != agent.StateIdle {
+	why := ""
+	switch {
+	case rt.blocker:
+		why = HeldDialog
+	case rt.man != nil && rt.man.Inject.EmptyRule != "" && !rt.emptyBox:
+		why = HeldBox
+	}
+	if !idle || why == "" {
+		// Working, blocked or exited: the prompt waits its turn.
+		rt.heldSince, rt.heldWhy = time.Time{}, ""
+	}
+	if !idle {
+		rt.mu.Unlock()
 		return
 	}
-	rt.mu.Lock()
-	text := rt.prompts[0]
+	if why != "" {
+		if rt.heldSince.IsZero() {
+			rt.heldSince = now
+		}
+		rt.heldWhy = why
+		if now.Sub(rt.heldSince) < rt.promptHold() {
+			rt.mu.Unlock()
+			return
+		}
+	}
+	p := rt.prompts[0]
 	rt.prompts = rt.prompts[1:]
+	held := now.Sub(rt.heldSince)
+	rt.heldSince, rt.heldWhy = time.Time{}, ""
+	if why != "" {
+		rt.mu.Unlock()
+		s.resolveHeld(rt, p, why, held)
+		return
+	}
 	rt.emptyBox = false // until the screen says so again
 	rt.mu.Unlock()
-	text = strings.ReplaceAll(text, "\x1b[201~", "")
+	text := strings.ReplaceAll(p.text, "\x1b[201~", "")
 	s.Input([]byte("\x1b[200~" + text + "\x1b[201~"))
 	go func() {
 		time.Sleep(pasteEnterDelay)
 		s.Input([]byte("\r"))
 	}()
+}
+
+func (rt *agentRT) promptHold() time.Duration {
+	if rt.cfg.PromptHold > 0 {
+		return rt.cfg.PromptHold
+	}
+	return DefaultPromptHold
+}
+
+// resolveHeld sends a prompt held for PromptHold through the agent's
+// channel when the prompt allows it, else drops it, and tells the owner.
+func (s *Session) resolveHeld(rt *agentRT, p queuedPrompt, why string, held time.Duration) {
+	res := PromptResolution{Text: p.text, Via: "dropped", Why: why, Held: held, Queued: p.at}
+	if p.channel {
+		rt.mu.Lock()
+		t := agent.PromptTarget{SessionID: s.cfg.ID, AgentSID: rt.tr.AgentSID(), PID: rt.pid, Version: rt.version, Fields: rt.fields}
+		rt.mu.Unlock()
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		res.Err = rt.a.Prompt(ctx, t, p.text)
+		cancel()
+		if res.Err == nil {
+			res.Via = "channel"
+		}
+	}
+	s.cfg.Logf("session %s: queued prompt held %s (%s): %s", s.cfg.ID, held.Round(time.Second), why, res.Via)
+	if rt.cfg.OnPromptResolved != nil {
+		rt.cfg.OnPromptResolved(s, res)
+	}
 }
 
 // identifyLoop gives a shell session agent state while an agent the user

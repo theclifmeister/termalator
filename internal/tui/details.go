@@ -233,7 +233,11 @@ func sessionPanel(d *panel, s proto.SessionInfo) {
 		d.field("now", "▸ "+oneLine(s.Current))
 	}
 	if s.Queued > 0 {
-		d.field("queued", fmt.Sprintf("%d prompt%s", s.Queued, map[bool]string{true: "s"}[s.Queued != 1]))
+		q := fmt.Sprintf("%d prompt%s", s.Queued, map[bool]string{true: "s"}[s.Queued != 1])
+		if n := s.QueueNote(time.Now()); n != "" {
+			q += ", " + n
+		}
+		d.field("queued", q)
 	}
 	where := s.Cwd
 	if home, _ := os.UserHomeDir(); home != "" && strings.HasPrefix(where, home) {

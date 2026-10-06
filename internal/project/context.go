@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/theclifmeister/termilator/internal/agent"
@@ -45,6 +46,17 @@ type Section struct {
 type Ticked struct {
 	PRs       map[string]string
 	Checkouts map[string]string
+	// Queues are the project's sessions whose queued prompts are held
+	// while the agent is idle (session.list, proto.SessionInfo.QueueNote).
+	Queues []HeldQueue
+}
+
+// HeldQueue is one session's held prompt queue.
+type HeldQueue struct {
+	Session, Role, Thread string
+	Queued                int
+	Why                   string
+	Since                 time.Time
 }
 
 // Context builds `tm context`. It only reads files, and the same files
@@ -84,6 +96,14 @@ func (p *Project) Context(seen Ticked) ([]Section, error) {
 		safety.StartThreads, safety.Yolo, safety.CoordinatorApproves, safety.ParallelThreads, closeRule, safety.CompleteTasks))
 	if safety.Paused {
 		head = append(head, "Paused by the user: no nudges, no PR follow-up, and tm thread start refuses (project-paused) until they resume it")
+	}
+	for _, q := range seen.Queues {
+		who := q.Role
+		if q.Thread != "" {
+			who += " " + q.Thread
+		}
+		head = append(head, fmt.Sprintf("Prompt queue: %s (%s) has %d prompt(s) held since %s (%s): nothing is pasted, and the coordinator gets no nudges, until it clears; the server sends or drops a held prompt after its bound (JOURNAL.md prompt.*)",
+			q.Session, who, q.Queued, q.Since.UTC().Format("2006-01-02 15:04 UTC"), q.Why))
 	}
 	head = append(head, modelLines()...)
 	out = append(out, Section{Title: "Project", Lines: head})

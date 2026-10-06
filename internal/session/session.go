@@ -250,6 +250,7 @@ func (s *Session) Info() proto.SessionInfo {
 		info.Agent = st.Agent
 		info.State, info.Reason, info.StateSources = string(st.State), st.Reason, st.Sources
 		info.AgentSID, info.Identified, info.Queued = st.AgentSID, st.Observed, st.Queued
+		info.QueuedSince, info.QueueHeld, info.QueueHeldSince = st.QueuedSince, st.Held, st.HeldSince
 		if st.RemoteKnown {
 			info.RemoteControl = st.RemoteControl
 		}

@@ -505,3 +505,53 @@ func TestTickerCheckoutSync(t *testing.T) {
 		t.Fatal("moved a dirty checkout")
 	}
 }
+
+// TestSmokeHeldNudge reproduces T43: text left in the coordinator's
+// prompt box (typed and never sent, while the user drives it over remote
+// control) held the queued nudge, and with it every later nudge,
+// forever. Now a held server prompt goes through the agent's messaging
+// socket after the bound, and any other held prompt is dropped; both
+// are journaled, and the user's text stays in the box.
+func TestSmokeHeldNudge(t *testing.T) {
+	env, projDir, out := tickerEnv(t)
+	env.Setenv("TERMILATOR_PROMPT_HOLD", "2s")
+	coord := env.StartAgent("claude", projDir, "--role", "coordinator", "--project", "demo")
+	env.WaitState(coord, "idle", agentWait)
+	env.Keys(coord, "whats still open?")
+	env.WaitFor(coord, "❯ whats still open?", agentWait)
+	startThread(t, env, projDir)
+
+	env.MustCLI("thread", "prompt", "t-0001", "run thread-report", "--project", "demo")
+	if got := readOut(t, out, "report"); !strings.Contains(got, "stored report 1") {
+		t.Fatalf("report: %q", got)
+	}
+	nudge := env.WaitFake("prompt", 2*agentWait, func(r FakeRecord) bool { return strings.HasPrefix(r.Str("text"), "[tm] ") })
+	if nudge.Str("via") != "socket" || !strings.Contains(nudge.Str("text"), "t-0001 (Small fix) reported") {
+		t.Fatalf("nudge %+v", nudge)
+	}
+	journal := func(want string) {
+		t.Helper()
+		if !Poll(agentWait, func() bool {
+			b, _ := os.ReadFile(filepath.Join(projDir, "JOURNAL.md"))
+			return regexp.MustCompile(want).Match(b)
+		}) {
+			b, _ := os.ReadFile(filepath.Join(projDir, "JOURNAL.md"))
+			t.Fatalf("journal lacks %q:\n%s", want, b)
+		}
+	}
+	journal(`ticker prompt\.channel ` + coord.ID + ` held \S+: prompt box not empty`)
+
+	// The human's own words never take the socket: held, they are dropped.
+	env.WaitState(coord, "idle", agentWait)
+	env.MustCLI("session", "prompt", coord.ID, "human words")
+	journal(`ticker prompt\.dropped ` + coord.ID + ` held \S+: prompt box not empty`)
+	for _, r := range env.FakeRecords("prompt") {
+		if strings.Contains(r.Str("text"), "human words") {
+			t.Fatalf("a dropped prompt arrived: %+v", r)
+		}
+	}
+	if info, _ := env.Info(coord); info.Queued != 0 {
+		t.Fatalf("still queued: %+v", info)
+	}
+	env.WaitFor(coord, "❯ whats still open?", agentWait)
+}

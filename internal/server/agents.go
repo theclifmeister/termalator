@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/theclifmeister/termilator/internal/agent"
+	"github.com/theclifmeister/termilator/internal/caller"
 	"github.com/theclifmeister/termilator/internal/project"
 	"github.com/theclifmeister/termilator/internal/proto"
 	"github.com/theclifmeister/termilator/internal/session"
@@ -277,8 +278,9 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		RemoteControl: r.RemoteControl, RemoteHeld: r.RemoteHeld,
 		Agent: &session.AgentConfig{
 			Agent: a, AgentSID: r.AgentSessionID, Kickoff: launch.Kickoff, Home: home,
-			Context:  s.contextOf(r.ID),
-			OnChange: s.agentChanged,
+			Context:    s.contextOf(r.ID),
+			OnChange:   s.agentChanged,
+			PromptHold: envDuration(envPromptHold), OnPromptResolved: s.promptResolved,
 		},
 	})
 	if err != nil {
@@ -326,6 +328,37 @@ func (s *Server) baseEnv() []string {
 		return s.opts.Env
 	}
 	return os.Environ()
+}
+
+// promptResolved logs and journals a queued prompt the session resolved
+// after it was held for PromptHold while the agent was idle (§8.6), and
+// rings the bell for a dropped one.
+func (s *Server) promptResolved(sess *session.Session, res session.PromptResolution) {
+	held := res.Held.Round(time.Second)
+	msg := fmt.Sprintf("session %s: queued prompt (queued %s) held %s while idle, %s: ", sess.ID(), res.Queued.Format(time.DateTime), held, res.Why)
+	if res.Via == "channel" {
+		msg += "sent through the agent's channel"
+	} else {
+		msg += "dropped"
+		if res.Err != nil {
+			msg += fmt.Sprintf(" (channel: %v)", res.Err)
+		}
+	}
+	s.mu.Lock()
+	r, ok := s.records[sess.ID()]
+	s.mu.Unlock()
+	if ok && r.Project != "" {
+		if p, err := project.Open(r.Project); err == nil {
+			if err := p.Journal(caller.Caller{Kind: caller.Ticker}, "prompt."+res.Via, sess.ID(), fmt.Sprintf("held %s: %s", held, res.Why)); err != nil {
+				s.log.Printf("session %s: journal: %v", sess.ID(), err)
+			}
+		}
+	}
+	if res.Via == "channel" {
+		s.log.Print(msg)
+		return
+	}
+	s.alert(msg)
 }
 
 // agentChanged records the agent's latest session id (Claude rotates it
@@ -440,6 +473,10 @@ func (s *Server) hookEvent(p proto.HookEventParams) proto.HookEventResult {
 }
 
 func (s *Server) prompt(p proto.SessionPromptParams) (any, *proto.Error) {
+	return s.promptWith(p, session.PromptOptions{})
+}
+
+func (s *Server) promptWith(p proto.SessionPromptParams, o session.PromptOptions) (any, *proto.Error) {
 	sess, perr := s.session(p.ID)
 	if perr != nil {
 		return nil, perr
@@ -447,7 +484,7 @@ func (s *Server) prompt(p proto.SessionPromptParams) (any, *proto.Error) {
 	if strings.TrimSpace(p.Text) == "" {
 		return nil, proto.Errorf(proto.ErrBadParams, "empty prompt")
 	}
-	via, err := sess.Prompt(p.Text)
+	via, err := sess.PromptWith(p.Text, o)
 	if errors.Is(err, session.ErrNoAgent) {
 		return nil, proto.Errorf(proto.ErrRefused, "session %s runs no agent; use tm session keys", p.ID)
 	}
