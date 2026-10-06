@@ -155,7 +155,7 @@ func validKey(key string) bool {
 
 // ProjectKeys are the settings of a [projects.<slug>] table; all but
 // ProjectOnly are also those of [defaults].
-var ProjectKeys = []string{"start_threads", "yolo", "coordinator_approves", "parallel_threads", "auto_close", "auto_close_days", "auto_resolve", "pr_followup", "complete_tasks", "coordinator_remote_control", "fast_forward_checkout", "models", "paused", "archived",
+var ProjectKeys = []string{"start_threads", "yolo", "coordinator_approves", "parallel_threads", "auto_close", "auto_close_days", "auto_resolve", "pr_followup", "complete_tasks", "coordinator_remote_control", "auto_clear", "fast_forward_checkout", "models", "paused", "archived",
 	"archive_tasks_days", "archive_threads_days", "archive_inbox_days", "archive_journal_days"}
 
 // ProjectOnly are a project's own state, never all projects': a paused

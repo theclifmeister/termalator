@@ -205,6 +205,21 @@ type SessionInfo struct {
 	// Question is the question menu open in the agent, as its mod sent it
 	// (session.ask); nil without one, or without a mod.
 	Question *Question `json:"question,omitempty"`
+	// Context is how many tokens the agent's latest turn read as context
+	// (input and cache, not the running total), ContextWindow the window
+	// of its model, both as its mod sent them; 0 without a mod or
+	// before the first turn.
+	Context       int64 `json:"context,omitempty"`
+	ContextWindow int64 `json:"context_window,omitempty"`
+}
+
+// ContextPercent is the share of the context window the session uses, in
+// whole percent; -1 when unknown.
+func (s SessionInfo) ContextPercent() int {
+	if s.Context <= 0 || s.ContextWindow <= 0 {
+		return -1
+	}
+	return int(s.Context * 100 / s.ContextWindow)
 }
 
 // QueueNotice is how long a queued prompt must be held while its agent is

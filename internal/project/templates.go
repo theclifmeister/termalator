@@ -21,6 +21,11 @@ const contextTemplate = `# Context
 
 Living context for this project: the current plan, conventions and
 decisions. The coordinator keeps it current; threads read it.
+
+## Needs you
+
+Open questions to the user, one line each, until they answer: a cleared
+conversation loses none.
 `
 
 const memoryTemplate = `# Memory

@@ -83,6 +83,10 @@ type Host interface {
 	// Unstick pastes the queued prompt a session's mod holds while its
 	// agent idles, and says what it did; "" when the mod holds none.
 	Unstick(session string) string
+	// Clear pastes the agent's clear prompt ([inject] clear) into a
+	// session; still is asked right before delivery and drops it when
+	// false. An error when the agent has none.
+	Clear(session string, still func() bool) error
 }
 
 // Options configure a Ticker. Zero durations take the defaults.
@@ -95,6 +99,9 @@ type Options struct {
 	// RemoteEvery and RemoteGrace pace keepRemote (remote.go).
 	RemoteEvery time.Duration
 	RemoteGrace time.Duration
+	// ClearGrace and ClearEvery pace autoClear (clear.go).
+	ClearGrace time.Duration
+	ClearEvery time.Duration
 	// Day is how long a day of auto_close_days lasts (tests shorten it).
 	Day time.Duration
 	// State is the file that keeps what the ticker already reported
@@ -174,6 +181,8 @@ type projectMemo struct {
 	unstuck    bool
 	// Remote is what keepRemote saw of the coordinator (remote.go).
 	Remote *remoteMemo `json:"remote,omitempty"`
+	// Clear is what autoClear saw of the coordinator (clear.go).
+	Clear *clearMemo `json:"clear,omitempty"`
 }
 
 // repoMemo is a repo's checkout as the last sync left it, and the PR
@@ -199,6 +208,12 @@ func New(o Options) *Ticker {
 	}
 	if o.RemoteGrace <= 0 {
 		o.RemoteGrace = DefaultRemoteGrace
+	}
+	if o.ClearGrace <= 0 {
+		o.ClearGrace = DefaultClearGrace
+	}
+	if o.ClearEvery <= 0 {
+		o.ClearEvery = DefaultClearEvery
 	}
 	if o.Day <= 0 {
 		o.Day = 24 * time.Hour
@@ -379,6 +394,7 @@ func (t *Ticker) Sweep() {
 			t.nudge(p, sessions, now)
 		}
 		t.keepRemote(p, sessions, safety, now)
+		t.autoClear(p, sessions, safety, cfg.ContextHint, now)
 		if prune {
 			t.upkeep(p, safety, now)
 		}

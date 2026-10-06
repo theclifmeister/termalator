@@ -66,6 +66,11 @@ const (
 // Guard), which guard_off may name.
 var GuardRules = []string{"force-push", "push-default", "worktree-only", "delete-branch", "merge", "credentials"}
 
+// DefaultContextHint is [ui] context_hint when unset: the percent of
+// its model's context window at which a coordinator is told to consider
+// /clear.
+const DefaultContextHint = 40
+
 // Limits of the number settings.
 const (
 	MaxParallelThreads = 99
@@ -105,6 +110,10 @@ type Safety struct {
 	// the project (§8.2 [remote_control]). The prefix key and tm project
 	// remote change only the running session.
 	CoordinatorRemoteControl bool `json:"coordinator_remote_control"`
+	// AutoClear lets the ticker clear the coordinator's conversation once
+	// its context reaches [ui] context_hint, only while nothing waits on
+	// it (§7.5): the project's state lives in files, so nothing is lost.
+	AutoClear bool `json:"auto_clear"`
 	// FastForwardCheckout lets the ticker fast-forward the user's own
 	// checkout of a project repo to origin's default branch when that
 	// branch is checked out, clean and only behind (§7.5).
@@ -186,6 +195,7 @@ type rawSafety struct {
 	PRFollowup     *bool     `toml:"pr_followup"`
 	CompleteTasks  *string   `toml:"complete_tasks"`
 	CoordinatorRC  *bool     `toml:"coordinator_remote_control"`
+	AutoClear      *bool     `toml:"auto_clear"`
 	FastForward    *bool     `toml:"fast_forward_checkout"`
 	Models         *[]string `toml:"models"`
 	Paused         *bool     `toml:"paused"`
@@ -248,7 +258,11 @@ type Config struct {
 	// opens its /tm dashboard pane by itself when it starts, where it
 	// would dock as a sidebar. On unless set false; /tm opens it anyway.
 	ModsPane bool
-	projects map[string]rawSafety
+	// ContextHint is [ui] context_hint: the percent of its model's
+	// context window at which a coordinator is told to consider /clear
+	// (DefaultContextHint when unset, 0 for never).
+	ContextHint int
+	projects    map[string]rawSafety
 	// defaults is the [defaults] table: the all-projects settings.
 	defaults rawSafety
 	agent    string
@@ -283,7 +297,8 @@ func Load() (*Config, error) {
 			Detach string `toml:"detach"`
 		} `toml:"keys"`
 		UI struct {
-			Icons string `toml:"icons"`
+			Icons       string `toml:"icons"`
+			ContextHint *int   `toml:"context_hint"`
 		} `toml:"ui"`
 		Mods struct {
 			Enabled bool  `toml:"enabled"`
@@ -293,14 +308,21 @@ func Load() (*Config, error) {
 	}
 	md, err := toml.DecodeFile(path, &raw)
 	if errors.Is(err, fs.ErrNotExist) {
-		return &Config{Path: path, ModsBand: true, ModsPane: true}, nil
+		return &Config{Path: path, ModsBand: true, ModsPane: true, ContextHint: DefaultContextHint}, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	c := &Config{Path: path, projects: raw.Projects, defaults: raw.Defaults, agent: raw.DefaultAgent,
 		Prefix: cmp.Or(raw.Keys.Prefix, raw.Keys.Detach), Icons: raw.UI.Icons, Mods: raw.Mods.Enabled,
-		ModsBand: raw.Mods.Band == nil || *raw.Mods.Band, ModsPane: raw.Mods.Pane == nil || *raw.Mods.Pane}
+		ModsBand: raw.Mods.Band == nil || *raw.Mods.Band, ModsPane: raw.Mods.Pane == nil || *raw.Mods.Pane,
+		ContextHint: DefaultContextHint}
+	if h := raw.UI.ContextHint; h != nil {
+		if *h < 0 || *h > 100 {
+			return c, fmt.Errorf("%s: ui.context_hint is a percent from 0 (never) to 100", path)
+		}
+		c.ContextHint = *h
+	}
 	for _, k := range md.Undecoded() {
 		switch {
 		case len(k) >= 3 && k[0] == "projects", len(k) >= 2 && k[0] == "defaults":
@@ -365,7 +387,7 @@ func (c *Config) Own(slug string) []string {
 		"coordinator_approves": r.CoordinatorApproves != nil, "parallel_threads": r.ParallelThreads != nil,
 		"auto_close": r.AutoClose != nil || r.AutoResolve != nil, "auto_close_days": r.AutoCloseDays != nil,
 		"pr_followup": r.PRFollowup != nil, "complete_tasks": r.CompleteTasks != nil,
-		"coordinator_remote_control": r.CoordinatorRC != nil, "fast_forward_checkout": r.FastForward != nil,
+		"coordinator_remote_control": r.CoordinatorRC != nil, "auto_clear": r.AutoClear != nil, "fast_forward_checkout": r.FastForward != nil,
 		"models": r.Models != nil, "archive_tasks_days": r.ArchiveTasks != nil, "archive_threads_days": r.ArchiveThreads != nil,
 		"archive_inbox_days": r.ArchiveInbox != nil, "archive_journal_days": r.ArchiveJournal != nil,
 	}
@@ -433,6 +455,9 @@ func (r rawSafety) apply(s *Safety, path, table string) error {
 	}
 	if r.CoordinatorRC != nil {
 		s.CoordinatorRemoteControl = *r.CoordinatorRC
+	}
+	if r.AutoClear != nil {
+		s.AutoClear = *r.AutoClear
 	}
 	if r.FastForward != nil {
 		s.FastForwardCheckout = *r.FastForward
