@@ -237,6 +237,41 @@ func TestMods(t *testing.T) {
 	}
 }
 
+func TestModelsAllowList(t *testing.T) {
+	write(t, `
+[defaults]
+models = ["opus", "sonnet"]
+
+[projects.demo]
+models = ["opus"]
+
+[projects.other]
+yolo = true
+`)
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := c.Safety("demo"); !reflect.DeepEqual(s.Models, []string{"opus"}) || !s.AllowsModel("opus") || s.AllowsModel("sonnet") {
+		t.Fatalf("demo: %v", s.Models)
+	}
+	if s, _ := c.Safety("other"); !reflect.DeepEqual(s.Models, []string{"opus", "sonnet"}) || s.AllowsModel("haiku") {
+		t.Fatalf("other: %v", s.Models)
+	}
+	if got := c.Own("demo"); !reflect.DeepEqual(got, []string{"models"}) {
+		t.Fatalf("own: %v", got)
+	}
+	if s, _ := (*Config)(nil).AllProjects(); s.Models != nil || !s.AllowsModel("haiku") {
+		t.Fatal("no setting allows every model")
+	}
+	for _, bad := range []string{`models = []`, `models = ["a b"]`, `models = ["opus", "opus"]`, `models = "opus"`} {
+		write(t, "[defaults]\n"+bad+"\n")
+		if _, err := Load(); err == nil {
+			t.Errorf("%s accepted", bad)
+		}
+	}
+}
+
 // TestGuard: merge, guard and guard_off default to the coordinator
 // merging and every rule on; a project's own value wins over [defaults].
 func TestGuard(t *testing.T) {

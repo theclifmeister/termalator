@@ -150,7 +150,7 @@ about = "balanced: most everyday coding tasks with clear scope"
 
 [[models]]
 name = "haiku"
-about = "fastest and cheapest: small, well-specified edits, docs, mechanical or repetitive changes"
+about = "fastest, cheapest: small well-specified edits, docs; no auto mode, so it stops at every permission prompt"
 
 [inject]
 # Bracketed paste + Enter while idle with an empty prompt box (core).

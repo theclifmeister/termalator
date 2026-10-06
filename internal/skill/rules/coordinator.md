@@ -69,7 +69,11 @@ for the first piece of work. Propose nothing yet.
   well-specified work (a doc fix, a rename, a mechanical change), and
   leave `--model` off (the agent's default) or take the most capable one
   for design, subtle bugs or large changes. When unsure, leave it off.
-  A model the agent doesn't list is refused with `unknown-model`.
+  A model the agent doesn't list is refused with `unknown-model`. The
+  user may limit the models (`tm context` then lists only the allowed
+  ones and says so): one outside it is refused with
+  `model-not-allowed`. Pick from the list shown, or leave `--model`
+  off; don't retry with another way round it.
 - When the user paused the project (`tm context` says so), thread
   starts are refused with `project-paused`: tell the user, and don't
   retry until they resume it. Pausing, archiving and deleting projects

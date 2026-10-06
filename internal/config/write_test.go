@@ -256,3 +256,36 @@ func TestRenameTable(t *testing.T) {
 		}
 	}
 }
+
+func TestSetModels(t *testing.T) {
+	write(t, "[projects.demo]\nyolo = true\n")
+	if err := SetProject("demo", "models", []string{"opus", "sonnet"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetDefaults("models", []string{"opus"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range [][]string{nil, {"opus", "opus"}, {"two words"}} {
+		if err := SetProject("demo", "models", bad); err == nil {
+			t.Errorf("models took %v", bad)
+		}
+	}
+	if err := SetProject("demo", "models", "opus"); err == nil {
+		t.Error("models took a string")
+	}
+	path, _ := Path()
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), `models = ["opus", "sonnet"]`) || !strings.Contains(string(data), "[defaults]\nmodels = [\"opus\"]") {
+		t.Fatalf("file:\n%s", data)
+	}
+	if err := UnsetProject("demo", "models"); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := c.Safety("demo"); len(s.Models) != 1 || s.Models[0] != "opus" {
+		t.Fatalf("after unset: %v", s.Models)
+	}
+}
