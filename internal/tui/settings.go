@@ -669,20 +669,38 @@ func safetySettings(slug string) []setting {
 			value: func(m *dash) string { return onOff(safety(m).FastForwardCheckout) },
 			change: toggle("fast_forward_checkout", func(s config.Safety) bool { return s.FastForwardCheckout },
 				func(s *config.Safety, on bool) { s.FastForwardCheckout = on }, "keeping your checkout current")},
+		{label: "Thread models", help: "The models the coordinator may pick for a thread. Enter lists them to allow or leave out; with none left out it chooses from all. A model it may not pick is refused (haiku has no auto mode, so its threads stop at every permission prompt).",
+			value: func(m *dash) string { return modelWords(safety(m).Models) },
+			change: func(m *dash) tea.Cmd {
+				m.push(&modelsView{all: m.src.Models(), allow: slices.Clone(safety(m).Models),
+					save: func(m *dash, list []string) tea.Cmd {
+						// Every model allowed: all projects drops the line,
+						// a project keeps the explicit list (x follows all).
+						if all && len(list) == len(m.src.Models()) {
+							s := safety(m)
+							s.Models = nil
+							m.data.Defaults = &s
+							return m.setSetting(table, "models", nil, "the coordinator may pick any model "+forWho)
+						}
+						return set(m, "models", list, "the coordinator may pick "+strings.Join(list, ", ")+" "+forWho, func(s *config.Safety) { s.Models = list })
+					}})
+				return nil
+			}},
 	}
 	onOffOf := func(get func(config.Safety) bool) func(config.Safety) string {
 		return func(s config.Safety) string { return onOff(get(s)) }
 	}
 	rows = scope(rows,
 		[][]string{{"start_threads"}, {"yolo"}, {"coordinator_approves"}, {"parallel_threads"}, {"auto_close", "auto_close_days"},
-			{"complete_tasks"}, {"pr_followup"}, {"coordinator_remote_control"}, {"fast_forward_checkout"}},
+			{"complete_tasks"}, {"pr_followup"}, {"coordinator_remote_control"}, {"fast_forward_checkout"}, {"models"}},
 		[]func(config.Safety) string{startWords, onOffOf(func(s config.Safety) bool { return s.Yolo }),
 			onOffOf(func(s config.Safety) bool { return s.CoordinatorApproves }),
 			func(s config.Safety) string { return fmt.Sprint(s.ParallelThreads) }, closeWords,
 			func(s config.Safety) string { return completeWords(s.CompleteTasks) },
 			onOffOf(func(s config.Safety) bool { return s.PRFollowup }),
 			onOffOf(func(s config.Safety) bool { return s.CoordinatorRemoteControl }),
-			onOffOf(func(s config.Safety) bool { return s.FastForwardCheckout })})
+			onOffOf(func(s config.Safety) bool { return s.FastForwardCheckout }),
+			func(s config.Safety) string { return modelWords(s.Models) }})
 	if all {
 		return rows
 	}
@@ -804,6 +822,83 @@ func nextStep(steps []int, cur int) int {
 		}
 	}
 	return steps[0]
+}
+
+// modelWords is the models setting as the popup shows it.
+func modelWords(allow []string) string {
+	if len(allow) == 0 {
+		return "any"
+	}
+	return strings.Join(allow, ", ")
+}
+
+// modelsView lists the models a thread may use, one to allow or leave
+// out with enter or space; each change is saved at once. At least one
+// stays allowed.
+type modelsView struct {
+	all   []string // every model the agents offer
+	allow []string // the allowed ones; empty is every model
+	sel   int
+	err   string
+	// save writes the new list (never empty).
+	save func(m *dash, list []string) tea.Cmd
+}
+
+func (v *modelsView) allowed(name string) bool {
+	return len(v.allow) == 0 || slices.Contains(v.allow, name)
+}
+
+func (v *modelsView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
+	switch k.String() {
+	case "esc", "q":
+		m.pop()
+	case "up", "k", "down", "j":
+		v.sel = moveSel(v.sel, scrollKeys[k.String()], len(v.all))
+	case "enter", "space", " ":
+		if v.sel >= len(v.all) {
+			break
+		}
+		name := v.all[v.sel]
+		var next []string
+		for _, n := range v.all {
+			if (n == name) != v.allowed(n) { // flip name, keep the others
+				next = append(next, n)
+			}
+		}
+		if len(next) == 0 {
+			v.err = "at least one model stays allowed"
+			break
+		}
+		v.err = ""
+		v.allow = next
+		if len(next) == len(v.all) {
+			v.allow = nil
+		}
+		return v.save(m, next)
+	}
+	return nil
+}
+
+func (v *modelsView) render(m *dash) string {
+	var lines []string
+	for i, n := range v.all {
+		box := "[ ] "
+		if v.allowed(n) {
+			box = "[x] "
+		}
+		l := box + n
+		if i == v.sel {
+			l = styleSel.Render(l)
+		}
+		lines = append(lines, l)
+	}
+	if len(v.all) == 0 {
+		lines = append(lines, styleFaint.Render("no agent lists models"))
+	}
+	if v.err != "" {
+		lines = append(lines, "", styleBad.Render(v.err))
+	}
+	return m.popup(box{title: "models a thread may use", body: lines, sel: -1, keys: "enter allow or leave out · ↑ ↓ move · esc back", width: 64})
 }
 
 // closeWords is the auto-close setting as the popup shows it.

@@ -27,6 +27,11 @@
 // when Claude reads the conversation's context blocks, the copy the
 // SessionStart command hook brought when that fails.
 //
+// In a thread session it gives the model the thread's tools,
+// mcp__terminatr__report, __status, __steps and __done, served over the
+// same socket (hooks/tools.ts): typed, checked by the server, run as the
+// thread, and let through without a permission prompt.
+//
 // It sends each AskUserQuestion menu to the server (`tm session ask`) and
 // answers it with what `tm thread answer` gave, unless the user answers
 // in the pane first.
@@ -45,6 +50,7 @@ import { errorText, handled, offerOf } from './deliver'
 import type { Ack, Offer } from './deliver'
 import { feed } from './feed'
 import { guard } from './guarded'
+import { answer, body, toolName, TOOLS } from './tools'
 import { initialTurn, stateOf, step, waitKey } from './turn'
 import { initialUsage, reportOf } from './usage'
 import type { TurnUsageIn, UsageReport } from './usage'
@@ -85,6 +91,7 @@ export const register: Register = on => {
     const isBand = (await $.env.get('TERMINATR_BAND')) !== 'off'
     await update($, band, () => isBand)
     await startReports($)
+    if (socket && (await $.env.get('TERMINATR_ROLE')) === 'thread') await registerTools($)
     if (bin && id) void follow($, bin, id, isBand)
     return started
   })
@@ -107,6 +114,30 @@ export const register: Register = on => {
     const fresh = await fetchContext($)
     return { ...r, blocks: withBlock(r.blocks, fresh ?? (await read($, context))) }
   })
+
+  // The thread's tools: each call goes to the server, which answers what
+  // the command printed or why it refused. A deny beneath (a rule of the
+  // user's) stands; otherwise they run unasked, being the thread's own
+  // reporting. They are listed up front, not behind ToolSearch.
+  for (const t of TOOLS) {
+    const tool = toolName(t)
+    on('tool.call', { tool }, async ($, e) => {
+      if (!socket) return { deny: `terminatr: this session has no mod socket; run tm ${t.name} in the shell` }
+      try {
+        const r = await $.http.fetch(`http://terminatr/v1/tools/${t.name}`, {
+          method: 'POST', socketPath: socket, headers: { 'content-type': 'application/json' }, body: body(t, e),
+        })
+        return answer(r.status, r.text)
+      } catch (err) {
+        return { deny: `terminatr: the server didn't answer (${String(err)}); run tm ${t.name} in the shell` }
+      }
+    })
+    on('tool.check', { tool }, async ($, e, next) => {
+      const v = await next(e)
+      return v.decision === 'deny' ? v : { decision: 'allow' }
+    })
+    on('tool.describe', { tool }, async ($, e, next) => ({ ...(await next(e)), isDeferred: false }))
+  }
 
   // The menu is open while next(e) is pending; whichever answers first,
   // the user in the pane or tm, answers the call. Returning with next(e)
@@ -256,6 +287,18 @@ async function startReports($: EngineInterface) {
   })
   // An unload ends the loop mid-call: nothing to report.
   deliver($).catch(() => {})
+}
+
+// registerTools lists the thread's tools for the model; one that fails
+// leaves its shell command.
+async function registerTools($: EngineInterface) {
+  for (const t of TOOLS) {
+    try {
+      await $.tool.register(t)
+    } catch (err) {
+      $.ui.log(`terminatr: tool ${t.name}: ${String(err)}`, { to: 'debug' })
+    }
+  }
 }
 
 // deliver takes the server's prompts until the session is gone. A

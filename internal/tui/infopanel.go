@@ -156,7 +156,7 @@ func infoLines(d *infoData, w int, now time.Time) ([]string, []infoHit) {
 	pl.gap()
 	state := stateWord(s)
 	if s.State == "blocked" && s.Reason != "" {
-		state += " " + s.Reason
+		state += " " + blockReason(s)
 	}
 	g, st := stateLook(s.State)
 	pl.field("thread", id+" "+st.Render(strings.TrimSpace(g+" "+oneLine(state))))
@@ -177,6 +177,14 @@ func infoLines(d *infoData, w int, now time.Time) ([]string, []infoHit) {
 		if ts.NeedsYou != "" {
 			hang(pl, styleFaint.Render(fmt.Sprintf("%-9s", "needs you"))+" ", styleWarn.Render(oneLine(ts.NeedsYou)))
 		}
+	}
+	if q := s.Question; q != nil {
+		pl.gap()
+		pl.add(styleHead.Render("Question open") + styleFaint.Render(" · "+age(now.Sub(q.Since))+" ago"))
+		for _, l := range questionLines(q) {
+			pl.wrap(l)
+		}
+		pl.gap()
 	}
 	// The PR and its checks.
 	if l := d.prLine(); l != "" {

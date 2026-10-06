@@ -25,6 +25,46 @@ func stateWord(s proto.SessionInfo) string {
 	return "running"
 }
 
+// blockReason is why a blocked session is blocked; "question" says
+// "question open" while the server holds the menu (SessionInfo.Question).
+func blockReason(s proto.SessionInfo) string {
+	if s.Reason == "question" && s.Question != nil {
+		return "question open"
+	}
+	return s.Reason
+}
+
+// questionLines are a session's open question menu, as tm thread show
+// prints it: each question with its header, then its options by number,
+// the last one the menu's free text. Each line is plain; indent says how
+// far the options sit in.
+func questionLines(q *proto.Question) []string {
+	var out []string
+	for i, it := range q.Questions {
+		l := fmt.Sprintf("%d. %s", i+1, oneLine(it.Question))
+		if it.Header != "" {
+			l = fmt.Sprintf("%d. [%s] %s", i+1, oneLine(it.Header), oneLine(it.Question))
+		}
+		if it.MultiSelect {
+			l += " (several)"
+		}
+		if it.Answered {
+			out = append(out, l+" → answered: "+oneLine(it.Answer))
+			continue
+		}
+		out = append(out, l)
+		for j, o := range it.Options {
+			opt := fmt.Sprintf("   %d. %s", j+1, oneLine(o.Label))
+			if o.Description != "" {
+				opt += " — " + oneLine(o.Description)
+			}
+			out = append(out, opt)
+		}
+		out = append(out, fmt.Sprintf("   %d. (the user's own words)", len(it.Options)+1))
+	}
+	return out
+}
+
 // progressOnly is progress without the block's reason, which rows show
 // on their own.
 func progressOnly(s proto.SessionInfo) string {

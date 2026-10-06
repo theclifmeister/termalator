@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -133,7 +134,7 @@ func (p *Project) Context(seen Ticked) ([]Section, error) {
 			head = append(head, "  "+l)
 		}
 	}
-	head = append(head, modelLines()...)
+	head = append(head, modelLines(safety.Models)...)
 	out = append(out, Section{Title: "Project", Lines: head})
 	out = append(out, capLines("Standing instructions (PROJECT.md)", splitLines(p.Instructions), capInstructions, "PROJECT.md"))
 
@@ -204,8 +205,9 @@ func (p *Project) Context(seen Ticked) ([]Section, error) {
 
 // modelLines list each agent's models for tm thread start --model, from
 // the manifests' [[models]]: one line per model, the agent's default
-// first.
-func modelLines() []string {
+// first. A non-empty allow lists only those models (the user's
+// restriction, §11.2), and a name no agent lists is flagged.
+func modelLines(allow []string) []string {
 	dir, err := home.AgentsDir()
 	if err != nil {
 		return nil
@@ -215,6 +217,7 @@ func modelLines() []string {
 		return nil
 	}
 	var out []string
+	var known []agent.Model
 	for _, name := range reg.Names() {
 		a, _ := reg.Get(name)
 		models := agent.ModelsOf(a)
@@ -222,8 +225,25 @@ func modelLines() []string {
 			continue
 		}
 		out = append(out, fmt.Sprintf("Models of %s (tm thread start --model; without it, the agent's default):", name))
+		var shown int
 		for _, m := range models {
+			if len(allow) > 0 && !slices.Contains(allow, m.Name) {
+				continue
+			}
 			out = append(out, "  "+m.Name+": "+m.About)
+			shown++
+		}
+		if shown == 0 {
+			out = append(out, "  (none of the user's allowed models is listed by this agent: start threads without --model)")
+		}
+		known = append(known, models...)
+	}
+	if len(allow) > 0 {
+		out = append(out, "The user limits the models to: "+strings.Join(allow, ", ")+" (config.toml; the human's). Any other --model is refused.")
+		for _, n := range allow {
+			if !slices.ContainsFunc(known, func(m agent.Model) bool { return m.Name == n }) {
+				out = append(out, "  note: no agent lists a model named "+n)
+			}
 		}
 	}
 	return out

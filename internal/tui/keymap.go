@@ -73,7 +73,8 @@ var mouseKeys = []keyHelp{
 	{"info panel", "beside a thread's pane: its task opens the task view, its PR the browser; a click elsewhere gives it the keyboard"},
 	{"wheel", "moves through a list; scrolls the details panel and long popups"},
 	{"drag", "the divider beside the details panel, the sidebar's border, the info panel's border"},
-	{"shift+drag", "select text, as usual; a pane whose program takes the mouse (Claude Code does) gets its clicks"},
+	{"drag in a pane", "a pane whose program doesn't take the mouse (a shell): select text, copied on release to this terminal's clipboard (OSC 52, over SSH too); Claude Code selects and copies itself"},
+	{"shift+drag", "your terminal's own selection (option+drag in some macOS terminals)"},
 }
 
 // keyGroups is every key, grouped.
