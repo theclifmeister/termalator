@@ -1,21 +1,19 @@
 import type { Color, Elements, RenderSurface } from 'claude-code'
 
 import type { TerminatrWatch } from '../types'
-import { counts, isPRBad, steps } from './view'
+import { isPRBad, steps } from './view'
 
 // A part of the band's first row: its text and how it is painted.
 type Part = { text: string; bold?: boolean; dimColor?: boolean; color?: Color }
 
-// parts are the first row's: "T50 · steps 2/4 · #12 open, checks pass ·
-// 1 needs you", each painted on its own.
+// parts are the first row's: "T50 · steps 2/4 · #12 open, checks pass",
+// each painted on its own. The counts are the status entry's alone.
 export function parts(w: TerminatrWatch): Part[] {
   const out: Part[] = []
   if (w.task) out.push({ text: w.task.id, bold: true })
   const s = steps(w)
   if (s) out.push({ text: s, dimColor: true })
   if (w.pr) out.push(isPRBad(w.pr) ? { text: w.pr, color: 'error' } : { text: w.pr, dimColor: true })
-  const c = counts(w)
-  if (c) out.push({ text: c, color: 'warning' })
   return out.map((p, i) => (i === 0 ? p : { ...p, text: ' · ' + p.text }))
 }
 
