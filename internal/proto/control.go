@@ -320,9 +320,9 @@ type SessionPromptParams struct {
 	Text string `json:"text"`
 }
 
-// SessionPromptResult says how the prompt went in: "channel" (delivered
-// through the agent's structured channel) or "queued" (pasted once the
-// agent is idle with an empty prompt box).
+// SessionPromptResult says how the prompt went in: "channel" (written to
+// the agent's structured channel, which may not confirm delivery) or
+// "queued" (pasted once the agent is idle with an empty prompt box).
 type SessionPromptResult struct {
 	Via string `json:"via"`
 }
@@ -369,6 +369,9 @@ type HookEventParams struct {
 	PPID    int            `json:"ppid,omitempty"`
 	At      time.Time      `json:"at"`
 	Payload map[string]any `json:"payload"`
+	// Token is the agent's prompt-channel token from the hook's
+	// environment (the manifest's inject.token_env), when it has one.
+	Token string `json:"token,omitempty"`
 }
 
 // HookEventResult is what `tm hook` prints back to the harness.

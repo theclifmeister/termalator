@@ -341,8 +341,8 @@ func (s *Server) promptResolved(sess *session.Session, res session.PromptResolut
 		return
 	}
 	msg := fmt.Sprintf("session %s: queued prompt (queued %s) held %s while idle, %s: ", sess.ID(), res.Queued.Format(time.DateTime), held, res.Why)
-	if res.Via == "channel" {
-		msg += "sent through the agent's channel"
+	if res.Via == "sent" {
+		msg += "sent through the agent's channel (delivery not confirmed)"
 	} else {
 		msg += "dropped"
 		if res.Err != nil {
@@ -359,7 +359,7 @@ func (s *Server) promptResolved(sess *session.Session, res session.PromptResolut
 			}
 		}
 	}
-	if res.Via == "channel" {
+	if res.Via == "sent" {
 		s.log.Print(msg)
 		return
 	}
@@ -470,6 +470,9 @@ func (s *Server) hookEvent(p proto.HookEventParams) proto.HookEventResult {
 	}
 	if a := sess.Agent(); a == nil || a.Name() != p.Agent {
 		return proto.HookEventResult{}
+	}
+	if p.Token != "" {
+		sess.SetPromptToken(p.Token)
 	}
 	res, err := sess.Hook(p.Event, p.Payload)
 	if err != nil && !errors.Is(err, session.ErrNoAgent) {
