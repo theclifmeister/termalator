@@ -10,10 +10,13 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/caller"
 	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/rename"
+	"github.com/theclifmeister/terminatr/internal/server"
 	"github.com/theclifmeister/terminatr/internal/skill"
 	"github.com/theclifmeister/terminatr/internal/ticker"
 	"github.com/theclifmeister/terminatr/internal/tui"
@@ -27,7 +30,8 @@ const projectUsage = `usage: tm project new <name> [--goal "…"] [--repo PATH].
        tm project remote on|off [<slug>]   (remote control of its running coordinator)
        tm project pause|resume [<slug>]    (no nudges, PR follow-up or new threads while paused)
        tm project archive|unarchive <slug> (hidden from the sidebar; the ticker leaves it alone)
-       tm project delete <slug> [--yes]    (moves it to the trash; asks first)`
+       tm project delete <slug> [--yes]    (moves it to the trash; asks first)
+       tm project rename <slug> <new-slug> [--name "…"] [--json]   (no thread may run; restarts its coordinator)`
 
 func runProject(e *Env, args []string) error {
 	if len(args) == 0 {
@@ -44,6 +48,8 @@ func runProject(e *Env, args []string) error {
 		return projectRemote(e, args[1:])
 	case "pause", "resume", "archive", "unarchive", "delete":
 		return projectLifecycle(e, args[0], args[1:])
+	case "rename", "mv":
+		return projectRename(e, args[1:])
 	case "open":
 		f := newFlags()
 		agentName := f.String("agent")
@@ -144,6 +150,92 @@ func projectLifecycle(e *Env, verb string, args []string) error {
 	}
 	fmt.Fprintln(e.Stdout, msg)
 	return nil
+}
+
+// projectRename renames a project's slug (docs/SPEC.md §5.1): through
+// the server when one runs, which stops and restarts the coordinator and
+// carries the ticker's memos over; else here.
+func projectRename(e *Env, args []string) error {
+	f := newFlags()
+	name, asJSON := f.String("name"), f.Bool("json")
+	pos, err := f.Parse(args)
+	if err != nil {
+		return err
+	}
+	if len(pos) != 2 {
+		return usagef("%s", projectUsage)
+	}
+	if e.Caller.IsAgent() {
+		return &project.Error{Code: "human-only", Msg: "the user renames projects"}
+	}
+	params := proto.ProjectRenameParams{From: pos[0], To: pos[1], Name: *name}
+	var res proto.ProjectRenameResult
+	c, _, err := connect(false)
+	switch {
+	case err == nil:
+		defer c.Close()
+		if err := c.Call(proto.MethodProjectRename, params, &res); err != nil {
+			var pe *proto.Error
+			if errors.As(err, &pe) {
+				return &project.Error{Code: pe.Code, Msg: pe.Message}
+			}
+			return err
+		}
+	case errors.Is(err, server.ErrNotRunning):
+		if res, err = renameOffline(e, params); err != nil {
+			return err
+		}
+	default:
+		return err
+	}
+	if *asJSON {
+		return e.printJSON(res)
+	}
+	if params.To == params.From {
+		fmt.Fprintf(e.Stdout, "renamed %s to %q\n", params.From, *name)
+	} else {
+		fmt.Fprintf(e.Stdout, "renamed %s to %s: %s\n", params.From, params.To, res.Dir)
+	}
+	if res.Worktrees != "" {
+		fmt.Fprintf(e.Stdout, "  worktrees in %s (%d thread records updated); branches keep their names\n", res.Worktrees, res.Threads)
+	}
+	if res.Coordinator != "" {
+		fmt.Fprintf(e.Stdout, "  coordinator started again: %s (tm project open %s)\n", res.Coordinator, params.To)
+	}
+	for _, n := range res.Notes {
+		fmt.Fprintf(e.Stdout, "  note: %s\n", n)
+	}
+	return nil
+}
+
+// renameOffline renames with no server running: nothing of the project
+// can run, and the ticker's memos are in its state file.
+func renameOffline(e *Env, p proto.ProjectRenameParams) (proto.ProjectRenameResult, error) {
+	var out proto.ProjectRenameResult
+	paths, err := server.ResolvePaths()
+	if err != nil {
+		return out, err
+	}
+	o := rename.Options{From: p.From, To: p.To, Name: p.Name, Caller: e.Caller}
+	if hd, err := os.UserHomeDir(); err == nil {
+		if reg, _ := agent.Load(paths.AgentsDir()); reg != nil {
+			o.MoveAgentDir = func(from, to string) error { return server.MoveAgentDirs(reg, hd, from, to) }
+		}
+	}
+	res, err := rename.Project(o)
+	if res == nil {
+		return out, err
+	}
+	out = proto.ProjectRenameResult{Dir: res.Dir, Worktrees: res.Worktrees, Threads: res.Threads, Notes: res.Notes}
+	if err != nil {
+		out.Notes = append(out.Notes, err.Error())
+	}
+	if p.To != p.From {
+		if err := ticker.RenameProjectState(ticker.StatePath(paths.Sessions), p.From, p.To); err != nil {
+			out.Notes = append(out.Notes, "ticker memos not carried over: "+err.Error())
+		}
+	}
+	return out, nil
 }
 
 // confirmDelete asks on the terminal for the slug; without one, delete

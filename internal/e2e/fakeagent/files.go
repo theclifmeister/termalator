@@ -54,9 +54,15 @@ func writeAtomic(path string, data []byte, perm os.FileMode) error {
 	return os.Rename(tmp.Name(), path)
 }
 
-// projectDirName is Claude's name for a cwd under ~/.claude/projects.
+// projectDirName is Claude's name for a cwd under ~/.claude/projects:
+// every character but letters and digits becomes '-'.
 func projectDirName(cwd string) string {
-	return strings.NewReplacer("/", "-", ".", "-").Replace(cwd)
+	return strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
+			return r
+		}
+		return '-'
+	}, cwd)
 }
 
 // transcriptPath is the transcript of session sid started in cwd.
