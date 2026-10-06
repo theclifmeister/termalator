@@ -56,6 +56,31 @@ func TestLaunchEnv(t *testing.T) {
 	}
 }
 
+// TestLaunchEnvNoSecrets: tokens and secrets never reach the launch file,
+// whatever their name's prefix says; what the server and agents need
+// stays.
+func TestLaunchEnvNoSecrets(t *testing.T) {
+	env := []string{
+		"NODE_AUTH_TOKEN=npm_x", "GH_TOKEN=ghp_x", "GITHUB_TOKEN=ghp_y", "GIT_ASKPASS_TOKEN=z", "ANTHROPIC_API_KEY=sk-x",
+		"CLAUDE_CODE_OAUTH_TOKEN=o", "AWS_SECRET_ACCESS_KEY=a", "AWS_ACCESS_KEY_ID=b", "DB_PASSWORD=p", "STRIPE_KEY=s",
+		"HTTPS_PROXY=http://user:pw@proxy:8080", "GOOGLE_APPLICATION_CREDENTIALS=/k.json",
+		"PKG_CONFIG_PATH=/old/.build/x", "CGO_CFLAGS=-DTM_LIBGHOSTTY=/old", "RANDOM_APP_SETTING=1",
+		"PATH=/usr/bin", "HOME=/Users/u", "USER=u", "TERM=xterm-256color", "TERM_PROGRAM=ghostty", "COLORTERM=truecolor",
+		"LANG=en_GB.UTF-8", "LC_ALL=C", "SSH_AUTH_SOCK=/tmp/agent", "GH_HOST=example", "GOPATH=/go", "HTTP_PROXY=http://proxy:8080",
+		"XDG_CONFIG_HOME=/c", "TERMINATR_HOME=/h",
+	}
+	none := func(string) string { return "" }
+	var keys []string
+	for _, kv := range LaunchEnv(env, none) {
+		k, _, _ := strings.Cut(kv, "=")
+		keys = append(keys, k)
+	}
+	want := "PATH HOME USER TERM TERM_PROGRAM COLORTERM LANG LC_ALL SSH_AUTH_SOCK GH_HOST GOPATH HTTP_PROXY XDG_CONFIG_HOME TERMINATR_HOME"
+	if got := strings.Join(keys, " "); got != want {
+		t.Fatalf("kept %s\nwant %s", got, want)
+	}
+}
+
 func TestLaunchFile(t *testing.T) {
 	c, _ := config(t, "darwin")
 	c.Env = []string{"TM_LAUNCH_TEST=a=b", "TM_LAUNCH_EMPTY="}

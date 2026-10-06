@@ -27,8 +27,8 @@
 //
 // After /clear and compaction it gives the thread or coordinator its
 // context back (hooks/context.ts): fetched fresh from GET /v1/context
-// when Claude reads the conversation's context blocks, the copy the
-// SessionStart command hook brought when that fails.
+// when Claude reads the conversation's context blocks. The SessionStart
+// command hook brings only a short line then, not a copy.
 //
 // In a thread session it gives the model the thread's tools,
 // mcp__terminatr__report, __status, __steps and __done, served over the
@@ -51,7 +51,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { TerminatrTurn, TerminatrWatch } from '../types'
 import { answers, question } from './ask'
 import { drawBand } from './band'
-import { splitContext, withBlock } from './context'
+import { withBlock } from './context'
 import { errorText, handled, offerOf } from './deliver'
 import type { Ack, Offer } from './deliver'
 import { feed } from './feed'
@@ -70,7 +70,6 @@ const turn = atom({ plugin: 'terminatr', key: 'turn' } as const, initialTurn)
 const usage = atom({ plugin: 'terminatr', key: 'usage' } as const, initialUsage)
 const delivering = atom({ plugin: 'terminatr', key: 'delivering' } as const, '')
 const deliverer = atom({ plugin: 'terminatr', key: 'deliverer' } as const, 0)
-const context = atom({ plugin: 'terminatr', key: 'context' } as const, '')
 
 // BEAT_MS is the heartbeat: the server's ModBeat (internal/agent).
 const BEAT_MS = 10_000
@@ -108,23 +107,17 @@ export const register: Register = on => {
     return started
   })
 
-  // The role's context, as our context block: the command hook's copy
-  // is kept for when the server can't be asked. The hook's copy stays in
-  // its answer too until Claude's re-read of the blocks after /clear is
-  // verified live (the model reads it twice meanwhile).
+  // The role's context is our context block (below); after /clear and
+  // compaction Claude is told to read the blocks again.
   on('classic.SessionStart', async ($, e, next) => {
     const r = await next(e)
-    const { ours } = splitContext(r.additionalContext)
-    if (!ours) return r
-    await update($, context, () => ours)
     if (e.source === 'clear' || e.source === 'compact') $.ui.invalidate('prompt.context')
     return r
   })
 
   on('prompt.context', async ($, e, next) => {
     const r = await next(e)
-    const fresh = await fetchContext($)
-    return { ...r, blocks: withBlock(r.blocks, fresh ?? (await read($, context))) }
+    return { ...r, blocks: withBlock(r.blocks, (await fetchContext($)) ?? '') }
   })
 
   // The thread's tools: each call goes to the server, which answers what
