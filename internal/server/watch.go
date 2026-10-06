@@ -171,10 +171,6 @@ func (s *Server) serveWatch(c net.Conn, br *bufio.Reader, req proto.Request) {
 		return
 	}
 	resp.Result, _ = json.Marshal(w)
-	poll := envDuration(envWatchPoll)
-	if poll <= 0 {
-		poll = defaultWatchPoll
-	}
 	if err := writeJSONLine(c, resp); err != nil {
 		return
 	}

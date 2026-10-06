@@ -444,6 +444,9 @@ func (s *Server) serveControl(c net.Conn, br *bufio.Reader, peerPID int) {
 		case proto.MethodSessionWatch:
 			s.serveWatch(c, br, req)
 			return
+		case proto.MethodProjectWatch:
+			s.serveProjectWatch(c, br, req)
+			return
 		case proto.MethodSessionAsk:
 			s.serveAsk(c, br, req)
 			return
