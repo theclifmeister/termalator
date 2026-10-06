@@ -84,3 +84,20 @@ func TestVersionsSeeUpgrade(t *testing.T) {
 		t.Fatalf("runs %d, want 2", *runs)
 	}
 }
+
+// TestBandSetting: [mods] band is on unless set false, and on when
+// config.toml doesn't load.
+func TestBandSetting(t *testing.T) {
+	h := t.TempDir()
+	t.Setenv(home.Env, h)
+	cfg := filepath.Join(h, "config.toml")
+	for _, c := range []struct {
+		body string
+		want bool
+	}{{"", true}, {"[mods]\nenabled = true\n", true}, {"[mods]\nband = false\n", false}, {"[mods\n", true}} {
+		os.WriteFile(cfg, []byte(c.body), 0o600)
+		if got := bandSetting(); got != c.want {
+			t.Errorf("%q: band %v, want %v", c.body, got, c.want)
+		}
+	}
+}

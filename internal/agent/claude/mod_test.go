@@ -45,6 +45,11 @@ func TestLaunchMods(t *testing.T) {
 		_, reg := l.Files["claude-plugin/hooks/register.ts"]
 		_, types := l.Files["claude-plugin/types/index.d.ts"]
 		_, feed := l.Files["claude-plugin/hooks/feed.ts"]
+		for _, f := range []string{"hooks/band.tsx", "hooks/view.ts"} {
+			if _, ok := l.Files["claude-plugin/"+f]; ok != mods {
+				t.Fatalf("mods %v: %s written %v", mods, f, ok)
+			}
+		}
 		if !mods {
 			if len(hooks.Modules) != 0 || plugin["types"] != "" || reg || types || feed {
 				t.Fatalf("mods off: modules %v, types %q, files %v %v %v", hooks.Modules, plugin["types"], reg, types, feed)
