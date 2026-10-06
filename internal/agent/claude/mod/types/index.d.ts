@@ -107,12 +107,19 @@ export type TerminatrAsk = { task: string; kind: string; status: string }
 // The thread report the /tm-report pane shows.
 export type TerminatrReport = { thread: string; title: string; text: string }
 
+// The session's cost ledger as the last turn left it (hooks/usage.ts):
+// the dollars /cost showed then, so the next turn reports the rise.
+export type TerminatrUsage = {
+  usd: number
+}
+
 declare module 'claude-code' {
   interface PluginState {
     terminatr: {
       watch: TerminatrWatch | null
       band: boolean
       turn: TerminatrTurn
+      usage: TerminatrUsage
       delivering: string
       deliverer: number
       project: TerminatrProject | null

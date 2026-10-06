@@ -96,6 +96,32 @@ func (s *Server) syncThread(r SessionRecord, st session.AgentState) {
 	}
 }
 
+// addUsage adds what a turn of session id used to its thread's totals.
+// A session that is no thread's (a shell, a coordinator) keeps none.
+func (s *Server) addUsage(id string, u thread.Usage) {
+	s.mu.Lock()
+	r, ok := s.records[id]
+	s.mu.Unlock()
+	if !ok || r.Role != proto.RoleThread || r.Project == "" || r.Thread == "" {
+		return
+	}
+	s.threadMu.Lock()
+	defer s.threadMu.Unlock()
+	p, err := project.Open(r.Project)
+	if err != nil {
+		return
+	}
+	if _, err := thread.Update(p, r.Thread, func(x *thread.Record) error {
+		if x.Session != id {
+			return nil
+		}
+		x.Usage = x.Usage.Add(u)
+		return nil
+	}); err != nil {
+		s.log.Printf("thread %s: usage: %v", r.Thread, err)
+	}
+}
+
 // adopt makes a running agent session outside the projects a thread's
 // (session.adopt, docs/SPEC.md §9 Adopt): its record and its session
 // take the thread role, so the caller check, the context after a clear,

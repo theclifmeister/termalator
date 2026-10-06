@@ -163,6 +163,9 @@ func infoLines(d *infoData, w int, now time.Time) ([]string, []infoHit) {
 	if d.rec != nil && d.rec.Model != "" {
 		pl.field("model", oneLine(d.rec.Model))
 	}
+	if d.rec != nil {
+		pl.field("usage", d.rec.Usage.String())
+	}
 	if ts := d.status; ts != nil {
 		pl.field("progress", progressLine(ts.Progress()))
 		switch {

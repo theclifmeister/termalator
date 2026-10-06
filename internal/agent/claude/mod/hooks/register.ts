@@ -40,12 +40,15 @@ import type { Ack, Offer } from './deliver'
 import { feed } from './feed'
 import { registerPane, sawViewport } from './pane'
 import { initialTurn, stateOf, step, waitKey } from './turn'
+import { initialUsage, reportOf } from './usage'
+import type { TurnUsageIn, UsageReport } from './usage'
 import type { Seen } from './turn'
 import { ciToast, shows, statusText } from './view'
 
 const watch = atom({ plugin: 'terminatr', key: 'watch' } as const, null)
 const band = atom({ plugin: 'terminatr', key: 'band' } as const, true)
 const turn = atom({ plugin: 'terminatr', key: 'turn' } as const, initialTurn)
+const usage = atom({ plugin: 'terminatr', key: 'usage' } as const, initialUsage)
 const delivering = atom({ plugin: 'terminatr', key: 'delivering' } as const, '')
 const deliverer = atom({ plugin: 'terminatr', key: 'deliverer' } as const, 0)
 
@@ -117,6 +120,7 @@ export const register: Register = on => {
   on('turn.complete', async ($, e, next) => {
     // A subagent's run is part of its spawner's turn.
     if (!e.agentId) await saw($, { kind: 'turn.complete', reason: e.reason }, 'turn.complete')
+    void spent($, e.turnId, e.usage)
     return next(e)
   })
 
@@ -175,6 +179,28 @@ export const register: Register = on => {
   })
 
   registerPane(on)
+}
+
+// spent sends what the turn cost, numbers only, a subagent's turns
+// included: they are spend too. Failures are logged and dropped.
+async function spent($: EngineInterface, turnId: string, u: TurnUsageIn | undefined) {
+  if (!socket || !u) return
+  try {
+    const ledger = (await $.session.usage()).cost?.usd
+    let out: UsageReport | null = null
+    await update($, usage, before => {
+      const r = reportOf(turnId, u, ledger, before)
+      out = r.report
+      return r.now
+    })
+    if (!out) return
+    const r = await $.http.fetch('http://terminatr/v1/usage', {
+      method: 'POST', socketPath: socket, headers: { 'content-type': 'application/json' }, body: JSON.stringify(out),
+    })
+    if (!r.ok) $.ui.log(`terminatr: usage report: ${r.status} ${r.text}`, { to: 'debug' })
+  } catch (err) {
+    $.ui.log(`terminatr: usage report: ${String(err)}`, { to: 'debug' })
+  }
 }
 
 // The channel: the socket, and one report in flight at a time, the

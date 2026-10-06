@@ -57,6 +57,10 @@ type ProjectData struct {
 	Items  []project.Item
 	// Threads are the project's unresolved threads (M6).
 	Threads []ThreadRow
+	// Usage is what all the project's threads used, resolved ones
+	// included; TaskUsage splits it by task number.
+	Usage     thread.Usage
+	TaskUsage map[int]thread.Usage
 	// NeedsYou are the tasks in the board's Needs you group (review or
 	// blocked), in board order, for NEEDS YOU.
 	NeedsYou []*tasks.Task
@@ -224,6 +228,7 @@ func (s *ServerSource) Load() Data {
 				}
 			}
 			recs, _ := thread.List(p)
+			pd.TaskUsage, pd.Usage = thread.TaskUsage(recs)
 			for _, r := range recs {
 				if r.State == thread.Resolved {
 					continue
