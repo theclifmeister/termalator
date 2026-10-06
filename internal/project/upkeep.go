@@ -21,9 +21,6 @@ import (
 const (
 	BudgetContext = 6 << 10 // CONTEXT.md
 	BudgetMemory  = 6 << 10 // MEMORY.md, and each file under memory/
-	// ArchiveDoneAfter: the ticker moves a task that has been done this
-	// long (by its updated date) to the task archive.
-	ArchiveDoneAfter = 30 * 24 * time.Hour
 )
 
 // Oversize is a context file over its budget.

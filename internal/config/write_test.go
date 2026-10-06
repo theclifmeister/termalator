@@ -88,7 +88,7 @@ func TestSetProject(t *testing.T) {
 	if err := SetProject("demo", "nonsense", true); err == nil {
 		t.Error("an unknown key was written")
 	}
-	for key, v := range map[string]any{"parallel_threads": 0, "auto_close_days": 366, "auto_close": "never", "complete_tasks": "later"} {
+	for key, v := range map[string]any{"parallel_threads": 0, "auto_close_days": 366, "archive_done_days": 0, "auto_close": "never", "complete_tasks": "later"} {
 		if err := SetProject("demo", key, v); err == nil {
 			t.Errorf("%s took %v", key, v)
 		}
@@ -287,5 +287,28 @@ func TestSetModels(t *testing.T) {
 	}
 	if s, _ := c.Safety("demo"); len(s.Models) != 1 || s.Models[0] != "opus" {
 		t.Fatalf("after unset: %v", s.Models)
+	}
+}
+
+// TestArchiveDoneDays: 30 by default, set by all projects or a project,
+// and out of range refused in the file.
+func TestArchiveDoneDays(t *testing.T) {
+	write(t, "[defaults]\narchive_done_days = 14\n[projects.a]\narchive_done_days = 90\n[projects.b]\nyolo = false\n")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := c.Safety("a"); s.ArchiveDoneDays != 90 {
+		t.Errorf("a: %d", s.ArchiveDoneDays)
+	}
+	if s, _ := c.Safety("b"); s.ArchiveDoneDays != 14 {
+		t.Errorf("b follows defaults: %d", s.ArchiveDoneDays)
+	}
+	if s, _ := (*Config)(nil).AllProjects(); s.ArchiveDoneDays != 30 {
+		t.Errorf("default %d", s.ArchiveDoneDays)
+	}
+	write(t, "[defaults]\narchive_done_days = 0\n")
+	if _, err := Load(); err == nil {
+		t.Error("archive_done_days = 0 loaded")
 	}
 }
