@@ -23,7 +23,7 @@ import type { Elements, EngineInterface, On, RenderSurface, RenderViewport } fro
 
 import type { TerminatrItem, TerminatrNeed, TerminatrProject, TerminatrThread } from '../types'
 import {
-  BUTTON_LABELS, MAX_READY, askLine, asked, contextLine, contextToast, isNarrow, itemParts, itemTone, needButtons, needDetail, needHead, needKey, oneLine, projectFeed,
+  BUTTON_LABELS, MAX_READY, askLine, asked, contextLine, contextToast, isNarrow, itemParts, itemTone, kindWord, needButtons, needDetail, needHead, needKey, oneLine, projectFeed,
   reportTextOf,
   sentWords, summary, threadLine, todoLine,
 } from './dashboard'
@@ -190,7 +190,7 @@ async function openReport($: EngineInterface, thread: string, title: string) {
     $.ui.log(`terminatr: tm thread show ${thread}: ${String(err)}`, { to: 'debug' })
   }
   await update($, report, () => ({ thread, title, text: text || '_No report yet._' }))
-  await $.ui.open({ id: REPORT_PANE, title: `${thread} report`, focus: true, closeOnEscape: true })
+  await $.ui.open({ id: REPORT_PANE, title: `Report · ${thread}`, focus: true, closeOnEscape: true })
 }
 
 // press runs a need's button.
@@ -220,18 +220,23 @@ function drawPane($: EngineInterface, els: Elements[RenderSurface], hasInput: bo
     <Box flexDirection="column">
       <Text bold wrap="truncate-end">{p.project + ' · ' + summary(p)}</Text>
       {p.context ? drawContext(els, contextLine(p.context)) : null}
-      {p.needs_you.length === 0 ? <Text dimColor>Nothing waits for you.</Text> : <Text bold color="warning">Needs you</Text>}
+      {/* A blank row before each section (docs/STYLE.md, spacing). */}
+      <Box marginTop={1}>
+        {p.needs_you.length === 0 ? <Text dimColor>Nothing waits for you.</Text> : <Text bold color="warning">Needs you</Text>}
+      </Box>
       {p.needs_you.map(n => drawNeed($, els, hasInput, bodyColumns, n, asked(n.task, n.status, n.asked, sent), editing))}
-      {p.inbox.length > 0 ? <Text bold>Inbox</Text> : null}
+      {p.inbox.length > 0 ? <Box marginTop={1}><Text bold>Inbox</Text></Box> : null}
       {p.inbox.map(it => drawItem(els, it))}
-      {p.threads.length > 0 ? <Text bold>Threads</Text> : null}
+      {p.threads.length > 0 ? <Box marginTop={1}><Text bold>Threads</Text></Box> : null}
       {p.threads.map(t => drawThread($, els, bodyColumns, t))}
-      {ready.length > 0 ? <Text bold>On deck</Text> : null}
+      {ready.length > 0 ? <Box marginTop={1}><Text bold>On deck</Text></Box> : null}
       {ready.map(t => {
         const was = asked(t.task, t.status, t.asked, sent)
+        // The row's text takes the room, so its button lines up with the
+        // needs' buttons at the right edge.
         return (
           <Box key={'ready-' + t.task} flexDirection="row" gap={1}>
-            <Text wrap="truncate-end">{todoLine(t)}</Text>
+            <Box flexGrow={1} flexShrink={1}><Text wrap="truncate-end">{todoLine(t)}</Text></Box>
             {was
               ? <Text dimColor>{sentWords(was)}</Text>
               : drawButton(els, 'delegate-' + t.task, BUTTON_LABELS.delegate, () => void ask($, 'delegate', t.task, t.status))}
@@ -264,7 +269,7 @@ function drawItem(els: Elements[RenderSurface], it: TerminatrItem) {
   return (
     <Text key={'inbox-' + it.id} wrap="truncate-end">
       {'  '}
-      <Text color={itemTone(it.kind)}>{it.kind}</Text>
+      <Text color={itemTone(it.kind)}>{kindWord(it.kind)}</Text>
       {' ' + head}
       {title ? <Text dimColor>{' ' + title}</Text> : null}
     </Text>
@@ -290,7 +295,7 @@ function drawNeed($: EngineInterface, els: Elements[RenderSurface], hasInput: bo
   const headRow = (
     <Text wrap="truncate-end">
       <Text bold>{head.ref}</Text>
-      <Text color={n.why === 'ci' || n.why === 'queue' ? 'error' : 'warning'}>{' ' + head.why}</Text>
+      <Text color={n.why === 'review' || n.why === 'question' ? 'warning' : 'error'}>{' ' + head.why}</Text>
       {' ' + head.title}
     </Text>
   )

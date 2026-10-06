@@ -129,9 +129,11 @@ func coordLines(pw *proto.ProjectWatch, w int) ([]string, []infoHit) {
 	}
 	for _, n := range pw.NeedsYou {
 		h := taskHit(n.Task)
-		look := styleWarn
-		if n.Why == proto.WhyCI || n.Why == proto.WhyQueue {
-			look = styleBad
+		// What went wrong in red, what waits on the user in yellow
+		// (docs/STYLE.md, colour roles), as the /tm pane draws them.
+		look := styleBad
+		if n.Why == proto.WhyReview || n.Why == proto.WhyQuestion {
+			look = styleWarn
 		}
 		ref := n.Task
 		if ref == "" {

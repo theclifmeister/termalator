@@ -18,15 +18,15 @@ export function parts(w: TerminatrWatch): Part[] {
 }
 
 // drawBand draws the band above the prompt, bodyColumns wide, for a
-// watch line that shows (view.shows): the parts, then "▸ current item"
+// watch line that shows (view.shows): the parts, then "now: current item"
 // on the same row when the whole fits, on a row of its own otherwise;
 // a row too long for the band is cut at its end. A thread waiting on
 // the user says so on a last row. It takes the surface's elements, since
 // $ never crosses an import. The engine adds the [-] that collapses it.
 export function drawBand({ Box, Text }: Elements[RenderSurface], bodyColumns: number, w: TerminatrWatch) {
   const ps = parts(w)
-  const current = w.task?.current ? '▸ ' + w.task.current : ''
-  const ask = w.session.needs_you ? 'waiting on you: ' + w.session.needs_you : ''
+  const current = w.task?.current ? 'now: ' + w.task.current : ''
+  const ask = w.session.needs_you ? 'needs you: ' + w.session.needs_you : ''
   const headLen = ps.reduce((n, p) => n + p.text.length, 0)
   const isOneRow = !ask && headLen + 2 + current.length <= bodyColumns
   const head = (

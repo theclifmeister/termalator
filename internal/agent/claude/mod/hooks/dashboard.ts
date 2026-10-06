@@ -73,16 +73,39 @@ export const BUTTON_LABELS: Record<AskKind | 'report', string> = {
   report: 'Report',
 }
 
-// WHY_WORDS say why a need waits, short.
+// WHY_WORDS say why a need waits, short, in the TUI's words
+// (docs/STYLE.md T2).
 const WHY_WORDS: Record<TerminatrNeed['why'], string> = {
-  queue: 'stuck',
-  review: 'review',
-  question: 'asks',
-  ci: 'red CI',
+  queue: 'prompts held',
+  review: 'in review',
+  question: 'asks you',
+  ci: 'checks failed',
   blocked: 'blocked',
 }
 
-// needHead is a need's first row: "T63 review · /tm dashboard pane".
+// KIND_WORDS are the inbox kinds in words, where the kind's own name is a
+// code, as the TUI shows them (kindWord).
+const KIND_WORDS: Record<string, string> = {
+  'thread-resolved': 'resolved',
+  takeover: 'you typed',
+  'server-restart': 'server restart',
+  'pr-opened': 'PR opened',
+  'pr-checks-failed': 'checks failed',
+  'pr-review': 'PR review',
+  'pr-merged': 'PR merged',
+  'pr-closed': 'PR closed',
+  'pr-conflict': 'PR conflict',
+  'close-held': 'kept open',
+  'gh-failing': 'gh failing',
+  guard: 'guard refused',
+}
+
+// kindWord is an inbox kind (or an ask, "send-back") in words.
+export function kindWord(kind: string): string {
+  return KIND_WORDS[kind] ?? kind.replace(/-/g, ' ')
+}
+
+// needHead is a need's first row: "T63 in review · /tm dashboard pane".
 export function needHead(n: TerminatrNeed): { ref: string; why: string; title: string } {
   return { ref: n.task ?? n.thread ?? n.session ?? '', why: WHY_WORDS[n.why], title: n.title }
 }
@@ -110,20 +133,20 @@ export function isBad(pr: string): boolean {
   return /failed|conflicts|changes requested|behind/.test(pr)
 }
 
-// sentWords say what was asked: "asked: accept".
+// sentWords say what was asked: "asked the coordinator: accept".
 export function sentWords(kind: string): string {
-  return 'asked the coordinator: ' + kind.replace('-', ' ')
+  return 'asked the coordinator: ' + kindWord(kind)
 }
 
 // threadLine is a running thread in one compact row: "t-0059 T64
-// working 3/5 ▸ mod tools · #121 checks pending".
+// working · steps 3/5 · now: mod tools · #121 checks pending".
 export function threadLine(t: TerminatrThread): string {
   const parts = [t.id]
   if (t.task) parts.push(t.task.id)
   parts.push(threadState(t))
-  if (t.task && t.task.steps_total > 0) parts.push(`${t.task.steps_done}/${t.task.steps_total}`)
   let line = parts.join(' ')
-  if (t.task?.current) line += ' ▸ ' + t.task.current
+  if (t.task && t.task.steps_total > 0) line += ` · steps ${t.task.steps_done}/${t.task.steps_total}`
+  if (t.task?.current) line += ' · now: ' + t.task.current
   if (t.pr) line += ' · ' + t.pr
   return line
 }
@@ -133,7 +156,7 @@ export function threadLine(t: TerminatrThread): string {
 export function threadState(t: TerminatrThread): string {
   if (t.done) return 'done'
   if (!t.session) return 'stopped'
-  if (t.state === 'blocked') return t.reason === 'question' ? 'asks' : 'blocked'
+  if (t.state === 'blocked') return t.reason === 'question' ? 'asks you' : 'blocked'
   return t.state || 'running'
 }
 
@@ -176,7 +199,7 @@ export function contextLine(c: TerminatrContext): { text: string; tone: 'ok' | '
 // since the line before, once per crossing; undefined otherwise.
 export function contextToast(was: boolean, c: TerminatrContext | undefined): string | undefined {
   if (!c?.hint || was) return undefined
-  return `Context ${c.percent}% full: consider /clear (the context lives in files)`
+  return `Context ${c.percent}% full: consider /clear; the context lives in files (tm context)`
 }
 
 // projectFeed reads `tm watch --project --json` output: what is left of
@@ -219,9 +242,9 @@ export function itemTone(kind: string): 'error' | 'success' | 'warning' {
 }
 
 // itemParts are an inbox row's text after its kind, in the order it
-// reads: "x3" when it stands for several items, the task, what happened.
+// reads: "×3" when it stands for several items, the task, what happened.
 // The task's title is apart, drawn last, so it is what a narrow row cuts.
 export function itemParts(it: TerminatrItem): { head: string; title: string } {
-  const head = [it.count > 1 ? `x${it.count}` : '', it.task ?? '', it.what ?? it.summary].filter(Boolean).join(' ')
+  const head = [it.count > 1 ? `×${it.count}` : '', it.task ?? '', it.what ?? it.summary].filter(Boolean).join(' ')
   return { head, title: it.title ?? '' }
 }

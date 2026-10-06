@@ -129,7 +129,7 @@ test('a held queue leads the pane, in red, naming its session, with no buttons',
   const ui = await $.ui.mount({ plugin: 'terminatr', surface: 'terminal', ...pane(120) })
   const t = await texts(ui)
   const at = (s: string) => t.findIndex(x => x.includes(s))
-  expect(t[at('s-86')]).toBe('s-86 stuck 1 queued prompt for the coordinator, held 3m0s: prompt box not empty')
+  expect(t[at('s-86')]).toBe('s-86 prompts held 1 queued prompt for the coordinator, held 3m0s: prompt box not empty')
   expect(at('Needs you')).toBeLessThan(at('s-86'))
   expect(at('s-86')).toBeLessThan(at('T63'))
   expect(t).toContain('  the coordinator hears of nothing until it clears; tm agent explain s-86 says why')
@@ -164,8 +164,8 @@ test('projectFeed joins split lines; threadLine is compact', () => {
   got = projectFeed(got.rest, l.slice(30) + 'nope\n{"x":1}\n')
   expect(got.projects.map(p => p.project)).toEqual(['demo'])
   const [running, done] = project().threads
-  expect(threadLine(running!)).toBe('t-0059 T64 working 3/5 ▸ mod tools · #121 open, checks pending')
-  expect(threadLine(done!)).toBe('t-0061 T63 done 7/7')
+  expect(threadLine(running!)).toBe('t-0059 T64 working · steps 3/5 · now: mod tools · #121 open, checks pending')
+  expect(threadLine(done!)).toBe('t-0061 T63 done · steps 7/7')
 })
 
 test('a coordinator follows its project, registers /tm and opens the pane where it docks', async ($, on) => {
@@ -222,12 +222,12 @@ test('the pane lists what needs the user first, then inbox, threads and the deck
       expect(at('Inbox')).toBeLessThan(at('Threads'))
       expect(at('Threads')).toBeLessThan(at('On deck'))
       expect(t).toContain('  “which file?”')
-      expect(t).toContain('  report x3 T64 handed in report 3 Tools')
+      expect(t).toContain('  report ×3 T64 handed in report 3 Tools')
       expect(t).toContain('  asked the coordinator: accept')
       expect((await ui.find({ key: 'merge-T63' }))?.text).toBe('Merge')
       expect(await ui.find({ key: 'accept-T61' })).toBeUndefined()
       expect(await ui.find({ key: 'merge-T67' })).toBeUndefined()
-      expect((await ui.find({ key: 'thread-t-0059' }))?.text).toContain('t-0059 T64 working 3/5')
+      expect((await ui.find({ key: 'thread-t-0059' }))?.text).toContain('t-0059 T64 working · steps 3/5')
       await ui.unmount()
     }
   }
@@ -279,7 +279,7 @@ test('Report opens the thread\'s report in a pane of its own', async ($, on) => 
   expect(seen.opened).toContain('tm-report')
   await ui.unmount()
   const r = await $.ui.mount({ plugin: 'terminatr', surface: 'mobile', component: 'Pane', requestId: 'tm-report',
-    props: { ...pane(40).props, title: 't-0058 report' } })
+    props: { ...pane(40).props, title: 'Report · t-0058' } })
   expect((await r.find({ key: 'report' }))?.props.text).toBe('## Report\nreport of t-0058')
   await r.press({ key: 'close-report' })
   expect(seen.closed).toContain('tm-report')
@@ -288,7 +288,7 @@ test('Report opens the thread\'s report in a pane of its own', async ($, on) => 
 
 test('an inbox row reads count, task, what happened, then the title', () => {
   const [, report] = project().inbox
-  expect(itemParts(report!)).toEqual({ head: 'x3 T64 handed in report 3', title: 'Tools' })
+  expect(itemParts(report!)).toEqual({ head: '×3 T64 handed in report 3', title: 'Tools' })
   expect(itemParts({ id: 'i', kind: 'idle', subject: 't-1', summary: 'plain', count: 1, what: 'plain' })).toEqual({ head: 'plain', title: '' })
   expect(['report', 'pr-conflict', 'accept'].map(itemTone)).toEqual(['success', 'error', 'warning'])
 })
