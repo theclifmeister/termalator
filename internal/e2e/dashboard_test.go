@@ -1,7 +1,7 @@
 package e2e
 
 // M4 scenarios: the dashboard (docs/SPEC.md §4, §15 M4). TestSmoke* run
-// on every PR; the rest nightly.
+// on every PR; the rest weekly.
 
 import (
 	"encoding/json"

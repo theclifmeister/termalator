@@ -5,7 +5,7 @@ package e2e
 // The real-Claude suite (docs/SPEC.md §16.4): the M3 scenarios against
 // the installed claude, with Haiku, to catch Claude releases that change
 // hooks, screens, the session file or the task tools. It needs a
-// logged-in claude, so it runs on demand (`make test-claude`) and nightly
+// logged-in claude, so it runs on demand (`make test-claude`) and weekly
 // on a machine with a login, never on GitHub-hosted CI. A run costs a few
 // cents.
 //

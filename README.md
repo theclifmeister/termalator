@@ -107,11 +107,12 @@ The first build fetches Ghostty and compiles libghostty-vt, which takes about 30
 ## Tests
 
 ```sh
-make test       # go test -race ./... (unit, integration, fuzz seed corpora)
+make test       # go test ./... (unit, integration, fuzz seed corpora)
+make test-race  # the same with -race (main and weekly in CI)
 make e2e-smoke  # the core end-to-end scenarios (every PR in CI)
-make e2e-smoke-race  # the same with tm built with -race (nightly in CI)
-make e2e        # every end-to-end scenario (nightly in CI); E2E_RACE=1 for a race-built tm
-make fuzz       # every fuzz target, FUZZTIME=5m each (nightly in CI); e.g. make fuzz FUZZTIME=20s
+make e2e-smoke-race  # the same with tm built with -race (main and weekly in CI)
+make e2e        # every end-to-end scenario (weekly in CI); E2E_RACE=1 for a race-built tm
+make fuzz       # every fuzz target, FUZZTIME=5m each (weekly in CI, 1m each); e.g. make fuzz FUZZTIME=20s
 ```
 
 `internal/e2e` is the end-to-end harness that every milestone adds scenarios to. A scenario gets an isolated installation (its own `TERMINATR_HOME` and a short socket path), runs the real `tm`, and looks at what a user would see. Sessions are read through the server; a virtual terminal (a PTY whose output libghostty-vt parses) plays the user's terminal window. The harness can type into that window, kill its client and close it. Screens can be compared with golden files in `internal/e2e/testdata/`; `make e2e E2E_FLAGS=-update` rewrites them. The M1 scenarios cover these cases: the server survives a killed client and a closed terminal, stale sockets, crash detection, a hung server, and the version handshake.
