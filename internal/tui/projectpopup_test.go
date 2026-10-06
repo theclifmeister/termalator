@@ -1244,3 +1244,44 @@ func TestHistorySetting(t *testing.T) {
 		t.Fatalf("esc left %T", m.top())
 	}
 }
+
+// TestTasksTabCompact: the Tasks tab lists steps only under the selected
+// active task (the others show n/n), none under done tasks, the done
+// group newest first and capped at the newest ten, with m to list all.
+func TestTasksTabCompact(t *testing.T) {
+	src, m := popupData(t)
+	src.board.Tasks[1].Steps = []tasks.Step{{N: 1, Text: "Other step"}}
+	for i := range 12 {
+		src.board.Tasks = append(src.board.Tasks, &tasks.Task{ID: 20 + i, Title: fmt.Sprintf("Old job %d", 20+i), Status: tasks.Done,
+			Updated: fmt.Sprintf("2026-09-%02d", 1+i), Steps: []tasks.Step{{N: 1, Text: "Finished step", Done: true}}})
+	}
+	m.Update(keyPress(m, "a")())
+	pv := m.top().(*projectView)
+	keyPress(m, "right")
+	keyPress(m, "right")
+	out := screen(m)
+	if !strings.Contains(out, "✓ Draft") || strings.Contains(out, "Other step") || strings.Contains(out, "Finished step") {
+		t.Fatalf("steps only under the selected active task:\n%s", out)
+	}
+	if !strings.Contains(out, "ready · 0/1") || !strings.Contains(out, "done · 1/1") {
+		t.Fatalf("rows keep n/n:\n%s", out)
+	}
+	if !strings.Contains(out, "… 2 more done") || strings.Contains(out, "Old job 20 ") || !strings.Contains(out, "Old job 31") {
+		t.Fatalf("done capped at the newest ten:\n%s", out)
+	}
+	if strings.Index(out, "Old job 31") > strings.Index(out, "Old job 30") {
+		t.Fatalf("done not newest first:\n%s", out)
+	}
+	keyPress(m, "down")
+	if out = screen(m); !strings.Contains(out, "Other step") || strings.Contains(out, "Draft") {
+		t.Fatalf("steps follow the selection:\n%s", out)
+	}
+	keyPress(m, "m")
+	if !pv.doneAll || len(pv.tasks()) != 14 {
+		t.Fatalf("m: doneAll %v, %d tasks", pv.doneAll, len(pv.tasks()))
+	}
+	keyPress(m, "m")
+	if pv.doneAll || len(pv.tasks()) != 12 {
+		t.Fatalf("m again: doneAll %v, %d tasks", pv.doneAll, len(pv.tasks()))
+	}
+}
