@@ -25,6 +25,9 @@
 // It sends each AskUserQuestion menu to the server (`tm session ask`) and
 // answers it with what `tm thread answer` gave, unless the user answers
 // in the pane first.
+//
+// In a coordinator it also keeps the project's dashboard pane, /tm
+// (hooks/pane.tsx).
 
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
@@ -35,6 +38,7 @@ import { drawBand } from './band'
 import { errorText, handled, offerOf } from './deliver'
 import type { Ack, Offer } from './deliver'
 import { feed } from './feed'
+import { registerPane, sawViewport } from './pane'
 import { initialTurn, stateOf, step, waitKey } from './turn'
 import type { Seen } from './turn'
 import { ciToast, shows, statusText } from './view'
@@ -98,6 +102,7 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    sawViewport(e.viewport)
     const w = await read($, watch)
     if (e.props.hasSurvey || !(await read($, band)) || !shows(w)) return next(e)
     return drawBand($.ui.resolve(e), e.props.bodyColumns, w)
@@ -168,6 +173,8 @@ export const register: Register = on => {
     await Promise.race([sent, $.clock.sleep(END_WAIT_MS)])
     return next(e)
   })
+
+  registerPane(on)
 }
 
 // The channel: the socket, and one report in flight at a time, the

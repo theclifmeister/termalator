@@ -3,6 +3,9 @@
 // whether the band and status entry show ([mods] band), the turn it
 // reports to the server, the id of the last prompt from the server it
 // handed to Claude, and which load of the module takes those prompts.
+// In a coordinator, also the project's line of `tm watch --project
+// --json` (proto.ProjectWatch) for the /tm pane, what its buttons asked,
+// the task being sent back, and the thread report it shows.
 
 export type TerminatrWatch = {
   session: {
@@ -43,6 +46,67 @@ export type TerminatrTurn = {
   exited: boolean
 }
 
+// One line of `tm watch --project --json` (proto.ProjectWatch).
+export type TerminatrProject = {
+  project: string
+  needs_you: TerminatrNeed[]
+  inbox: TerminatrItem[]
+  threads: TerminatrThread[]
+  ready: TerminatrTodo[]
+}
+
+// What waits for the user, most pressing first.
+export type TerminatrNeed = {
+  why: 'review' | 'question' | 'ci' | 'blocked'
+  task?: string
+  title: string
+  status?: string
+  thread?: string
+  question?: string
+  pr?: string
+  pr_url?: string
+  pr_number?: number
+  mergeable?: boolean
+  asked?: string
+}
+
+export type TerminatrItem = {
+  id: string
+  kind: string
+  subject: string
+  summary: string
+  needs_user?: boolean
+}
+
+export type TerminatrThread = {
+  id: string
+  title: string
+  session?: string
+  state?: string
+  reason?: string
+  needs_you?: string
+  task?: { id: string; title: string; status: string; steps_done: number; steps_total: number; current?: string }
+  pr?: string
+  pr_url?: string
+  pr_bad?: boolean
+  reports?: number
+  done?: boolean
+}
+
+export type TerminatrTodo = {
+  task: string
+  title: string
+  status: string
+  asked?: string
+}
+
+// An ask a /tm button sent the coordinator: the task, the ask, and the
+// task's status then; it shows as sent while the status holds.
+export type TerminatrAsk = { task: string; kind: string; status: string }
+
+// The thread report the /tm-report pane shows.
+export type TerminatrReport = { thread: string; title: string; text: string }
+
 declare module 'claude-code' {
   interface PluginState {
     terminatr: {
@@ -51,6 +115,10 @@ declare module 'claude-code' {
       turn: TerminatrTurn
       delivering: string
       deliverer: number
+      project: TerminatrProject | null
+      asks: TerminatrAsk[]
+      sendBack: string
+      report: TerminatrReport | null
     }
   }
 }
