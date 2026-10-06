@@ -8,6 +8,7 @@ import (
 
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/tasks"
+	"github.com/theclifmeister/terminatr/internal/thread"
 )
 
 const taskUsage = `usage: tm task <command> [--project <slug>] [--json]
@@ -62,10 +63,15 @@ func runTask(e *Env, args []string) error {
 			if err != nil {
 				return err
 			}
+			recs, _ := thread.List(p)
+			byTask, _ := thread.TaskUsage(recs)
+			u := byTask[id]
 			if *asJSON {
-				return e.printJSON(tasks.ToJSON(t))
+				return e.printJSON(withUsage(tasks.ToJSON(t), u))
 			}
-			_, err = fmt.Fprint(e.Stdout, tasks.Detail(t))
+			if _, err = fmt.Fprint(e.Stdout, tasks.Detail(t)); err == nil && !u.Zero() {
+				_, err = fmt.Fprintf(e.Stdout, "usage: %s\n", u.Detail())
+			}
 			return err
 		}
 	case "status":
@@ -387,4 +393,19 @@ func taskSteps(e *Env, p *project.Project, s *tasks.Store, pos []string, asJSON 
 		refreshThread(p, res.Task)
 	}
 	return e.done(res, err, asJSON, what)
+}
+
+// withUsage is v's JSON with a "usage" object added: what the threads
+// that worked on the task used. Numbers only.
+func withUsage(v any, u thread.Usage) any {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return v
+	}
+	var m map[string]any
+	if json.Unmarshal(b, &m) != nil {
+		return v
+	}
+	m["usage"] = u
+	return m
 }
