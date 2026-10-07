@@ -6,6 +6,7 @@ package e2e
 // organization.
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,9 +18,11 @@ import (
 const azOrigin = "https://dev.azure.com/acme/Shop/_git/web"
 
 // fakeAZ puts an az on PATH that answers `az repos pr list` from
-// $AZ_STATE (no file: no PR) and `az repos pr policy list` from
-// $AZ_POLICY (no file: no policies), knows no PR statuses, and logs
-// every call's arguments to $AZ_LOG.
+// list-<branch, / as _>.json in its folder, else $AZ_STATE (no file: no
+// PR), `az repos pr show --id N` from pr-N.json there (no file: not
+// found) and `az repos pr policy list` from $AZ_POLICY (no file: no
+// policies), knows no PR statuses, and logs every call's arguments to
+// $AZ_LOG.
 func fakeAZ(t *testing.T, env *Env) (state, policy, logf string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -27,7 +30,13 @@ func fakeAZ(t *testing.T, env *Env) (state, policy, logf string) {
 	script := `#!/bin/sh
 echo "$*" >> "$AZ_LOG"
 case "$*" in
-"repos pr list "*) cat "$AZ_STATE" 2>/dev/null || echo '[]' ;;
+"repos pr list "*)
+	# A list file for the branch asked about wins over $AZ_STATE.
+	b=$(printf '%s\n' "$*" | sed -n 's/.*--source-branch refs\/heads\/\([^ ]*\).*/\1/p' | tr / _)
+	cat "$AZ_DIR/list-$b.json" 2>/dev/null || cat "$AZ_STATE" 2>/dev/null || echo '[]' ;;
+"repos pr show --id "*)
+	set -- $*
+	cat "$AZ_DIR/pr-$5.json" 2>/dev/null || { echo "ERROR: TF401180: The requested pull request was not found." >&2; exit 1; } ;;
 "repos pr policy list "*) cat "$AZ_POLICY" 2>/dev/null || echo '[]' ;;
 "devops invoke "*) echo '{"count":0,"value":[]}' ;;
 *) echo "ERROR: the fake az doesn't know: $*" >&2; exit 2 ;;
@@ -46,6 +55,7 @@ esac
 	env.Setenv("AZ_STATE", state)
 	env.Setenv("AZ_POLICY", policy)
 	env.Setenv("AZ_LOG", logf)
+	env.Setenv("AZ_DIR", dir)
 	return state, policy, logf
 }
 
@@ -136,4 +146,102 @@ func TestSmokeTickerAzurePR(t *testing.T) {
 			t.Fatalf("az call %q", c)
 		}
 	}
+}
+
+// TestThreadResolveAzure: on an Azure DevOps repo resolve asks az about
+// the thread's PR by its branch: one completed by a squash merge (git
+// can't tell) loses its branch, an abandoned one keeps it; the branch
+// of another PR its report named is looked up by URL with az repos pr
+// show.
+func TestThreadResolveAzure(t *testing.T) {
+	env, projDir, _ := threadEnv(t)
+	azureRepo(t, projDir)
+	state, _, _ := fakeAZ(t, env)
+	dir := filepath.Dir(state)
+	git := func(d string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@t"}, args...)...)
+		cmd.Dir = d
+		if b, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, b)
+		}
+	}
+	type record struct{ Repo, Worktree, Branch, Session string }
+	thread := func(id, title string) record {
+		t.Helper()
+		env.MustCLI("thread", "start", title, "--project", "demo")
+		var rec record
+		readTOML(t, filepath.Join(projDir, "threads", id, "thread.toml"), &rec)
+		env.WaitState(&Session{ID: rec.Session}, "idle", agentWait)
+		os.WriteFile(filepath.Join(rec.Worktree, id), []byte(id), 0o644)
+		git(rec.Worktree, "add", ".")
+		git(rec.Worktree, "commit", "-q", "-m", title)
+		git(rec.Worktree, "push", "-q", "origin", "HEAD")
+		return rec
+	}
+	azPR := func(n int, status, branch string) string {
+		extra := ""
+		if status == "completed" {
+			extra = `,"closedDate":"2026-10-07T11:40:02.716023+00:00","lastMergeCommit":{"commitId":"9a8b7c6d5e4f30211203f4e5d6c7b8a990a1b2c3"}`
+		}
+		return fmt.Sprintf(`{"pullRequestId":%d,"status":%q,"isDraft":false,"mergeStatus":"succeeded","sourceRefName":"refs/heads/%s","targetRefName":"refs/heads/main",`+
+			`"repository":{"name":"web","project":{"name":"Shop"},"webUrl":%q},"reviewers":[]%s}`, n, status, branch, azOrigin, extra)
+	}
+	list := func(branch string, prs ...string) {
+		t.Helper()
+		setPR(t, filepath.Join(dir, "list-"+strings.ReplaceAll(branch, "/", "_")+".json"), "["+strings.Join(prs, ",")+"]")
+	}
+	resolve := func(rec record, id string, want ...string) string {
+		t.Helper()
+		res := env.MustCLI("thread", "resolve", id, "--project", "demo")
+		for _, w := range want {
+			if !strings.Contains(res, w) {
+				t.Fatalf("resolve %s: %q, want %q", id, res, w)
+			}
+		}
+		return res
+	}
+	exists := func(repo, branch string) bool {
+		return exec.Command("git", "-C", repo, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch).Run() == nil
+	}
+
+	// Completed by a squash merge: Azure DevOps' subject on main, the
+	// branch's commits not. az says completed, so the branch goes.
+	a := thread("t-0001", "Squashed")
+	git(a.Repo, "merge", "-q", "--squash", a.Branch)
+	git(a.Repo, "commit", "-q", "-m", "Merged PR 11: Squashed")
+	git(a.Repo, "push", "-q", "origin", "main")
+	git(a.Repo, "fetch", "-q", "origin")
+	list(a.Branch, azPR(11, "completed", a.Branch))
+	resolve(a, "t-0001", "deleted branch "+a.Branch+" (PR merged)")
+	if exists(a.Repo, a.Branch) {
+		t.Fatal("squash-merged branch kept")
+	}
+
+	// Abandoned, with an older abandoned one: kept, and the item says
+	// why. Its report named a second PR, completed by a merge commit:
+	// that branch goes with git branch -d.
+	b := thread("t-0002", "Abandoned")
+	second := "tm/demo/t-0002-second"
+	git(b.Worktree, "checkout", "-q", "-b", second, "origin/main")
+	git(b.Worktree, "commit", "-q", "--allow-empty", "-m", "second")
+	git(b.Worktree, "push", "-q", "origin", "HEAD")
+	git(b.Worktree, "checkout", "-q", b.Branch)
+	git(b.Repo, "fetch", "-q", "origin")
+	git(b.Repo, "merge", "-q", "--no-ff", "-m", "Merged PR 13: Second", "origin/"+second)
+	git(b.Repo, "push", "-q", "origin", "main")
+	git(b.Repo, "fetch", "-q", "origin")
+	os.WriteFile(filepath.Join(projDir, "threads", "t-0002", "REPORT.md"),
+		[]byte("PR: "+azOrigin+"/pullrequest/13\n\n## Report\nTwo PRs.\n\n## Next\n- Review it\n"), 0o644)
+	setPR(t, filepath.Join(dir, "pr-13.json"), azPR(13, "completed", second))
+	list(b.Branch, azPR(10, "abandoned", b.Branch), azPR(12, "abandoned", b.Branch))
+	resolve(b, "t-0002", "kept branch "+b.Branch+" (PR closed)", "deleted branch "+second+" (PR #13 merged, merged into origin/main)")
+	if !exists(b.Repo, b.Branch) || exists(b.Repo, second) {
+		t.Fatalf("branches: %s %v, %s %v", b.Branch, exists(b.Repo, b.Branch), second, exists(b.Repo, second))
+	}
+
+	// az doesn't know the branch's PR (no list file, $AZ_STATE empty):
+	// git alone decides, as on a repo without a code host.
+	c := thread("t-0003", "Unknown")
+	resolve(c, "t-0003", "kept branch "+c.Branch+" (no merged PR found)")
 }
