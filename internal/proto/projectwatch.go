@@ -1,5 +1,11 @@
 package proto
 
+import (
+	"fmt"
+	"strings"
+	"time"
+)
+
 // Watching a project (docs/SPEC.md §3.3, Watch): project.watch answers
 // what the project's dashboard shows as one ProjectWatch, then turns its
 // control connection into a stream of project.changed events, one for
@@ -37,6 +43,21 @@ type ProjectWatch struct {
 	// Context is the coordinator's context window use; nil when no
 	// coordinator runs or its mod hasn't reported a turn.
 	Context *WatchContext `json:"context,omitempty"`
+	// Ticker is when the ticker last polled the project's PRs and
+	// synced its repos; nil when it hasn't yet.
+	Ticker *WatchTicker `json:"ticker,omitempty"`
+}
+
+// WatchTicker is the ticker's slow timers for a project. Times, not
+// ages, so the state only changes when the ticker acts; readers work out
+// "40s ago" and "next in 1m20s" themselves.
+type WatchTicker struct {
+	PRChecked time.Time `json:"pr_checked,omitzero"` // gh last asked about a PR
+	Synced    time.Time `json:"synced,omitzero"`     // repos last fetched
+	// PRPollSeconds is the project's pr_poll_seconds: PRChecked plus it
+	// is when the next poll is due.
+	PRPollSeconds int  `json:"pr_poll_seconds"`
+	GHFailing     bool `json:"gh_failing,omitempty"`
 }
 
 // WatchContext is how full the coordinator's context window is.
@@ -117,9 +138,11 @@ type WatchThread struct {
 	PRURL    string     `json:"pr_url,omitempty"`
 	// PRBad says the PR needs acting on: failing checks, conflicts,
 	// requested changes or behind its base.
-	PRBad   bool `json:"pr_bad,omitempty"`
-	Reports int  `json:"reports,omitempty"`
-	Done    bool `json:"done,omitempty"`
+	PRBad bool `json:"pr_bad,omitempty"`
+	// PRChecked is when the ticker last asked gh about the thread's PR.
+	PRChecked time.Time `json:"pr_checked,omitzero"`
+	Reports   int       `json:"reports,omitempty"`
+	Done      bool      `json:"done,omitempty"`
 }
 
 // WatchTodo is a task on deck.
@@ -134,4 +157,60 @@ type WatchTodo struct {
 type ProjectWatchEvent struct {
 	Event string       `json:"event"` // EventProjectChanged
 	Watch ProjectWatch `json:"watch"`
+}
+
+// AgeWords writes how long ago something was, short: "40s", "1m20s",
+// "2h5m". Negative or tiny spans are "0s".
+func AgeWords(d time.Duration) string {
+	d = max(d, 0).Round(time.Second)
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		if s := int(d.Seconds()) % 60; s != 0 {
+			return fmt.Sprintf("%dm%ds", int(d.Minutes()), s)
+		}
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	}
+	if m := int(d.Minutes()) % 60; m != 0 {
+		return fmt.Sprintf("%dh%dm", int(d.Hours()), m)
+	}
+	return fmt.Sprintf("%dh", int(d.Hours()))
+}
+
+// CheckedWords is "checked 30s ago" for a PR last checked at t, "" for
+// never.
+func CheckedWords(t, now time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return "checked " + AgeWords(now.Sub(t)) + " ago"
+}
+
+// Line is the ticker's timers in one line: "ticker · PRs checked 40s
+// ago, next 1m20s · synced 1m ago · gh ok"; "gh failing" when PR polls
+// fail. now is the reader's clock.
+func (t WatchTicker) Line(now time.Time) string {
+	parts := []string{"ticker"}
+	if !t.PRChecked.IsZero() {
+		s := "PRs checked " + AgeWords(now.Sub(t.PRChecked)) + " ago"
+		if t.PRPollSeconds > 0 {
+			next := t.PRChecked.Add(time.Duration(t.PRPollSeconds) * time.Second).Sub(now)
+			if next > 0 {
+				s += ", next " + AgeWords(next)
+			} else {
+				s += ", due"
+			}
+		}
+		parts = append(parts, s)
+	}
+	if !t.Synced.IsZero() {
+		parts = append(parts, "synced "+AgeWords(now.Sub(t.Synced))+" ago")
+	}
+	if t.GHFailing {
+		parts = append(parts, "gh failing")
+	} else if !t.PRChecked.IsZero() {
+		parts = append(parts, "gh ok")
+	}
+	return strings.Join(parts, " · ")
 }

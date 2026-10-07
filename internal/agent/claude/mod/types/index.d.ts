@@ -54,6 +54,16 @@ export type TerminatrProject = {
   threads: TerminatrThread[]
   ready: TerminatrTodo[]
   context?: TerminatrContext
+  ticker?: TerminatrTicker
+}
+
+// The ticker's timers: ISO times, so a line only changes when the ticker
+// acts; the pane works out the ages (proto.WatchTicker).
+export type TerminatrTicker = {
+  pr_checked?: string
+  synced?: string
+  pr_poll_seconds: number
+  gh_failing?: boolean
 }
 
 // How full the coordinator's context window is; hint says it reached
@@ -106,6 +116,7 @@ export type TerminatrThread = {
   pr?: string
   pr_url?: string
   pr_bad?: boolean
+  pr_checked?: string
   reports?: number
   done?: boolean
 }

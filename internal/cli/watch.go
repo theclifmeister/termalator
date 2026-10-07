@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/caller"
@@ -162,6 +163,10 @@ func watchProject(e *Env, slug string, asJSON bool) int {
 // projectWatchLine is a ProjectWatch in one line for people: "demo · 2
 // need you · 1 in inbox · 4 threads · 3 on deck".
 func projectWatchLine(w proto.ProjectWatch) string {
-	return fmt.Sprintf("%s · %d need you · %d in inbox · %d threads · %d on deck",
+	line := fmt.Sprintf("%s · %d need you · %d in inbox · %d threads · %d on deck",
 		w.Project, len(w.NeedsYou), len(w.Inbox), len(w.Threads), len(w.Ready))
+	if w.Ticker != nil {
+		line += " · " + w.Ticker.Line(time.Now())
+	}
+	return line
 }

@@ -91,9 +91,11 @@ type Host interface {
 
 // Options configure a Ticker. Zero durations take the defaults.
 type Options struct {
-	Host   Host
-	Log    *log.Logger
-	Sweep  time.Duration
+	Host  Host
+	Log   *log.Logger
+	Sweep time.Duration
+	// PRPoll overrides every project's pr_poll_seconds (tests, the
+	// environment); zero follows the settings.
 	PRPoll time.Duration
 	Nudge  time.Duration
 	// RemoteEvery and RemoteGrace pace keepRemote (remote.go).
@@ -160,8 +162,10 @@ type projectMemo struct {
 	LastNudge time.Time `json:"last_nudge"`
 	// Synced is when the repos were last fetched; Repos is what that
 	// found, by repo path.
-	Synced time.Time            `json:"synced,omitzero"`
-	Repos  map[string]*repoMemo `json:"repos,omitempty"`
+	Synced time.Time `json:"synced,omitzero"`
+	// PRPolled is when gh was last asked about any of the project's PRs.
+	PRPolled time.Time            `json:"pr_polled,omitzero"`
+	Repos    map[string]*repoMemo `json:"repos,omitempty"`
 	// Merges are thread PRs seen merged, by thread id, while a task not
 	// done still names the thread; Completed is the merge commit each
 	// task was completed for by complete_tasks, by task ref (complete.go).
@@ -196,9 +200,6 @@ type repoMemo struct {
 func New(o Options) *Ticker {
 	if o.Sweep <= 0 {
 		o.Sweep = DefaultSweep
-	}
-	if o.PRPoll <= 0 {
-		o.PRPoll = DefaultPRPoll
 	}
 	if o.Nudge <= 0 {
 		o.Nudge = DefaultNudge
@@ -239,6 +240,18 @@ func New(o Options) *Ticker {
 	t := &Ticker{o: o, kick: make(chan struct{}, 1), gh: map[string]bool{}}
 	t.st = t.load()
 	return t
+}
+
+// prPoll is how often a project's PRs are polled and its repos synced:
+// the override, else its pr_poll_seconds.
+func (t *Ticker) prPoll(safety config.Safety) time.Duration {
+	if t.o.PRPoll > 0 {
+		return t.o.PRPoll
+	}
+	if safety.PRPollSeconds > 0 {
+		return time.Duration(safety.PRPollSeconds) * time.Second
+	}
+	return DefaultPRPoll
 }
 
 func runGH(dir string, args ...string) ([]byte, error) {
@@ -593,7 +606,7 @@ func (t *Ticker) autoClose(p *project.Project, r *thread.Record, m *threadMemo, 
 // sent to the thread when pr_followup is on. It reports whether the PR
 // was just seen merged.
 func (t *Ticker) pollPR(p *project.Project, r *thread.Record, m *threadMemo, info proto.SessionInfo, live bool, safety config.Safety, now time.Time) (merged bool) {
-	if r.Repo == "" || now.Sub(m.PRPolled) < t.o.PRPoll || m.PR.State == "MERGED" {
+	if r.Repo == "" || now.Sub(m.PRPolled) < t.prPoll(safety) || m.PR.State == "MERGED" {
 		return false
 	}
 	merged, _ = t.refreshPR(p, r, m, info, live, safety, now)
@@ -615,6 +628,7 @@ func (t *Ticker) refreshPR(p *project.Project, r *thread.Record, m *threadMemo, 
 		return false, false
 	}
 	m.PRPolled = now
+	t.projectMemo(p.Slug).PRPolled = now
 	out, err := t.o.GH(r.Repo, "pr", "view", target, "--json", prFields)
 	t.ghRan(p.Slug, err)
 	if err != nil {

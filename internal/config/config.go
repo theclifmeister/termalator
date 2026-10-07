@@ -76,6 +76,10 @@ const (
 	MaxParallelThreads = 99
 	MaxAutoCloseDays   = 365
 	MaxArchiveDays     = 365
+	// MinPRPollSeconds and MaxPRPollSeconds bound pr_poll_seconds.
+	MinPRPollSeconds     = 30
+	MaxPRPollSeconds     = 3600
+	DefaultPRPollSeconds = 120
 )
 
 // ArchiveKeys are the retention settings (docs/SPEC.md §7.6): how many
@@ -101,6 +105,9 @@ type Safety struct {
 	// PRFollowup prompts a thread when its PR's checks fail or a reviewer
 	// asks for changes (§7.5).
 	PRFollowup bool `json:"pr_followup"`
+	// PRPollSeconds is how often the ticker asks gh about each open
+	// thread's PR, and fetches the repos (§7.5).
+	PRPollSeconds int `json:"pr_poll_seconds"`
 	// CompleteTasks is when a task is done: CompleteUser (only on the
 	// user's word) or CompleteMerged (the ticker marks a task in review
 	// done once its thread's PR merged).
@@ -178,7 +185,7 @@ func (s *Safety) SetArchiveDays(key string, n int) {
 // Defaults are the settings of a project that neither its own table nor
 // [defaults] (all projects) name.
 var Defaults = Safety{StartThreads: StartPropose, Yolo: false, CoordinatorApproves: true,
-	ParallelThreads: 10, AutoClose: CloseMerged, AutoCloseDays: 7, PRFollowup: true,
+	ParallelThreads: 10, AutoClose: CloseMerged, AutoCloseDays: 7, PRFollowup: true, PRPollSeconds: DefaultPRPollSeconds,
 	CompleteTasks: CompleteUser, FastForwardCheckout: true, Merge: MergeCoordinator, Guard: true,
 	ArchiveTasksDays: 30, ArchiveThreadsDays: 30, ArchiveInboxDays: 30, ArchiveJournalDays: 30}
 
@@ -193,6 +200,7 @@ type rawSafety struct {
 	// "off"; auto_close wins when both are set.
 	AutoResolve    *bool     `toml:"auto_resolve"`
 	PRFollowup     *bool     `toml:"pr_followup"`
+	PRPoll         *int      `toml:"pr_poll_seconds"`
 	CompleteTasks  *string   `toml:"complete_tasks"`
 	CoordinatorRC  *bool     `toml:"coordinator_remote_control"`
 	AutoClear      *bool     `toml:"auto_clear"`
@@ -387,7 +395,7 @@ func (c *Config) Own(slug string) []string {
 		"start_threads": r.StartThreads != nil, "yolo": r.Yolo != nil,
 		"coordinator_approves": r.CoordinatorApproves != nil, "parallel_threads": r.ParallelThreads != nil,
 		"auto_close": r.AutoClose != nil || r.AutoResolve != nil, "auto_close_days": r.AutoCloseDays != nil,
-		"pr_followup": r.PRFollowup != nil, "complete_tasks": r.CompleteTasks != nil,
+		"pr_followup": r.PRFollowup != nil, "pr_poll_seconds": r.PRPoll != nil, "complete_tasks": r.CompleteTasks != nil,
 		"coordinator_remote_control": r.CoordinatorRC != nil, "auto_clear": r.AutoClear != nil, "fast_forward_checkout": r.FastForward != nil,
 		"models": r.Models != nil, "archive_tasks_days": r.ArchiveTasks != nil, "archive_threads_days": r.ArchiveThreads != nil,
 		"archive_inbox_days": r.ArchiveInbox != nil, "archive_journal_days": r.ArchiveJournal != nil,
@@ -443,6 +451,12 @@ func (r rawSafety) apply(s *Safety, path, table string) error {
 	}
 	if r.PRFollowup != nil {
 		s.PRFollowup = *r.PRFollowup
+	}
+	if r.PRPoll != nil {
+		if n := *r.PRPoll; n < MinPRPollSeconds || n > MaxPRPollSeconds {
+			return fmt.Errorf("%s: %s.pr_poll_seconds must be %d to %d, not %d", path, table, MinPRPollSeconds, MaxPRPollSeconds, n)
+		}
+		s.PRPollSeconds = *r.PRPoll
 	}
 	if r.CompleteTasks != nil {
 		switch *r.CompleteTasks {

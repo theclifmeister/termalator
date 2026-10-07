@@ -51,8 +51,9 @@ func TestProjectWatchOf(t *testing.T) {
 	}
 	ts := filepath.Join(t.TempDir(), "ticker.json")
 	os.WriteFile(ts, []byte(`{"threads": {
-		"`+p.Slug+`/`+t2+`": {"pr": {"number": 12, "url": "https://x/12", "state": "OPEN", "checks": "pass", "mergeable": "MERGEABLE"}},
-		"`+p.Slug+`/`+t4+`": {"pr": {"number": 13, "url": "https://x/13", "state": "OPEN", "checks": "fail", "failed": 2}}}}`), 0o600)
+		"`+p.Slug+`/`+t2+`": {"pr_polled": "2026-10-07T12:00:00Z", "pr": {"number": 12, "url": "https://x/12", "state": "OPEN", "checks": "pass", "mergeable": "MERGEABLE"}},
+		"`+p.Slug+`/`+t4+`": {"pr": {"number": 13, "url": "https://x/13", "state": "OPEN", "checks": "fail", "failed": 2}}},
+		"projects": {"`+p.Slug+`": {"pr_polled": "2026-10-07T12:00:00Z", "synced": "2026-10-07T11:59:00Z", "gh_fails": 1}}}`), 0o600)
 	sessions := []proto.SessionInfo{
 		{ID: "s-8", Role: proto.RoleThread, Project: p.Slug, Thread: t8, State: "blocked", Reason: "question",
 			Question: &proto.Question{Questions: []proto.QuestionItem{{Question: "done?", Answered: true}, {Question: "ship it?"}}}},
@@ -119,6 +120,12 @@ func TestProjectWatchOf(t *testing.T) {
 	}
 	if th := byID[t8]; th.Session != "s-8" || th.State != "blocked" || th.NeedsYou != "ship it?" {
 		t.Errorf("t8 %+v", th)
+	}
+	if th := byID[t2]; !th.PRChecked.Equal(time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)) {
+		t.Errorf("t2 PR checked %v", th.PRChecked)
+	}
+	if tk := w.Ticker; tk == nil || !tk.GHFailing || tk.PRPollSeconds != 120 || tk.Synced.IsZero() || tk.PRChecked.IsZero() {
+		t.Errorf("ticker %+v", tk)
 	}
 	if th := byID[t3]; th.Task == nil || th.Task.StepsTotal != 1 || th.NeedsYou != "which port?" {
 		t.Errorf("t3 %+v", th)

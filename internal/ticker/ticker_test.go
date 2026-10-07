@@ -869,3 +869,28 @@ func TestExcerpt(t *testing.T) {
 		t.Fatalf("got %q", text)
 	}
 }
+
+// TestPRPollSecondsSetting: the project's pr_poll_seconds paces its PR
+// polls, and the state tells when they last ran (ReadTiming).
+func TestPRPollSecondsSetting(t *testing.T) {
+	r := newRig(t)
+	cfg := filepath.Join(os.Getenv("TERMINATR_HOME"), "config.toml")
+	os.WriteFile(cfg, []byte("[projects.demo]\npr_poll_seconds = 30\n"), 0o600)
+	r.gh = []string{prOpen, prOpen, prOpen}
+	r.sweep(0)
+	r.sweep(20 * time.Second)
+	if r.ghN != 1 {
+		t.Fatalf("polled %d times within 30 s", r.ghN)
+	}
+	r.sweep(15 * time.Second)
+	if r.ghN != 2 {
+		t.Fatalf("polled %d times after 35 s", r.ghN)
+	}
+	tm := ReadTiming(r.tk.o.State, "demo")
+	if !tm.PRPolled.Equal(r.now) || !tm.Synced.Equal(r.now) || tm.GHFailing || !tm.ThreadPolled["t-0001"].Equal(r.now) {
+		t.Fatalf("timing %+v, now %v", tm, r.now)
+	}
+	if z := ReadTiming(filepath.Join(r.t.TempDir(), "none.json"), "demo"); !z.PRPolled.IsZero() || len(z.ThreadPolled) != 0 {
+		t.Fatalf("a missing file: %+v", z)
+	}
+}
