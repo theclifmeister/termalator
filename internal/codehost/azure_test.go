@@ -438,15 +438,16 @@ func TestAzurePRErrors(t *testing.T) {
 }
 
 func TestAzError(t *testing.T) {
-	for msg, want := range map[string]string{
-		"ERROR: Please run 'az login' to setup account.":                        "az is not logged in",
-		"ERROR: AADSTS700082: The refresh token has expired due to inactivity.": "az is not logged in",
-		"ERROR: Before you can run Azure DevOps commands, you need to run the login command(az login if using AAD/MSA identity else az devops login if using PAT token) to setup credentials.": "az is not logged in",
-		"ERROR: TF400813: The user '' is not authorized to access this resource.":                                                                                                              "Azure DevOps doesn't know the user az signs in as (TF400813)",
-		"ERROR: Operation returned a 403 status code.":                                                                                                                                         "Azure DevOps refused access (401/403)",
-		"ERROR: TF200016: The following project does not exist: Shop.":                                                                                                                         "Azure DevOps doesn't know this organization, project or repo",
-		"ERROR: something else": "",
+	for _, c := range [][2]string{
+		{"ERROR: Please run 'az login' to setup account.", "az is not logged in"},
+		{"ERROR: AADSTS700082: The refresh token has expired due to inactivity.", "az is not logged in"},
+		{"ERROR: Before you can run Azure DevOps commands, you need to run the login command(az login if using AAD/MSA identity else az devops login if using PAT token) to setup credentials.", "az is not logged in"},
+		{"ERROR: TF400813: The user '' is not authorized to access this resource.", "Azure DevOps doesn't know the user az signs in as (TF400813)"},
+		{"ERROR: Operation returned a 403 status code.", "Azure DevOps refused access (401/403)"},
+		{"ERROR: TF200016: The following project does not exist: Shop.", "Azure DevOps doesn't know this organization, project or repo"},
+		{"ERROR: something else", ""},
 	} {
+		msg, want := c[0], c[1]
 		var ce *CLIError
 		if err := azError(errors.New(msg)); !errors.As(err, &ce) || ce.Problem != want || (want == "") != (ce.Advice == "") {
 			t.Errorf("%q: %+v", msg, ce)
