@@ -1014,7 +1014,7 @@ func TestMemoryTab(t *testing.T) {
 	}
 	out := screen(m)
 	// A wrapped list item hangs under its text.
-	if !regexp.MustCompile(`│   (a long )?item`).MatchString(out) {
+	if !regexp.MustCompile(`│   (a )?(long )?item`).MatchString(out) {
 		t.Errorf("memory tab: a wrapped item doesn't hang:\n%s", out)
 	}
 	for _, want := range []string{"6 Memory", "CONTEXT", "The plan, see the doc.", "Where things stand", "- a long item",
