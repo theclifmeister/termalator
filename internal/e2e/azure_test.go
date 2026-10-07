@@ -245,3 +245,73 @@ func TestThreadResolveAzure(t *testing.T) {
 	c := thread("t-0003", "Unknown")
 	resolve(c, "t-0003", "kept branch "+c.Branch+" (no merged PR found)")
 }
+
+// TestSmokeTickerAzureCompleteOnMerge: with complete_tasks "merged" on
+// an Azure DevOps repo, a task whose thread's PR az calls completed (a
+// squash merge) is done, and so is one az knows no PR for whose report
+// names a PR that "Merged PR N: …" on main says merged.
+func TestSmokeTickerAzureCompleteOnMerge(t *testing.T) {
+	env, projDir, _ := tickerEnv(t)
+	azureRepo(t, projDir)
+	state, _, _ := fakeAZ(t, env)
+	dir := filepath.Dir(state)
+	writeConfig(t, env, "[projects.demo]\ncomplete_tasks = \"merged\"\n")
+	env.MustCLI("task", "add", "Small fix", "--status", "ready", "--project", "demo")
+	env.MustCLI("task", "add", "Older fix", "--status", "ready", "--project", "demo")
+	type record struct{ Session, Repo, Branch string }
+	var recs [2]record
+	for i, id := range []string{"t-0001", "t-0002"} {
+		env.MustCLI("thread", "start", "--task", fmt.Sprintf("T%d", i+1), "--project", "demo")
+		readTOML(t, filepath.Join(projDir, "threads", id, "thread.toml"), &recs[i])
+		env.WaitState(&Session{ID: recs[i].Session}, "idle", agentWait)
+	}
+
+	git := func(dir string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@t"}, args...)...)
+		cmd.Dir = dir
+		b, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, b)
+		}
+		return strings.TrimSpace(string(b))
+	}
+	// Both PRs complete on origin, from another clone, as squash commits
+	// with Azure DevOps' subject.
+	other := filepath.Join(t.TempDir(), "other")
+	git(recs[0].Repo, "clone", "-q", git(recs[0].Repo, "remote", "get-url", "origin"), other)
+	var merges []string
+	for _, c := range []struct{ file, msg string }{{"older", "Merged PR 8: Older fix"}, {"fix", "Merged PR 7: Small fix"}} {
+		os.WriteFile(filepath.Join(other, c.file), []byte(c.file+"\n"), 0o644)
+		git(other, "add", c.file)
+		git(other, "commit", "-q", "-m", c.msg)
+		merges = append(merges, git(other, "rev-parse", "HEAD"))
+	}
+	git(other, "push", "-q", "origin", "HEAD:main")
+	// t-0002 handed in PR 8 before; az has no PR for its branch.
+	os.WriteFile(filepath.Join(projDir, "threads", "t-0002", "REPORT.md"),
+		[]byte("PR: "+azOrigin+"/pullrequest/8\n\n## Report\nFixed.\n\n## Next\n- Review it\n"), 0o644)
+	setPR(t, filepath.Join(dir, "list-"+strings.ReplaceAll(recs[0].Branch, "/", "_")+".json"),
+		`[{"pullRequestId":7,"status":"completed","isDraft":false,"mergeStatus":"succeeded","sourceRefName":"refs/heads/`+recs[0].Branch+`","targetRefName":"refs/heads/main",`+
+			`"closedDate":"2026-10-07T11:40:02.716023+00:00","lastMergeCommit":{"commitId":"`+merges[1]+`"},`+
+			`"repository":{"name":"web","project":{"name":"Shop"},"webUrl":"`+azOrigin+`"},"reviewers":[]}]`)
+	env.MustCLI("task", "status", "T1", "review", "--project", "demo")
+	env.MustCLI("task", "status", "T2", "review", "--project", "demo")
+
+	waitInbox(t, env, "task-done: T1 Small fix is done: merged (PR #7), as the user's setting says (complete tasks when merged)")
+	waitInbox(t, env, "task-done: T2 Older fix is done: merged (PR #8), as the user's setting says (complete tasks when merged)")
+	for _, id := range []string{"T1", "T2"} {
+		if out := env.MustCLI("task", "show", id, "--project", "demo", "--json"); !strings.Contains(out, `"status": "done"`) {
+			t.Fatalf("%s not done:\n%s", id, out)
+		}
+	}
+	j, _ := os.ReadFile(filepath.Join(projDir, "JOURNAL.md"))
+	for _, w := range []string{"ticker task.done T1 merged (PR #7)", "ticker task.done T2 merged (PR #8)"} {
+		if !strings.Contains(string(j), w) {
+			t.Fatalf("journal lacks %q:\n%s", w, j)
+		}
+	}
+	if items := env.MustCLI("inbox", "list", "--project", "demo"); strings.Contains(items, "gh-failing") {
+		t.Fatalf("inbox:\n%s", items)
+	}
+}
