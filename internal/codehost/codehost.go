@@ -11,6 +11,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 )
 
@@ -147,12 +148,14 @@ func Pick(repo string, cfg Config) Host {
 // none.
 var newAzure func(Target) Host
 
-// origin is repo's origin URL, "" for none.
+// origin is repo's origin URL as configured, "" for none: before any
+// url.<base>.insteadOf rewrite, which says how to reach the repo, not
+// whose PRs it has.
 func origin(repo string) string {
 	if repo == "" {
 		return ""
 	}
-	out, err := git(repo, "remote", "get-url", "origin")
+	out, err := git(repo, "config", "--get", "remote.origin.url")
 	if err != nil {
 		return ""
 	}
@@ -171,3 +174,28 @@ func git(dir string, args ...string) (string, error) {
 	}
 	return strings.TrimSpace(out.String()), nil
 }
+
+// Advice is what to tell the user about a code host call that failed
+// with err, in fixed words: the CLI that failed ("gh", "az"), what went
+// wrong ("" when tm can't tell) and what the user does about it.
+func Advice(err error) (cli, problem, advice string) {
+	var ce *CLIError
+	if errors.As(err, &ce) {
+		cli, problem, advice = ce.CLI, ce.Problem, ce.Advice
+	}
+	switch {
+	case cli == "":
+		cli = "gh"
+	case !cliRE.MatchString(cli):
+		cli, problem, advice = "the code host CLI", "", ""
+	}
+	if advice == "" {
+		advice = "the user checks " + cli + " auth status in a terminal (tm doctor)"
+		if cli == "az" {
+			advice = "the user checks az login and az repos pr list in a terminal (tm doctor)"
+		}
+	}
+	return cli, problem, advice
+}
+
+var cliRE = regexp.MustCompile(`^[a-z]{1,8}$`)

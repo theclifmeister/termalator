@@ -1,0 +1,37 @@
+[
+  {
+    "artifactId": "vstfs:///CodeReview/CodeReviewId/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/12",
+    "completedDate": "2026-10-07T09:20:11.123456+00:00",
+    "configuration": {"id": 1, "isBlocking": true, "isDeleted": false, "isEnabled": true,
+      "settings": {"buildDefinitionId": 7, "displayName": "PR build", "manualQueueOnly": false, "queueOnSourceUpdateOnly": true, "validDuration": 720.0},
+      "type": {"displayName": "Build", "id": "0609b952-1397-4640-95ec-e00a01b2c241"}},
+    "context": {"buildDefinitionId": 7, "buildId": 4711, "buildIsNotCurrent": false, "isExpired": false, "lastMergeCommitId": "5e6f0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b", "wasAutoRequeued": false},
+    "evaluationId": "a6a0e5a2-0000-0000-0000-000000000001",
+    "startedDate": "2026-10-07T09:13:00.000000+00:00",
+    "status": "rejected"
+  },
+  {
+    "configuration": {"id": 2, "isBlocking": false, "isEnabled": true,
+      "settings": {"buildDefinitionId": 8, "displayName": "nightly-ish", "manualQueueOnly": true},
+      "type": {"displayName": "Build", "id": "0609b952-1397-4640-95ec-e00a01b2c241"}},
+    "context": null,
+    "status": "queued"
+  },
+  {
+    "configuration": {"id": 3, "isBlocking": true, "isEnabled": true,
+      "settings": {"minimumApproverCount": 1, "creatorVoteCounts": false},
+      "type": {"displayName": "Minimum number of reviewers", "id": "fa4e907d-c16b-4a4c-9dfa-4906e5d171dd"}},
+    "status": "queued"
+  },
+  {
+    "configuration": {"id": 4, "isBlocking": true, "isEnabled": true, "settings": {},
+      "type": {"displayName": "Comment requirements", "id": "c6a1889d-b943-4856-b76f-9e46bb6b0df2"}},
+    "status": "queued"
+  },
+  {
+    "configuration": {"id": 5, "isBlocking": true, "isEnabled": true,
+      "settings": {"statusGenre": "security", "statusName": "scan", "invalidateOnSourceUpdate": true},
+      "type": {"displayName": "Status", "id": "cbdc66da-9728-4af8-aada-9a5a32e4a226"}},
+    "status": "approved"
+  }
+]

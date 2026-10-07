@@ -135,6 +135,9 @@ type Ticker struct {
 	// gh is what code host calls did in this sweep, by project slug: true
 	// once one worked, false while all failed; absent when none ran.
 	gh map[string]bool
+	// ghErr is the last failure of a project's code host calls in this
+	// sweep, for the gh-failing item's words.
+	ghErr map[string]error
 	// hosts are the repos' code hosts, picked once per sync (host).
 	hosts map[string]codehost.Host
 }
@@ -240,7 +243,7 @@ func New(o Options) *Ticker {
 	if o.Log == nil {
 		o.Log = log.New(os.Stderr, "", log.LstdFlags)
 	}
-	t := &Ticker{o: o, kick: make(chan struct{}, 1), gh: map[string]bool{}, hosts: map[string]codehost.Host{}}
+	t := &Ticker{o: o, kick: make(chan struct{}, 1), gh: map[string]bool{}, ghErr: map[string]error{}, hosts: map[string]codehost.Host{}}
 	t.st = t.load()
 	return t
 }
@@ -696,16 +699,20 @@ func (t *Ticker) ghRan(slug string, err error) {
 		t.gh[slug] = ok
 	}
 	if !ok {
+		t.ghErr[slug] = err
 		t.o.Log.Printf("ticker: %s: %v", slug, err)
 	}
 }
 
-// ghHealth raises one gh-failing item once gh failed on GHFailPolls
-// polls of a project in a row, and moves it to done once a poll works.
-// The summary is fixed text: gh's error goes to the server log only.
+// ghHealth raises one gh-failing item (gh or az, whichever failed) once
+// the code host CLI failed on GHFailPolls polls of a project in a row,
+// and moves it to done once a poll works. The summary is fixed text
+// (codehost.Advice): the CLI's error goes to the server log only.
 func (t *Ticker) ghHealth(p *project.Project) {
 	ok, ran := t.gh[p.Slug]
+	last := t.ghErr[p.Slug]
 	delete(t.gh, p.Slug)
+	delete(t.ghErr, p.Slug)
 	if !ran {
 		return
 	}
@@ -715,7 +722,7 @@ func (t *Ticker) ghHealth(p *project.Project) {
 			if err := p.DoneItem(pm.GHItem); err != nil {
 				t.o.Log.Printf("ticker: %s: gh-failing item: %v", p.Slug, err)
 			}
-			t.o.Log.Printf("ticker: %s: gh works again", p.Slug)
+			t.o.Log.Printf("ticker: %s: the code host CLI works again", p.Slug)
 		}
 		pm.GHFails, pm.GHItem = 0, ""
 		return
@@ -724,13 +731,17 @@ func (t *Ticker) ghHealth(p *project.Project) {
 	if pm.GHFails < GHFailPolls || pm.GHItem != "" {
 		return
 	}
-	it, err := p.AddItem(KindGHFailing, "gh", fmt.Sprintf("gh failed on %d PR polls in a row, so PR follow-up, auto-close and completing tasks wait; the user checks gh auth status in a terminal (tm doctor), and the item clears once a poll works", pm.GHFails), true)
+	cli, problem, advice := codehost.Advice(last)
+	if problem != "" {
+		problem = " (" + problem + ")"
+	}
+	it, err := p.AddItem(KindGHFailing, cli, fmt.Sprintf("%s failed on %d PR polls in a row%s, so PR follow-up, auto-close and completing tasks wait; %s, and the item clears once a poll works", cli, pm.GHFails, problem, advice), true)
 	if err != nil {
 		t.o.Log.Printf("ticker: %s: inbox: %v", p.Slug, err)
 		return
 	}
 	pm.GHItem = it.ID
-	t.o.Log.Printf("ticker: %s: inbox %s gh", p.Slug, KindGHFailing)
+	t.o.Log.Printf("ticker: %s: inbox %s %s", p.Slug, KindGHFailing, cli)
 }
 
 var subjectRE = regexp.MustCompile(`^(t-[0-9]{4,}|T[0-9]{1,9})$`)
@@ -740,7 +751,7 @@ var verbs = map[string]string{
 	"report": "reported", "thread-resolved": "resolved", "needs-you": "waiting for the user",
 	KindBlocked: "blocked", KindIdle: "idle with a report", KindExited: "exited", KindServerRestart: "server restarted",
 	KindPROpened: "opened a PR", KindPRChecks: "PR checks failed", KindPRReview: "PR reviewed",
-	KindPRMerged: "PR merged", KindPRClosed: "PR closed", KindTaskDone: "done by the user's setting", KindPRConflict: "PR conflicts with main", KindCloseHeld: "not auto-closed", KindGHFailing: "gh failing", project.KindTakeover: "taken over by the user",
+	KindPRMerged: "PR merged", KindPRClosed: "PR closed", KindTaskDone: "done by the user's setting", KindPRConflict: "PR conflicts with main", KindCloseHeld: "not auto-closed", KindGHFailing: "PR host CLI failing", project.KindTakeover: "taken over by the user",
 	project.KindDelegate: "to delegate (the user's go-ahead)", project.KindAccept: "accepted by the user",
 	project.KindSendBack: "sent back by the user",
 }
