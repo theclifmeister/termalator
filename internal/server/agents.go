@@ -16,6 +16,7 @@ import (
 
 	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/caller"
+	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/session"
@@ -146,7 +147,9 @@ func (s *Server) accessFor(role, slug, cwd string) (agent.Access, error) {
 	switch role {
 	case proto.RoleCoordinator:
 		wt := realPath(filepath.Join(s.opts.Paths.Home, "worktrees", slug))
-		return agent.Access{Read: []string{dir, wt}, NoWriteFiles: []string{cfg}}, nil
+		a := agent.Access{Read: []string{dir, wt}, NoWriteFiles: []string{cfg}}
+		a.Commands = coordinatorCommands(guardSettings(slug))
+		return a, nil
 	case proto.RoleThread:
 		a := agent.Access{Read: []string{dir}, NoWrite: []string{dir}, NoWriteFiles: []string{cfg}}
 		// A worktree's commits go to the main repo's git dir, outside
@@ -157,6 +160,21 @@ func (s *Server) accessFor(role, slug, cwd string) (agent.Access, error) {
 		return a, nil
 	}
 	return agent.Access{}, fmt.Errorf("unknown role %q", role)
+}
+
+// mergeCommands are the PR merge commands the opt-in coordinator_merges
+// setting allows the coordinator without a prompt: GitHub's, and Azure
+// DevOps' (completing a PR is an update with --status completed).
+var mergeCommands = []string{"gh pr merge", "az repos pr update"}
+
+// coordinatorCommands is the commands a coordinator may run unprompted:
+// the merge commands when the project opted in and the coordinator is
+// the one who merges. Threads never get them.
+func coordinatorCommands(set config.Safety) []string {
+	if set.CoordinatorMerges && set.Merge == config.MergeCoordinator {
+		return mergeCommands
+	}
+	return nil
 }
 
 // contextFor renders the context a role gets back after a clear or a

@@ -60,6 +60,9 @@ type Access struct {
 	// NoWriteFiles are single files that must never be written, e.g.
 	// config.toml, which holds the human's safety settings.
 	NoWriteFiles []string
+	// Commands are command prefixes that run without a permission prompt,
+	// e.g. the coordinator's PR merge command, opt-in (§11.2).
+	Commands []string
 }
 
 // Launch is the agent's answer: what to exec in the PTY, and which files to

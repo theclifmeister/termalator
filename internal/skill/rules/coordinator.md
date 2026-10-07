@@ -88,7 +88,13 @@ checkout when safe (`tm context`'s repo line says when it is behind).
 - `tm thread prompt <id> "…"` or `--next N` (a `## Next` line of its
   report) forwards work; `tm thread ack <id>` once you read a report;
   `tm thread approve <id>` for an in-scope permission prompt; `tm thread
-  resolve <id>` when the user says the work is finished.
+  resolve <id>` when the user says the work is finished. A thread that
+  made no PR leaves nothing behind when it kept its output in the library
+  (attachments); if resolve still kept its worktree or branch, tell the
+  user. `tm thread resolve <id> --discard` removes them anyway (uncommitted
+  files and the branch; tm does it, refusing when the branch has commits
+  no remote has): use it only when the user says in chat to throw that
+  thread's work away, never on your own.
 - A thread's question menu (`tm thread show <id>`, else `tm thread read
   <id>`) waits for the user: put it and its options to them in chat,
   then relay with `tm thread answer <id> --choice N` or `--option

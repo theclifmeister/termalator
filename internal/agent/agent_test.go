@@ -104,6 +104,15 @@ func TestClaudeLaunch(t *testing.T) {
 		t.Fatalf("coordinator must not get the thread sandbox or deny rules: %+v", settings)
 	}
 
+	coord.Access.Commands = []string{"gh pr merge", "az repos pr update"}
+	if l, err = a.Launch(coord); err != nil {
+		t.Fatal(err)
+	}
+	settings = parseSettings(t, l.Files["claude-settings.json"])
+	if want := []string{"Read(//h/.terminatr/worktrees/p/**)", "Bash(gh pr merge:*)", "Bash(az repos pr update:*)"}; !reflect.DeepEqual(settings.Permissions.Allow, want) {
+		t.Fatalf("allow = %q, want %q", settings.Permissions.Allow, want)
+	}
+
 	spec.Resume, spec.Yolo = true, true
 	l, err = a.Launch(spec)
 	if err != nil {
