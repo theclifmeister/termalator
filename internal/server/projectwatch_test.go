@@ -27,6 +27,7 @@ func TestProjectWatchOf(t *testing.T) {
 		{Title: "Next", Status: "ready"},                         // T6
 		{Title: "Shipped", Status: "done"},                       // T7
 		{Title: "Quiet", Status: "started"},                      // T8
+		{Title: "Someday", Status: "open"},                       // T9, the backlog: not on deck
 	}); err != nil {
 		t.Fatal(err)
 	}

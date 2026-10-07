@@ -43,11 +43,12 @@ const (
 	NeedsYou Group = "Needs you"
 	InMotion Group = "In motion"
 	OnDeck   Group = "On deck"
+	Backlog  Group = "Backlog"
 	DoneG    Group = "Done"
 )
 
 // Groups lists the board sections in order.
-var Groups = []Group{NeedsYou, InMotion, OnDeck, DoneG}
+var Groups = []Group{NeedsYou, InMotion, OnDeck, Backlog, DoneG}
 
 // GroupOf returns the board section of a status.
 func GroupOf(s Status) Group {
@@ -56,14 +57,15 @@ func GroupOf(s Status) Group {
 		return NeedsYou
 	case Started:
 		return InMotion
+	case Open:
+		return Backlog
 	case Done:
 		return DoneG
 	}
 	return OnDeck
 }
 
-// rank orders tasks inside the board: by group, ready before open inside
-// On deck, then by id.
+// rank orders tasks inside the board: by group, then by id.
 func rank(s Status) int {
 	switch s {
 	case Blocked, Review:

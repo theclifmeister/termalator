@@ -1307,3 +1307,35 @@ func lineWith(out, s string) string {
 	}
 	return ""
 }
+
+// TestTasksTabBacklog: open tasks are their own BACKLOG group after ON
+// DECK, collapsed to a line until b lists them (T108).
+func TestTasksTabBacklog(t *testing.T) {
+	src, m := popupData(t)
+	src.board.Tasks = append(src.board.Tasks,
+		&tasks.Task{ID: 5, Title: "Someday idea", Status: tasks.Open},
+		&tasks.Task{ID: 6, Title: "Done thing", Status: tasks.Done})
+	m.Update(keyPress(m, "a")())
+	pv := m.top().(*projectView)
+	keyPress(m, "right")
+	keyPress(m, "right")
+	out := screen(m)
+	if !strings.Contains(out, "BACKLOG") || !strings.Contains(out, "1 for later (b shows them)") || strings.Contains(out, "Someday idea") {
+		t.Fatalf("collapsed backlog:\n%s", out)
+	}
+	if strings.Index(out, "ON DECK") > strings.Index(out, "BACKLOG") || strings.Index(out, "BACKLOG") > strings.Index(out, "DONE") {
+		t.Fatalf("backlog sits between on deck and done:\n%s", out)
+	}
+	if !strings.Contains(out, "b backlog") {
+		t.Fatalf("keys lack b:\n%s", out)
+	}
+	keyPress(m, "b")
+	out = screen(m)
+	if !pv.backlogAll || !strings.Contains(out, "Someday idea") || strings.Contains(out, "for later") || !strings.Contains(out, "b hide backlog") {
+		t.Fatalf("b shows the backlog:\n%s", out)
+	}
+	keyPress(m, "b")
+	if pv.backlogAll || strings.Contains(screen(m), "Someday idea") {
+		t.Fatalf("b again collapses it")
+	}
+}

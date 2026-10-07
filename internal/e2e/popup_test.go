@@ -90,7 +90,7 @@ func TestSmokeProjectPopup(t *testing.T) {
 	env.MustCLI("task", "add", "Write the README", "--project", slug, "--step", "Draft", "--step", "Review")
 	env.MustCLI("task", "steps", "T1", "check", "1", "--project", slug)
 	env.MustCLI("task", "status", "T1", "started", "--project", slug)
-	env.MustCLI("task", "add", "Ship it", "--project", slug)
+	env.MustCLI("task", "add", "Ship it", "--status", "ready", "--project", slug)
 
 	const cols = 120
 	w := env.Window(cols, 40)
