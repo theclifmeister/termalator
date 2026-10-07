@@ -48,7 +48,9 @@ const threadUsage = `usage: tm thread <command> [--project <slug>] [--json]
   answer <id> [--choice N[,N…]] [--option LABEL]… [--text T] [--question K]
                                  relay the user's answer to a question menu
   ack <id>                       acknowledge the latest report
-  stop <id> | restart <id> | resolve <id>
+  stop <id> | restart <id>
+  resolve <id> [--discard]       --discard also removes a worktree with uncommitted changes
+                                 and its branch; refused when the branch has unsaved commits
 
 Exit codes: 0 done or already true, 1 refused, 2 usage, 3 I/O.`
 
@@ -226,6 +228,10 @@ func runThread(e *Env, args []string) error {
 			return e.threadAnswer(p, id, a)
 		}
 	case "ack", "stop", "restart", "resolve":
+		discard := new(bool)
+		if sub == "resolve" {
+			discard = f.Bool("discard")
+		}
 		run = func(p *project.Project, pos []string) error {
 			id, err := oneID(pos, sub+" <id>")
 			if err != nil {
@@ -242,7 +248,7 @@ func runThread(e *Env, args []string) error {
 			case "restart":
 				return e.threadRestart(p, id)
 			}
-			return e.threadResolve(p, id)
+			return e.threadResolve(p, id, *discard)
 		}
 	default:
 		return usagef("unknown subcommand %q\n%s", sub, threadUsage)
@@ -1470,7 +1476,7 @@ func (e *Env) threadRestart(p *project.Project, id string) error {
 	return nil
 }
 
-func (e *Env) threadResolve(p *project.Project, id string) error {
+func (e *Env) threadResolve(p *project.Project, id string, discard bool) error {
 	r, err := thread.Load(p, id)
 	if err != nil {
 		return err
@@ -1478,6 +1484,11 @@ func (e *Env) threadResolve(p *project.Project, id string) error {
 	if r.State == thread.Resolved {
 		fmt.Fprintf(e.Stdout, "%s unchanged (already resolved)\n", id)
 		return nil
+	}
+	if discard {
+		if err := discardable(p, r); err != nil {
+			return err
+		}
 	}
 	if _, live := e.sessionOf(r); live {
 		if err := e.call(proto.MethodSessionStop, proto.SessionIDParams{ID: r.Session}, nil); err != nil {
@@ -1508,7 +1519,11 @@ func (e *Env) threadResolve(p *project.Project, id string) error {
 		}
 	case r.Repo != "":
 		_, statErr := os.Stat(r.Worktree)
-		err := worktree.Remove(r.Repo, r.Worktree)
+		remove := worktree.Remove
+		if discard {
+			remove = worktree.RemoveForce
+		}
+		err := remove(r.Repo, r.Worktree)
 		switch {
 		case errors.Is(err, worktree.ErrDirty):
 			did = append(did, "kept worktree "+r.Worktree+" (uncommitted changes)")
@@ -1520,7 +1535,15 @@ func (e *Env) threadResolve(p *project.Project, id string) error {
 			did = append(did, "removed worktree "+r.Worktree)
 		}
 		var deleted []string
-		if r.Branch != "" && worktree.BranchExists(r.Repo, r.Branch) {
+		if discard && r.Branch != "" && worktree.BranchExists(r.Repo, r.Branch) {
+			// discardable found no commit that is nowhere else.
+			if err := worktree.DeleteBranch(r.Repo, r.Branch); err != nil {
+				did = append(did, "kept branch "+r.Branch+" ("+oneLine(err.Error(), 120)+")")
+			} else {
+				did = append(did, "deleted branch "+r.Branch+" (discarded)")
+				deleted = append(deleted, r.Branch+" (discarded)")
+			}
+		} else if r.Branch != "" && worktree.BranchExists(r.Repo, r.Branch) {
 			switch st := codehost.Pick(r.Repo, p.CodeHost()).PRState(r.Repo, r.Branch); st {
 			case "MERGED":
 				if err := worktree.DeleteBranch(r.Repo, r.Branch); err != nil {
@@ -1577,6 +1600,32 @@ func (e *Env) threadResolve(p *project.Project, id string) error {
 		return err
 	}
 	fmt.Fprintln(e.Stdout, summary)
+	return nil
+}
+
+// discardable says whether resolve --discard may throw the thread's
+// worktree and branch away: only a worktree of tm's own, whose branch
+// holds no commit that is on no remote (in a repo without remotes, not
+// merged into another branch). Uncommitted changes are what it discards.
+func discardable(p *project.Project, r *thread.Record) error {
+	refuse := func(format string, a ...any) error {
+		return &tasks.Error{Code: "discard-refused", Msg: fmt.Sprintf(format, a...)}
+	}
+	switch {
+	case r.Checkout || r.Adopted:
+		return refuse("thread %s is adopted: its checkout is the user's, not tm's to remove", r.ID)
+	case r.Repo == "":
+		return refuse("thread %s has no worktree to discard; resolve it", r.ID)
+	case !followRepo(p, r):
+		return refuse("repo %s is gone; resolve the thread without --discard", r.Repo)
+	}
+	unsaved, err := worktree.BranchUnsaved(r.Repo, r.Branch)
+	if err != nil {
+		return refuse("can't tell whether branch %s has unsaved work (%s); nothing discarded", r.Branch, oneLine(err.Error(), 120))
+	}
+	if unsaved != "" {
+		return refuse("%s: unsaved work; push it or ask the thread to, then resolve without --discard", unsaved)
+	}
 	return nil
 }
 
