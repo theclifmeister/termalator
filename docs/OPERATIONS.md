@@ -131,6 +131,37 @@ Any `tm` command starts the server when needed, so you don't need a service. If 
 - `--print` shows the file without installing anything.
 - On Linux a user service stops at logout unless lingering is on (`loginctl enable-linger`).
 
+## Code hosts: GitHub and Azure DevOps
+
+Each repo's pull requests are asked of its code host, picked from `git remote get-url origin` (SPEC §3, **Code host**). `github.com` and anything unrecognised is GitHub; these remotes are Azure DevOps (cloud, `dev.azure.com`):
+
+```
+https://[user@]dev.azure.com/{org}/{project}/_git/{repo}
+https://{org}.visualstudio.com/[DefaultCollection/]{project}/_git/{repo}
+git@ssh.dev.azure.com:v3/{org}/{project}/{repo}
+{org}@vs-ssh.visualstudio.com:v3/{org}/{project}/{repo}
+```
+
+For an Azure DevOps Server (or any host terminatr doesn't recognise) set it in the project's `PROJECT.md` front matter:
+
+```toml
+code_host = "azure"                         # or "github"
+azure_url = "https://tfs.example.com/tfs/Coll"   # organization or collection URL
+```
+
+**GitHub:** `gh auth login`.
+
+**Azure DevOps:** the server runs on your machine and uses your login, as `gh` does.
+
+1. Install the Azure CLI (`brew install azure-cli`) and its extension: `az extension add --name azure-devops`.
+2. `az login` (Entra). That is all terminatr needs; it never stores or asks for a token. A personal access token also works by exporting `AZURE_DEVOPS_EXT_PAT` before `tm server restart`; the guard stops threads reading or printing it.
+3. `git` needs its own credential for the remote (Git Credential Manager, or an SSH key), since threads push with it.
+4. Run `tm doctor`: it checks `az`, the extension, the login, that `az repos show` reads each repo, and that `git ls-remote origin HEAD` doesn't prompt.
+
+Threads open their pull requests themselves (`gh pr create`, `az repos pr create`) and report the URL on the `PR:` line, either form. Completing a PR is the coordinator's with `merge = "coordinator"`, and the guard refuses a thread's `gh pr merge` or `az repos pr update --status completed`. Build-validation policies are optional: a PR without them has no checks to follow, and merge commits and squash merges are both recognised from the PR's state.
+
+Without the CLI, the extension or a login, that host's PRs are not followed: no follow-up prompts, no auto-close on merge, no completing tasks on merge, and after 3 failed polls the project's inbox gets a "PR host failing" item. Threads, tasks and reports are unaffected. The full table is in SPEC §3. terminatr's own release flow (below) is GitHub-only and unrelated to the hosts of your projects.
+
 ## Checking an installation: tm doctor
 
 `tm doctor` checks your installation and changes nothing:

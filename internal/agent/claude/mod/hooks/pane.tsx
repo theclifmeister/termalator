@@ -249,7 +249,7 @@ function drawPane($: EngineInterface, els: Elements[RenderSurface], hasInput: bo
   )
 }
 
-// drawTicker draws the ticker's timers, red while gh fails.
+// drawTicker draws the ticker's timers, red while the PR host fails.
 function drawTicker(els: Elements[RenderSurface], t: ReturnType<typeof tickerLine>) {
   const { Text } = els
   return <Text wrap="truncate-end" color={t.tone === 'error' ? 'error' : undefined} dimColor={t.tone === 'ok'}>{t.text}</Text>

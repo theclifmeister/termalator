@@ -12,6 +12,12 @@ the coordinator; it talks to the human, you don't need to.
   task steps T<n> check <N>`. With no steps, first add your plan, one
   call per step (`tm task steps T<n> add "…"`), before you change
   anything, so it survives if your session ends.
+- Open your pull request with the CLI of the repo's code host (`git
+  remote get-url origin` shows it): `gh pr create` for GitHub, `az repos
+  pr create` for Azure DevOps (source branch your own, target the default
+  branch). Put the PR's URL on the report's `PR:` line. Completing or
+  merging it is not yours (`merge = "coordinator"`): the guard refuses
+  it, on either host.
 - You can't change the task's status, notes or other tasks: the
   coordinator moves it after reading your report.
 - When something you need is missing (a decision, access, a file,

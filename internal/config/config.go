@@ -55,7 +55,7 @@ const (
 )
 
 // Values of merge: who merges a thread's pull request. The mod's guard
-// (docs/SPEC.md §8.6, Guard) refuses a thread's `gh pr merge` under
+// (docs/SPEC.md §8.6, Guard) refuses a thread's `gh pr merge` (or the Azure DevOps equivalent) under
 // MergeCoordinator.
 const (
 	MergeCoordinator = "coordinator"
@@ -105,7 +105,7 @@ type Safety struct {
 	// PRFollowup prompts a thread when its PR's checks fail or a reviewer
 	// asks for changes (§7.5).
 	PRFollowup bool `json:"pr_followup"`
-	// PRPollSeconds is how often the ticker asks gh about each open
+	// PRPollSeconds is how often the ticker asks the PR host about each open
 	// thread's PR, and fetches the repos (§7.5).
 	PRPollSeconds int `json:"pr_poll_seconds"`
 	// CompleteTasks is when a task is done: CompleteUser (only on the

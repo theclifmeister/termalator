@@ -52,7 +52,7 @@ func TestSmokeCoordinatorPanel(t *testing.T) {
 				skip = true
 			}
 			if skip {
-				skip = !strings.Contains(cut, "gh ok") && !strings.Contains(cut, "gh failing")
+				skip = !strings.Contains(cut, "PR host ok") && !strings.Contains(cut, "PR host failing")
 				dropped++
 				continue
 			}
