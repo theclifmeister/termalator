@@ -24,31 +24,35 @@ type box struct {
 	// scroll is the first line shown when sel is -1 (help, the keys).
 	scroll int
 	keys   string // the action row: the popup's keys, as key hints
-	width  int    // the box's width when the window has room
-	// height is how many lines (head and body) the box shows when the
-	// window has room, whatever the body's length; 0 fits the body.
-	height int
+	// width is a context menu's width (box.at); a popup is a view or,
+	// with dialog set, a dialog, each of a fixed size (docs/STYLE.md S7).
+	width  int
+	dialog bool
 	// hits are what a click on each head line, then each body line,
 	// picks (the overlay's click), noHit for nothing; nil for a box
 	// without clickable lines.
 	hits []int
 	// at places the box with its top left corner at a cell of the body
-	// (a context menu), kept inside it; nil centres it.
+	// (a context menu), kept inside it, its size that of its lines; nil
+	// centres it on the whole window.
 	at *[2]int
 }
 
-// The popups' widths when the window has room (docs/STYLE.md S7): a
-// dialog asks or takes one thing, a view lists or shows many.
+// The popups' sizes when the window has room (docs/STYLE.md S7): a
+// dialog asks or takes one thing, a view lists or shows many. A view is
+// at most nine tenths of the window wide and four fifths high.
 const (
-	dialogWidth = 64
-	viewWidth   = 96
+	dialogWidth  = 64
+	dialogHeight = 12
+	viewWidth    = 96
+	viewHeight   = 40
 )
 
 // noHit is a line that picks nothing.
 const noHit = -1
 
 // boxGeo is where the topmost popup was drawn, for the mouse: its top
-// left corner in the body (row 0 is the first row under the header), its
+// left corner in the window (sidebar and header included), its
 // size, its head lines, the first body line shown, how many show and
 // what each line picks, and its action rows.
 type boxGeo struct {
@@ -94,24 +98,32 @@ func (g *boxGeo) inside(x, y int) bool {
 // is under it.
 const sliver = 4
 
-// boxWidth is the width a popup asking for width takes in this window:
-// all of a small window, else a cell from each edge at most.
+// boxSize is the size of the popup b in this window: a view or a dialog
+// of fixed size, shrunk to fit with a cell of margin on a small window;
+// a context menu takes the width it asks for and the height of its
+// lines, kept inside the body.
+func (m *dash) boxSize(b box) (int, int) {
+	if b.at != nil {
+		bw := max(min(b.width, m.w), 8)
+		n := len(b.head) + len(b.body)
+		acts := len(actionRows(b.keys, bw-4))
+		if acts > 0 {
+			acts++ // the row above them
+		}
+		return bw, max(min(n+2+acts, m.bodyRows()), 3)
+	}
+	w, h := m.winW, m.h
+	if b.dialog {
+		return max(min(dialogWidth, w-2), 8), max(min(dialogHeight, h-2), 5)
+	}
+	return max(min(viewWidth, w*9/10, w-2), 8), max(min(viewHeight, h*8/10, h-2), 5)
+}
+
+// boxWidth is the width of a popup asking for width: a dialog's if it is
+// no wider, else a view's.
 func (m *dash) boxWidth(width int) int {
-	if m.w < 44 {
-		return m.w
-	}
-	if width >= viewWidth {
-		// A view keeps a margin of what is under it in view: at most
-		// nine tenths of the window, as long as that leaves it room.
-		width = min(width, max(m.w*9/10, 72))
-	}
-	bw := min(width, m.w-4)
-	if bw >= m.w-4 {
-		// No room for a margin worth showing: the box takes the width
-		// but a cleared column each side.
-		bw = m.w - 2
-	}
-	return max(bw, 8)
+	w, _ := m.boxSize(box{dialog: width <= dialogWidth})
+	return w
 }
 
 // inner is the text width inside a popup asking for width: the box less
@@ -140,24 +152,15 @@ func actionRows(keys string, w int) []string {
 	return append(rows, cur)
 }
 
-// boxRows is how many lines (head and body) box b shows in this
-// window: its height, else its lines, as many as the window has room
-// for beside its borders and action rows.
+// boxRows is how many lines (head and body) box b shows: the box's
+// height less its borders and action rows.
 func (m *dash) boxRows(b box) int {
-	room := m.bodyRows()
-	n := len(b.head) + len(b.body)
-	if b.height > 0 {
-		n = b.height
-	}
-	acts := len(actionRows(b.keys, m.inner(b.width)))
+	bw, bh := m.boxSize(b)
+	acts := len(actionRows(b.keys, bw-4))
 	if acts > 0 {
 		acts++ // the row above them
 	}
-	rows := min(n, max(room-2-acts, 1))
-	if room > 8 {
-		rows = min(rows, room-4-acts)
-	}
-	return max(rows, 1)
+	return max(bh-2-acts, 1)
 }
 
 // drawBox draws a bordered box bw cells wide: the title in its top
@@ -191,14 +194,11 @@ func drawBox(title string, bw int, lines, acts []string, more string) []string {
 }
 
 // popup draws b over what is under it: the list, a session's screen or
-// the popup it was opened from.
+// the popup it was opened from. It returns the whole window, the box
+// centred on it (or at b.at in the body).
 func (m *dash) popup(b box) string {
-	room := m.bodyRows()
-	base := m.base()
-	bw := m.boxWidth(b.width)
-	if b.at != nil {
-		bw = max(min(b.width, m.w), 8)
-	}
+	base := m.baseWindow()
+	bw, _ := m.boxSize(b)
 	inner := bw - 4
 	head := b.head
 	rows := m.boxRows(b)
@@ -231,11 +231,11 @@ func (m *dash) popup(b box) string {
 	acts := actionRows(b.keys, inner)
 	lines := drawBox(b.title, bw, shown, acts, more)
 
-	x := max((m.w-bw)/2, 0)
-	y := max((room-len(lines))/2, 0)
+	x := max((m.winW-bw)/2, 0)
+	y := max((m.h-len(lines))/2, 0)
 	if b.at != nil {
-		x = max(min(b.at[0], m.w-bw), 0)
-		y = max(min(b.at[1], room-len(lines)), 0)
+		x = max(min(b.at[0]+m.sideW(), m.winW-bw), 0)
+		y = max(min(b.at[1]+1, m.h-footRows-len(lines)), 1)
 	}
 	hits := b.hits
 	if len(head) < len(b.head) && len(hits) >= len(b.head) {
@@ -243,27 +243,37 @@ func (m *dash) popup(b box) string {
 	}
 	m.geo = &boxGeo{x: x, y: y, w: bw, h: len(lines), head: len(head), top: top, rows: rows, hits: hits,
 		acts: acts, actY: 1 + len(shown) + 1}
-	body := make([]string, room)
-	for i := range body {
-		plain := ""
+	out := make([]string, m.h)
+	for i := range out {
+		line := ""
 		if i < len(base) {
-			plain = ansi.Strip(base[i])
+			line = base[i]
 		}
 		if i < y || i >= y+len(lines) {
-			body[i] = styleFaint.Render(plain)
+			out[i] = dimRow(line, m.sideW(), i >= 1 && i < m.h-footRows)
 			continue
 		}
 		// Beside the box, a margin too narrow to read is cleared, so no
 		// cut-off letters of what is under it show.
+		plain := ansi.Strip(line)
 		left := fit(ansi.Cut(plain, 0, x), x)
-		right := fit(ansi.Cut(plain, x+bw, m.w), max(m.w-x-bw, 0))
+		right := fit(ansi.Cut(plain, x+bw, m.winW), max(m.winW-x-bw, 0))
 		if x < sliver {
 			left = strings.Repeat(" ", x)
 		}
-		if m.w-x-bw < sliver {
-			right = strings.Repeat(" ", max(m.w-x-bw, 0))
+		if m.winW-x-bw < sliver {
+			right = strings.Repeat(" ", max(m.winW-x-bw, 0))
 		}
-		body[i] = styleFaint.Render(left) + lines[i-y] + reset + styleFaint.Render(right)
+		out[i] = styleFaint.Render(left) + lines[i-y] + reset + styleFaint.Render(right)
 	}
-	return m.frame("", body, -1, "")
+	return strings.Join(out, "\n")
+}
+
+// dimRow dims a window row under a popup: all of it in the body, else
+// its sidebar part (the header and the footer stay as they are).
+func dimRow(line string, side int, body bool) string {
+	if body {
+		return styleFaint.Render(ansi.Strip(line))
+	}
+	return styleFaint.Render(ansi.Strip(ansi.Cut(line, 0, side))) + ansi.Cut(line, side, ansi.StringWidth(line)+1)
 }

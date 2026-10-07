@@ -80,6 +80,7 @@ type amenu struct {
 	// text is a dialog's question, wrapped to its width w.
 	text  []string
 	w     int
+	h     int // a dialog's height, fixed; its text fills it
 	sel   int
 	x, y  int  // its top left cell
 	drawn bool // on screen as it is
@@ -100,9 +101,10 @@ func (mn *amenu) acts() []string {
 // action is the key of the action row's button at window cell (x, y),
 // "" for none.
 func (mn *amenu) action(x, y int) string {
-	n := len(mn.items) + len(mn.text)
-	r := y - mn.y - 1 - n - 1
-	if acts := mn.acts(); r >= 0 && r < len(acts) {
+	_, h := mn.size()
+	acts := mn.acts()
+	r := y - mn.y - (h - 1 - len(acts)) // the action rows end above the bottom border
+	if r >= 0 && r < len(acts) {
 		return hintAt(hints(acts[r], mn.x+2), x)
 	}
 	return ""
@@ -119,7 +121,7 @@ type aitem struct {
 func (mn *amenu) size() (int, int) {
 	h := len(mn.items) + len(mn.text) + 2 + 1 + len(mn.acts())
 	if len(mn.text) > 0 {
-		return mn.w, h
+		return mn.w, max(h, mn.h)
 	}
 	lw, kw := mn.widths()
 	w := lw
@@ -142,7 +144,12 @@ func (mn *amenu) widths() (lw, kw int) {
 func (mn *amenu) lines() []string {
 	bw, _ := mn.size()
 	if len(mn.text) > 0 {
-		return drawBox(mn.title, bw, mn.text, mn.acts(), "")
+		text := mn.text
+		_, h := mn.size()
+		for len(text)+2+1+len(mn.acts()) < h {
+			text = append(text[:len(text):len(text)], "")
+		}
+		return drawBox(mn.title, bw, text, mn.acts(), "")
 	}
 	_, kw := mn.widths()
 	inner := bw - 4
@@ -392,14 +399,13 @@ func (c *client) statusMouse(m emu.Mouse) {
 }
 
 // openDialog opens a yes/no dialog over the session: title, question
-// and the confirm keys in its action row, centred right of the sidebar.
-// c.mu held.
+// and the confirm keys in its action row, a dialog's fixed size, centred
+// on the window. c.mu held.
 func (c *client) openDialog(title, question string) {
-	area := max(c.cols-c.sideW, 12)
-	w := min(dialogWidth, area-2)
-	d := &amenu{title: title, text: wrapLines(question, max(w-4, 4)), w: w}
+	w := max(min(dialogWidth, c.cols-2), 8)
+	d := &amenu{title: title, text: wrapLines(question, max(w-4, 4)), w: w, h: min(dialogHeight, max(c.rows-2, 5))}
 	_, h := d.size()
-	d.x = c.sideW + max((area-w)/2, 0)
-	d.y = max((c.rows-1-h)/2, 0)
+	d.x = max((c.cols-w)/2, 0)
+	d.y = max((c.rows-h)/2, 0)
 	c.dialog = d
 }

@@ -447,10 +447,10 @@ func TestKeysParity(t *testing.T) {
 	keyPress(m, "5")
 	// Both are keyLines, each wrapped to its own box's width.
 	b := m.top().(*projectView).box(m)
-	if want := keyLines(m.inner(b.width)); strings.Join(b.body, "\n") != strings.Join(want, "\n") {
+	if want := keyLines(m.inner(viewWidth)); strings.Join(b.body, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("keys tab isn't the keys:\n%s", strings.Join(b.body, "\n"))
 	}
-	if want := helpLines(m.prefix, m.inner(m.w)); strings.Join(help, "\n") != strings.Join(want, "\n") {
+	if want := helpLines(m.prefix, m.inner(viewWidth)); strings.Join(help, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("help isn't the keys:\n%s", strings.Join(help, "\n"))
 	}
 	text := ansi.Strip(strings.Join(help, "\n"))

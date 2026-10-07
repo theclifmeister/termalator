@@ -401,7 +401,7 @@ func (sv *settingsView) render(m *dash) string {
 		l, _, _ := sv.tabs[i].lines(m, w)
 		height = max(height, len(head)+len(l)+3)
 	}
-	b := box{title: "Settings", head: head, body: lines, sel: -1, hits: all, keys: keys, width: viewWidth, height: height}
+	b := box{title: "Settings", head: head, body: lines, sel: -1, hits: all, keys: keys}
 	b.scroll = sv.scroll(m.boxRows(b)-len(head), sel, len(lines))
 	return m.popup(b)
 }
@@ -473,7 +473,7 @@ func (cv *captureView) render(m *dash) string {
 	if cv.err != "" {
 		lines = append(lines, styleBad.Render(cv.err))
 	}
-	return m.popup(box{title: "Prefix key", body: lines, sel: -1, keys: "esc cancel", width: dialogWidth})
+	return m.popup(box{title: "Prefix key", body: lines, sel: -1, keys: "esc cancel", dialog: true})
 }
 
 // confirmView asks a yes/no question: y runs yes, n or esc says no, and
@@ -510,7 +510,7 @@ func (cv *confirmView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 }
 
 func (cv *confirmView) render(m *dash) string {
-	return m.popup(box{title: cv.title, body: wrapLines(cv.question, m.inner(dialogWidth)), sel: -1, keys: confirmKeys, width: dialogWidth})
+	return m.popup(box{title: cv.title, body: wrapLines(cv.question, m.inner(dialogWidth)), sel: -1, keys: confirmKeys, dialog: true})
 }
 
 // projectSettings are a project's own settings (§11.2), for its popup.
@@ -967,7 +967,7 @@ func (v *modelsView) render(m *dash) string {
 	if v.err != "" {
 		lines = append(lines, "", styleBad.Render(v.err))
 	}
-	return m.popup(box{title: "Thread models", body: lines, sel: -1, keys: "enter allow or leave out · ↑ ↓ move · esc back", width: dialogWidth})
+	return m.popup(box{title: "Thread models", body: lines, sel: -1, keys: "enter allow or leave out · ↑ ↓ move · esc back", dialog: true})
 }
 
 // archiveAges are the retention settings, as Keep history lists them.
@@ -1013,7 +1013,7 @@ func (v *historyView) render(m *dash) string {
 	if v.all {
 		keys = "enter step · + - a day · ↑ ↓ move · esc back"
 	}
-	b := box{title: v.title, body: lines, sel: sel, hits: hits, keys: keys, width: viewWidth}
+	b := box{title: v.title, body: lines, sel: sel, hits: hits, keys: keys}
 	return m.popup(b)
 }
 

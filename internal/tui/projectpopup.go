@@ -342,16 +342,8 @@ func listed(b *tasks.Board, backlog bool) []*tasks.Task {
 
 func (pv *projectView) render(m *dash) string { return m.popup(pv.box(m)) }
 
-// projectSize is the project popup's width and lines (tab bar and
-// content) in a window w×h: from the window alone, never from a tab's
-// content, so switching tabs doesn't move or resize it.
-func projectSize(w, h int) (int, int) {
-	return viewWidth, min(max(h*9/10, 14), 48)
-}
-
 func (pv *projectView) box(m *dash) box {
-	width, height := projectSize(m.w, m.bodyRows())
-	w := m.inner(width)
+	w := m.inner(viewWidth)
 	p := pv.data(m)
 	var body []string
 	var hits []int
@@ -405,7 +397,7 @@ func (pv *projectView) box(m *dash) box {
 	if title == "" {
 		title = pv.slug
 	}
-	b := box{title: title, head: head, body: body, sel: -1, hits: all, keys: keys, width: width, height: height}
+	b := box{title: title, head: head, body: body, sel: -1, hits: all, keys: keys}
 	b.scroll = pv.scroll(m.boxRows(b)-len(head), sel, len(body))
 	return b
 }

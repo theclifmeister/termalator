@@ -75,7 +75,7 @@ type helpView struct{ scroll int }
 
 func (h *helpView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	if d, ok := scrollKeys[k.String()]; ok {
-		h.scroll = clampScroll(h.scroll+d, len(helpLines(m.prefix, m.inner(m.w))))
+		h.scroll = clampScroll(h.scroll+d, len(helpLines(m.prefix, m.inner(viewWidth))))
 		return nil
 	}
 	if k.String() == "esc" {
@@ -85,8 +85,8 @@ func (h *helpView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 }
 
 func (h *helpView) box(m *dash) box {
-	return box{title: "Help", body: helpLines(m.prefix, m.inner(m.w)), sel: -1, scroll: h.scroll,
-		keys: "↑ ↓ scroll · esc close", width: m.w}
+	return box{title: "Help", body: helpLines(m.prefix, m.inner(viewWidth)), sel: -1, scroll: h.scroll,
+		keys: "↑ ↓ scroll · esc close"}
 }
 
 func (h *helpView) render(m *dash) string { return m.popup(h.box(m)) }
@@ -165,7 +165,7 @@ func (in *inputView) render(m *dash) string {
 		// Near the limit: how much is left.
 		body = append(body, styleFaint.Render(fmt.Sprintf("%d of at most %d characters", n, in.max)))
 	}
-	return m.popup(box{title: in.title, body: body, sel: -1, keys: "enter ok · ctrl+u clear · esc cancel", width: dialogWidth})
+	return m.popup(box{title: in.title, body: body, sel: -1, keys: "enter ok · ctrl+u clear · esc cancel", dialog: true})
 }
 
 // wrapInput lays out a prompt's label and text in lines of w cells,
@@ -266,7 +266,7 @@ func (b *boardView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 func (b *boardView) render(m *dash) string {
 	title := "Tasks · " + b.slug
 	if b.board == nil {
-		return m.popup(box{title: title, body: []string{styleFaint.Render("loading…")}, sel: -1, keys: "esc close", width: viewWidth})
+		return m.popup(box{title: title, body: []string{styleFaint.Render("loading…")}, sel: -1, keys: "esc close"})
 	}
 	if b.open && b.sel < len(b.list) {
 		t := b.list[b.sel]
@@ -281,7 +281,7 @@ func (b *boardView) render(m *dash) string {
 			d.lines[i] = strings.TrimRight(strings.TrimSuffix(strings.TrimPrefix(l, " "), reset), " ") + reset
 		}
 		keys := joinKeys(taskKeys(t), "esc back")
-		return m.popup(box{title: "Task · " + b.slug, body: d.lines, sel: -1, keys: keys, width: viewWidth})
+		return m.popup(box{title: "Task · " + b.slug, body: d.lines, sel: -1, keys: keys})
 	}
 	w := m.inner(viewWidth)
 	var lines []string
@@ -337,7 +337,7 @@ func (b *boardView) render(m *dash) string {
 	case backlogCount(b.board) > 0:
 		keys = joinKeys("b backlog", keys)
 	}
-	return m.popup(box{title: title, body: lines, sel: sel, hits: hits, keys: keys, width: viewWidth})
+	return m.popup(box{title: title, body: lines, sel: sel, hits: hits, keys: keys})
 }
 
 // taskTitleCol is where a task row's title starts: after its id and
@@ -423,7 +423,7 @@ func (sw *switchView) render(m *dash) string {
 		}
 		lines = append(lines, line(r, w, i == sw.sel))
 	}
-	return m.popup(box{title: "Project switcher", body: lines, sel: sw.sel, hits: hits, keys: "enter open its coordinator · esc close", width: viewWidth})
+	return m.popup(box{title: "Project switcher", body: lines, sel: sw.sel, hits: hits, keys: "enter open its coordinator · esc close"})
 }
 
 // click selects a project; a double-click opens its coordinator.
@@ -466,7 +466,7 @@ func (in *inboxView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 func (in *inboxView) render(m *dash) string {
 	lines, sel, hits := inboxLines(in.items(m), in.sel, m.inner(viewWidth))
 	lines = append(lines, "", styleFaint.Render("The coordinator handles these (tm inbox done)."))
-	return m.popup(box{title: "Inbox · " + in.slug, body: lines, sel: sel, hits: hits, keys: "esc close", width: viewWidth})
+	return m.popup(box{title: "Inbox · " + in.slug, body: lines, sel: sel, hits: hits, keys: "esc close"})
 }
 
 func (in *inboxView) click(_ *dash, item, _ int, _ bool) tea.Cmd {

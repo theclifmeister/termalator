@@ -970,21 +970,23 @@ func (m *dash) View() tea.View {
 	return v
 }
 
-// render draws the sidebar and, beside it, the list or the topmost popup.
+// render draws the sidebar and, beside it, the list; a popup draws the
+// whole window itself, centred on it.
 func (m *dash) render() string {
 	m.geo = nil
-	var s string
-	o := m.top()
-	if o != nil {
+	if o := m.top(); o != nil {
 		// The popup under it, if any, is what it draws over.
 		m.under = nil
 		if n := len(m.stack); n > 1 {
 			m.under = m.stack[n-2]
 		}
-		s = o.render(m)
-	} else {
-		s = m.renderList()
+		return o.render(m)
 	}
+	return m.withSide(m.renderList())
+}
+
+// withSide puts the sidebar beside the dashboard's lines s.
+func (m *dash) withSide(s string) string {
 	lines := strings.Split(s, "\n")
 	side := sidebarLines(m.tree(), m.sideW(), m.h)
 	for i := range side {
@@ -992,13 +994,19 @@ func (m *dash) render() string {
 		if i < len(lines) {
 			l = lines[i]
 		}
-		if o != nil {
-			// Under a popup the whole scene dims, the sidebar too.
-			side[i] = styleFaint.Render(ansi.Strip(side[i]))
-		}
 		side[i] += fit(l, m.w) + reset
 	}
 	return strings.Join(side, "\n")
+}
+
+// baseWindow is the window a popup draws over: the popup it was opened
+// from, else the list or a session's screen with the sidebar.
+func (m *dash) baseWindow() []string {
+	if u := m.under; u != nil {
+		m.under = nil
+		return strings.Split(u.render(m), "\n")
+	}
+	return strings.Split(m.withSide(m.frame("", m.base(), -1, "")), "\n")
 }
 
 func (m *dash) renderList() string {
@@ -1014,20 +1022,9 @@ func (m *dash) overDone() bool {
 	return m.over != nil && m.loaded && m.then == "" && m.top() == nil && !m.busy
 }
 
-// base is what a popup draws over: the list, or the session's screen
-// under the header.
+// base is what a popup draws over, as the body's rows: the list, or the
+// session's screen under the header.
 func (m *dash) base() []string {
-	if u := m.under; u != nil {
-		m.under = nil
-		lines := strings.Split(u.render(m), "\n")
-		body := make([]string, m.bodyRows())
-		for i := range body {
-			if i+1 < len(lines) {
-				body[i] = lines[i+1]
-			}
-		}
-		return body
-	}
 	if m.over == nil {
 		return m.listBody()
 	}

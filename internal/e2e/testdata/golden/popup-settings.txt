@@ -1,39 +1,39 @@
  PROJECTS                    1 │ tm dashboard                                                   ● server ok · 0 sessions
  ■ demo                    0   │ demo ──────────────────────────────────────────────────────────────────────────────────
- └─ coordinator              · │  co╭─ Demo ──────────────────────────────────────────────────────────────────────╮
-                               │  ta│  1 Overview   2 Inbox   3 Tasks   4 Settings   5 Keys   6 Memory            │
-                               │ OTH│                                                                             │─────
-                               │  no│ Start threads                ask first · all projects                       │
-                               │    │ Ask first: the coordinator proposes threads and starts them after your go-  │
-                               │    │ ahead. Automatically: it starts them itself.                                │
-                               │    │                                                                             │
-                               │    │ Yolo mode                    off · all projects                             │
-                               │    │ New threads skip the agent's permission prompts; the file rules and the     │
-                               │    │ sandbox still hold. Turning it on asks first.                               │
-                               │    │                                                                             │
-                               │    │ Coordinator approves         on · all projects                              │
-                               │    │ The coordinator may answer its threads' in-scope permission prompts (allow  │
-                               │    │ once, never always).                                                        │
-                               │    │                                                                             │
-                               │    │ Parallel threads             10 · 0 working now  −  + · all projects        │
-                               │    │ The most threads working at once; beyond it the coordinator proposes and    │
-                               │    │ waits. Idle and done threads don't count. Enter or + and - change it.       │
-                               │    │                                                                             │
-                               │    │ Auto-close finished threads  when its pull request merges  −  + · all proj… │
-                               │    │ Close a thread when its pull request merges, or some days after it finishes │
-                               │    │ (done, or its pull request merged); + and - change the days. One with       │
-                               │    │ uncommitted or unpushed work stays open, and the coordinator is told.       │
-                               │    │                                                                             │
-                               │    │ Complete tasks               by you · all projects                          │
-                               │    │ By you, or on your standing acceptance: a task in review is done once its   │
-                               │    │ pull request merges. x sends it back.                                       │
-                               │    │                                                                             │
-                               │    │ Pull request follow-up       on · all projects                              │
-                               │    │ Prompt a thread when its pull request's checks fail, a reviewer asks for    │
-                               │    │ changes, or main moves past it.                                             │
-                               │    │                                                                             │
-                               │    │ enter change · + - number · ↑ ↓ move · ← → tabs · esc close                 │
-                               │    ╰──────────────────────────────────────────────────────────────────── more ↓ ─╯
+ └─ coordinator              · │  coordinator                        —           not running; enter starts it
+                               │  tasks: 0 need you · 1 in motion · 1 on deck
+            ╭─ Demo ───────────────────────────────────────────────────────────────────────────────────────╮────────────
+            │  1 Overview   2 Inbox   3 Tasks   4 Settings   5 Keys   6 Memory                             │
+            │                                                                                              │
+            │ Start threads                ask first · all projects                                        │
+            │ Ask first: the coordinator proposes threads and starts them after your go-ahead.             │
+            │ Automatically: it starts them itself.                                                        │
+            │                                                                                              │
+            │ Yolo mode                    off · all projects                                              │
+            │ New threads skip the agent's permission prompts; the file rules and the sandbox still hold.  │
+            │ Turning it on asks first.                                                                    │
+            │                                                                                              │
+            │ Coordinator approves         on · all projects                                               │
+            │ The coordinator may answer its threads' in-scope permission prompts (allow once, never       │
+            │ always).                                                                                     │
+            │                                                                                              │
+            │ Parallel threads             10 · 0 working now  −  + · all projects                         │
+            │ The most threads working at once; beyond it the coordinator proposes and waits. Idle and     │
+            │ done threads don't count. Enter or + and - change it.                                        │
+            │                                                                                              │
+            │ Auto-close finished threads  when its pull request merges  −  + · all projects               │
+            │ Close a thread when its pull request merges, or some days after it finishes (done, or its    │
+            │ pull request merged); + and - change the days. One with uncommitted or unpushed work stays   │
+            │ open, and the coordinator is told.                                                           │
+            │                                                                                              │
+            │ Complete tasks               by you · all projects                                           │
+            │ By you, or on your standing acceptance: a task in review is done once its pull request       │
+            │ merges. x sends it back.                                                                     │
+            │                                                                                              │
+            │ Pull request follow-up       on · all projects                                               │
+            │                                                                                              │
+            │ enter change · + - number · ↑ ↓ move · ← → tabs · esc close                                  │
+            ╰───────────────────────────────────────────────────────────────────────────────────── more ↓ ─╯
                                │
                                │────────────────────────────────────────────────────────────────────────────────────────
                                │

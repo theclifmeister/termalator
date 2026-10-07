@@ -29,7 +29,7 @@ func boxText(t *testing.T, m *dash) []string {
 	if g == nil {
 		t.Fatal("no popup drawn")
 	}
-	lines := strings.Split(screen(m), "\n")[1+g.y : 1+g.y+g.h]
+	lines := strings.Split(whole(m), "\n")[g.y : g.y+g.h]
 	for i, l := range lines {
 		r := []rune(l)
 		lines[i] = string(r[g.x : g.x+g.w])
@@ -67,7 +67,7 @@ func TestDialogAnatomy(t *testing.T) {
 			t.Errorf("%s: no blank row above the action row: %q", tc.name, blank)
 		}
 		lines := strings.Split(screen(m), "\n")
-		if foot := lines[len(lines)-2]; strings.TrimSpace(foot) != "" {
+		if foot := lines[len(lines)-2]; strings.TrimSpace(string([]rune(foot)[m.sideW():])) != "" {
 			t.Errorf("%s: the footer lists keys under the popup: %q", tc.name, foot)
 		}
 		for i, l := range strings.Split(m.render(), "\n") {
@@ -133,7 +133,7 @@ func TestPopupStacks(t *testing.T) {
 	keyPress(m, "3")
 	keyPress(m, "enter") // the task, over the Tasks tab
 	out := screen(m)
-	if !strings.Contains(out, "─ Task · alpha ─") || !strings.Contains(out, "─ Alpha ─") {
+	if !strings.Contains(out, "─ Task · alpha ─") {
 		t.Fatalf("the task view doesn't draw over the project popup:\n%s", out)
 	}
 	keyPress(m, "esc")
@@ -213,5 +213,43 @@ func TestSessionDialog(t *testing.T) {
 	c.mouse(uv.MouseClickEvent{X: d.x + len([]rune(ansi.Strip(lines[row])[:col])), Y: d.y + row, Button: uv.MouseLeft})
 	if c.confirmRemote != nil {
 		t.Fatal("a click on n no left the question open")
+	}
+}
+
+// TestPopupSizes: a view is 96 columns (at most nine tenths of the
+// window) by four fifths of the window's height (at most 40); a dialog
+// is 64×12; both are centred on the whole window, and shrink to fit with
+// a cell of margin.
+func TestPopupSizes(t *testing.T) {
+	for _, tc := range []struct {
+		w, h       int
+		view, conf [2]int
+	}{
+		{200, 60, [2]int{96, 40}, [2]int{64, 12}},
+		{120, 40, [2]int{96, 32}, [2]int{64, 12}},
+		{100, 30, [2]int{90, 24}, [2]int{64, 12}},
+		{40, 14, [2]int{36, 11}, [2]int{38, 12}},
+	} {
+		for _, open := range []struct {
+			name string
+			want [2]int
+			key  string
+		}{{"view", tc.view, "?"}, {"dialog", tc.conf, ""}} {
+			_, m := popupData(t)
+			m.Update(tea.WindowSizeMsg{Width: tc.w, Height: tc.h})
+			if open.key != "" {
+				keyPress(m, open.key)
+			} else {
+				m.stack = append(m.stack, &confirmView{title: "Sure?", question: "Really?"})
+			}
+			m.render()
+			g := m.geo
+			if g == nil || g.w != open.want[0] || g.h != open.want[1] {
+				t.Fatalf("%dx%d %s: box %+v, want %v", tc.w, tc.h, open.name, g, open.want)
+			}
+			if g.x != (tc.w-g.w)/2 || g.y != (tc.h-g.h)/2 {
+				t.Errorf("%dx%d %s: at %d,%d, not centred on the window", tc.w, tc.h, open.name, g.x, g.y)
+			}
+		}
 	}
 }

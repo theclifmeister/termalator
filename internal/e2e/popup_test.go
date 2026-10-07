@@ -16,46 +16,42 @@ import (
 )
 
 // popupBody is the text inside the popup's box: the lines between its
-// side borders, right of the sidebar.
+// side borders. The box is centred on the whole window, so it starts
+// where its top border does.
 func popupBody(screen string, cols int) []string {
+	lines := strings.Split(screen, "\n")
+	x := 0
+	for _, l := range lines {
+		if i := strings.Index(l, "╭─"); i >= 0 {
+			x = len([]rune(l[:i]))
+			break
+		}
+	}
 	var out []string
-	for _, l := range strings.Split(screen, "\n") {
+	for _, l := range lines {
 		r := []rune(l)
-		r = r[min(SideCols(cols), len(r)):]
-		s := string(r)
-		i, j := strings.Index(s, "│ "), strings.LastIndex(s, " │")
-		if i < 0 || j <= i {
+		s := string(r[min(x, len(r)):])
+		if !strings.HasPrefix(s, "│ ") {
 			continue
 		}
-		out = append(out, strings.TrimRight(s[i+len("│ "):j], " "))
+		j := strings.Index(s[len("│ "):], " │")
+		if j < 0 {
+			continue
+		}
+		out = append(out, strings.TrimRight(s[len("│ "):len("│ ")+j], " "))
 	}
 	return out
 }
 
 // liveRows counts the rows of pane (a PaneScreen with a popup open)
-// whose strip left of the popup's box starts with as much of text as
-// fits there: the session's output showing under the popup, at any
-// sidebar or popup width.
+// that start with text: the session's output showing above and below
+// the box, which is centred on the whole window and so covers the left
+// edge of the pane beside it.
 func liveRows(t *testing.T, pane, text string) int {
 	t.Helper()
-	lines := strings.Split(pane, "\n")
-	edge := -1 // the box's left border, in pane columns
-	for _, l := range lines {
-		if i := strings.Index(l, "╭─"); i >= 0 {
-			edge = len([]rune(l[:i]))
-			break
-		}
-	}
-	if edge < 0 {
-		return 0 // no popup yet
-	}
-	if edge == 0 {
-		t.Fatal("the popup covers the whole pane: nothing of it shows to check")
-	}
-	want := string([]rune(text)[:min(edge, len([]rune(text)))])
 	n := 0
-	for _, l := range lines {
-		if r := []rune(l); len(r) >= edge && strings.HasPrefix(string(r[:edge]), want) {
+	for _, l := range strings.Split(pane, "\n") {
+		if strings.HasPrefix(l, text) {
 			n++
 		}
 	}
@@ -239,12 +235,11 @@ func TestSmokeProjectPopup(t *testing.T) {
 	screens = append(screens, w.Screen())
 	// The session keeps drawing under the popup: the other console types
 	// into it, and this one shows the output with the popup still open.
-	// Only the pane's left edge shows beside the box, as wide as the
-	// sidebar and the popup leave it: each output row shows there as
-	// much of "live-" as fits.
+	// The pane shows above and below the box, which is centred on the
+	// window.
 	w2.Type("for i in $(seq 30); do echo live-$i; done\r")
 	w.WaitUntil("output under the popup", wait, func(string) bool {
-		return liveRows(t, w.PaneScreen(), "live-") >= 10 && strings.Contains(w.Screen(), "1 Overview")
+		return liveRows(t, w.PaneScreen(), "live-") >= 3 && strings.Contains(w.Screen(), "1 Overview")
 	})
 	w.Key(keyEsc)
 	w.WaitUntil("back on the session", wait, func(sc string) bool {
