@@ -227,7 +227,7 @@ func Run(ctx context.Context, opts Options) error {
 	logger.Printf("server pid %d %s protocol %d listening on %s", os.Getpid(), s.build, proto.Protocol, p.Socket)
 	go func() {
 		if st := keychain.Probe(runtime.GOOS, os.Getenv, keychain.Run); st.Checked && !st.OK {
-			logger.Printf("keychain: %s; the PR CLI (gh, az) and git credential helpers will fail in sessions: %s", st.Detail, keychain.Fix)
+			logger.Printf("keychain: %s; gh and git push over https will fail in sessions: %s", st.Detail, keychain.Fix)
 		}
 	}()
 

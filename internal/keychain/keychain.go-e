@@ -2,7 +2,7 @@
 // keychain (docs/SPEC.md §3.1). A server started from an SSH login runs in
 // that login's security session, and so does every session under it: the
 // keychain refuses them ("Interaction with the Security Server is not
-// allowed"), so the PR CLI's keyring token (gh's) reads as invalid and git's osxkeychain
+// allowed"), so gh's keyring token reads as invalid and git's osxkeychain
 // helper fails. Nothing here reads a secret. On Linux every check is a
 // no-op.
 package keychain

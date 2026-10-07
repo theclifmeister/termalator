@@ -53,10 +53,12 @@ type Check struct {
 	Detail string
 }
 
-// DoctorDeps is what Doctor may touch: doctor.Deps' LookPath and Run.
+// DoctorDeps is what Doctor may touch: doctor.Deps' LookPath and Run,
+// and the environment (nil reads none).
 type DoctorDeps struct {
 	LookPath func(string) (string, error)
 	Run      func(dir, name string, args ...string) (string, error)
+	Getenv   func(string) string
 }
 
 // Host is one pull-request provider. Every method takes the repo (a
