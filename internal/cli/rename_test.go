@@ -205,3 +205,39 @@ func TestResolveDiscard(t *testing.T) {
 		t.Fatal("branch still there")
 	}
 }
+
+// T136: resolve --discard on an already-resolved thread cleans up its
+// leftover worktree and branch; without --discard it stays a no-op.
+func TestResolveDiscardAlreadyResolved(t *testing.T) {
+	h := newHarness(t)
+	h.ok(human, "project", "new", "Demo")
+	repo, rec := threadWithWorktree(t, h, "demo")
+	os.WriteFile(filepath.Join(rec.Worktree, "REPORT.md"), []byte("notes"), 0o644)
+
+	// Plain resolve keeps the dirty worktree and the branch.
+	h.ok(coord, "thread", "resolve", rec.ID, "--project", "demo")
+	out := h.ok(coord, "thread", "resolve", rec.ID, "--project", "demo")
+	if !strings.Contains(out, "already resolved") {
+		t.Fatalf("resolve again: %q", out)
+	}
+	if _, err := os.Stat(rec.Worktree); err != nil {
+		t.Fatalf("worktree gone: %v", err)
+	}
+
+	out = h.ok(coord, "thread", "resolve", rec.ID, "--discard", "--project", "demo")
+	if !strings.Contains(out, "removed worktree "+rec.Worktree) || !strings.Contains(out, "deleted branch "+rec.Branch+" (discarded)") {
+		t.Fatalf("discard resolved: %q", out)
+	}
+	if _, err := os.Stat(rec.Worktree); !os.IsNotExist(err) {
+		t.Fatalf("worktree still there: %v", err)
+	}
+	if worktree.BranchExists(repo, rec.Branch) {
+		t.Fatal("branch still there")
+	}
+
+	// Nothing left: back to a no-op.
+	out = h.ok(coord, "thread", "resolve", rec.ID, "--discard", "--project", "demo")
+	if !strings.Contains(out, "already resolved") {
+		t.Fatalf("nothing left: %q", out)
+	}
+}
