@@ -56,6 +56,9 @@ const (
 	// MethodServerKeychain reports whether the server's sessions can reach
 	// the macOS login keychain (docs/SPEC.md §3.1).
 	MethodServerKeychain = "server.keychain"
+	// MethodServerCodeHost runs tm doctor's code-host checks (gh, az, git
+	// origin) in the server's own context (docs/SPEC.md §3.3).
+	MethodServerCodeHost = "server.codehost"
 )
 
 // Control methods of the agent layer (M3).
@@ -143,6 +146,19 @@ type KeychainStatus struct {
 	// desktop's, Background or StandardIO for an SSH login's.
 	Session string `json:"session,omitempty"`
 	Detail  string `json:"detail,omitempty"`
+}
+
+// CodeHostStatus is the result of server.codehost: the code-host checks
+// as the server, and so its sessions, would see them.
+type CodeHostStatus struct {
+	Checks []CodeHostCheck `json:"checks"`
+}
+
+// CodeHostCheck is one line of CodeHostStatus.
+type CodeHostCheck struct {
+	Name   string `json:"name"`
+	OK     bool   `json:"ok"`
+	Detail string `json:"detail,omitempty"`
 }
 
 // ServerStopParams are the params of server.stop.

@@ -21,6 +21,7 @@ import (
 
 	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/caller"
+	"github.com/theclifmeister/terminatr/internal/codehost"
 	"github.com/theclifmeister/terminatr/internal/emu"
 	"github.com/theclifmeister/terminatr/internal/keychain"
 	"github.com/theclifmeister/terminatr/internal/project"
@@ -519,6 +520,8 @@ func (s *Server) dispatch(req proto.Request, peerPID int) (any, *proto.Error) {
 		return s.status(), nil
 	case proto.MethodServerKeychain:
 		return keychain.Probe(runtime.GOOS, os.Getenv, keychain.Run), nil
+	case proto.MethodServerCodeHost:
+		return codeHostStatus(), nil
 	case proto.MethodServerStop:
 		var p proto.ServerStopParams
 		if err := decodeParams(req.Params, &p); err != nil {
@@ -985,4 +988,17 @@ func writeJSONLine(w net.Conn, v any) error {
 	}
 	_, err = w.Write(append(b, '\n'))
 	return err
+}
+
+// codeHostStatus runs the code-host checks (codehost.Checks) for the
+// repos in use, in the server's own context: its environment, its
+// session of the login keychain. That is the context its sessions' gh,
+// az and git have, which a tm doctor run from another shell (over SSH)
+// may not share.
+func codeHostStatus() proto.CodeHostStatus {
+	res := proto.CodeHostStatus{Checks: []proto.CodeHostCheck{}}
+	for _, c := range codehost.Checks(codehost.SystemDeps(), project.CodeHosts()) {
+		res.Checks = append(res.Checks, proto.CodeHostCheck{Name: c.Name, OK: c.OK, Detail: c.Detail})
+	}
+	return res
 }

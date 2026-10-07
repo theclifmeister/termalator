@@ -496,3 +496,30 @@ func orNone(s string) string {
 	}
 	return s
 }
+
+// CodeHosts is every repo of every project, with the code host its PRs
+// live on; what tm doctor's code-host checks run for.
+func CodeHosts() []codehost.RepoHost {
+	list, err := List()
+	if err != nil {
+		return nil
+	}
+	var out []codehost.RepoHost
+	seen := map[string]bool{}
+	for _, s := range list {
+		if s.Error != "" {
+			continue
+		}
+		p, err := Open(s.Slug)
+		if err != nil {
+			continue
+		}
+		for _, r := range p.Meta.Repos {
+			if k := s.Slug + "\x00" + r; !seen[k] {
+				seen[k] = true
+				out = append(out, codehost.RepoHost{Repo: r, Target: codehost.Detect(r, p.CodeHost())})
+			}
+		}
+	}
+	return out
+}

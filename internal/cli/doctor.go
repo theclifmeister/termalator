@@ -129,7 +129,11 @@ func printChecks(e *Env, checks []doctor.Check) {
 			fmt.Fprintln(e.Stdout, group)
 		}
 		counts[c.Status]++
-		fmt.Fprintf(e.Stdout, "  %-4s  %-14s %s\n", c.Status, c.Name, c.Detail)
+		detail := c.Detail
+		if c.Source != "" && c.Name != "local shell" {
+			detail += " [" + c.Source + "]"
+		}
+		fmt.Fprintf(e.Stdout, "  %-4s  %-14s %s\n", c.Status, c.Name, detail)
 	}
 	fmt.Fprintf(e.Stdout, "\n%d ok, %s, %s\n", counts[doctor.OK], plural(counts[doctor.Warn], "warning"), plural(counts[doctor.Fail], "failure"))
 }

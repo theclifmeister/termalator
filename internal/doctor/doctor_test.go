@@ -608,3 +608,54 @@ func TestLaunchdStrays(t *testing.T) {
 		t.Fatalf("booted: %v", booted)
 	}
 }
+
+func TestCodeHostsServerContext(t *testing.T) {
+	d := testDeps(t)
+	d.LookPath = func(n string) (string, error) { return "/bin/" + n, nil }
+	authed := false // this shell's gh
+	d.Run = func(dir, name string, args ...string) (string, error) {
+		if strings.Contains(strings.Join(args, " "), "auth status") && !authed {
+			return "", errors.New("not logged in")
+		}
+		return "ok", nil
+	}
+	d.Hosts = func() []RepoHost { return nil }
+	srv := func(ok bool) Live {
+		return Live{CodeHost: &proto.CodeHostStatus{Checks: []proto.CodeHostCheck{
+			{Name: "gh", OK: true, Detail: "found"}, {Name: "gh auth", OK: ok, Detail: "server says"}}}}
+	}
+
+	// The server's gh works and this shell's doesn't: the server's lines,
+	// and a note instead of a warning.
+	cs := codeHosts(d, srv(true))
+	if c := find(cs, "gh auth"); len(c) != 1 || c[0].Status != OK || c[0].Source != "server" || c[0].Detail != "server says" {
+		t.Fatalf("gh auth: %+v", c)
+	}
+	if c := find(cs, "local shell"); len(c) != 1 || c[0].Status != OK || !strings.Contains(c[0].Detail, "gh auth") || !strings.Contains(c[0].Detail, "the server's sessions pass") {
+		t.Fatalf("note: %+v", c)
+	}
+	if Worst(cs) != OK {
+		t.Errorf("worst %s: %+v", Worst(cs), cs)
+	}
+	// On a Mac over SSH the note names the keychain.
+	d.GOOS = "darwin"
+	d.Keychain = func() proto.KeychainStatus { return proto.KeychainStatus{Checked: true, OverSSH: true} }
+	if c := find(codeHosts(d, srv(true)), "local shell"); len(c) != 1 || !strings.Contains(c[0].Detail, "can't reach the keychain (SSH)") {
+		t.Errorf("keychain note: %+v", c)
+	}
+	// Both fail: the server's warning stands, no note.
+	cs = codeHosts(d, srv(false))
+	if c := find(cs, "gh auth"); c[0].Status != Warn || len(find(cs, "local shell")) != 0 {
+		t.Errorf("both fail: %+v", cs)
+	}
+	// This shell works too: no note.
+	authed = true
+	if cs := codeHosts(d, srv(true)); len(find(cs, "local shell")) != 0 {
+		t.Errorf("both pass: %+v", cs)
+	}
+	// No server: this shell's checks, labelled local.
+	authed = false
+	if c := find(codeHosts(d, Live{}), "gh auth"); len(c) != 1 || c[0].Status != Warn || c[0].Source != "local" {
+		t.Errorf("no server: %+v", c)
+	}
+}
