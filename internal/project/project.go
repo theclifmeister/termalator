@@ -209,6 +209,20 @@ func (p *Project) WriteRoleFile() error {
 	return os.Symlink("AGENTS.md", link)
 }
 
+// RefreshRoleFile rewrites AGENTS.md when tm generated it and its text is
+// out of date (an older tm, a rename), so a coordinator starts from the
+// current one (T109). A file without tm's marker is the user's: kept.
+func (p *Project) RefreshRoleFile() error {
+	old, err := os.ReadFile(p.Path("AGENTS.md"))
+	if err != nil || !strings.Contains(string(old), roleFileMarker) {
+		return nil
+	}
+	if text := roleFile(p); string(old) != text {
+		return mdfile.WriteAtomic(p.Path("AGENTS.md"), []byte(text), 0o644)
+	}
+	return nil
+}
+
 // Summary is one row of `tm project list`.
 type Summary struct {
 	Slug   string         `json:"slug"`

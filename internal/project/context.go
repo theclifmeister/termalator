@@ -25,11 +25,15 @@ const (
 	capContext      = 120
 	capMemory       = 60
 	capTasksGroup   = 40
-	capDone         = 10
+	capDone         = 3
 	capThreads      = 30
 	capNext         = 5
 	capInbox        = 20
-	capJournal      = 20
+	capJournal      = 10
+	// Journal lines and thread titles are clipped to these widths
+	// (runes): the full text is in JOURNAL.md and tm thread show.
+	capJournalLine = 160
+	capThreadTitle = 60
 )
 
 // Section is one part of `tm context`.
@@ -195,7 +199,10 @@ func (p *Project) Context(seen Ticked) ([]Section, error) {
 	if err != nil {
 		return nil, err
 	}
-	j := Section{Title: "Journal (last 20)", Lines: lines}
+	for i, l := range lines {
+		lines[i] = clipRunes(l, capJournalLine)
+	}
+	j := Section{Title: fmt.Sprintf("Journal (last %d)", capJournal), Lines: lines}
 	if total > len(lines) {
 		j.Omitted = fmt.Sprintf("%d earlier lines in JOURNAL.md", total-len(lines))
 	}
@@ -341,10 +348,11 @@ func (p *Project) threadSection(prs map[string]string) (Section, error) {
 		if v, ok := rec["task"].(string); ok && v != "" {
 			line = v + " (" + id + ")"
 		}
-		for _, k := range []string{"title", "state"} {
-			if v, ok := rec[k].(string); ok && v != "" {
-				line += "  " + v
-			}
+		if v, ok := rec["title"].(string); ok && v != "" {
+			line += "  " + clipRunes(v, capThreadTitle)
+		}
+		if v, ok := rec["state"].(string); ok && v != "" {
+			line += "  " + v
 		}
 		if v, ok := rec["model"].(string); ok && v != "" {
 			line += "  model: " + v
@@ -463,6 +471,15 @@ func splitLines(s string) []string {
 		return nil
 	}
 	return strings.Split(s, "\n")
+}
+
+// clipRunes bounds s to n runes, the last one an ellipsis when cut.
+func clipRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n-1]) + "…"
 }
 
 func orNone(s string) string {

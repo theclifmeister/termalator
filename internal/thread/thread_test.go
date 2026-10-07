@@ -187,7 +187,7 @@ func TestFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	b, _ = os.ReadFile(brief)
-	for _, w := range []string{p.Path("TASKS.md"), p.Path("uploads") + "/ (files the user uploaded", "tm skill thread", "previous attempt", "also this"} {
+	for _, w := range []string{p.Dir + "/: PROJECT.md", "TASKS.md", "uploads/ (the user's files", "tm skill thread", "never merge, force-push", "previous attempt", "also this"} {
 		if !strings.Contains(string(b), w) {
 			t.Errorf("brief lacks %q", w)
 		}

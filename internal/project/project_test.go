@@ -214,7 +214,7 @@ func TestContextDeterministicAndCapped(t *testing.T) {
 		"In motion (1)\n  T16  started  Fix login  0/2",
 		"Done (15)",
 		"Prompt queue: s-28 (coordinator) has 1 prompt(s) held since 2026-10-05 19:45 UTC (prompt box not empty)",
-		"[… 5 done tasks not shown (tm task list)]",
+		"[… 12 done tasks not shown (tm task list)]",
 		"T16 (t-0001)  Fix login  report: yes  PR: #8 open, checks pass\n    next: Merge the PR",
 		"t-0002  Docs  report: yes  PR: https://github.com/o/r/pull/9\n    next: Review it",
 		"report: t-0001 reported",
@@ -561,5 +561,25 @@ func TestDoneItems(t *testing.T) {
 	slices.Sort(got)
 	if !slices.Equal(got, []string{"idle", "other"}) {
 		t.Fatalf("inbox: %+v", items)
+	}
+}
+
+// TestRefreshRoleFile: a stale AGENTS.md of tm's is rewritten; the
+// user's own is kept (T109).
+func TestRefreshRoleFile(t *testing.T) {
+	setup(t)
+	p, _ := New(Options{Name: "demo app"})
+	path := p.Path("AGENTS.md")
+	os.WriteFile(path, []byte("# Coordinator of project Old\n\n"+roleFileMarker+" -->\nRun tm context.\n"), 0o644)
+	if err := p.RefreshRoleFile(); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(path); string(b) != roleFile(p) {
+		t.Fatalf("stale role file kept:\n%s", b)
+	}
+	os.WriteFile(path, []byte("my own notes\n"), 0o644)
+	p.RefreshRoleFile()
+	if b, _ := os.ReadFile(path); string(b) != "my own notes\n" {
+		t.Fatalf("the user's file was rewritten:\n%s", b)
 	}
 }
