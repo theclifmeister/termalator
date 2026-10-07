@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -221,12 +222,15 @@ func TestPickAzurePR(t *testing.T) {
 // command's first words, and records what it was asked.
 type azFake struct {
 	answers map[string]string // "repos pr show" => JSON; "!" prefix => error text
+	mu      sync.Mutex        // az's calls for one PR run at once
 	asked   []string
 }
 
 func (f *azFake) host() Azure {
 	return Azure{Target: shop, Run: func(dir string, args ...string) ([]byte, error) {
 		cmd := strings.Join(args, " ")
+		f.mu.Lock()
+		defer f.mu.Unlock()
 		f.asked = append(f.asked, cmd)
 		for _, words := range []int{4, 3} {
 			if len(args) < words {
@@ -436,3 +440,20 @@ func TestAzureDoctor(t *testing.T) {
 }
 
 func errorsJSON(raw []byte, v any) bool { return json.Unmarshal(raw, v) != nil }
+
+func TestAdvice(t *testing.T) {
+	for _, c := range []struct {
+		err                  error
+		cli, problem, advice string
+	}{
+		{errors.New("gh pr view: exit status 1"), "gh", "", "the user checks gh auth status in a terminal (tm doctor)"},
+		{nil, "gh", "", "the user checks gh auth status in a terminal (tm doctor)"},
+		{azError(errors.New("az: Please run 'az login'")), "az", "az is not logged in", "the user runs az login in a terminal"},
+		{fmt.Errorf("poll: %w", azError(errors.New("az: boom"))), "az", "", "the user checks az login and az repos pr list in a terminal (tm doctor)"},
+		{&CLIError{CLI: "x; rm", Problem: "p", Advice: "a", Err: errors.New("e")}, "the code host CLI", "", "the user checks the code host CLI auth status in a terminal (tm doctor)"},
+	} {
+		if cli, problem, advice := Advice(c.err); cli != c.cli || problem != c.problem || advice != c.advice {
+			t.Errorf("%v: %q %q %q", c.err, cli, problem, advice)
+		}
+	}
+}

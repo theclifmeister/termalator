@@ -1,6 +1,7 @@
 package ticker
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -576,6 +578,66 @@ func TestGHFailing(t *testing.T) {
 	}
 	if k := r.kinds(); k != KindGHFailing {
 		t.Fatalf("second outage: %q", k)
+	}
+}
+
+// TestAzureHost: a repo on Azure DevOps polls through az; a logged-out
+// az raises the gh-failing item in az's words, and a failing build
+// policy sends the thread az's hint.
+func TestAzureHost(t *testing.T) {
+	r := newRig(t)
+	target := codehost.Target{Kind: codehost.AzureKind, OrgURL: "https://dev.azure.com/acme", Project: "Shop", Repo: "web"}
+	answer := "!ERROR: Please run 'az login' to setup account."
+	var asked []string
+	var mu sync.Mutex
+	r.tk.o.CodeHost = func(string, codehost.Config) codehost.Host {
+		return codehost.Azure{Target: target, Run: func(dir string, args ...string) ([]byte, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			asked = append(asked, strings.Join(args, " "))
+			switch {
+			case strings.HasPrefix(answer, "!"):
+				return nil, &codehost.CLIError{CLI: "az", Problem: "az is not logged in", Advice: "the user runs az login in a terminal", Err: errors.New(answer[1:])}
+			case args[1] == "pr" && args[2] == "list":
+				return []byte(answer), nil
+			case args[2] == "policy":
+				return []byte(`[{"status":"rejected","configuration":{"isBlocking":true,"type":{"id":"0609b952-1397-4640-95ec-e00a01b2c241"}}}]`), nil
+			}
+			return []byte(`{"value":[]}`), nil
+		}}
+	}
+	for i := 0; i < GHFailPolls; i++ {
+		r.sweep(2 * time.Minute)
+	}
+	items := r.items()
+	if len(items) != 1 || items[0].Kind != KindGHFailing || items[0].Subject != "az" ||
+		items[0].Summary != "az failed on 3 PR polls in a row (az is not logged in), so PR follow-up, auto-close and completing tasks wait; the user runs az login in a terminal, and the item clears once a poll works" {
+		t.Fatalf("items %+v", items)
+	}
+	if !strings.HasPrefix(asked[0], "repos pr list --project Shop --repository web --source-branch refs/heads/tm/demo/t-0001-fix-it ") {
+		t.Fatalf("asked %q", asked)
+	}
+	r.handleAll()
+	answer = `[{"pullRequestId":12,"status":"active","mergeStatus":"conflicts","repository":{"name":"web","project":{"name":"Shop"}},"reviewers":[{"vote":-5}]}]`
+	r.sweep(2 * time.Minute)
+	if k := r.kinds(); !strings.Contains(k, KindPRChecks) || !strings.Contains(k, KindPRReview) {
+		t.Fatalf("kinds %q", k)
+	}
+	if got := r.tk.st.Projects["demo"].GHFails; got != 0 {
+		t.Fatalf("fails %d after a poll worked", got)
+	}
+	var checks, review string
+	for _, p := range r.host.prompts {
+		if strings.Contains(p, "check(s) failed") {
+			checks = p
+		}
+		if strings.Contains(p, "requested changes") {
+			review = p
+		}
+	}
+	if !strings.Contains(checks, "`az repos pr policy list --id 12 --organization https://dev.azure.com/acme -o table`") ||
+		!strings.Contains(review, "`az devops invoke --area git --resource pullRequestThreads --route-parameters project=Shop repositoryId=web pullRequestId=12 --organization https://dev.azure.com/acme`") {
+		t.Fatalf("prompts %q", r.host.prompts)
 	}
 }
 

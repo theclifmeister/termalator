@@ -2,7 +2,6 @@ package codehost
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -577,9 +576,4 @@ func (a Azure) Doctor(d DoctorDeps) []Check {
 		auth = Check{Name: "az login", Detail: "not logged in: run az login (PR follow-up, auto-close and completing tasks need it)"}
 	}
 	return append(checks, ext, auth)
-}
-
-// cliName is the CLI a host kind's polls run, for messages.
-func cliName(kind string) string {
-	return cmp.Or(map[string]string{GitHubKind: "gh", AzureKind: "az"}[kind], "gh")
 }

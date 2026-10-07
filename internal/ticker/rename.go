@@ -26,6 +26,7 @@ func (t *Ticker) RenameProject(from, to string, move func() error) error {
 	}
 	t.st.rename(from, to)
 	delete(t.gh, from)
+	delete(t.ghErr, from)
 	t.save()
 	return nil
 }
