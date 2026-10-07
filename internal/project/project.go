@@ -274,9 +274,9 @@ func List() ([]Summary, error) {
 }
 
 // Counts tallies a board by group, keyed "needs_you", "in_motion",
-// "on_deck" and "done".
+// "on_deck", "backlog" and "done".
 func Counts(b *tasks.Board) map[string]int {
-	c := map[string]int{"needs_you": 0, "in_motion": 0, "on_deck": 0, "done": 0}
+	c := map[string]int{"needs_you": 0, "in_motion": 0, "on_deck": 0, "backlog": 0, "done": 0}
 	for _, t := range b.Tasks {
 		c[GroupKey(tasks.GroupOf(t.Status))]++
 	}

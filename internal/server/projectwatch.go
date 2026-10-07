@@ -106,7 +106,9 @@ func ProjectWatchOf(p *project.Project, sessions []proto.SessionInfo, tickerStat
 			ref := t.Ref()
 			asked := project.TaskAsked(items, ref)
 			switch t.Status {
-			case tasks.Open, tasks.Ready:
+			case tasks.Open:
+				continue // the backlog is not on deck
+			case tasks.Ready:
 				w.Ready = append(w.Ready, proto.WatchTodo{Task: ref, Title: t.Title, Status: string(t.Status), Asked: asked})
 				continue
 			case tasks.Done:

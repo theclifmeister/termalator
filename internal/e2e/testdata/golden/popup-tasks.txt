@@ -9,7 +9,7 @@
                                │    │        ○ Review                                                             │
                                │    │                                                                             │
                                │    │ ON DECK ─────────────────────────────────────────────────────────────────── │
-                               │    │ T2     Ship it                    ○ open                                    │
+                               │    │ T2     Ship it                    ○ ready                                   │
                                │    │                                                                             │
                                │    │ the coordinator changes tasks                                               │
                                │    │                                                                             │
