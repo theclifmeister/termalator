@@ -249,8 +249,32 @@ func TestCodeHosts(t *testing.T) {
 	}
 	// No repos: GitHub, as on a fresh install.
 	d.Hosts = func() []RepoHost { return nil }
-	if cs := Toolchain(d); len(find(cs, "gh auth")) != 1 || len(find(cs, "az")) != 0 {
+	cs = Toolchain(d)
+	if len(find(cs, "gh auth")) != 1 {
 		t.Errorf("no repos: %+v", cs)
+	}
+	// az installed, no Azure repo: its lines show, marked unused, never a warning.
+	for n, want := range map[string]string{"az": "found", "az login": "logged in"} {
+		if c := find(cs, n); len(c) != 1 || c[0].Status != OK || !strings.HasPrefix(c[0].Detail, want) || !strings.Contains(c[0].Detail, "no project uses Azure DevOps") {
+			t.Errorf("unused %s: %+v", n, c)
+		}
+	}
+	if len(find(cs, "az azure-devops")) != 0 || len(find(cs, "az repo Shop/web")) != 0 {
+		t.Errorf("Azure-only lines without an Azure repo: %+v", cs)
+	}
+	fail = "account show"
+	if c := find(Toolchain(d), "az login"); len(c) != 1 || c[0].Status != OK || !strings.HasPrefix(c[0].Detail, "not logged in") {
+		t.Errorf("unused, logged out: %+v", c)
+	}
+	// az missing and no Azure repo: no az lines at all.
+	d.LookPath = func(n string) (string, error) {
+		if n == "az" {
+			return "", exec.ErrNotFound
+		}
+		return "/bin/" + n, nil
+	}
+	if cs := Toolchain(d); len(find(cs, "az")) != 0 || len(find(cs, "az login")) != 0 {
+		t.Errorf("no az, no Azure repo: %+v", cs)
 	}
 }
 
