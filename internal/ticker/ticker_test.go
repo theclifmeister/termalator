@@ -595,13 +595,14 @@ func TestAzureHost(t *testing.T) {
 			mu.Lock()
 			defer mu.Unlock()
 			asked = append(asked, strings.Join(args, " "))
+			cmd := strings.Join(args, " ")
 			switch {
 			case strings.HasPrefix(answer, "!"):
 				return nil, &codehost.CLIError{CLI: "az", Problem: "az is not logged in", Advice: "the user runs az login in a terminal", Err: errors.New(answer[1:])}
-			case args[1] == "pr" && args[2] == "list":
+			case strings.Contains(cmd, "/pullrequests?"):
 				return []byte(answer), nil
-			case args[2] == "policy":
-				return []byte(`[{"status":"rejected","configuration":{"isBlocking":true,"type":{"id":"0609b952-1397-4640-95ec-e00a01b2c241"}}}]`), nil
+			case strings.Contains(cmd, "/policy/evaluations?"):
+				return []byte(`{"value":[{"status":"rejected","configuration":{"isBlocking":true,"type":{"id":"0609b952-1397-4640-95ec-e00a01b2c241"}},"context":{"buildId":3}}]}`), nil
 			}
 			return []byte(`{"value":[]}`), nil
 		}}
@@ -614,11 +615,11 @@ func TestAzureHost(t *testing.T) {
 		items[0].Summary != "az failed on 3 PR polls in a row (az is not logged in), so PR follow-up, auto-close and completing tasks wait; the user runs az login in a terminal, and the item clears once a poll works" {
 		t.Fatalf("items %+v", items)
 	}
-	if !strings.HasPrefix(asked[0], "repos pr list --project Shop --repository web --source-branch refs/heads/tm/demo/t-0001-fix-it ") {
+	if !strings.HasPrefix(asked[0], "rest --method get --resource 499b84ac-1321-427f-aa17-267ca6975798 --url https://dev.azure.com/acme/Shop/_apis/git/repositories/web/pullrequests?searchCriteria.sourceRefName=refs%2Fheads%2Ftm%2Fdemo%2Ft-0001-fix-it&") {
 		t.Fatalf("asked %q", asked)
 	}
 	r.handleAll()
-	answer = `[{"pullRequestId":12,"status":"active","mergeStatus":"conflicts","repository":{"name":"web","project":{"name":"Shop"}},"reviewers":[{"vote":-5}]}]`
+	answer = `{"count":1,"value":[{"pullRequestId":12,"status":"active","mergeStatus":"conflicts","repository":{"name":"web","project":{"id":"6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c","name":"Shop"}},"reviewers":[{"vote":-5}]}]}`
 	r.sweep(2 * time.Minute)
 	if k := r.kinds(); !strings.Contains(k, KindPRChecks) || !strings.Contains(k, KindPRReview) {
 		t.Fatalf("kinds %q", k)
@@ -635,8 +636,8 @@ func TestAzureHost(t *testing.T) {
 			review = p
 		}
 	}
-	if !strings.Contains(checks, "`az repos pr policy list --id 12 --organization https://dev.azure.com/acme -o table`") ||
-		!strings.Contains(review, "`az devops invoke --area git --resource pullRequestThreads --route-parameters project=Shop repositoryId=web pullRequestId=12 --organization https://dev.azure.com/acme`") {
+	if !strings.Contains(checks, "`az rest --resource 499b84ac-1321-427f-aa17-267ca6975798 --url 'https://dev.azure.com/acme/Shop/_apis/build/builds?branchName=refs/pull/12/merge&api-version=7.1' --query 'value[].{build:id,status:status,result:result}' -o table`") ||
+		!strings.Contains(review, "`az rest --resource 499b84ac-1321-427f-aa17-267ca6975798 --url 'https://dev.azure.com/acme/Shop/_apis/git/repositories/web/pullRequests/12/threads?api-version=7.1' --query \"value[].comments[?commentType=='text'][].{author:author.displayName,text:content}\" -o table`") {
 		t.Fatalf("prompts %q", r.host.prompts)
 	}
 }

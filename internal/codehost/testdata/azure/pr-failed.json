@@ -4,22 +4,22 @@
       "href": "https://example.vssps.visualstudio.com/A22d0cc13-a0e9-4b4f-a9ea-c105d245c607/_apis/Identities/ca3d747d-7915-4524-a7d8-abe2264a9ada"
     },
     "iterations": {
-      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/1/iterations"
+      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/2/iterations"
     },
     "repository": {
       "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719"
     },
     "self": {
-      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/1"
+      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/2"
     },
     "sourceBranch": {
-      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/refs/heads/feature/pass"
+      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/refs/heads/feature/fail"
     },
     "sourceCommit": {
-      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/f487d85c7bc862efcca47c4eed97232849a86168"
+      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/b690915c44588901482bbea21bcab55a6a478b15"
     },
     "statuses": {
-      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/1/statuses"
+      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/2/statuses"
     },
     "targetBranch": {
       "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/refs/heads/main"
@@ -28,11 +28,11 @@
       "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/ad27d4b2ae44cb985fba308444ce507f5b6969b2"
     },
     "workItems": {
-      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/1/workitems"
+      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/2/workitems"
     }
   },
-  "artifactId": "vstfs:///Git/PullRequestId/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c%2f3411ebc1-d5aa-464f-9615-0b527bc66719%2f1",
-  "codeReviewId": 1,
+  "artifactId": "vstfs:///Git/PullRequestId/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c%2f3411ebc1-d5aa-464f-9615-0b527bc66719%2f2",
+  "codeReviewId": 2,
   "createdBy": {
     "_links": {
       "avatar": {
@@ -46,7 +46,7 @@
     "uniqueName": "ada@example.com",
     "url": "https://example.vssps.visualstudio.com/A22d0cc13-a0e9-4b4f-a9ea-c105d245c607/_apis/Identities/ca3d747d-7915-4524-a7d8-abe2264a9ada"
   },
-  "creationDate": "2026-10-07T11:55:59.3484868Z",
+  "creationDate": "2026-10-07T11:55:59.889247Z",
   "description": "A test PR",
   "isDraft": false,
   "lastMergeCommit": {
@@ -55,26 +55,26 @@
       "email": "ada@example.com",
       "name": "ada"
     },
-    "comment": "Merge pull request 1 from feature/pass into main",
-    "commitId": "411cbd51bb6f4895d6bf02697c91f99c4311a42a",
+    "comment": "Merge pull request 2 from feature/fail into main",
+    "commitId": "e13c2402625eff480530c0391499d52286c3b38f",
     "committer": {
       "date": "2026-10-07T12:09:01Z",
       "email": "ada@example.com",
       "name": "ada"
     },
-    "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/411cbd51bb6f4895d6bf02697c91f99c4311a42a"
+    "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/e13c2402625eff480530c0391499d52286c3b38f"
   },
   "lastMergeSourceCommit": {
-    "commitId": "f487d85c7bc862efcca47c4eed97232849a86168",
-    "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/f487d85c7bc862efcca47c4eed97232849a86168"
+    "commitId": "b690915c44588901482bbea21bcab55a6a478b15",
+    "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/b690915c44588901482bbea21bcab55a6a478b15"
   },
   "lastMergeTargetCommit": {
     "commitId": "ad27d4b2ae44cb985fba308444ce507f5b6969b2",
     "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/ad27d4b2ae44cb985fba308444ce507f5b6969b2"
   },
-  "mergeId": "92aa7241-0893-4a89-ad52-0a6fafa4584d",
+  "mergeId": "aae6db1d-a051-49b0-ab71-2e22ac437286",
   "mergeStatus": "succeeded",
-  "pullRequestId": 1,
+  "pullRequestId": 2,
   "repository": {
     "id": "3411ebc1-d5aa-464f-9615-0b527bc66719",
     "isDisabled": false,
@@ -107,17 +107,16 @@
       "id": "ca3d747d-7915-4524-a7d8-abe2264a9ada",
       "imageUrl": "https://dev.azure.com/acme/_api/_common/identityImage?id=ca3d747d-7915-4524-a7d8-abe2264a9ada",
       "isFlagged": false,
-      "isRequired": true,
-      "reviewerUrl": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/1/reviewers/ca3d747d-7915-4524-a7d8-abe2264a9ada",
+      "reviewerUrl": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/2/reviewers/ca3d747d-7915-4524-a7d8-abe2264a9ada",
       "uniqueName": "ada@example.com",
       "url": "https://example.vssps.visualstudio.com/A22d0cc13-a0e9-4b4f-a9ea-c105d245c607/_apis/Identities/ca3d747d-7915-4524-a7d8-abe2264a9ada",
-      "vote": 0
+      "vote": -5
     }
   ],
-  "sourceRefName": "refs/heads/feature/pass",
+  "sourceRefName": "refs/heads/feature/fail",
   "status": "active",
   "supportsIterations": true,
   "targetRefName": "refs/heads/main",
-  "title": "pass scenario",
-  "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/1"
+  "title": "fail scenario",
+  "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/2"
 }

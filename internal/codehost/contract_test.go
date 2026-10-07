@@ -31,7 +31,7 @@ const sha = "0123456789abcdef0123456789abcdef01234567"
 
 func azList(status, mergeStatus, extra string) string {
 	return fmt.Sprintf(`[{"pullRequestId":7,"status":%q,"mergeStatus":%q,"targetRefName":"refs/heads/main",`+
-		`"lastMergeSourceCommit":{"commitId":%q},"repository":{"name":"web","project":{"name":"Shop"}}%s}]`, status, mergeStatus, sha, extra)
+		`"lastMergeSourceCommit":{"commitId":%q},"repository":{"name":"web","project":{"id":"`+shopPID+`","name":"Shop"}}%s}]`, status, mergeStatus, sha, extra)
 }
 
 var buildPolicy = func(status string) string {
@@ -95,12 +95,12 @@ var hostFakes = []hostFake{
 		}}
 	}},
 	{"azure", func(s scenario) Host {
-		return Azure{Target: shop, Run: func(dir string, args ...string) ([]byte, error) {
+		return Azure{Target: shop, Getenv: func(string) string { return "" }, Run: func(dir string, args ...string) ([]byte, error) {
 			out := s.az
-			switch {
-			case args[0] == "devops":
+			switch route, _ := azRoute(args); route {
+			case "statuses":
 				out = s.sts
-			case args[2] == "policy":
+			case "policies":
 				out = s.pol
 			}
 			if e, bad := strings.CutPrefix(out, "!"); bad {

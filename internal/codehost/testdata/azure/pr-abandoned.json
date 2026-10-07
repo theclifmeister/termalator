@@ -1,0 +1,90 @@
+{
+  "_links": {
+    "createdBy": {
+      "href": "https://example.vssps.visualstudio.com/A22d0cc13-a0e9-4b4f-a9ea-c105d245c607/_apis/Identities/ca3d747d-7915-4524-a7d8-abe2264a9ada"
+    },
+    "iterations": {
+      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/4/iterations"
+    },
+    "repository": {
+      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719"
+    },
+    "self": {
+      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/4"
+    },
+    "sourceBranch": {
+      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/refs/heads/feature/abandon"
+    },
+    "sourceCommit": {
+      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/c002a528a7c4ce4eb756a2f81a941c00dc4ca725"
+    },
+    "statuses": {
+      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/4/statuses"
+    },
+    "targetBranch": {
+      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/refs/heads/main"
+    },
+    "targetCommit": {
+      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/ad27d4b2ae44cb985fba308444ce507f5b6969b2"
+    },
+    "workItems": {
+      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/4/workitems"
+    }
+  },
+  "artifactId": "vstfs:///Git/PullRequestId/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c%2f3411ebc1-d5aa-464f-9615-0b527bc66719%2f4",
+  "closedDate": "2026-10-07T11:56:12.3650663Z",
+  "codeReviewId": 4,
+  "createdBy": {
+    "_links": {
+      "avatar": {
+        "href": "https://dev.azure.com/acme/_apis/GraphProfile/MemberAvatars/aad.REDACTED"
+      }
+    },
+    "descriptor": "aad.REDACTED",
+    "displayName": "ada",
+    "id": "ca3d747d-7915-4524-a7d8-abe2264a9ada",
+    "imageUrl": "https://dev.azure.com/acme/_api/_common/identityImage?id=ca3d747d-7915-4524-a7d8-abe2264a9ada",
+    "uniqueName": "ada@example.com",
+    "url": "https://example.vssps.visualstudio.com/A22d0cc13-a0e9-4b4f-a9ea-c105d245c607/_apis/Identities/ca3d747d-7915-4524-a7d8-abe2264a9ada"
+  },
+  "creationDate": "2026-10-07T11:56:00.9213478Z",
+  "description": "A test PR",
+  "isDraft": false,
+  "lastMergeSourceCommit": {
+    "commitId": "c002a528a7c4ce4eb756a2f81a941c00dc4ca725",
+    "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/c002a528a7c4ce4eb756a2f81a941c00dc4ca725"
+  },
+  "lastMergeTargetCommit": {
+    "commitId": "ad27d4b2ae44cb985fba308444ce507f5b6969b2",
+    "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/ad27d4b2ae44cb985fba308444ce507f5b6969b2"
+  },
+  "mergeId": "268fd4a1-37ae-4819-a9e0-53818a83e989",
+  "pullRequestId": 4,
+  "repository": {
+    "id": "3411ebc1-d5aa-464f-9615-0b527bc66719",
+    "isDisabled": false,
+    "isInMaintenance": false,
+    "name": "web",
+    "project": {
+      "id": "6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c",
+      "lastUpdateTime": "2026-10-07T11:39:10.653Z",
+      "name": "Shop",
+      "revision": 11,
+      "state": "wellFormed",
+      "url": "https://dev.azure.com/acme/_apis/projects/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c",
+      "visibility": "private"
+    },
+    "remoteUrl": "https://ada@example.com/acme/Shop/_git/web",
+    "size": 718,
+    "sshUrl": "ada@example.com:v3/acme/Shop/web",
+    "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719",
+    "webUrl": "https://dev.azure.com/acme/Shop/_git/web"
+  },
+  "reviewers": [],
+  "sourceRefName": "refs/heads/feature/abandon",
+  "status": "abandoned",
+  "supportsIterations": true,
+  "targetRefName": "refs/heads/main",
+  "title": "abandon scenario",
+  "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/4"
+}

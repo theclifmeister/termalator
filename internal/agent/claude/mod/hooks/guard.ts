@@ -212,7 +212,9 @@ function judgeAz(r: Rules, has: (id: string) => boolean, args: string[]): Denial
     if (a === 'devops' && b === 'login') return deny(r, 'credentials', 'az devops login')
   }
   if (a === 'rest') {
-    const method = opts(rest, '--method', '-m')[0] ?? 'GET'
+    // A method override header is the method the service acts on.
+    const override = optsMulti(rest, '--headers').map(h => /^x-http-method-override[=:]\s*(\w+)/i.exec(h)?.[1]).find(Boolean)
+    const method = override ?? opts(rest, '--method', '-m')[0] ?? 'GET'
     return judgeRoute(r, has, method, opts(rest, '--url', '--uri', '-u')[0] ?? '')
   }
   if (a === 'devops' && b === 'invoke') {

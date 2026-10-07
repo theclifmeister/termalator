@@ -17,15 +17,18 @@ import (
 	"time"
 )
 
-// Azure is the Azure DevOps host, through the az CLI and its
-// azure-devops extension, logged in with az login (docs/SPEC.md §7.5).
-// Every call names the organization, and the project and repo where az
-// takes them, from Target: never what az would detect from the
-// checkout.
+// Azure is the Azure DevOps host: its REST API, asked through az rest
+// with az login's token, else with AZURE_DEVOPS_EXT_PAT (azure_rest.go,
+// docs/SPEC.md §7.5). Every URL is built from Target: never what az
+// would detect from the checkout.
 type Azure struct {
 	Target Target
 	// Run runs az in dir; nil runs the real one (RunAZ).
 	Run func(dir string, args ...string) ([]byte, error)
+	// PATGet asks a URL with a PAT; nil runs PATGet.
+	PATGet func(url, pat string) ([]byte, error)
+	// Getenv reads the environment; nil is os.Getenv.
+	Getenv func(string) string
 }
 
 func init() {
@@ -86,36 +89,46 @@ type CLIError struct {
 	Problem string
 	Advice  string
 	Err     error
+	// auth: az can't sign in, or Azure DevOps refuses whom it signs in
+	// as; a PAT may do (Azure.get).
+	auth bool
 }
 
 func (e *CLIError) Error() string { return e.Err.Error() }
 func (e *CLIError) Unwrap() error { return e.Err }
 
-// azProblems are the az failures tm can name, first match wins.
+// azProblems are the az failures tm can name, first match wins. az
+// rest follows a 401 with "Interactive authentication is needed. Please
+// run: az logout, az login": Azure DevOps' refusals come before that.
 var azProblems = []struct {
 	re              *regexp.Regexp
 	problem, advice string
+	auth            bool
 }{
-	{regexp.MustCompile(`(?i)az login|AADSTS|not logged in|refresh token|interactive authentication is needed|need to run the login command`),
-		"az is not logged in", "the user runs az login in a terminal"},
-	{regexp.MustCompile(`(?i)'(repos|devops)' is misspelled or not recognized|extension .*(not installed|is required)|azure-devops`),
-		"az lacks the azure-devops extension", "the user runs az extension add --name azure-devops"},
-	{regexp.MustCompile(`(?i)\b40[13]\b|TF400813|unauthori[sz]ed|forbidden|not authorized|does not have permissions?|access denied`),
-		"Azure DevOps refused access (401/403)", "the user checks in a terminal that their az login can read this repo (tm doctor)"},
+	{regexp.MustCompile(`(?i)please run 'az login'|AADSTS|not logged in|refresh token|need to run the login command`),
+		"az is not logged in", "the user runs az login in a terminal", true},
+	// A user the organization doesn't have: az login's account isn't a
+	// member, or is of another tenant.
+	{regexp.MustCompile(`TF400813`),
+		"Azure DevOps doesn't know the user az signs in as (TF400813)", "the user checks that their az login account is in the organization, or runs az login --tenant with the organization's tenant (tm doctor)", true},
+	{regexp.MustCompile(`(?i)\b40[13]\b|unauthori[sz]ed|forbidden|not authorized|does not have permissions?|access denied`),
+		"Azure DevOps refused access (401/403)", "the user checks in a terminal that their az login can read this repo (tm doctor)", true},
+	{regexp.MustCompile(`(?i)interactive authentication is needed`),
+		"az is not logged in", "the user runs az login in a terminal", true},
 	{regexp.MustCompile(`(?i)TF200016|TF401019|project .* does not exist|repository .* does not exist|could not be found`),
-		"Azure DevOps doesn't know this organization, project or repo", "the user checks the repo's origin URL or the project's azure_url"},
+		"Azure DevOps doesn't know this organization, project or repo", "the user checks the repo's origin URL or the project's azure_url", false},
 }
 
 // azError wraps err in a CLIError naming what went wrong.
 func azError(err error) error {
 	e := &CLIError{CLI: "az", Err: err}
 	if errors.Is(err, exec.ErrNotFound) {
-		e.Problem, e.Advice = "az is not installed", "the user installs the Azure CLI (tm doctor)"
+		e.Problem, e.Advice, e.auth = "az is not installed", "the user installs the Azure CLI (tm doctor)", true
 		return e
 	}
 	for _, p := range azProblems {
 		if p.re.MatchString(err.Error()) {
-			e.Problem, e.Advice = p.problem, p.advice
+			e.Problem, e.Advice, e.auth = p.problem, p.advice, p.auth
 			break
 		}
 	}
@@ -125,13 +138,25 @@ func azError(err error) error {
 // azNoPR matches the errors of an az that works but has no such PR.
 var azNoPR = regexp.MustCompile(`(?i)TF401180|pull request .*(not found|does not exist)|could not find .*pull request`)
 
-// org is the --organization argument.
-func (a Azure) org() []string { return []string{"--organization", a.Target.OrgURL} }
+// projectURL is the REST URL of the Target's project, repoURL its
+// repo's.
+func (a Azure) projectURL() string {
+	return a.Target.OrgURL + "/" + url.PathEscape(a.Target.Project)
+}
 
-// PR asks az about ref: `az repos pr show` for a number (or a PR URL of
-// this repo), else `az repos pr list` by source branch, preferring an
-// active PR, else the newest. An open PR's policy evaluations and
-// statuses are asked too, at once. A PR of another repo is ErrNoPR.
+func (a Azure) repoURL() string {
+	return a.projectURL() + "/_apis/git/repositories/" + url.PathEscape(a.Target.Repo)
+}
+
+// prURL is the REST URL of PR n of the Target's repo.
+func (a Azure) prURL(n int) string {
+	return a.repoURL() + "/pullrequests/" + strconv.Itoa(n) + "?api-version=7.1"
+}
+
+// PR asks Azure DevOps about ref: the PR by number (or a PR URL of this
+// repo), else the repo's PRs by source branch, preferring an active PR,
+// else the newest. An open PR's policy evaluations and statuses are
+// asked too, at once. A PR of another repo is ErrNoPR.
 func (a Azure) PR(repo string, ref Ref) (PR, error) {
 	n := ref.Number
 	if n <= 0 {
@@ -146,7 +171,7 @@ func (a Azure) PR(repo string, ref Ref) (PR, error) {
 	}
 	var raw []byte
 	if n > 0 {
-		out, err := a.az(repo, append([]string{"repos", "pr", "show", "--id", strconv.Itoa(n)}, a.org()...)...)
+		out, err := a.get(repo, a.prURL(n))
 		if err != nil {
 			if azNoPR.MatchString(err.Error()) {
 				return PR{}, fmt.Errorf("%w: %v", ErrNoPR, err)
@@ -155,8 +180,8 @@ func (a Azure) PR(repo string, ref Ref) (PR, error) {
 		}
 		raw = out
 	} else {
-		out, err := a.az(repo, append([]string{"repos", "pr", "list", "--project", a.Target.Project, "--repository", a.Target.Repo,
-			"--source-branch", "refs/heads/" + branch, "--status", "all", "--top", "20"}, a.org()...)...)
+		out, err := a.get(repo, a.repoURL()+"/pullrequests?searchCriteria.sourceRefName="+url.QueryEscape("refs/heads/"+branch)+
+			"&searchCriteria.status=all&$top=20&api-version=7.1")
 		if err != nil {
 			return PR{}, err
 		}
@@ -172,15 +197,17 @@ func (a Azure) PR(repo string, ref Ref) (PR, error) {
 	if head.Status == "active" {
 		var perr error
 		var wg sync.WaitGroup
-		wg.Go(func() {
-			policies, perr = a.az(repo, append([]string{"repos", "pr", "policy", "list", "--id", strconv.Itoa(head.ID)}, a.org()...)...)
-		})
+		// The policies are the project's by id, which the PR names.
+		if pid := head.Repository.Project.ID; guidRE.MatchString(pid) {
+			wg.Go(func() {
+				policies, perr = a.get(repo, a.projectURL()+"/_apis/policy/evaluations?artifactId="+
+					url.QueryEscape("vstfs:///CodeReview/CodeReviewId/"+pid+"/"+strconv.Itoa(head.ID))+"&api-version=7.1-preview.1")
+			})
+		}
 		wg.Go(func() {
 			// External statuses are extra: without them the policies
 			// still say what blocks the PR.
-			statuses, _ = a.az(repo, append([]string{"devops", "invoke", "--area", "git", "--resource", "pullRequestStatuses",
-				"--route-parameters", "project=" + a.Target.Project, "repositoryId=" + a.Target.Repo, "pullRequestId=" + strconv.Itoa(head.ID),
-				"--api-version", "7.1-preview.1", "--http-method", "GET"}, a.org()...)...)
+			statuses, _ = a.get(repo, fmt.Sprintf("%s/pullRequests/%d/statuses?api-version=7.1-preview.1", a.repoURL(), head.ID))
 		})
 		wg.Wait()
 		if perr != nil {
@@ -201,13 +228,11 @@ func (a Azure) ours(pr azPR) bool {
 	return strings.EqualFold(pr.Repository.Name, a.Target.Repo) && strings.EqualFold(pr.Repository.Project.Name, a.Target.Project)
 }
 
-// pickAzurePR is the PR to follow of `az repos pr list`'s answer: the
-// active one with the highest id, else the highest id; nil for none.
+// pickAzurePR is the PR to follow of a list of PRs ({"value":[…]}, or a
+// bare list): the active one with the highest id, else the highest id;
+// nil for none.
 func pickAzurePR(list []byte) []byte {
-	var prs []json.RawMessage
-	if json.Unmarshal(list, &prs) != nil {
-		return nil
-	}
+	prs := azValues(list)
 	var best json.RawMessage
 	bestActive, bestID := false, 0
 	for _, raw := range prs {
@@ -251,14 +276,38 @@ type azPR struct {
 	Repository struct {
 		Name    string `json:"name"`
 		Project struct {
+			ID   string `json:"id"`
 			Name string `json:"name"`
 		} `json:"project"`
 	} `json:"repository"`
 }
 
-// azPolicy is one PolicyEvaluationRecord of `az repos pr policy list`.
+// azValues is the items of a REST list, {"count":n,"value":[…]}, or of
+// a bare list; nil for anything else.
+func azValues(b []byte) []json.RawMessage {
+	var obj struct {
+		Value []json.RawMessage `json:"value"`
+	}
+	if json.Unmarshal(b, &obj) == nil && obj.Value != nil {
+		return obj.Value
+	}
+	var list []json.RawMessage
+	if json.Unmarshal(b, &list) == nil {
+		return list
+	}
+	return nil
+}
+
+// azPolicy is one PolicyEvaluationRecord.
 type azPolicy struct {
-	Status        string `json:"status"`
+	Status string `json:"status"`
+	// Context names a build policy's build, nil before one is queued;
+	// IsExpired once the target branch moved past it (it isn't requeued
+	// by itself).
+	Context *struct {
+		BuildID   int  `json:"buildId"`
+		IsExpired bool `json:"isExpired"`
+	} `json:"context"`
 	Configuration struct {
 		IsBlocking *bool `json:"isBlocking"`
 		IsEnabled  *bool `json:"isEnabled"`
@@ -307,10 +356,17 @@ func policyKind(p azPolicy) string {
 	return ""
 }
 
-// azurePR maps az's answers onto the fixed fields (docs/SPEC.md §7.5):
-// pr is a GitPullRequest, policies `az repos pr policy list`'s records
-// and statuses `az devops invoke`'s list of PR statuses (both may be
-// nil). t is the repo it was asked for: the URL is built from it, never
+// isStatusPolicy reports whether p is a status policy (an external
+// service's status, not a build).
+func isStatusPolicy(p azPolicy) bool {
+	t := p.Configuration.Type
+	return strings.EqualFold(t.ID, policyStatus) || t.ID == "" && t.DisplayName == "Status"
+}
+
+// azurePR maps Azure DevOps' answers onto the fixed fields
+// (docs/SPEC.md §7.5): pr is a GitPullRequest, policies the PR's policy
+// evaluation records and statuses its statuses (both lists, either
+// form of azValues, and may be nil). t is the repo it was asked for: the URL is built from it, never
 // taken from the answer. Anything outside the expected shapes is
 // dropped, not passed on.
 //
@@ -322,7 +378,10 @@ func policyKind(p azPolicy) string {
 //   - Checks are the build and status policies and the statuses no
 //     status policy covers: rejected, broken, failed, error => fail;
 //     queued, running, pending => pending, of a blocking policy only (an
-//     optional build may never be queued); approved, succeeded => pass;
+//     optional build may never be queued) and, for a queued build
+//     policy, only while it names a build that hasn't expired (a draft
+//     or a manual-queue policy has none, and an expired one isn't
+//     requeued by itself); approved, succeeded => pass;
 //     notApplicable => nothing. Reviewer, comment and other policies are
 //     no checks.
 //   - Review: any vote of -5 (waiting for the author) or -10 (rejected)
@@ -372,12 +431,18 @@ func azurePR(t Target, pr, policies, statuses []byte) (PR, error) {
 	}
 
 	var pols []azPolicy
-	json.Unmarshal(policies, &pols) // none when it isn't a list of them
-	var sts struct {
-		Value []azStatus `json:"value"`
+	for _, raw := range azValues(policies) {
+		var p azPolicy
+		if json.Unmarshal(raw, &p) == nil {
+			pols = append(pols, p)
+		}
 	}
-	if json.Unmarshal(statuses, &sts) != nil {
-		json.Unmarshal(statuses, &sts.Value) // a bare list
+	var sts struct{ Value []azStatus }
+	for _, raw := range azValues(statuses) {
+		var st azStatus
+		if json.Unmarshal(raw, &st) == nil {
+			sts.Value = append(sts.Value, st)
+		}
 	}
 
 	pending, ran := false, false
@@ -390,7 +455,7 @@ func azurePR(t Target, pr, policies, statuses []byte) (PR, error) {
 		blocking := p.Configuration.IsBlocking == nil || *p.Configuration.IsBlocking
 		switch policyKind(p) {
 		case "ci":
-			if strings.EqualFold(p.Configuration.Type.ID, policyStatus) || p.Configuration.Type.DisplayName == "Status" {
+			if isStatusPolicy(p) {
 				covered[strings.ToLower(p.Configuration.Settings.StatusGenre+"/"+p.Configuration.Settings.StatusName)] = true
 			}
 			switch p.Status {
@@ -398,7 +463,13 @@ func azurePR(t Target, pr, policies, statuses []byte) (PR, error) {
 				out.Failed++
 				ran = true
 			case "queued", "running":
-				if blocking {
+				// A build policy is queued without a build on a draft
+				// (drafts aren't built) or a manual-queue policy, and
+				// with an expired one once the target branch moved: no
+				// check is running then, and none may until someone
+				// queues it or the PR is updated.
+				noBuild := policyKind(p) == "ci" && !isStatusPolicy(p) && (p.Context == nil || p.Context.BuildID <= 0 || p.Context.IsExpired)
+				if blocking && !(p.Status == "queued" && noBuild) {
 					pending, ran = true, true
 				}
 			case "approved":
@@ -488,14 +559,14 @@ func (a Azure) PRState(repo, branch string) string {
 	return pr.State
 }
 
-// PRHead asks az for the state, number and source branch of the PR at
-// url, one of this repo's.
+// PRHead asks Azure DevOps for the state, number and source branch of
+// the PR at url, one of this repo's.
 func (a Azure) PRHead(repo, prURL string) (state string, number int, head string) {
 	n, ok := a.ParsePRURL(prURL)
 	if !ok {
 		return "", 0, ""
 	}
-	out, err := a.az(repo, append([]string{"repos", "pr", "show", "--id", strconv.Itoa(n)}, a.org()...)...)
+	out, err := a.get(repo, a.prURL(n))
 	if err != nil {
 		return "", 0, ""
 	}
@@ -518,66 +589,133 @@ var (
 	azOrgURLRE = regexp.MustCompile(`^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._-]+){0,3}$`)
 )
 
-// shellWord quotes s for a prompt's command when it has a space.
-func shellWord(s string) string {
-	if strings.Contains(s, " ") {
-		return "'" + s + "'"
-	}
-	return s
-}
-
+// Hints are az rest GETs a thread can run: the PR's builds (its merge
+// ref's) and its people's comments. Single-quoted URLs: names are of
+// azNameRE, spaces escaped.
 func (a Azure) Hints(n int) Hints {
 	t := a.Target
 	if !azOrgURLRE.MatchString(t.OrgURL) || !azNameRE.MatchString(t.Project) || !azNameRE.MatchString(t.Repo) {
 		return Hints{
-			Checks: fmt.Sprintf("az repos pr policy list --id %d", n),
-			Review: fmt.Sprintf("az repos pr show --id %d (comments are on the PR's page)", n),
+			Checks: fmt.Sprintf("the checks on PR %d's page", n),
+			Review: fmt.Sprintf("the comments on PR %d's page", n),
 		}
 	}
 	return Hints{
-		Checks: fmt.Sprintf("az repos pr policy list --id %d --organization %s -o table", n, t.OrgURL),
-		Review: fmt.Sprintf("az devops invoke --area git --resource pullRequestThreads --route-parameters project=%s repositoryId=%s pullRequestId=%d --organization %s",
-			shellWord(t.Project), shellWord(t.Repo), n, t.OrgURL),
+		Checks: fmt.Sprintf("az rest --resource %s --url '%s/_apis/build/builds?branchName=refs/pull/%d/merge&api-version=7.1' --query 'value[].{build:id,status:status,result:result}' -o table",
+			azResource, a.projectURL(), n),
+		Review: fmt.Sprintf("az rest --resource %s --url '%s/pullRequests/%d/threads?api-version=7.1' --query \"value[].comments[?commentType=='text'][].{author:author.displayName,text:content}\" -o table",
+			azResource, a.repoURL(), n),
 	}
 }
 
-// Doctor checks that az is installed, has the azure-devops extension
-// and is logged in (az login, or AZURE_DEVOPS_EXT_PAT set, never
-// printed): without them the ticker's PR polls fail. Access to one repo
-// is Access.
+// Doctor checks that az is installed and logged in, or that
+// AZURE_DEVOPS_EXT_PAT is set (never printed): without one the ticker's
+// PR polls fail. The azure-devops extension is optional: tm asks the
+// REST API with az rest; threads may open PRs with az repos pr create.
+// Access to one repo is Access.
 func (a Azure) Doctor(d DoctorDeps) []Check {
+	pat := d.Getenv != nil && d.Getenv(patEnv) != ""
 	p, err := d.LookPath("az")
 	if err != nil {
-		return []Check{{Name: "az", Detail: "not found; PRs on Azure DevOps aren't followed: install the Azure CLI"}}
+		if pat {
+			return []Check{{Name: "az", OK: true, Detail: "not found; " + patEnv + " is set, which tm asks Azure DevOps with"}}
+		}
+		return []Check{{Name: "az", Detail: "not found; PRs on Azure DevOps aren't followed: install the Azure CLI and run az login"}}
 	}
 	checks := []Check{{Name: "az", OK: true, Detail: "found"}}
-	ext := Check{Name: "az azure-devops", OK: true, Detail: "extension installed"}
-	if _, err := d.Run("", p, "extension", "show", "--name", "azure-devops", "--only-show-errors", "--output", "none"); err != nil {
-		ext = Check{Name: "az azure-devops", Detail: "extension missing: run az extension add --name azure-devops"}
-	}
 	auth := Check{Name: "az login", OK: true, Detail: "logged in"}
 	if _, err := d.Run("", p, "account", "show", "--only-show-errors", "--output", "none"); err != nil {
-		if d.Getenv != nil && d.Getenv("AZURE_DEVOPS_EXT_PAT") != "" {
-			auth.Detail = "AZURE_DEVOPS_EXT_PAT is set"
+		if pat {
+			auth.Detail = patEnv + " is set"
 		} else {
 			auth = Check{Name: "az login", Detail: "not logged in: run az login (PR follow-up, auto-close and completing tasks need it)"}
 		}
 	}
-	return append(checks, ext, auth)
+	ext := Check{Name: "az azure-devops", OK: true, Detail: "extension installed (threads may open PRs with az repos pr create)"}
+	if _, err := d.Run("", p, "extension", "show", "--name", "azure-devops", "--only-show-errors", "--output", "none"); err != nil {
+		ext.Detail = "extension not installed: optional, tm and threads use az rest"
+	}
+	return append(checks, auth, ext)
 }
 
-// Access checks that az can read this repo, which proves the login
-// reaches its organization and project. It is one line named for the
-// repo; a Target az can't be given safely (an odd name) is skipped.
+// Access checks that tm can read this repo as it asks Azure DevOps (az
+// rest, else the PAT), which proves the login reaches its organization
+// and project, and names the cure when it can't: az login, the
+// organization's tenant, the origin URL. When the extension is
+// installed and az login reads the repo, it also checks that the
+// extension's az repos does: it signs in a login whose email is also a
+// personal Microsoft account as that account (TF400813). A Target az
+// can't be given safely (an odd name) is skipped.
 func (a Azure) Access(d DoctorDeps) []Check {
 	t := a.Target
-	p, err := d.LookPath("az")
-	if err != nil || !azOrgURLRE.MatchString(t.OrgURL) || !azNameRE.MatchString(t.Project) || !azNameRE.MatchString(t.Repo) {
+	if !azOrgURLRE.MatchString(t.OrgURL) || !azNameRE.MatchString(t.Project) || !azNameRE.MatchString(t.Repo) {
 		return nil
 	}
-	name := "az repo " + t.Project + "/" + t.Repo
-	if _, err := d.Run("", p, "repos", "show", "--repository", t.Repo, "--organization", t.OrgURL, "--project", t.Project, "--only-show-errors", "--output", "none"); err != nil {
-		return []Check{{Name: name, Detail: "az can't read it: check az login, and that your account is in " + t.OrgURL + " with access to the project"}}
+	p, lerr := d.LookPath("az")
+	getenv := d.Getenv
+	if getenv == nil {
+		getenv = func(string) string { return "" }
 	}
-	return []Check{{Name: name, OK: true, Detail: "readable"}}
+	patGet := d.PATGet
+	if patGet == nil {
+		patGet = a.PATGet
+	}
+	b := Azure{Target: t, Getenv: getenv, PATGet: patGet, Run: func(dir string, args ...string) ([]byte, error) {
+		if lerr != nil {
+			return nil, azError(fmt.Errorf("az: %w", exec.ErrNotFound))
+		}
+		out, err := d.Run(dir, p, append(slices.Clip(args), "--only-show-errors", "--output", "json")...)
+		if err != nil {
+			return nil, azError(err)
+		}
+		return []byte(out), nil
+	}}
+	name := "az repo " + t.Project + "/" + t.Repo
+	u := b.repoURL() + "?api-version=7.1"
+	_, err := b.get("", u)
+	if err == nil {
+		out := []Check{{Name: name, OK: true, Detail: "readable"}}
+		if lerr == nil {
+			if _, err := d.Run("", p, "extension", "show", "--name", "azure-devops", "--only-show-errors", "--output", "none"); err == nil {
+				if _, err := b.rest("", u); err == nil {
+					if _, err := b.rest("", u, "X-VSS-ForceMsaPassThrough=true", "X-TFS-FedAuthRedirect=Suppress"); err != nil && strings.Contains(err.Error(), "TF400813") {
+						out = append(out, Check{Name: "az repos " + t.Project + "/" + t.Repo, Detail: "the azure-devops extension signs you in as the personal Microsoft account of your email, which " + t.OrgURL +
+							" doesn't have (TF400813): tm doesn't need it, and threads fall back to az rest; for az repos yourself, run az devops login --organization " + t.OrgURL + " with a PAT"})
+					}
+				}
+			}
+		}
+		return out
+	}
+	var ce *CLIError
+	errors.As(err, &ce)
+	problem := ""
+	if ce != nil {
+		problem = ce.Problem
+	}
+	detail := "can't read it: check az login, and that your account is in " + t.OrgURL + " with access to the project"
+	switch {
+	case problem == "az is not installed":
+		detail = "can't read it: install the Azure CLI and run az login, or set " + patEnv
+	case problem == "az is not logged in":
+		detail = "can't read it: az isn't logged in: run az login, or set " + patEnv
+	case strings.Contains(problem, patEnv):
+		detail = "can't read it with " + patEnv + " (401/403): check that it hasn't expired and has the Code and Build read scopes"
+	case isRefused(err):
+		detail = "Azure DevOps refuses the user az signs in as (" + refusal(problem) + "): check that your az login account is in " + t.OrgURL
+		if _, tenant, has := b.tenantAccount(""); tenant != "" && !has {
+			detail += "; the organization is in Microsoft Entra tenant " + tenant + ", which az login has no account in: run az login --tenant " + tenant
+		}
+	case problem != "":
+		detail = "can't read it: " + problem + " (" + t.OrgURL + "/" + t.Project + "/_git/" + t.Repo + "): check the repo's origin URL or the project's azure_url"
+	}
+	return []Check{{Name: name, Detail: detail}}
+}
+
+// refusal is the code a refusal problem names.
+func refusal(problem string) string {
+	if strings.Contains(problem, "TF400813") {
+		return "TF400813"
+	}
+	return "401/403"
 }

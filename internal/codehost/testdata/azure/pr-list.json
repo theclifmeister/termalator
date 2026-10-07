@@ -1,5 +1,359 @@
-[
-  {"pullRequestId": 3, "status": "completed", "closedDate": "2026-09-01T08:00:00+00:00", "mergeStatus": "succeeded", "sourceRefName": "refs/heads/feature/login", "targetRefName": "refs/heads/main", "lastMergeCommit": {"commitId": "1111111111111111111111111111111111111111"}, "repository": {"name": "web", "project": {"name": "Shop"}}, "reviewers": []},
-  {"pullRequestId": 12, "status": "active", "isDraft": false, "closedDate": null, "mergeStatus": "succeeded", "sourceRefName": "refs/heads/feature/login", "targetRefName": "refs/heads/main", "lastMergeSourceCommit": {"commitId": "0123456789abcdef0123456789abcdef01234567"}, "repository": {"name": "web", "project": {"name": "Shop"}}, "reviewers": [{"isRequired": true, "vote": 0}]},
-  {"pullRequestId": 9, "status": "abandoned", "closedDate": "2026-10-01T08:00:00+00:00", "mergeStatus": "notSet", "sourceRefName": "refs/heads/feature/login", "targetRefName": "refs/heads/release", "repository": {"name": "web", "project": {"name": "Shop"}}, "reviewers": []}
-]
+{
+  "count": 6,
+  "value": [
+    {
+      "codeReviewId": 6,
+      "createdBy": {
+        "_links": {
+          "avatar": {
+            "href": "https://dev.azure.com/acme/_apis/GraphProfile/MemberAvatars/aad.REDACTED"
+          }
+        },
+        "descriptor": "aad.REDACTED",
+        "displayName": "ada",
+        "id": "ca3d747d-7915-4524-a7d8-abe2264a9ada",
+        "imageUrl": "https://dev.azure.com/acme/_api/_common/identityImage?id=ca3d747d-7915-4524-a7d8-abe2264a9ada",
+        "uniqueName": "ada@example.com",
+        "url": "https://example.vssps.visualstudio.com/A22d0cc13-a0e9-4b4f-a9ea-c105d245c607/_apis/Identities/ca3d747d-7915-4524-a7d8-abe2264a9ada"
+      },
+      "creationDate": "2026-10-07T11:56:01.9029614Z",
+      "description": "A test PR",
+      "isDraft": false,
+      "lastMergeSourceCommit": {
+        "commitId": "74013a6fddf1ae08004511adfc0dfc107ce2c6e3",
+        "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/74013a6fddf1ae08004511adfc0dfc107ce2c6e3"
+      },
+      "lastMergeTargetCommit": {
+        "commitId": "e520a561e054e032341f97fc0e2285dbad813898",
+        "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/e520a561e054e032341f97fc0e2285dbad813898"
+      },
+      "mergeId": "4e3bf57f-995f-450e-aa44-c79405960800",
+      "mergeStatus": "conflicts",
+      "pullRequestId": 6,
+      "repository": {
+        "id": "3411ebc1-d5aa-464f-9615-0b527bc66719",
+        "name": "web",
+        "project": {
+          "id": "6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c",
+          "lastUpdateTime": "0001-01-01T00:00:00",
+          "name": "Shop",
+          "state": "unchanged",
+          "visibility": "unchanged"
+        },
+        "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719"
+      },
+      "reviewers": [],
+      "sourceRefName": "refs/heads/feature/conflict",
+      "status": "active",
+      "supportsIterations": true,
+      "targetRefName": "refs/heads/feature/base",
+      "title": "conflict scenario",
+      "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/6"
+    },
+    {
+      "closedDate": "2026-10-07T12:14:12.798581Z",
+      "codeReviewId": 5,
+      "completionOptions": {
+        "autoCompleteIgnoreConfigIds": [],
+        "deleteSourceBranch": true,
+        "mergeCommitMessage": "Merged PR 5: merge scenario\n\nA test PR",
+        "mergeStrategy": "noFastForward",
+        "transitionWorkItems": true
+      },
+      "completionQueueTime": "2026-10-07T12:14:11.6811685Z",
+      "createdBy": {
+        "_links": {
+          "avatar": {
+            "href": "https://dev.azure.com/acme/_apis/GraphProfile/MemberAvatars/aad.REDACTED"
+          }
+        },
+        "descriptor": "aad.REDACTED",
+        "displayName": "ada",
+        "id": "ca3d747d-7915-4524-a7d8-abe2264a9ada",
+        "imageUrl": "https://dev.azure.com/acme/_api/_common/identityImage?id=ca3d747d-7915-4524-a7d8-abe2264a9ada",
+        "uniqueName": "ada@example.com",
+        "url": "https://example.vssps.visualstudio.com/A22d0cc13-a0e9-4b4f-a9ea-c105d245c607/_apis/Identities/ca3d747d-7915-4524-a7d8-abe2264a9ada"
+      },
+      "creationDate": "2026-10-07T11:56:01.367345Z",
+      "description": "A test PR",
+      "isDraft": false,
+      "lastMergeCommit": {
+        "commitId": "aa2ef614651f363bd8c383e119ff4fb884abf64a",
+        "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/aa2ef614651f363bd8c383e119ff4fb884abf64a"
+      },
+      "lastMergeSourceCommit": {
+        "commitId": "c5db4777afb846d0a8e258006b2778d7c4500d91",
+        "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/c5db4777afb846d0a8e258006b2778d7c4500d91"
+      },
+      "lastMergeTargetCommit": {
+        "commitId": "ad27d4b2ae44cb985fba308444ce507f5b6969b2",
+        "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/ad27d4b2ae44cb985fba308444ce507f5b6969b2"
+      },
+      "mergeId": "21243f32-0745-4557-a161-73640c4c2e4e",
+      "mergeStatus": "succeeded",
+      "pullRequestId": 5,
+      "repository": {
+        "id": "3411ebc1-d5aa-464f-9615-0b527bc66719",
+        "name": "web",
+        "project": {
+          "id": "6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c",
+          "lastUpdateTime": "0001-01-01T00:00:00",
+          "name": "Shop",
+          "state": "unchanged",
+          "visibility": "unchanged"
+        },
+        "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719"
+      },
+      "reviewers": [],
+      "sourceRefName": "refs/heads/feature/merge",
+      "status": "completed",
+      "supportsIterations": true,
+      "targetRefName": "refs/heads/main",
+      "title": "merge scenario",
+      "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/5"
+    },
+    {
+      "closedDate": "2026-10-07T11:56:12.3650663Z",
+      "codeReviewId": 4,
+      "createdBy": {
+        "_links": {
+          "avatar": {
+            "href": "https://dev.azure.com/acme/_apis/GraphProfile/MemberAvatars/aad.REDACTED"
+          }
+        },
+        "descriptor": "aad.REDACTED",
+        "displayName": "ada",
+        "id": "ca3d747d-7915-4524-a7d8-abe2264a9ada",
+        "imageUrl": "https://dev.azure.com/acme/_api/_common/identityImage?id=ca3d747d-7915-4524-a7d8-abe2264a9ada",
+        "uniqueName": "ada@example.com",
+        "url": "https://example.vssps.visualstudio.com/A22d0cc13-a0e9-4b4f-a9ea-c105d245c607/_apis/Identities/ca3d747d-7915-4524-a7d8-abe2264a9ada"
+      },
+      "creationDate": "2026-10-07T11:56:00.9213478Z",
+      "description": "A test PR",
+      "isDraft": false,
+      "lastMergeSourceCommit": {
+        "commitId": "c002a528a7c4ce4eb756a2f81a941c00dc4ca725",
+        "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/c002a528a7c4ce4eb756a2f81a941c00dc4ca725"
+      },
+      "lastMergeTargetCommit": {
+        "commitId": "ad27d4b2ae44cb985fba308444ce507f5b6969b2",
+        "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/ad27d4b2ae44cb985fba308444ce507f5b6969b2"
+      },
+      "mergeId": "268fd4a1-37ae-4819-a9e0-53818a83e989",
+      "pullRequestId": 4,
+      "repository": {
+        "id": "3411ebc1-d5aa-464f-9615-0b527bc66719",
+        "name": "web",
+        "project": {
+          "id": "6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c",
+          "lastUpdateTime": "0001-01-01T00:00:00",
+          "name": "Shop",
+          "state": "unchanged",
+          "visibility": "unchanged"
+        },
+        "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719"
+      },
+      "reviewers": [],
+      "sourceRefName": "refs/heads/feature/abandon",
+      "status": "abandoned",
+      "supportsIterations": true,
+      "targetRefName": "refs/heads/main",
+      "title": "abandon scenario",
+      "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/4"
+    },
+    {
+      "codeReviewId": 3,
+      "createdBy": {
+        "_links": {
+          "avatar": {
+            "href": "https://dev.azure.com/acme/_apis/GraphProfile/MemberAvatars/aad.REDACTED"
+          }
+        },
+        "descriptor": "aad.REDACTED",
+        "displayName": "ada",
+        "id": "ca3d747d-7915-4524-a7d8-abe2264a9ada",
+        "imageUrl": "https://dev.azure.com/acme/_api/_common/identityImage?id=ca3d747d-7915-4524-a7d8-abe2264a9ada",
+        "uniqueName": "ada@example.com",
+        "url": "https://example.vssps.visualstudio.com/A22d0cc13-a0e9-4b4f-a9ea-c105d245c607/_apis/Identities/ca3d747d-7915-4524-a7d8-abe2264a9ada"
+      },
+      "creationDate": "2026-10-07T11:56:00.4421465Z",
+      "description": "A test PR",
+      "isDraft": true,
+      "lastMergeCommit": {
+        "commitId": "ea66efa2bf73999f275be7e8898c5756966cfe68",
+        "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/ea66efa2bf73999f275be7e8898c5756966cfe68"
+      },
+      "lastMergeSourceCommit": {
+        "commitId": "4c2918eb25297e3d7172c1bd00c0a61feb69c28b",
+        "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/4c2918eb25297e3d7172c1bd00c0a61feb69c28b"
+      },
+      "lastMergeTargetCommit": {
+        "commitId": "ad27d4b2ae44cb985fba308444ce507f5b6969b2",
+        "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/ad27d4b2ae44cb985fba308444ce507f5b6969b2"
+      },
+      "mergeId": "b593a241-6c4e-450b-acde-315fb47e1077",
+      "mergeStatus": "succeeded",
+      "pullRequestId": 3,
+      "repository": {
+        "id": "3411ebc1-d5aa-464f-9615-0b527bc66719",
+        "name": "web",
+        "project": {
+          "id": "6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c",
+          "lastUpdateTime": "0001-01-01T00:00:00",
+          "name": "Shop",
+          "state": "unchanged",
+          "visibility": "unchanged"
+        },
+        "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719"
+      },
+      "reviewers": [],
+      "sourceRefName": "refs/heads/feature/draft",
+      "status": "active",
+      "supportsIterations": true,
+      "targetRefName": "refs/heads/main",
+      "title": "draft scenario",
+      "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/3"
+    },
+    {
+      "codeReviewId": 2,
+      "createdBy": {
+        "_links": {
+          "avatar": {
+            "href": "https://dev.azure.com/acme/_apis/GraphProfile/MemberAvatars/aad.REDACTED"
+          }
+        },
+        "descriptor": "aad.REDACTED",
+        "displayName": "ada",
+        "id": "ca3d747d-7915-4524-a7d8-abe2264a9ada",
+        "imageUrl": "https://dev.azure.com/acme/_api/_common/identityImage?id=ca3d747d-7915-4524-a7d8-abe2264a9ada",
+        "uniqueName": "ada@example.com",
+        "url": "https://example.vssps.visualstudio.com/A22d0cc13-a0e9-4b4f-a9ea-c105d245c607/_apis/Identities/ca3d747d-7915-4524-a7d8-abe2264a9ada"
+      },
+      "creationDate": "2026-10-07T11:55:59.889247Z",
+      "description": "A test PR",
+      "isDraft": false,
+      "lastMergeCommit": {
+        "commitId": "e13c2402625eff480530c0391499d52286c3b38f",
+        "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/e13c2402625eff480530c0391499d52286c3b38f"
+      },
+      "lastMergeSourceCommit": {
+        "commitId": "b690915c44588901482bbea21bcab55a6a478b15",
+        "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/b690915c44588901482bbea21bcab55a6a478b15"
+      },
+      "lastMergeTargetCommit": {
+        "commitId": "ad27d4b2ae44cb985fba308444ce507f5b6969b2",
+        "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/ad27d4b2ae44cb985fba308444ce507f5b6969b2"
+      },
+      "mergeId": "aae6db1d-a051-49b0-ab71-2e22ac437286",
+      "mergeStatus": "succeeded",
+      "pullRequestId": 2,
+      "repository": {
+        "id": "3411ebc1-d5aa-464f-9615-0b527bc66719",
+        "name": "web",
+        "project": {
+          "id": "6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c",
+          "lastUpdateTime": "0001-01-01T00:00:00",
+          "name": "Shop",
+          "state": "unchanged",
+          "visibility": "unchanged"
+        },
+        "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719"
+      },
+      "reviewers": [
+        {
+          "_links": {
+            "avatar": {
+              "href": "https://dev.azure.com/acme/_apis/GraphProfile/MemberAvatars/aad.REDACTED"
+            }
+          },
+          "displayName": "ada",
+          "hasDeclined": false,
+          "id": "ca3d747d-7915-4524-a7d8-abe2264a9ada",
+          "imageUrl": "https://dev.azure.com/acme/_api/_common/identityImage?id=ca3d747d-7915-4524-a7d8-abe2264a9ada",
+          "isFlagged": false,
+          "reviewerUrl": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/2/reviewers/ca3d747d-7915-4524-a7d8-abe2264a9ada",
+          "uniqueName": "ada@example.com",
+          "url": "https://example.vssps.visualstudio.com/A22d0cc13-a0e9-4b4f-a9ea-c105d245c607/_apis/Identities/ca3d747d-7915-4524-a7d8-abe2264a9ada",
+          "vote": -5
+        }
+      ],
+      "sourceRefName": "refs/heads/feature/fail",
+      "status": "active",
+      "supportsIterations": true,
+      "targetRefName": "refs/heads/main",
+      "title": "fail scenario",
+      "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/2"
+    },
+    {
+      "codeReviewId": 1,
+      "createdBy": {
+        "_links": {
+          "avatar": {
+            "href": "https://dev.azure.com/acme/_apis/GraphProfile/MemberAvatars/aad.REDACTED"
+          }
+        },
+        "descriptor": "aad.REDACTED",
+        "displayName": "ada",
+        "id": "ca3d747d-7915-4524-a7d8-abe2264a9ada",
+        "imageUrl": "https://dev.azure.com/acme/_api/_common/identityImage?id=ca3d747d-7915-4524-a7d8-abe2264a9ada",
+        "uniqueName": "ada@example.com",
+        "url": "https://example.vssps.visualstudio.com/A22d0cc13-a0e9-4b4f-a9ea-c105d245c607/_apis/Identities/ca3d747d-7915-4524-a7d8-abe2264a9ada"
+      },
+      "creationDate": "2026-10-07T11:55:59.3484868Z",
+      "description": "A test PR",
+      "isDraft": false,
+      "lastMergeCommit": {
+        "commitId": "411cbd51bb6f4895d6bf02697c91f99c4311a42a",
+        "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/411cbd51bb6f4895d6bf02697c91f99c4311a42a"
+      },
+      "lastMergeSourceCommit": {
+        "commitId": "f487d85c7bc862efcca47c4eed97232849a86168",
+        "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/f487d85c7bc862efcca47c4eed97232849a86168"
+      },
+      "lastMergeTargetCommit": {
+        "commitId": "ad27d4b2ae44cb985fba308444ce507f5b6969b2",
+        "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/ad27d4b2ae44cb985fba308444ce507f5b6969b2"
+      },
+      "mergeId": "92aa7241-0893-4a89-ad52-0a6fafa4584d",
+      "mergeStatus": "succeeded",
+      "pullRequestId": 1,
+      "repository": {
+        "id": "3411ebc1-d5aa-464f-9615-0b527bc66719",
+        "name": "web",
+        "project": {
+          "id": "6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c",
+          "lastUpdateTime": "0001-01-01T00:00:00",
+          "name": "Shop",
+          "state": "unchanged",
+          "visibility": "unchanged"
+        },
+        "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719"
+      },
+      "reviewers": [
+        {
+          "_links": {
+            "avatar": {
+              "href": "https://dev.azure.com/acme/_apis/GraphProfile/MemberAvatars/aad.REDACTED"
+            }
+          },
+          "displayName": "ada",
+          "hasDeclined": false,
+          "id": "ca3d747d-7915-4524-a7d8-abe2264a9ada",
+          "imageUrl": "https://dev.azure.com/acme/_api/_common/identityImage?id=ca3d747d-7915-4524-a7d8-abe2264a9ada",
+          "isFlagged": false,
+          "isRequired": true,
+          "reviewerUrl": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/1/reviewers/ca3d747d-7915-4524-a7d8-abe2264a9ada",
+          "uniqueName": "ada@example.com",
+          "url": "https://example.vssps.visualstudio.com/A22d0cc13-a0e9-4b4f-a9ea-c105d245c607/_apis/Identities/ca3d747d-7915-4524-a7d8-abe2264a9ada",
+          "vote": 0
+        }
+      ],
+      "sourceRefName": "refs/heads/feature/pass",
+      "status": "active",
+      "supportsIterations": true,
+      "targetRefName": "refs/heads/main",
+      "title": "pass scenario",
+      "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/1"
+    }
+  ]
+}
