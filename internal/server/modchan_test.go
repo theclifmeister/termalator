@@ -280,7 +280,7 @@ func TestModPrompts(t *testing.T) {
 // another session's, or a replaced session's, don't.
 func TestAddUsage(t *testing.T) {
 	t.Setenv("TERMINATR_HOME", t.TempDir())
-	p, err := project.New(project.Options{Name: "demo"})
+	p, err := project.New(project.Options{Slug: "demo"})
 	if err != nil {
 		t.Fatal(err)
 	}

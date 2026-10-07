@@ -221,12 +221,7 @@ func (m *dash) projectPanel(d *panel, r row) {
 	if p == nil {
 		return
 	}
-	name := p.Name
-	if name == "" {
-		name = p.Slug
-	}
-	d.title(name, r.state)
-	d.field("project", p.Slug)
+	d.title(p.Slug, r.state)
 	if s, ok := m.session(r.session); ok && r.session != "" {
 		d.field("session", s.ID)
 		d.field("progress", progressLine(sessionProgress(s)))

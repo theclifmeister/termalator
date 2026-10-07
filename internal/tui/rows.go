@@ -254,9 +254,6 @@ func buildRows(d Data, project string) []row {
 			continue
 		}
 		head = p.Slug
-		if p.Name != "" && !strings.EqualFold(p.Name, p.Slug) {
-			head = p.Slug + " · " + oneLine(p.Name)
-		}
 		var coord *proto.SessionInfo
 		var members []proto.SessionInfo
 		threadOf := map[string]bool{}

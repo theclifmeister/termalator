@@ -187,9 +187,9 @@ func (m *dash) startShell(string) tea.Cmd {
 }
 
 func (m *dash) newProject(string) tea.Cmd {
-	m.prompt("New project", "Its name:", "", func(name string) tea.Cmd {
+	m.prompt("New project", "Its slug (a-z, 0-9 and -):", "", func(slug string) tea.Cmd {
 		return m.act(func() actionMsg {
-			slug, err := m.src.NewProject(name)
+			slug, err := m.src.NewProject(slug)
 			return actionMsg{sel: "p:" + slug, msg: "created project " + slug + "; enter starts its coordinator", err: err}
 		})
 	})

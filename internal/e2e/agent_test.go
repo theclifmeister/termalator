@@ -291,7 +291,7 @@ func TestSmokeAgentCoordinatorContext(t *testing.T) {
 	env := New(t)
 	env.FakeClaude()
 	var p struct{ Slug, Dir string }
-	if err := json.Unmarshal([]byte(env.MustCLI("project", "new", "Demo", "--goal", "first goal", "--json")), &p); err != nil {
+	if err := json.Unmarshal([]byte(env.MustCLI("project", "new", "demo", "--goal", "first goal", "--json")), &p); err != nil {
 		t.Fatal(err)
 	}
 	env.Trust(p.Dir)
@@ -326,7 +326,7 @@ func TestSmokeAgentThreadAccess(t *testing.T) {
 	env := New(t)
 	env.FakeClaude()
 	var p struct{ Slug, Dir string }
-	json.Unmarshal([]byte(env.MustCLI("project", "new", "Demo", "--json")), &p)
+	json.Unmarshal([]byte(env.MustCLI("project", "new", "demo", "--json")), &p)
 	real, _ := filepath.EvalSymlinks(p.Dir)
 	env.Setenv("FAKEAGENT_DENY_PATH", real)
 	dir := env.Workdir()

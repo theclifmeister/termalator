@@ -45,7 +45,7 @@ func TestSmokeDashboard(t *testing.T) {
 	w.WaitFor("no sessions; s starts a shell", wait)
 	w.Golden("dashboard-empty.txt")
 
-	slug, _ := newProject(env, "Demo")
+	slug, _ := newProject(env, "demo")
 	env.MustCLI("task", "add", "Write the README", "--status", "ready", "--project", slug, "--step", "Draft", "--step", "Review")
 	env.MustCLI("task", "add", "Ship it", "--project", slug)
 	env.MustCLI("task", "status", "T2", "started", "--project", slug)

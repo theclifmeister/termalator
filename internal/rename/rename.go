@@ -27,9 +27,7 @@ import (
 // Options say what to rename.
 type Options struct {
 	From, To string
-	// Name is the new display name; "" keeps it.
-	Name   string
-	Caller caller.Caller
+	Caller   caller.Caller
 	// MoveAgentDir carries agents' state kept by folder path (their
 	// conversations, to resume) from a moved folder to its new path; nil
 	// moves none (agent.Mover).
@@ -61,10 +59,7 @@ func Check(o Options) error {
 		return refuse("invalid-project", "%q is not a project slug (a-z, 0-9 and -)", o.To)
 	}
 	if o.To == o.From {
-		if o.Name == "" {
-			return refuse("unchanged", "%s is already called %s; pass a new slug, or --name to change only its name", o.From, o.To)
-		}
-		return nil
+		return refuse("unchanged", "%s is already called %s; pass a new slug", o.From, o.To)
 	}
 	dir, err := project.Dir(o.To)
 	if err != nil {
@@ -107,20 +102,6 @@ func Check(o Options) error {
 func Project(o Options) (*Result, error) {
 	if err := Check(o); err != nil {
 		return nil, err
-	}
-	if o.To == o.From {
-		p, err := project.Open(o.From)
-		if err != nil {
-			return nil, err
-		}
-		was := p.Meta.Name
-		if err := p.SetName(o.Name); err != nil {
-			return nil, err
-		}
-		return &Result{Dir: p.Dir}, p.Journal(o.Caller, "project.rename", p.Slug, fmt.Sprintf("name %q → %q", was, p.Meta.Name))
-	}
-	if o.Name != "" && (strings.TrimSpace(o.Name) == "" || strings.ContainsAny(o.Name, "\r\n")) {
-		return nil, refuse("invalid-name", "the name must be one non-empty line")
 	}
 	oldDir, _ := project.Dir(o.From)
 	newDir, _ := project.Dir(o.To)
@@ -197,14 +178,6 @@ func Project(o Options) (*Result, error) {
 		}
 	}
 	detail := o.From + " → " + o.To
-	if o.Name != "" {
-		was := p.Meta.Name
-		if err := p.SetName(o.Name); err != nil {
-			note("name not changed: %v", err)
-		} else {
-			detail += fmt.Sprintf(", name %q → %q", was, p.Meta.Name)
-		}
-	}
 	if err := p.WriteRoleFile(); err != nil {
 		note("AGENTS.md not rewritten: %v", err)
 	}

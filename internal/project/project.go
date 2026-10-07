@@ -19,9 +19,10 @@ import (
 	"github.com/theclifmeister/terminatr/internal/tasks"
 )
 
-// Meta is PROJECT.md's front matter.
+// Meta is PROJECT.md's front matter. A project has no display name: its
+// slug is its only name. A name key left by an older tm is ignored, and
+// dropped the next time tm writes the front matter.
 type Meta struct {
-	Name    string    `toml:"name"`
 	Goal    string    `toml:"goal"`
 	Repos   []string  `toml:"repos"`
 	Created time.Time `toml:"created"`
@@ -59,8 +60,8 @@ var slugRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 // ValidSlug reports whether s can name a project folder.
 func ValidSlug(s string) bool { return len(s) <= 64 && slugRE.MatchString(s) }
 
-// Slugify turns a project name into a slug: lower case, runs of other
-// characters become one '-'.
+// Slugify turns text into a slug: lower case, runs of other characters
+// become one '-'. It suggests a slug for text that isn't one.
 func Slugify(name string) string {
 	var b strings.Builder
 	dash := false
@@ -80,10 +81,19 @@ func Slugify(name string) string {
 	return s
 }
 
+// invalidSlug refuses s as a slug, suggesting one when s has letters or
+// digits (an upper-case "Demo App" suggests demo-app).
+func invalidSlug(s string) error {
+	if sug := Slugify(s); sug != "" && sug != s {
+		return refuse("invalid-project", "%q is not a project slug (a-z, 0-9 and -, lower case): try %s", s, sug)
+	}
+	return refuse("invalid-project", "%q is not a project slug (a-z, 0-9 and -, lower case)", s)
+}
+
 // Dir returns the folder of a project slug.
 func Dir(slug string) (string, error) {
 	if !ValidSlug(slug) {
-		return "", refuse("invalid-project", "%q is not a project slug (a-z, 0-9 and -)", slug)
+		return "", invalidSlug(slug)
 	}
 	d, err := home.ProjectsDir()
 	if err != nil {
@@ -123,7 +133,7 @@ func (p *Project) Tasks() *tasks.Store {
 
 // Options for New.
 type Options struct {
-	Name  string
+	Slug  string // the project's only name, lower case (ValidSlug)
 	Goal  string
 	Repos []string // absolute or relative paths of existing directories
 	Now   time.Time
@@ -132,10 +142,9 @@ type Options struct {
 // New creates a project folder with the layout of §5.1. It refuses with
 // project-exists if the slug is taken.
 func New(o Options) (*Project, error) {
-	name := strings.TrimSpace(o.Name)
-	slug := Slugify(name)
-	if slug == "" {
-		return nil, refuse("invalid-name", "project name %q has no letters or digits", o.Name)
+	slug := strings.TrimSpace(o.Slug)
+	if !ValidSlug(slug) {
+		return nil, invalidSlug(slug)
 	}
 	if strings.ContainsAny(o.Goal, "\r\n") {
 		return nil, refuse("invalid-goal", "the goal must be one line")
@@ -168,7 +177,7 @@ func New(o Options) (*Project, error) {
 	if now.IsZero() {
 		now = time.Now()
 	}
-	p := &Project{Slug: slug, Dir: dir, Meta: Meta{Name: name, Goal: strings.TrimSpace(o.Goal), Repos: repos, Created: now.UTC().Truncate(time.Second)}}
+	p := &Project{Slug: slug, Dir: dir, Meta: Meta{Goal: strings.TrimSpace(o.Goal), Repos: repos, Created: now.UTC().Truncate(time.Second)}}
 	p.Instructions = strings.TrimSpace(instructionsTemplate)
 	if err := p.scaffold(); err != nil {
 		return nil, fmt.Errorf("create %s: %w", dir, err)
@@ -204,7 +213,7 @@ func (p *Project) scaffold() error {
 			return err
 		}
 	}
-	return p.Journal(caller.Caller{Kind: caller.Human}, "project.new", p.Slug, p.Meta.Name)
+	return p.Journal(caller.Caller{Kind: caller.Human}, "project.new", p.Slug, "")
 }
 
 // WriteRoleFile (re)generates AGENTS.md, the coordinator's role file, and
@@ -238,7 +247,6 @@ func (p *Project) RefreshRoleFile() error {
 // Summary is one row of `tm project list`.
 type Summary struct {
 	Slug   string         `json:"slug"`
-	Name   string         `json:"name"`
 	Goal   string         `json:"goal"`
 	Dir    string         `json:"dir"`
 	Repos  []string       `json:"repos"`
@@ -283,7 +291,7 @@ func List() ([]Summary, error) {
 			out = append(out, s)
 			continue
 		}
-		s.Name, s.Goal, s.Repos = p.Meta.Name, p.Meta.Goal, p.Meta.Repos
+		s.Goal, s.Repos = p.Meta.Goal, p.Meta.Repos
 		if safety, err := cfg.Safety(p.Slug); err == nil {
 			s.Safety = &safety
 		}
@@ -349,24 +357,6 @@ func Resolve(flag string, getenv func(string) string, cwd string) (string, error
 		}
 	}
 	return "", nil
-}
-
-// SetName changes the project's display name in PROJECT.md.
-func (p *Project) SetName(name string) error {
-	name = strings.TrimSpace(name)
-	if name == "" || strings.ContainsAny(name, "\r\n") {
-		return refuse("invalid-name", "the name must be one non-empty line")
-	}
-	return mdfile.Update(p.Path("PROJECT.md"), func(old []byte) ([]byte, error) {
-		var m Meta
-		body, err := mdfile.Decode(old, &m)
-		if err != nil {
-			return nil, err
-		}
-		m.Name = name
-		p.Meta = m
-		return mdfile.Join(m, body)
-	})
 }
 
 // SetRepo adds (or removes) a repo in PROJECT.md's repo list. An added

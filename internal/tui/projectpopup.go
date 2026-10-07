@@ -418,11 +418,7 @@ func (pv *projectView) box(m *dash) box {
 	for len(all) < len(head)+len(body) {
 		all = append(all, noHit)
 	}
-	title := p.Name
-	if title == "" {
-		title = pv.slug
-	}
-	b := box{title: title, head: head, body: body, sel: -1, hits: all, keys: keys}
+	b := box{title: pv.slug, head: head, body: body, sel: -1, hits: all, keys: keys}
 	b.scroll = pv.scroll(m.boxRows(b)-len(head), sel, len(body))
 	return b
 }
@@ -516,13 +512,13 @@ func (pv *projectView) tabLabel(p ProjectData, i int) string {
 	return label
 }
 
-// overview is the project's name, goal, repositories, machine and
+// overview is the project's slug, goal, repositories, machine and
 // agents.
 func (pv *projectView) overview(m *dash, p ProjectData, w int) ([]string, int, []int) {
 	field := func(label string) string { return styleFaint.Render(fmt.Sprintf("%-14s", label)) }
 	var out []string
 	repoAt := map[int]int{} // a repository's line: its index
-	out = append(out, field("Project")+styleHead.Render(cmp.Or(oneLine(p.Name), p.Slug))+styleFaint.Render("  "+p.Slug))
+	out = append(out, field("Project")+styleHead.Render(p.Slug))
 	if g := strings.TrimSpace(p.Goal); g == "" {
 		out = append(out, field("Goal")+styleFaint.Render("none set; ask the coordinator to set one"))
 	} else {

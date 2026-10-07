@@ -50,7 +50,7 @@ func TestRealModShots(t *testing.T) {
 		}
 	}
 	var p struct{ Slug, Dir string }
-	if err := json.Unmarshal([]byte(env.MustCLI("project", "new", "Demo", "--repo", repo, "--json")), &p); err != nil {
+	if err := json.Unmarshal([]byte(env.MustCLI("project", "new", "demo", "--repo", repo, "--json")), &p); err != nil {
 		t.Fatal(err)
 	}
 	pc := func(args ...string) { env.MustCLI(append(args, "--project", p.Slug)...) }

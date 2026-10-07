@@ -405,7 +405,7 @@ func TestInfoLinesGuardRefusals(t *testing.T) {
 // the last n of them.
 func TestGuardRefusals(t *testing.T) {
 	t.Setenv("TERMINATR_HOME", t.TempDir())
-	p, err := project.New(project.Options{Name: "Demo"})
+	p, err := project.New(project.Options{Slug: "demo"})
 	if err != nil {
 		t.Fatal(err)
 	}

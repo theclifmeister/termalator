@@ -129,7 +129,7 @@ func TestBinaryProjectAndTasks(t *testing.T) {
 		t.Fatal("touched the real-home default")
 	}
 	tm.want(2, "usage: tm project", "project")
-	tm.ok("project", "new", "Demo", "--goal", "Try tm")
+	tm.ok("project", "new", "demo", "--goal", "Try tm")
 	if _, err := os.Stat(filepath.Join(tm.home, ".terminatr")); err == nil {
 		t.Fatal("ignored TERMINATR_HOME")
 	}

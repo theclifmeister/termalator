@@ -64,7 +64,7 @@ func popupData(t *testing.T) (*fakeSource, *dash) {
 	t.Setenv("TERMINATR_HOME", t.TempDir())
 	src := &fakeSource{data: testData(), agents: []string{"claude", "pi"}}
 	alpha := &src.data.Projects[0]
-	alpha.Name, alpha.Goal, alpha.Repos = "Alpha", "Ship the alpha", []string{"/src/alpha"}
+	alpha.Goal, alpha.Repos = "Ship the alpha", []string{"/src/alpha"}
 	alpha.Checkouts = map[string]string{"/src/alpha": "local main is 3 behind origin (uncommitted changes)"}
 	alpha.Items = []project.Item{{ID: "x", Kind: "report", Summary: "t-0002 handed in report 1"}}
 	// t-0002 is blocked (it counts toward the cap), t-0003 idle.
@@ -95,8 +95,8 @@ func TestProjectPopup(t *testing.T) {
 	}
 	m.Update(cmd()) // the board
 	out := screen(m)
-	for _, want := range []string{"─ Alpha ─", "1 overview", "2 inbox 1", "5 keys",
-		"Project", "Alpha", "Goal", "Ship the alpha", "Repositories", "/src/alpha", "local main is 3 behind origin (uncommitted changes)", "Machines", "this one",
+	for _, want := range []string{"─ alpha ─", "1 overview", "2 inbox 1", "5 keys",
+		"Project", "alpha", "Goal", "Ship the alpha", "Repositories", "/src/alpha", "local main is 3 behind origin (uncommitted changes)", "Machines", "this one",
 		"Coordinator", "claude · s-1 blocked", "1 needs you (Tasks tab) · 1 in motion"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("overview lacks %q:\n%s", want, out)

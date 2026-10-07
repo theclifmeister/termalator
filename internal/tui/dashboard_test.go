@@ -736,7 +736,7 @@ func TestPromptWraps(t *testing.T) {
 	m.setData(src.data)
 	press(m, "n")
 	m.top().(*inputView).text = long
-	if out := screen(m); !strings.Contains(out, "Its name:") || !strings.Contains(out, "│ /var/folders") {
+	if out := screen(m); !strings.Contains(out, "Its slug (a-z, 0-9 and -):") || !strings.Contains(out, "│ /var/folders") {
 		t.Fatalf("prompt:\n%s", out)
 	}
 }

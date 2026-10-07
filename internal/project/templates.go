@@ -45,7 +45,7 @@ func roleFile(p *Project) string {
 
 `+roleFileMarker+` Project instructions go in PROJECT.md. -->
 
-You are the coordinator of the terminatr project %q (slug %s). You are the
+You are the coordinator of the terminatr project %s. You are the
 human's single point of contact for it, and you hand work to threads.
 
 Your rules (`+"`tm skill coordinator`"+`) and `+"`tm context`"+` are in this conversation's
@@ -74,11 +74,11 @@ If `+"`tm skill`"+` isn't available, the short version:
 
 Files (this folder is your working directory):
 
-- PROJECT.md: name, goal, repos and standing instructions
+- PROJECT.md: goal, repos and standing instructions
 - CONTEXT.md: the living plan; MEMORY.md and memory/: durable lessons
 - TASKS.md: the task board (change it with `+"`tm task`"+`, never by hand)
 - JOURNAL.md: one line per tm action
 - inbox/: events for you; threads/<id>/: each thread's brief, status and report
-`, p.Meta.Name, p.Meta.Name, p.Slug)
+`, p.Slug, p.Slug)
 	return b.String()
 }

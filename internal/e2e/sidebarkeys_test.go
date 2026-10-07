@@ -25,7 +25,7 @@ var (
 func TestSmokeSidebarKeys(t *testing.T) {
 	env, projDir, _ := threadEnv(t)
 	demo := "demo"
-	beta, betaDir := newProject(env, "Beta")
+	beta, betaDir := newProject(env, "beta")
 	env.Trust(betaDir)
 	startThread(t, env, projDir)
 
@@ -91,7 +91,7 @@ var sideThread = regexp.MustCompile(`t-0001 [^│]*\S │`)
 // project expanded, its rows on tree connectors, columns aligned.
 func TestSmokeSidebarIcons(t *testing.T) {
 	env, projDir, _ := threadEnv(t)
-	beta, betaDir := newProject(env, "Beta")
+	beta, betaDir := newProject(env, "beta")
 	env.Trust(betaDir)
 	th := startThread(t, env, projDir)
 	for _, set := range []string{"unicode", "ascii", "nerd"} {
@@ -126,7 +126,7 @@ func TestSmokeSidebarIcons(t *testing.T) {
 func TestSmokeSidebarClickFocus(t *testing.T) {
 	env, projDir, _ := threadEnv(t)
 	demo := "demo"
-	beta, betaDir := newProject(env, "Beta")
+	beta, betaDir := newProject(env, "beta")
 	env.Trust(betaDir)
 	startThread(t, env, projDir)
 

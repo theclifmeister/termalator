@@ -166,7 +166,7 @@ func FuzzStatus(f *testing.F) {
 // TestFiles: create a thread, write task text and brief, store reports.
 func TestFiles(t *testing.T) {
 	t.Setenv("TERMINATR_HOME", t.TempDir())
-	p, err := project.New(project.Options{Name: "demo"})
+	p, err := project.New(project.Options{Slug: "demo"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +237,7 @@ func TestFiles(t *testing.T) {
 // latest follow-up, within the size budget.
 func TestResetContext(t *testing.T) {
 	t.Setenv("TERMINATR_HOME", t.TempDir())
-	p, err := project.New(project.Options{Name: "demo"})
+	p, err := project.New(project.Options{Slug: "demo"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +304,7 @@ func TestClip(t *testing.T) {
 // past the tenth sort by number.
 func TestReportPRs(t *testing.T) {
 	t.Setenv("TERMINATR_HOME", t.TempDir())
-	p, err := project.New(project.Options{Name: "demo"})
+	p, err := project.New(project.Options{Slug: "demo"})
 	if err != nil {
 		t.Fatal(err)
 	}
