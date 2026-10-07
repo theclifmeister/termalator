@@ -515,12 +515,6 @@ func (a Azure) PRHead(repo, prURL string) (state string, number int, head string
 	return pr.State, n, b
 }
 
-// MergeCommit and MergedPR are stubs until T116 (Azure DevOps' merge
-// commit subjects, "Merged PR 12: …"); the PR's state says it until
-// then.
-func (Azure) MergeCommit(repo string, n int) string { return "" }
-func (Azure) MergedPR(repo, commit string) int      { return 0 }
-
 // azNameRE is an organization URL, project or repo name a prompt may
 // show; any other leaves the command out.
 var (
