@@ -205,6 +205,23 @@ Terminatr was called Termilator up to v0.6.2 (`brew install termilator`, state i
 
 Termilator was called Termalator up to v0.1.0 (`brew install termalator`, state in `~/.termalator`). Termilator v0.2.0 to v0.5.2 moved such an install over by themselves; later releases don't. To upgrade from Termalator by hand: stop its server (`tm server stop` with the old `tm`), `brew uninstall termalator`, install Terminatr as above, `mv ~/.termalator ~/.terminatr` (editing the paths in it as for Termilator), run `git worktree repair` in each thread worktree, and rename `TERMALATOR_*` variables to `TERMINATR_*`. Or install the v0.5.2 release archive first, run `tm server restart` with it, then upgrade from Termilator as above.
 
+## Keeping agent sessions lean
+
+A fresh Claude Code coordinator or thread starts at ~45-47K tokens of context (measured from transcripts, Claude Code 2.1.292, 2026-10-07, T109). terminatr's own share is ~5K for a coordinator (its rules and `tm context`, in one `terminatr` context block) and ~2K for a thread (brief, rules, task state). The rest is Claude Code's, and comes with every Claude session: terminatr doesn't filter it, since agents keep the environment of any Claude session. You can trim it in your Claude Code settings. Rough token costs (bytes ÷ 3.8, from the request snapshot):
+
+| What | ~tokens | Setting |
+|---|---|---|
+| Artifact tool schema | 14.5K | `"permissions": {"deny": ["Artifact"]}` (a bare tool name removes the tool from the context) |
+| SendFeedback, Workflow, ScheduleWakeup tools | 2.4K + 2.4K + 2.1K | same, `"SendFeedback"`, `"Workflow"`, `"ScheduleWakeup"` |
+| ReadNotifications, ReportFindings, ListAgents tools | 1.1K + 0.8K + 0.5K | same |
+| Skills listing (built-in, claude.ai-synced, yours) | 6.3K (synced ~3.2K, built-in ~2.2K, `~/.claude/skills` ~1K) | `"skillOverrides": {"<skill>": "off"}` (or `"name-only"`), `"disableBundledSkills": true`, `"syncClaudeAiSkills": false` (user settings only) |
+| claude.ai connectors (Gmail, Calendar, Drive, Claude Docs): deferred tool names, instructions, loaded Docs tools | ~3K | `"disableClaudeAiConnectors": true`, or `ENABLE_CLAUDEAI_MCP_SERVERS=false` for one shell |
+| Auto memory section of the system prompt | 0.5K | `"autoMemoryEnabled": false` (user settings only); terminatr keeps its own memory |
+
+Keep `AskUserQuestion` (a thread's question menus reach you through it), `Agent`, `Bash`, `Read`, `Edit`, `Write`, `Skill` and `ToolSearch`. A thread's sandbox instructions (~2K) come with the sandbox terminatr turns on for threads: keep them.
+
+Where: `~/.claude/settings.json` applies to every Claude session, yours included. For the coordinator alone, a project folder's `.claude/settings.json` (`~/.terminatr/projects/<slug>/.claude/settings.json`) works for all but the user-only keys. Turning off the Artifact tool and the connectors alone takes a fresh coordinator from ~47K to ~29K tokens. Check with `/context` in a fresh session.
+
 ## Uninstalling
 
 ```sh
