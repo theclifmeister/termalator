@@ -1402,7 +1402,7 @@ Never automated, in any mode: merging PRs, force-pushes, deleting branches with 
 - Keeping agent processes alive across a server restart (a live PTY handoff over `SCM_RIGHTS`). Agents are resumed instead (§3.6); the handoff is a later spike.
 - Agents other than Claude Code. Codex and pi come later through §8.7; plain shell sessions are supported.
 - Headless agent modes (`claude -p`, `codex exec`) for threads.
-- Plugins other than agent manifests; routines and schedules (PR follow-up is built in); several coordinators per project; renaming projects.
+- Plugins other than agent manifests; routines and schedules (PR follow-up is built in); several coordinators per project.
 - Threads writing project files directly, and anything terminatr-owned inside a worktree (§5.2).
 - Importing `~/.herdr-projects` or `~/.tsk` data.
 - herdr-projects' switcher filter, routines, SSH machines, autoproject and checkout thread kind (user, 2026-10-05). Its thread adopt is in (§9, **Adopt**), for agents running in a `tm` session; agents in other terminals are not.
