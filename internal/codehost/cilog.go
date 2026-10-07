@@ -1,4 +1,4 @@
-package ticker
+package codehost
 
 import (
 	"regexp"
@@ -6,7 +6,7 @@ import (
 )
 
 // The failing job's log, put in the checks-failed prompt (docs/SPEC.md
-// §7.5) so the thread starts fixing without a gh round-trip.
+// §7.5) so the thread starts fixing without a round-trip to the host.
 const (
 	// logBytes caps the excerpt; logLead is how many lines before the
 	// first error it starts.
@@ -21,38 +21,6 @@ var (
 	stampRE = regexp.MustCompile(`^\d{4}-\d\d-\d\dT[\d:.]+Z ?`)
 	errRE   = regexp.MustCompile(`(?i)(^|[^a-z])(error|fail(ed|ure)?|panic|fatal|--- FAIL|exit code [1-9])([^a-z]|$)`)
 )
-
-// ciLog asks gh for the failing job of the PR's head commit and returns
-// the job's name and an excerpt of its log, or "" when it can't (no
-// failed run, gh failed, an empty log): the prompt then stays as it was.
-func (t *Ticker) ciLog(dir string, pr PR) (job, text string) {
-	if pr.Head == "" {
-		return "", ""
-	}
-	out, err := t.o.GH(dir, "run", "list", "--commit", pr.Head, "--status", "failure", "--json", "databaseId", "--jq", ".[].databaseId", "--limit", "10")
-	if err != nil {
-		return "", ""
-	}
-	n := 0
-	for _, f := range strings.Fields(string(out)) {
-		if n++; n > logRuns {
-			break
-		}
-		if !digitsRE.MatchString(f) {
-			continue
-		}
-		log, err := t.o.GH(dir, "run", "view", f, "--log-failed")
-		if err != nil {
-			continue
-		}
-		if job, ex := excerpt(string(log)); ex != "" {
-			return job, ex
-		}
-	}
-	return "", ""
-}
-
-var digitsRE = regexp.MustCompile(`^[0-9]{1,12}$`)
 
 // excerpt reads `gh run view --log-failed` output (lines of
 // "job<TAB>step<TAB>timestamp text") and answers the first failing job's

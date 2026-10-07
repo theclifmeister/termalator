@@ -1,10 +1,10 @@
 package worktree
 
 import (
-	"fmt"
-	"os/exec"
 	"sort"
 	"strings"
+
+	"github.com/theclifmeister/terminatr/internal/codehost"
 )
 
 // ThreadBranches lists the local branches of thread id in project slug
@@ -26,24 +26,11 @@ func ThreadBranches(repo, slug, id string) []string {
 	return out
 }
 
-// PRHead asks gh for a pull request's state ("MERGED", "OPEN",
-// "CLOSED"), number and head branch; all zero when gh can't tell.
+// PRHead is a pull request's state ("MERGED", "OPEN", "CLOSED"), number
+// and head branch, from repo's code host (codehost.Host.PRHead); all
+// zero when the host can't tell.
 func PRHead(repo, pr string) (state string, number int, head string) {
-	if pr == "" || strings.HasPrefix(pr, "-") {
-		return "", 0, ""
-	}
-	cmd := exec.Command("gh", "pr", "view", pr, "--json", "state,number,headRefName", "--jq", `"\(.state) \(.number) \(.headRefName)"`)
-	cmd.Dir = repo
-	b, err := cmd.Output()
-	if err != nil {
-		return "", 0, ""
-	}
-	f := strings.Fields(string(b))
-	if len(f) != 3 || !ValidBranch(f[2]) {
-		return "", 0, ""
-	}
-	fmt.Sscanf(f[1], "%d", &number)
-	return f[0], number, f[2]
+	return codehost.Pick(repo, codehost.Config{}).PRHead(repo, pr)
 }
 
 // CheckedOutIn is the worktree branch is checked out in, "" for none.

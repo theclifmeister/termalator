@@ -591,3 +591,31 @@ func TestCountsBacklog(t *testing.T) {
 		t.Fatalf("counts %v", c)
 	}
 }
+
+// TestCodeHostOverride: PROJECT.md's code_host and azure_url reach the
+// code host pick; a new project writes neither.
+func TestCodeHostOverride(t *testing.T) {
+	setup(t)
+	p, err := New(Options{Name: "Demo App"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(p.Path("PROJECT.md"))
+	if strings.Contains(string(b), "code_host") || strings.Contains(string(b), "azure_url") {
+		t.Fatalf("written: %s", b)
+	}
+	if c := p.CodeHost(); c.CodeHost != "" || c.AzureURL != "" {
+		t.Fatalf("%+v", c)
+	}
+	b = []byte(strings.Replace(string(b), "+++\n", "+++\ncode_host = \"azure\"\nazure_url = \"https://tfs.example.com/tfs/Coll\"\n", 1))
+	if err := os.WriteFile(p.Path("PROJECT.md"), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p, err = Open("demo-app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := p.CodeHost(); c.CodeHost != "azure" || c.AzureURL != "https://tfs.example.com/tfs/Coll" {
+		t.Fatalf("%+v", c)
+	}
+}

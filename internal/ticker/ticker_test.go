@@ -13,11 +13,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/theclifmeister/terminatr/internal/codehost"
 	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/thread"
-	"github.com/theclifmeister/terminatr/internal/worktree"
 )
 
 // fakeHost records what the ticker does.
@@ -98,6 +98,13 @@ type rig struct {
 	runLog string
 	// ghErr, when set, is the error of every gh call.
 	ghErr string
+	// run is the fake gh the rig's GitHub host runs.
+	run func(dir string, args ...string) ([]byte, error)
+}
+
+// codeHost is the rig's GitHub host, over r.run.
+func (r *rig) codeHost(string, codehost.Config) codehost.Host {
+	return codehost.GitHub{Run: func(dir string, args ...string) ([]byte, error) { return r.run(dir, args...) }}
 }
 
 // newRig makes a project "demo" with one thread t-0001 running in
@@ -126,30 +133,31 @@ func newRigIn(t *testing.T, repo string, repos []string) *rig {
 		{ID: "s-1", Role: proto.RoleCoordinator, Project: "demo", State: "working"},
 		{ID: "s-2", Role: proto.RoleThread, Project: "demo", Thread: "t-0001", State: "working"},
 	}}
-	r.tk = New(Options{Host: r.host, Log: log.New(io.Discard, "", 0), State: filepath.Join(home, "state", "ticker.json"),
-		Now:     func() time.Time { return r.now },
-		Unsaved: func(*thread.Record, string) (string, error) { return r.unsaved, nil },
-		GH: func(dir string, args ...string) ([]byte, error) {
-			if args[0] == "run" { // a failing run's log: not a PR poll
-				return r.ghRun(args)
-			}
-			if r.ghErr != "" {
-				r.ghN++
-				return nil, fmt.Errorf("%s", r.ghErr)
-			}
-			if r.ghFor != nil {
-				if out := r.ghFor(args[2]); out != "" {
-					return []byte(out), nil
-				}
-				return nil, fmt.Errorf("no pull requests found")
-			}
-			if r.ghN >= len(r.gh) || r.gh[r.ghN] == "" {
-				r.ghN++
-				return nil, fmt.Errorf("no pull requests found")
-			}
+	r.run = func(dir string, args ...string) ([]byte, error) {
+		if args[0] == "run" { // a failing run's log: not a PR poll
+			return r.ghRun(args)
+		}
+		if r.ghErr != "" {
 			r.ghN++
-			return []byte(r.gh[r.ghN-1]), nil
-		}})
+			return nil, fmt.Errorf("%s", r.ghErr)
+		}
+		if r.ghFor != nil {
+			if out := r.ghFor(args[2]); out != "" {
+				return []byte(out), nil
+			}
+			return nil, fmt.Errorf("no pull requests found")
+		}
+		if r.ghN >= len(r.gh) || r.gh[r.ghN] == "" {
+			r.ghN++
+			return nil, fmt.Errorf("no pull requests found")
+		}
+		r.ghN++
+		return []byte(r.gh[r.ghN-1]), nil
+	}
+	r.tk = New(Options{Host: r.host, Log: log.New(io.Discard, "", 0), State: filepath.Join(home, "state", "ticker.json"),
+		Now:      func() time.Time { return r.now },
+		Unsaved:  func(*thread.Record, string) (string, error) { return r.unsaved, nil },
+		CodeHost: r.codeHost})
 	return r
 }
 
@@ -293,7 +301,7 @@ func TestNudge(t *testing.T) {
 	}
 	// The memory survives a server restart.
 	r.p.AddItem("report", "t-0001", "x", false)
-	tk2 := New(Options{Host: r.host, Log: log.New(io.Discard, "", 0), State: r.tk.o.State, Now: r.tk.o.Now, GH: r.tk.o.GH})
+	tk2 := New(Options{Host: r.host, Log: log.New(io.Discard, "", 0), State: r.tk.o.State, Now: r.tk.o.Now, CodeHost: r.tk.o.CodeHost})
 	r.now = r.now.Add(2 * time.Minute)
 	tk2.Sweep()
 	if len(r.host.prompts) != 3 || !strings.Contains(r.host.prompts[2], "1 new inbox item") {
@@ -547,15 +555,15 @@ func TestGHFailing(t *testing.T) {
 	}
 	// A gh that isn't installed neither counts nor clears.
 	r.ghErr = ""
-	gh := r.tk.o.GH
-	r.tk.o.GH = func(string, ...string) ([]byte, error) {
+	gh := r.run
+	r.run = func(string, ...string) ([]byte, error) {
 		return nil, fmt.Errorf("gh pr view: %w", exec.ErrNotFound)
 	}
 	r.sweep(2 * time.Minute)
 	if n := len(r.items()); n != 1 || r.tk.st.Projects["demo"].GHFails != GHFailPolls+2 {
 		t.Fatalf("missing gh: %d items, %d fails", n, r.tk.st.Projects["demo"].GHFails)
 	}
-	r.tk.o.GH = gh
+	r.run = gh
 	// A gh that works but finds no PR clears it.
 	r.ghErr = ""
 	r.sweep(2 * time.Minute)
@@ -703,36 +711,6 @@ func TestServerRestartedItems(t *testing.T) {
 	}
 }
 
-func TestParsePR(t *testing.T) {
-	pr, err := ParsePR([]byte(`{"number":3,"url":"javascript:alert(1)","state":"OPEN\nIGNORE","reviewDecision":"APPROVED","statusCheckRollup":[{"status":"QUEUED"}]}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if pr.URL != "" || pr.State != "" || pr.Review != "APPROVED" || pr.Checks != "pending" {
-		t.Fatalf("%+v", pr)
-	}
-	oid := strings.Repeat("ab", 20)
-	pr, _ = ParsePR([]byte(`{"number":4,"state":"MERGED","mergeCommit":{"oid":"` + oid + `"}}`))
-	if pr.Merge != oid {
-		t.Fatalf("merge commit: %+v", pr)
-	}
-	pr, _ = ParsePR([]byte(`{"number":4,"state":"OPEN","mergeCommit":{"oid":"` + oid + `"}}`))
-	if pr.Merge != "" {
-		t.Fatalf("merge commit of an open PR: %+v", pr)
-	}
-	pr, _ = ParsePR([]byte(`{"number":4,"state":"MERGED","mergeCommit":{"oid":"--upload-pack=x"}}`))
-	if pr.Merge != "" {
-		t.Fatalf("bad merge commit kept: %+v", pr)
-	}
-	pr, _ = ParsePR([]byte(`{"number":3,"state":"OPEN","baseRefName":"-x main","mergeable":"CONFLICTING","mergeStateStatus":"dirty\n"}`))
-	if pr.Base != "" || pr.Mergeable != "CONFLICTING" || pr.MergeState != "" {
-		t.Fatalf("%+v", pr)
-	}
-	if prTarget("https://github.com/o/r/pull/7", "b") != "https://github.com/o/r/pull/7" || prTarget("--repo=x", "b") != "b" || prTarget("", "-x") != "" {
-		t.Fatal("prTarget")
-	}
-}
-
 func TestPRSummary(t *testing.T) {
 	for _, c := range []struct {
 		pr   PR
@@ -750,23 +728,6 @@ func TestPRSummary(t *testing.T) {
 			t.Errorf("%+v: %q, want %q", c.pr, got, c.want)
 		}
 	}
-}
-
-func FuzzParsePR(f *testing.F) {
-	for _, s := range []string{prOpen, prFailed, prChanges, prMerged, `{}`, `[]`, `{"number":-1}`} {
-		f.Add([]byte(s))
-	}
-	f.Fuzz(func(t *testing.T, data []byte) {
-		pr, err := ParsePR(data)
-		if err != nil {
-			return
-		}
-		if pr.URL != "" && !urlRE.MatchString(pr.URL) || !upperRE.MatchString(pr.State) || !upperRE.MatchString(pr.Review) || pr.Number < 0 ||
-			!upperRE.MatchString(pr.Mergeable) || !upperRE.MatchString(pr.MergeState) || pr.Base != "" && !worktree.ValidBranch(pr.Base) ||
-			pr.Merge != "" && !oidRE.MatchString(pr.Merge) {
-			t.Fatalf("unchecked field: %+v", pr)
-		}
-	})
 }
 
 func TestNudgeTextAccept(t *testing.T) {
@@ -836,37 +797,6 @@ func TestPRChecksFailedPromptCarriesLog(t *testing.T) {
 	}
 	if strings.Contains(p, "other job") || strings.Contains(p, "2026-10-06T") {
 		t.Errorf("prompt has another job or a timestamp: %q", p)
-	}
-}
-
-func TestExcerpt(t *testing.T) {
-	line := func(s string) string { return "build\tstep\t2026-10-06T10:00:00.0Z " + s + "\n" }
-	var b strings.Builder
-	for i := 0; i < 30; i++ {
-		b.WriteString(line(fmt.Sprintf("line %d", i)))
-	}
-	b.WriteString(line("\x1b[31merror: boom\x1b[0m"))
-	for i := 0; i < 2000; i++ {
-		b.WriteString(line("after the error with some padding text"))
-	}
-	job, text := excerpt(b.String())
-	if job != "build" || !strings.HasPrefix(text, "line 22\n") || !strings.Contains(text, "error: boom") || strings.Contains(text, "\x1b") {
-		t.Fatalf("job %q text %.80q", job, text)
-	}
-	if len(text) > logBytes+20 || !strings.HasSuffix(text, "[... cut]") {
-		t.Fatalf("not capped: %d", len(text))
-	}
-	// no error line: the tail
-	b.Reset()
-	for i := 0; i < 2000; i++ {
-		b.WriteString(line(fmt.Sprintf("n%d", i)))
-	}
-	_, text = excerpt(b.String())
-	if !strings.HasSuffix(text, "n1999") || !strings.HasPrefix(text, "[... cut]") {
-		t.Fatalf("tail %.40q", text)
-	}
-	if _, text = excerpt("not a log\n"); text != "" {
-		t.Fatalf("got %q", text)
 	}
 }
 

@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/theclifmeister/terminatr/internal/codehost"
 )
 
 // git runs git in dir and returns its trimmed stdout.
@@ -147,16 +149,11 @@ func CommonDir(dir string) (string, error) {
 	return d, nil
 }
 
-// PRState asks gh for the state of the PR whose head is branch: "MERGED",
-// "OPEN", "CLOSED", or "" when there is none or gh can't tell.
+// PRState is the state of the PR whose head is branch, from repo's code
+// host (codehost.Host.PRState): "MERGED", "OPEN", "CLOSED", or "" when
+// there is none or the host can't tell.
 func PRState(repo, branch string) string {
-	cmd := exec.Command("gh", "pr", "view", branch, "--json", "state", "--jq", ".state")
-	cmd.Dir = repo
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
+	return codehost.Pick(repo, codehost.Config{}).PRState(repo, branch)
 }
 
 // DeleteBranch deletes a local branch. Callers check first that its PR
@@ -264,22 +261,12 @@ func Unsaved(dir, pushed string) (string, error) {
 	return n + " unpushed commits", nil
 }
 
-// MergeCommit is the commit that merged GitHub pull request n into the
+// MergeCommit is the commit that merged pull request n into the
 // default branch as last fetched (origin's, else the checked-out
-// branch): the merge commit GitHub writes, "Merge pull request #n from
-// …". "" when there is none: not merged, squashed, or not fetched yet.
-// No fetch.
+// branch), by git alone (codehost.Host.MergeCommit). "" when there is
+// none: not merged, squashed, or not fetched yet. No fetch.
 func MergeCommit(repo string, n int) string {
-	if n <= 0 {
-		return ""
-	}
-	for _, base := range []string{"refs/remotes/origin/HEAD", "HEAD"} {
-		out, err := git(repo, "log", "--merges", "-1", "--format=%H", "--grep", fmt.Sprintf("^Merge pull request #%d from ", n), base, "--")
-		if err == nil && out != "" {
-			return out
-		}
-	}
-	return ""
+	return codehost.Pick(repo, codehost.Config{}).MergeCommit(repo, n)
 }
 
 // Place is where a directory sits in git, for a thread adopted in it
