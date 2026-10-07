@@ -60,6 +60,12 @@ func serverService(e *Env, args []string) int {
 		return ExitOK
 	}
 	if args[0] == "install" {
+		if c.GOOS == "darwin" && c.RunDir != "" {
+			// The job runs the pin.
+			if err := server.EnsurePin(c.RunDir, c.Bin); err != nil {
+				return e.srvFail("server service install", err)
+			}
+		}
 		if _, err := c.Install(); err != nil {
 			return e.srvFail("server service install", err)
 		}

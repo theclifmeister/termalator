@@ -55,7 +55,9 @@ func TestPlist(t *testing.T) {
 	}
 	for _, want := range []string{
 		"<string>dev.terminatr.server.a09d65a9</string>",
-		"<string>/opt/tm dir/bin/tm</string>\n\t\t<string>server</string>\n\t\t<string>run</string>\n\t\t<string>--launchd</string>\n" +
+		// The pin, never the versioned binary: macOS privacy settings
+		// hold the path launchd starts (T129).
+		"<string>" + c.RunDir + "/bin/tm</string>\n\t\t<string>server</string>\n\t\t<string>run</string>\n\t\t<string>--launchd</string>\n" +
 			"\t\t<string>--launch-file</string>\n\t\t<string>" + c.RunDir + "/launch.json</string>",
 		"<key>RunAtLoad</key>\n\t<true/>", "<key>KeepAlive</key>\n\t<false/>",
 		"<key>TERMINATR_HOME</key>\n\t\t<string>/data/tm &amp; co</string>",
@@ -66,8 +68,16 @@ func TestPlist(t *testing.T) {
 			t.Errorf("plist lacks %q:\n%s", want, data)
 		}
 	}
+	if strings.Contains(string(data), c.Bin) {
+		t.Errorf("plist names the versioned binary %s:\n%s", c.Bin, data)
+	}
 	if p, _ := c.File(); !strings.HasSuffix(p, "Library/LaunchAgents/dev.terminatr.server.a09d65a9.plist") {
 		t.Errorf("file %s", p)
+	}
+	// Without a run dir there is no pin: the binary itself.
+	c.RunDir = ""
+	if c.Program() != c.Bin {
+		t.Errorf("program without a run dir: %s", c.Program())
 	}
 }
 

@@ -31,6 +31,11 @@ type Config struct {
 	UserHome string
 	// Bin is the absolute path of tm.
 	Bin string
+	// Source is the path tm was started by, before resolving symlinks
+	// (Homebrew's /opt/homebrew/bin/tm rather than its versioned keg),
+	// written to the launch file for the server to pin (macOS). "" uses
+	// Bin.
+	Source string
 	// Home is TERMINATR_HOME when set explicitly, else "".
 	Home string
 	// Socket is TERMINATR_SOCKET when set, else "".
@@ -51,6 +56,29 @@ type Config struct {
 	Run func(name string, args ...string) error
 	// Output runs a command and returns its stdout; nil uses the real one.
 	Output func(name string, args ...string) (string, error)
+}
+
+// PinDir and PinName place the server's own copy of its binary, the
+// pin, under its run dir: RunDir/bin/tm (docs/SPEC.md §3.6).
+const (
+	PinDir  = "bin"
+	PinName = "tm"
+)
+
+// PinPath is the pin's path in runDir.
+func PinPath(runDir string) string { return filepath.Join(runDir, PinDir, PinName) }
+
+// Program is the binary the launchd job runs: the pin, never the
+// versioned file Bin names. macOS privacy settings (TCC) hold the
+// program launchd started the responsible process of every session with,
+// and keep it when the server execs another binary, so a versioned path
+// would add an entry, and ask again, with every release. Without a run
+// dir it is Bin.
+func (c Config) Program() string {
+	if c.RunDir == "" {
+		return c.Bin
+	}
+	return PinPath(c.RunDir)
 }
 
 // ErrUnsupported means there is no service manager support for the OS.
@@ -105,7 +133,7 @@ func (c Config) plist(atLoad bool) []byte {
 	<string>` + c.JobLabel() + `</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>` + x(c.Bin) + `</string>
+		<string>` + x(c.Program()) + `</string>
 		<string>server</string>
 		<string>run</string>
 		<string>--launchd</string>

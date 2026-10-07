@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"fmt"
 	"html"
 	"os"
@@ -74,6 +75,8 @@ func fakeLaunchctl(dir string, args []string) int {
 	return 0
 }
 
+func must(b []byte, _ error) []byte { return b }
+
 var plistString = regexp.MustCompile(`<(key|string)>([^<]*)</`)
 
 // parsePlist reads ProgramArguments and EnvironmentVariables from a plist
@@ -143,6 +146,16 @@ func TestBinaryLaunchdStart(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(tm.home, "Library", "LaunchAgents")); err == nil {
 		t.Error("a start wrote a login service")
+	}
+	// launchd runs the pin, not the tm that started it: macOS privacy
+	// settings hold the path launchd started (T129).
+	loaded, _ := os.ReadFile(filepath.Join(fake, "loaded"))
+	data, _ := os.ReadFile(string(loaded))
+	if argv, _ := parsePlist(string(data)); len(argv) == 0 || argv[0] == tmBin ||
+		!strings.HasSuffix(argv[0], string(filepath.Separator)+filepath.Join("bin", "tm")) {
+		t.Errorf("the job runs %q", argv)
+	} else if a, _ := os.ReadFile(tmBin); !bytes.Equal(a, must(os.ReadFile(argv[0]))) {
+		t.Errorf("the pin %s doesn't hold this build", argv[0])
 	}
 
 	// The server, and so its sessions, has the shell's environment but

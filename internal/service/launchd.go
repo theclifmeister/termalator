@@ -36,6 +36,7 @@ func Current(getenv func(string) string, env []string, home, runDir, logDir stri
 	if err != nil {
 		return Config{}, err
 	}
+	source := bin
 	if r, err := filepath.EvalSymlinks(bin); err == nil {
 		bin = r
 	}
@@ -44,7 +45,7 @@ func Current(getenv func(string) string, env []string, home, runDir, logDir stri
 		return Config{}, err
 	}
 	c := Config{
-		GOOS: runtime.GOOS, UID: os.Getuid(), UserHome: userHome, Bin: bin,
+		GOOS: runtime.GOOS, UID: os.Getuid(), UserHome: userHome, Bin: bin, Source: source,
 		Socket: getenv("TERMINATR_SOCKET"), RunDir: runDir, LogDir: logDir,
 		Path: getenv("PATH"), Env: LaunchEnv(env, getenv),
 	}
@@ -89,6 +90,9 @@ func LaunchEnv(env []string, getenv func(string) string) []string {
 // launchFile is the launch file's content.
 type launchFile struct {
 	Env []string `json:"env"`
+	// Bin is the tm that started the server, for the server to pin and
+	// run (Program runs the pin, which may hold an older build).
+	Bin string `json:"bin,omitempty"`
 }
 
 // LaunchFile is the path of the file that hands the starting tm's
@@ -103,7 +107,11 @@ func (c Config) writeLaunchFile() error {
 	if err := os.MkdirAll(c.RunDir, 0o700); err != nil {
 		return err
 	}
-	data, err := json.Marshal(launchFile{Env: c.Env})
+	bin := c.Source
+	if bin == "" {
+		bin = c.Bin
+	}
+	data, err := json.Marshal(launchFile{Env: c.Env, Bin: bin})
 	if err != nil {
 		return err
 	}
@@ -115,26 +123,27 @@ func (c Config) writeLaunchFile() error {
 }
 
 // ApplyLaunchFile sets this process's environment from the launch file at
-// path, over what launchd gave it. A missing file (a login start before
-// any tm started the server) changes nothing.
-func ApplyLaunchFile(path string) error {
+// path, over what launchd gave it, and returns the tm that started the
+// server ("" when the file doesn't say). A missing file (a login start
+// before any tm started the server) changes nothing.
+func ApplyLaunchFile(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return "", nil
 	}
 	if err != nil {
-		return err
+		return "", err
 	}
 	var lf launchFile
 	if err := json.Unmarshal(data, &lf); err != nil {
-		return fmt.Errorf("%s: %w", path, err)
+		return "", fmt.Errorf("%s: %w", path, err)
 	}
 	for _, kv := range lf.Env {
 		if k, v, ok := strings.Cut(kv, "="); ok && k != "" {
 			os.Setenv(k, v)
 		}
 	}
-	return nil
+	return lf.Bin, nil
 }
 
 // Start starts the server through launchd in the user's GUI domain
@@ -170,8 +179,8 @@ func (c Config) Start() error {
 	if _, err := os.Stat(path); err != nil {
 		path, atLoad = filepath.Join(c.RunDir, c.JobLabel()+".plist"), false
 	}
-	// The plist names the tm binary by its real path, which changes when
-	// it is upgraded: rewrite and reload a plist that differs.
+	// Rewrite and reload a plist that differs (an older tm's named its
+	// versioned binary rather than the pin).
 	data := c.plist(atLoad)
 	old, _ := os.ReadFile(path)
 	loaded := c.run("launchctl", "print", c.target()) == nil

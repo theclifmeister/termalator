@@ -58,6 +58,10 @@ type Options struct {
 	Log   *log.Logger
 	// Bin is the absolute path of tm, exported to sessions as TERMINATR_BIN.
 	Bin string
+	// Source, when set, is the tm to pin in place of Bin: launchd runs
+	// the pin itself (service.Config.Program), and the launch file names
+	// the tm that started it. A missing Source pins Bin.
+	Source string
 	// Exec, when set, runs the pinned binary in place of this process
 	// (syscall.Exec), with Args, so the server itself runs from the pin
 	// (pinBinary). Nil keeps running the binary started.
@@ -164,12 +168,13 @@ func Run(ctx context.Context, opts Options) error {
 
 	// Run from the pin before anything else: macOS privacy settings know
 	// the server (the responsible process of everything it starts) by the
-	// path it runs from, which then stays the same across upgrades.
+	// path launchd started it from, which then stays the same across
+	// upgrades.
 	if opts.Bin != "" {
-		if bin, err := pinBinary(p.RunDir, opts.Bin); err != nil {
-			logger.Printf("pin %s: %v; an upgrade in place will break attach re-exec and hooks until restart", opts.Bin, err)
+		if bin, again, err := pinFor(p.RunDir, opts.Bin, opts.Source, logger.Printf); err != nil {
+			logger.Printf("pin: %v; an upgrade in place will break attach re-exec and hooks until restart", err)
 		} else {
-			if opts.Exec != nil && opts.Bin != bin && !lock.handedOver {
+			if opts.Exec != nil && again && !lock.handedOver {
 				logger.Printf("running from %s", bin)
 				err := execPinned(lock, bin, opts.Args, opts.Exec)
 				logger.Printf("exec %s: %v; running from %s", bin, err, opts.Bin)

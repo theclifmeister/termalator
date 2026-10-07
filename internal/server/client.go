@@ -161,13 +161,18 @@ func LaunchdConfig(p Paths) (service.Config, error) {
 	return service.Current(os.Getenv, os.Environ(), p.Home, p.RunDir, filepath.Dir(p.Log))
 }
 
-// StartLaunchd starts the server through launchd (service.Config.Start)
-// and waits until it answers. It fails with service.ErrNoConsole when
+// StartLaunchd pins this tm and starts the server through launchd
+// (service.Config.Start) from the pin, and waits until it answers. It fails with service.ErrNoConsole when
 // nobody is logged in at the Mac.
 func StartLaunchd(p Paths) error {
 	c, err := LaunchdConfig(p)
 	if err != nil {
 		return err
+	}
+	// launchd runs the pin (service.Config.Program), so it must exist
+	// and hold this build: no server runs, so none uses it.
+	if _, err := pinBinary(p.RunDir, c.Bin); err != nil {
+		return fmt.Errorf("start the server through launchd: %w", err)
 	}
 	if err := c.Start(); err != nil {
 		if errors.Is(err, service.ErrNoConsole) {

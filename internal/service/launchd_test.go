@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -66,15 +67,24 @@ func TestLaunchFile(t *testing.T) {
 		t.Fatalf("launch file: %v %v", fi, err)
 	}
 	t.Setenv("TM_LAUNCH_TEST", "old")
-	if err := ApplyLaunchFile(c.LaunchFile()); err != nil {
-		t.Fatal(err)
+	if bin, err := ApplyLaunchFile(c.LaunchFile()); err != nil || bin != c.Bin {
+		t.Fatalf("bin %q, %v", bin, err)
 	}
 	if v, ok := os.LookupEnv("TM_LAUNCH_EMPTY"); os.Getenv("TM_LAUNCH_TEST") != "a=b" || !ok || v != "" {
 		t.Fatalf("applied: %q %q", os.Getenv("TM_LAUNCH_TEST"), v)
 	}
 	os.Unsetenv("TM_LAUNCH_EMPTY")
-	if err := ApplyLaunchFile(filepath.Join(t.TempDir(), "none.json")); err != nil {
-		t.Fatalf("missing file: %v", err)
+	if bin, err := ApplyLaunchFile(filepath.Join(t.TempDir(), "none.json")); err != nil || bin != "" {
+		t.Fatalf("missing file: %q %v", bin, err)
+	}
+	// The launch file names the tm as started, so a login start after
+	// an upgrade pins the new build behind Homebrew's link.
+	c.Source = "/opt/homebrew/bin/tm"
+	if err := c.writeLaunchFile(); err != nil {
+		t.Fatal(err)
+	}
+	if bin, err := ApplyLaunchFile(c.LaunchFile()); err != nil || bin != c.Source {
+		t.Fatalf("source: %q %v", bin, err)
 	}
 }
 
@@ -123,12 +133,23 @@ func TestStart(t *testing.T) {
 	}
 	check("loaded", "launchctl print gui/501", "launchctl print "+job, "launchctl kickstart "+job)
 
-	// tm was upgraded: its path changed, so the job is reloaded.
+	// tm was upgraded: the job runs the pin, so its plist stays and it
+	// is only kickstarted (the launch file names the new build).
 	c.Bin = "/opt/homebrew/Cellar/terminatr/9.9.9/bin/tm"
 	if err := c.Start(); err != nil {
 		t.Fatal(err)
 	}
-	check("upgraded", "launchctl print gui/501", "launchctl print "+job, "launchctl bootout "+job,
+	check("upgraded", "launchctl print gui/501", "launchctl print "+job, "launchctl kickstart "+job)
+	if after, _ := os.ReadFile(onDemand); !bytes.Equal(after, data) {
+		t.Fatalf("upgrade changed the plist:\n%s", after)
+	}
+
+	// A changed plist (another PATH) reloads the job.
+	c.Path = "/opt/homebrew/bin:/usr/bin:/bin"
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	check("changed", "launchctl print gui/501", "launchctl print "+job, "launchctl bootout "+job,
 		"launchctl bootstrap gui/501 "+onDemand, "launchctl kickstart "+job)
 
 	// With the login service installed, its plist is the job.
