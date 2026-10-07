@@ -49,7 +49,7 @@ func finish() bool {
 	// after it (finish may run on the watchdog's or a signal's goroutine).
 	buildOnce.Do(func() {})
 	if binDir != "" {
-		if left := killUnder(binDir); len(left) > 0 {
+		if left := append(killUnder(binDir), killUnderRuns()...); len(left) > 0 {
 			fmt.Fprintf(os.Stderr, "e2e: killed processes left running: %s\n", strings.Join(left, "; "))
 			ok = false
 		}

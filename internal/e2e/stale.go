@@ -26,6 +26,30 @@ var (
 	failed   []string // failed scenarios with their artifacts, for TestMain
 )
 
+// runDirs are the run dirs this run made. A server runs from its pin in
+// there (run dir/bin/tm, docs/SPEC.md §3.6), not from the bin dir.
+var (
+	runDirsMu sync.Mutex
+	runDirs   []string
+)
+
+func noteRunDir(dir string) {
+	runDirsMu.Lock()
+	defer runDirsMu.Unlock()
+	runDirs = append(runDirs, dir)
+}
+
+// killUnderRuns is killUnder for every run dir this run made.
+func killUnderRuns() []string {
+	runDirsMu.Lock()
+	defer runDirsMu.Unlock()
+	var killed []string
+	for _, d := range runDirs {
+		killed = append(killed, killUnder(d)...)
+	}
+	return killed
+}
+
 func noteFailed(name, artifacts string) {
 	failedMu.Lock()
 	defer failedMu.Unlock()

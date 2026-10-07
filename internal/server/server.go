@@ -57,6 +57,12 @@ type Options struct {
 	Log   *log.Logger
 	// Bin is the absolute path of tm, exported to sessions as TERMINATR_BIN.
 	Bin string
+	// Exec, when set, runs the pinned binary in place of this process
+	// (syscall.Exec), with Args, so the server itself runs from the pin
+	// (pinBinary). Nil keeps running the binary started.
+	Exec func(bin string, argv, env []string) error
+	// Args are the arguments Exec passes, after the binary.
+	Args []string
 	// Env is the base environment for sessions; nil means os.Environ().
 	Env []string
 	// RunCLI runs a project command for cli.run (set by package cli,
@@ -155,6 +161,23 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	defer lock.unlock()
 
+	// Run from the pin before anything else: macOS privacy settings know
+	// the server (the responsible process of everything it starts) by the
+	// path it runs from, which then stays the same across upgrades.
+	if opts.Bin != "" {
+		if bin, err := pinBinary(p.RunDir, opts.Bin); err != nil {
+			logger.Printf("pin %s: %v; an upgrade in place will break attach re-exec and hooks until restart", opts.Bin, err)
+		} else {
+			if opts.Exec != nil && opts.Bin != bin && !lock.handedOver {
+				logger.Printf("running from %s", bin)
+				err := execPinned(lock, bin, opts.Args, opts.Exec)
+				logger.Printf("exec %s: %v; running from %s", bin, err, opts.Bin)
+			}
+			opts.Bin = bin
+			removeLegacyPins(p.Home)
+		}
+	}
+
 	// We hold the lock, so any socket file left here is stale.
 	os.Remove(p.Socket)
 	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: p.Socket, Net: "unix"})
@@ -169,15 +192,6 @@ func Run(ctx context.Context, opts Options) error {
 	if err := os.WriteFile(p.PID, []byte(strconv.Itoa(os.Getpid())+"\n"), 0o600); err != nil {
 		ln.Close()
 		return err
-	}
-
-	if opts.Bin != "" {
-		if bin, err := pinBinary(p.RunDir, opts.Bin, version.BuildID()); err != nil {
-			logger.Printf("pin %s: %v; an upgrade in place will break attach re-exec and hooks until restart", opts.Bin, err)
-		} else {
-			opts.Bin = bin
-			removeLegacyPins(p.Home)
-		}
 	}
 
 	s := &Server{
