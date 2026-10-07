@@ -146,7 +146,7 @@ func infoLines(d *infoData, w int, now time.Time) ([]string, []infoHit) {
 		return pl.lines, nil
 	}
 	if d.watch != nil {
-		return coordLines(d.watch, w)
+		return coordLines(d.watch, w, now)
 	}
 	s := d.session
 	id := s.Thread

@@ -54,6 +54,7 @@ func ProjectWatchOf(p *project.Project, sessions []proto.SessionInfo, tickerStat
 		}
 	}
 	prs := ticker.PRs(tickerState, p.Slug)
+	timing := ticker.ReadTiming(tickerState, p.Slug)
 
 	// The threads, and per task the latest one working on it.
 	byTask := map[string]int{} // index in w.Threads
@@ -83,6 +84,9 @@ func ProjectWatchOf(p *project.Project, sessions []proto.SessionInfo, tickerStat
 		}
 		pr := prs[r.ID]
 		wt.PR, wt.PRURL, wt.PRBad = prWords(pr), pr.URL, isPRBad(pr)
+		if pr.Number > 0 {
+			wt.PRChecked = timing.ThreadPolled[r.ID]
+		}
 		if wt.PRURL == "" {
 			if rep, _ := thread.ReadReport(p, r.ID); rep != nil {
 				wt.PRURL = rep.PR
@@ -149,6 +153,15 @@ func ProjectWatchOf(p *project.Project, sessions []proto.SessionInfo, tickerStat
 			Title: queueTitle(info, note)})
 	}
 	w.Context = contextOf(p.Slug, sessions)
+	if !timing.PRPolled.IsZero() || !timing.Synced.IsZero() {
+		secs := config.DefaultPRPollSeconds
+		if cfg, err := config.Load(); err == nil {
+			if s, err := cfg.Safety(p.Slug); err == nil && s.PRPollSeconds > 0 {
+				secs = s.PRPollSeconds
+			}
+		}
+		w.Ticker = &proto.WatchTicker{PRChecked: timing.PRPolled, Synced: timing.Synced, PRPollSeconds: secs, GHFailing: timing.GHFailing}
+	}
 	slices.SortStableFunc(w.NeedsYou, func(a, b proto.WatchNeed) int {
 		if c := cmp.Compare(whyRank(a.Why), whyRank(b.Why)); c != 0 {
 			return c

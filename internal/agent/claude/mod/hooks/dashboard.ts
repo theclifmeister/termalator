@@ -1,4 +1,4 @@
-import type { TerminatrAsk, TerminatrContext, TerminatrItem, TerminatrNeed, TerminatrProject, TerminatrThread, TerminatrTodo } from '../types'
+import type { TerminatrAsk, TerminatrContext, TerminatrItem, TerminatrNeed, TerminatrProject, TerminatrThread, TerminatrTicker, TerminatrTodo } from '../types'
 
 // The coordinator's /tm pane (docs/SPEC.md §8.6, Mods): what it says
 // about a line of `tm watch --project --json`, and what its buttons ask.
@@ -140,7 +140,7 @@ export function sentWords(kind: string): string {
 
 // threadLine is a running thread in one compact row: "t-0059 T64
 // working · steps 3/5 · now: mod tools · #121 checks pending".
-export function threadLine(t: TerminatrThread): string {
+export function threadLine(t: TerminatrThread, now = Date.now()): string {
   const parts = [t.id]
   if (t.task) parts.push(t.task.id)
   parts.push(threadState(t))
@@ -148,7 +148,32 @@ export function threadLine(t: TerminatrThread): string {
   if (t.task && t.task.steps_total > 0) line += ` · steps ${t.task.steps_done}/${t.task.steps_total}`
   if (t.task?.current) line += ' · now: ' + t.task.current
   if (t.pr) line += ' · ' + t.pr
+  if (t.pr && t.pr_checked) line += ' · checked ' + ageWords(now - Date.parse(t.pr_checked)) + ' ago'
   return line
+}
+
+// ageWords writes a span in ms short: "40s", "1m20s", "2h5m".
+export function ageWords(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000))
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  if (m < 60) return s % 60 ? `${m}m${s % 60}s` : `${m}m`
+  return m % 60 ? `${Math.floor(m / 60)}h${m % 60}m` : `${Math.floor(m / 60)}h`
+}
+
+// tickerLine is the ticker's timers in a line: "ticker · PRs checked 40s
+// ago, next 1m20s · synced 1m ago · gh ok"; tone is error while gh fails.
+export function tickerLine(t: TerminatrTicker, now = Date.now()): { text: string; tone: 'ok' | 'error' } {
+  const parts = ['ticker']
+  if (t.pr_checked) {
+    const at = Date.parse(t.pr_checked)
+    const next = at + t.pr_poll_seconds * 1000 - now
+    parts.push(`PRs checked ${ageWords(now - at)} ago, ` + (next > 0 ? `next ${ageWords(next)}` : 'due'))
+  }
+  if (t.synced) parts.push(`synced ${ageWords(now - Date.parse(t.synced))} ago`)
+  if (t.gh_failing) parts.push('gh failing')
+  else if (t.pr_checked) parts.push('gh ok')
+  return { text: parts.join(' · '), tone: t.gh_failing ? 'error' : 'ok' }
 }
 
 // threadState is a thread's state in a word: the session's, "done" for a

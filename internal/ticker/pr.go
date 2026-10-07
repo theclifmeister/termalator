@@ -230,3 +230,36 @@ func PRs(path, slug string) map[string]PR {
 	}
 	return out
 }
+
+// Timing is when the ticker last did its slow work for a project.
+type Timing struct {
+	PRPolled  time.Time // gh last asked about any PR
+	Synced    time.Time // repos last fetched
+	GHFailing bool      // PR polls are failing
+	// ThreadPolled is when each thread's PR was last checked, by id.
+	ThreadPolled map[string]time.Time
+}
+
+// ReadTiming reads project slug's Timing from the ticker's state file at path;
+// zero when there is none.
+func ReadTiming(path, slug string) Timing {
+	t := Timing{ThreadPolled: map[string]time.Time{}}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return t
+	}
+	var st state
+	if json.Unmarshal(b, &st) != nil {
+		return t
+	}
+	if pm := st.Projects[slug]; pm != nil {
+		t.PRPolled, t.Synced, t.GHFailing = pm.PRPolled, pm.Synced, pm.GHFails > 0
+	}
+	for k, m := range st.Threads {
+		id, ok := strings.CutPrefix(k, slug+"/")
+		if ok && m != nil && !m.PRPolled.IsZero() && !strings.Contains(id, "/") {
+			t.ThreadPolled[id] = m.PRPolled
+		}
+	}
+	return t
+}

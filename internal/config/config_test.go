@@ -51,10 +51,10 @@ fast_forward_checkout = false
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s, _ := c.Safety("demo"); !reflect.DeepEqual(s, Safety{StartThreads: "auto", Yolo: true, CoordinatorApproves: true, ParallelThreads: 10, AutoClose: "merged", AutoCloseDays: 7, PRFollowup: true, CompleteTasks: "merged", FastForwardCheckout: true, Merge: "coordinator", Guard: true, ArchiveTasksDays: 30, ArchiveThreadsDays: 30, ArchiveInboxDays: 30, ArchiveJournalDays: 30}) {
+	if s, _ := c.Safety("demo"); !reflect.DeepEqual(s, Safety{StartThreads: "auto", Yolo: true, CoordinatorApproves: true, ParallelThreads: 10, AutoClose: "merged", AutoCloseDays: 7, PRFollowup: true, PRPollSeconds: 120, CompleteTasks: "merged", FastForwardCheckout: true, Merge: "coordinator", Guard: true, ArchiveTasksDays: 30, ArchiveThreadsDays: 30, ArchiveInboxDays: 30, ArchiveJournalDays: 30}) {
 		t.Fatalf("demo %+v", s)
 	}
-	if s, _ := c.Safety("other"); !reflect.DeepEqual(s, Safety{StartThreads: "propose", ParallelThreads: 10, AutoClose: "off", AutoCloseDays: 7, CompleteTasks: "user", CoordinatorRemoteControl: true, AutoClear: true, Merge: "coordinator", Guard: true, ArchiveTasksDays: 30, ArchiveThreadsDays: 30, ArchiveInboxDays: 30, ArchiveJournalDays: 30}) {
+	if s, _ := c.Safety("other"); !reflect.DeepEqual(s, Safety{StartThreads: "propose", ParallelThreads: 10, AutoClose: "off", AutoCloseDays: 7, PRPollSeconds: 120, CompleteTasks: "user", CoordinatorRemoteControl: true, AutoClear: true, Merge: "coordinator", Guard: true, ArchiveTasksDays: 30, ArchiveThreadsDays: 30, ArchiveInboxDays: 30, ArchiveJournalDays: 30}) {
 		t.Fatalf("other %+v", s)
 	}
 }
@@ -178,7 +178,7 @@ auto_resolve = true
 	if err != nil {
 		t.Fatal(err)
 	}
-	all := Safety{StartThreads: "auto", CoordinatorApproves: true, ParallelThreads: 4, AutoClose: "off", AutoCloseDays: 7, PRFollowup: true, CompleteTasks: "merged", FastForwardCheckout: true, Merge: "coordinator", Guard: true,
+	all := Safety{StartThreads: "auto", CoordinatorApproves: true, ParallelThreads: 4, AutoClose: "off", AutoCloseDays: 7, PRFollowup: true, PRPollSeconds: 120, CompleteTasks: "merged", FastForwardCheckout: true, Merge: "coordinator", Guard: true,
 		ArchiveTasksDays: 30, ArchiveThreadsDays: 14, ArchiveInboxDays: 30, ArchiveJournalDays: 30}
 	if s, _ := c.AllProjects(); !reflect.DeepEqual(s, all) {
 		t.Fatalf("all projects %+v", s)
@@ -323,5 +323,38 @@ func TestContextHint(t *testing.T) {
 	write(t, "[ui]\ncontext_hint = 140\n")
 	if _, err := Load(); err == nil {
 		t.Fatal("140% loaded")
+	}
+}
+
+// TestPRPollSeconds: pr_poll_seconds defaults to 2 minutes, follows
+// [defaults] and a project's own table key by key, and 30 seconds is
+// the least.
+func TestPRPollSeconds(t *testing.T) {
+	write(t, `
+[defaults]
+pr_poll_seconds = 60
+[projects.demo]
+pr_poll_seconds = 45
+`)
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := c.Safety("demo"); s.PRPollSeconds != 45 {
+		t.Errorf("project's own: %d", s.PRPollSeconds)
+	}
+	if s, _ := c.Safety("other"); s.PRPollSeconds != 60 {
+		t.Errorf("defaults: %d", s.PRPollSeconds)
+	}
+	for _, bad := range []string{"29", "0", "3601"} {
+		write(t, "[defaults]\npr_poll_seconds = "+bad+"\n")
+		if _, err := Load(); err == nil || !strings.Contains(err.Error(), "pr_poll_seconds must be 30 to 3600") {
+			t.Errorf("%s: %v", bad, err)
+		}
+	}
+	write(t, "")
+	c, _ = Load()
+	if s, _ := c.Safety("demo"); s.PRPollSeconds != 120 {
+		t.Errorf("default: %d", s.PRPollSeconds)
 	}
 }

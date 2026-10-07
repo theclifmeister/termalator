@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -66,7 +67,7 @@ var whyState = map[string]string{
 
 // coordLines draws a coordinator's panel w cells wide, with what a click
 // on each line does.
-func coordLines(pw *proto.ProjectWatch, w int) ([]string, []infoHit) {
+func coordLines(pw *proto.ProjectWatch, w int, now time.Time) ([]string, []infoHit) {
 	pl := &panel{w: w}
 	var hits []infoHit
 	// line adds text as one line, h what a click on it does.
@@ -105,6 +106,13 @@ func coordLines(pw *proto.ProjectWatch, w int) ([]string, []infoHit) {
 
 	line(styleTitle.Render(oneLine(pw.Project)), infoHit{})
 	line(styleFaint.Render(coordSummary(pw)), infoHit{})
+	if tk := pw.Ticker; tk != nil {
+		look := styleFaint
+		if tk.GHFailing {
+			look = styleBad
+		}
+		wrapped("", look.Render(tk.Line(now)), infoHit{})
+	}
 	if c := pw.Context; c != nil {
 		text, look, hint := contextWords(c)
 		line(look.Render(text), infoHit{})
@@ -232,7 +240,11 @@ func coordLines(pw *proto.ProjectWatch, w int) ([]string, []infoHit) {
 			if t.PRURL != "" {
 				ph = infoHit{kind: hitPR, url: t.PRURL}
 			}
-			line("  "+look.Render(t.PR), ph)
+			pr := t.PR
+			if c := proto.CheckedWords(t.PRChecked, now); c != "" {
+				pr += " · " + c
+			}
+			wrapped("  ", look.Render(pr), ph)
 		}
 	}
 

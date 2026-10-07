@@ -124,14 +124,14 @@ func TestCoordLines(t *testing.T) {
 
 	// Nothing waiting, no context reported yet.
 	w := &proto.ProjectWatch{Project: "demo"}
-	lines, _ = coordLines(w, 40)
+	lines, _ = coordLines(w, 40, time.Now())
 	text = ansi.Strip(strings.Join(lines, "\n"))
 	if !strings.Contains(text, "Nothing waits for you.") || strings.Contains(text, "context") || strings.Contains(text, "Inbox") {
 		t.Errorf("an empty project:\n%s", text)
 	}
 	// Below the threshold: the use, no hint.
 	w.Context = &proto.WatchContext{Tokens: 1_200_000, Window: 2_000_000, Percent: 12, Threshold: 40}
-	lines, _ = coordLines(w, 40)
+	lines, _ = coordLines(w, 40, time.Now())
 	if text = ansi.Strip(strings.Join(lines, "\n")); !strings.Contains(text, "context 1.2M / 2.0M · 12%") || strings.Contains(text, "/clear") {
 		t.Errorf("below the threshold:\n%s", text)
 	}
@@ -142,7 +142,7 @@ func TestCoordLines(t *testing.T) {
 // its hit.
 func TestCoordLinesNarrow(t *testing.T) {
 	for w := 1; w <= 60; w++ {
-		lines, hits := coordLines(sampleWatch(), w)
+		lines, hits := coordLines(sampleWatch(), w, time.Now())
 		if len(hits) != len(lines) {
 			t.Fatalf("width %d: %d hits for %d lines", w, len(hits), len(lines))
 		}
@@ -153,7 +153,7 @@ func TestCoordLinesNarrow(t *testing.T) {
 		}
 	}
 	// At the panel's least width the needs' titles wrap, not vanish.
-	lines, _ := coordLines(sampleWatch(), view.InfoMin-1)
+	lines, _ := coordLines(sampleWatch(), view.InfoMin-1, time.Now())
 	if text := ansi.Strip(strings.Join(lines, "\n")); !strings.Contains(text, "Dashboard") {
 		t.Errorf("narrow panel lost the need's title:\n%s", text)
 	}
@@ -256,5 +256,27 @@ func TestCoordPanelMouse(t *testing.T) {
 	}
 	if o := c.result.Over; o == nil || o.Key != "t" || o.Task != 70 || o.Project != "demo" {
 		t.Fatalf("task click: %+v", c.result.Over)
+	}
+}
+
+// TestCoordLinesTicker: the ticker's timers show as one line under the
+// summary (red while gh fails), and a thread's PR says when it was last
+// checked.
+func TestCoordLinesTicker(t *testing.T) {
+	now := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+	w := sampleWatch()
+	w.Ticker = &proto.WatchTicker{PRChecked: now.Add(-40 * time.Second), Synced: now.Add(-time.Minute), PRPollSeconds: 120}
+	w.Threads[0].PRChecked = now.Add(-30 * time.Second)
+	lines, _ := coordLines(w, 80, now)
+	text := ansi.Strip(strings.Join(lines, "\n"))
+	for _, want := range []string{"ticker · PRs checked 40s ago, next 1m20s · synced 1m ago · gh ok", "#121 open, checks passed · checked 30s ago"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("missing %q:\n%s", want, text)
+		}
+	}
+	w.Ticker.GHFailing = true
+	lines, _ = coordLines(w, 80, now)
+	if text = ansi.Strip(strings.Join(lines, "\n")); !strings.Contains(text, "gh failing") || strings.Contains(text, "gh ok") {
+		t.Errorf("gh failing:\n%s", text)
 	}
 }

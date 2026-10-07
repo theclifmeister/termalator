@@ -25,7 +25,7 @@ import type { TerminatrItem, TerminatrNeed, TerminatrProject, TerminatrThread } 
 import {
   BUTTON_LABELS, MAX_READY, askLine, asked, contextLine, contextToast, isNarrow, itemParts, itemTone, kindWord, needButtons, needDetail, needHead, needKey, oneLine, projectFeed,
   reportTextOf,
-  sentWords, summary, threadLine, todoLine,
+  sentWords, summary, threadLine, tickerLine, todoLine,
 } from './dashboard'
 import type { AskKind } from './dashboard'
 
@@ -219,6 +219,7 @@ function drawPane($: EngineInterface, els: Elements[RenderSurface], hasInput: bo
   return (
     <Box flexDirection="column">
       <Text bold wrap="truncate-end">{p.project + ' · ' + summary(p)}</Text>
+      {p.ticker ? drawTicker(els, tickerLine(p.ticker)) : null}
       {p.context ? drawContext(els, contextLine(p.context)) : null}
       {/* A blank row before each section (docs/STYLE.md, spacing). */}
       <Box marginTop={1}>
@@ -246,6 +247,12 @@ function drawPane($: EngineInterface, els: Elements[RenderSurface], hasInput: bo
       {p.ready.length > MAX_READY ? <Text dimColor>{`  and ${p.ready.length - MAX_READY} more`}</Text> : null}
     </Box>
   )
+}
+
+// drawTicker draws the ticker's timers, red while gh fails.
+function drawTicker(els: Elements[RenderSurface], t: ReturnType<typeof tickerLine>) {
+  const { Text } = els
+  return <Text wrap="truncate-end" color={t.tone === 'error' ? 'error' : undefined} dimColor={t.tone === 'ok'}>{t.text}</Text>
 }
 
 // drawContext draws the coordinator's context use, coloured, and the
