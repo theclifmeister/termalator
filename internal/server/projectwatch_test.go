@@ -52,7 +52,7 @@ func TestProjectWatchOf(t *testing.T) {
 	ts := filepath.Join(t.TempDir(), "ticker.json")
 	os.WriteFile(ts, []byte(`{"threads": {
 		"`+p.Slug+`/`+t2+`": {"pr_polled": "2026-10-07T12:00:00Z", "pr": {"number": 12, "url": "https://x/12", "state": "OPEN", "checks": "pass", "mergeable": "MERGEABLE"}},
-		"`+p.Slug+`/`+t4+`": {"pr": {"number": 13, "url": "https://x/13", "state": "OPEN", "checks": "fail", "failed": 2}}}},
+		"`+p.Slug+`/`+t4+`": {"pr": {"number": 13, "url": "https://x/13", "state": "OPEN", "checks": "fail", "failed": 2}}},
 		"projects": {"`+p.Slug+`": {"pr_polled": "2026-10-07T12:00:00Z", "synced": "2026-10-07T11:59:00Z", "gh_fails": 1}}}`), 0o600)
 	sessions := []proto.SessionInfo{
 		{ID: "s-8", Role: proto.RoleThread, Project: p.Slug, Thread: t8, State: "blocked", Reason: "question",

@@ -40,9 +40,29 @@ func TestSmokeCoordinatorPanel(t *testing.T) {
 	panelOnly := func() string {
 		clearInbox(env)
 		var out []string
+		// The ticker's timers (ages, so never the same twice) are left
+		// out, from their line to the one that ends them; the unit
+		// tests cover them.
+		skip, dropped := false, 0
 		for _, l := range strings.Split(w.Screen(), "\n") {
 			r := []rune(l)
+			cut := strings.TrimSpace(string(r[min(cols-panel, len(r)):]))
+			cut = strings.TrimPrefix(cut, "│ ")
+			if strings.HasPrefix(cut, "ticker ·") {
+				skip = true
+			}
+			if skip {
+				skip = !strings.Contains(cut, "gh ok") && !strings.Contains(cut, "gh failing")
+				dropped++
+				continue
+			}
 			out = append(out, string(r[min(cols-panel, len(r)):]))
+		}
+		// Its rows (its wrapping depends on the ages) are given back as
+		// empty ones above the last line, so the screen keeps its height.
+		if n := len(out); dropped > 0 && n > 0 {
+			pad := strings.Repeat("│\n", dropped)
+			return strings.Join(out[:n-1], "\n") + "\n" + pad + out[n-1]
 		}
 		return strings.Join(out, "\n")
 	}
