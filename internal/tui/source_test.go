@@ -48,7 +48,8 @@ func TestShipped(t *testing.T) {
 	if s := shipped("", 61, ticker.PR{State: "MERGED"}); s != ShipMerged {
 		t.Errorf("no repo: %q", s)
 	}
-	for url, want := range map[string]int{"https://github.com/o/r/pull/61": 61, "": 0, "https://github.com/o/r/pull/x": 0} {
+	for url, want := range map[string]int{"https://github.com/o/r/pull/61": 61, "": 0, "https://github.com/o/r/pull/x": 0,
+		"https://dev.azure.com/o/p/_git/r/pullrequest/12": 12, "https://org.visualstudio.com/p/_git/r/pullrequest/5": 5, "https://dev.azure.com/o/p/_git/r/pullrequest/x": 0} {
 		if got := ticker.PRNumber(url); got != want {
 			t.Errorf("PRNumber(%q) = %d", url, got)
 		}

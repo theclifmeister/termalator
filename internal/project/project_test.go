@@ -188,6 +188,12 @@ func TestContextDeterministicAndCapped(t *testing.T) {
 	os.MkdirAll(p.Path("threads", "t-0002"), 0o755)
 	os.WriteFile(p.Path("threads", "t-0002", "thread.toml"), []byte("title = \"Docs\"\n"), 0o644)
 	os.WriteFile(p.Path("threads", "t-0002", "REPORT.md"), []byte("PR: https://github.com/o/r/pull/9\n## Report\nok\n\n## Next\nReview it\n"), 0o644)
+	os.MkdirAll(p.Path("threads", "t-0004"), 0o755)
+	os.WriteFile(p.Path("threads", "t-0004", "thread.toml"), []byte("title = \"Az\"\n"), 0o644)
+	os.WriteFile(p.Path("threads", "t-0004", "REPORT.md"), []byte("PR: https://dev.azure.com/o/p/_git/r/pullrequest/9\n## Report\nok\n\n## Next\nReview it\n"), 0o644)
+	if next, pr, ok := reportNext(p.Path("threads", "t-0004", "REPORT.md")); !ok || pr != "https://dev.azure.com/o/p/_git/r/pullrequest/9" || len(next) != 1 {
+		t.Fatalf("reportNext of an Azure PR line: %v %q %v", next, pr, ok)
+	}
 	os.MkdirAll(p.Path("threads", "t-0003"), 0o755)
 	os.WriteFile(p.Path("threads", "t-0003", "thread.toml"), []byte("title = \"Old\"\nstate = \"resolved\"\n"), 0o644)
 	os.WriteFile(p.Path("threads", "t-0003", "REPORT.md"), []byte("## Report\nok\n\n## Next\nStale next line\n"), 0o644)

@@ -13,6 +13,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/theclifmeister/terminatr/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/codehost"
 	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/home"
 	"github.com/theclifmeister/terminatr/internal/tasks"
@@ -416,7 +417,7 @@ func reportNext(path string) ([]string, string, bool) {
 	in := false
 	for i, l := range strings.Split(string(data), "\n") {
 		t := strings.TrimSpace(l)
-		if i == 0 && reportPRRE.MatchString(t) {
+		if i == 0 && isReportPR(t) {
 			pr = strings.TrimPrefix(t, "PR: ")
 			continue
 		}
@@ -431,8 +432,15 @@ func reportNext(path string) ([]string, string, bool) {
 	return next, pr, true
 }
 
-// reportPRRE is tm report's PR line (thread.Validate).
-var reportPRRE = regexp.MustCompile(`^PR: https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/[0-9]+$`)
+// isReportPR is tm report's PR line (thread.Validate).
+func isReportPR(t string) bool {
+	u, ok := strings.CutPrefix(t, "PR: ")
+	if !ok {
+		return false
+	}
+	_, _, ok = codehost.ParsePRURL(u)
+	return ok
+}
 
 // RenderContext prints sections as plain text.
 func RenderContext(sections []Section) string {

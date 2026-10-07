@@ -25,7 +25,7 @@ export const TOOLS: readonly ThreadTool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        pr: { type: 'string', pattern: '^https://', description: 'The PR URL, if you opened one: https://github.com/<owner>/<repo>/pull/<n>.' },
+        pr: { type: 'string', pattern: '^https://', description: 'The PR URL, if you opened one: https://github.com/<owner>/<repo>/pull/<n> or https://dev.azure.com/<org>/<project>/_git/<repo>/pullrequest/<n>.' },
         report: { type: 'string', minLength: 1, description: 'The report itself, in Markdown: what you did, what you assumed, any repository outside the project you used. Subheadings are ### (## is reserved for the sections).' },
         next: lines('What happens next: one imperative action per item, at most 100 characters each.', 100),
         check: lines('Optional: how the user can see the change working (what to run, where to look), a few lines.'),

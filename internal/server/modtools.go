@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/theclifmeister/terminatr/internal/caller"
+	"github.com/theclifmeister/terminatr/internal/codehost"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/thread"
 )
@@ -240,8 +241,10 @@ func reportText(in ModReportTool) (string, error) {
 	if strings.TrimSpace(in.Report) == "" {
 		return "", toolErr("report: empty")
 	}
-	if in.PR != "" && !strings.HasPrefix(in.PR, "https://") {
-		return "", toolErr("pr: want https://github.com/<owner>/<repo>/pull/<n>")
+	if in.PR != "" {
+		if _, _, ok := codehost.ParsePRURL(in.PR); !ok {
+			return "", toolErr("pr: want https://github.com/<owner>/<repo>/pull/<n> or https://dev.azure.com/<org>/<project>/_git/<repo>/pullrequest/<n>")
+		}
 	}
 	for _, l := range strings.Split(in.Report, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(l), "## ") {
