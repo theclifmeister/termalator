@@ -196,8 +196,8 @@ func (m *dash) mouse(msg tea.Msg) tea.Cmd {
 		case tea.MouseWheelDown:
 			d = 1
 		}
-		if d != 0 && mo.X >= m.sideW() {
-			m.wheel(mo.X-m.sideW(), mo.Y, d)
+		if d != 0 && (mo.X >= m.sideW() || m.top() != nil) {
+			m.wheel(max(mo.X-m.sideW(), 0), mo.Y, d)
 		}
 	}
 	return nil
@@ -206,6 +206,10 @@ func (m *dash) mouse(msg tea.Msg) tea.Cmd {
 // press handles a button pressed: on the sidebar, the footer's hints,
 // the topmost popup, else the list.
 func (m *dash) press(mo tea.Mouse) tea.Cmd {
+	// A popup is centred on the whole window: what it covers is its.
+	if o := m.top(); o != nil && m.geo != nil && m.geo.inside(mo.X, mo.Y) {
+		return m.popupClick(o, mo.Button, mo.X, mo.Y, mo.Button == tea.MouseLeft && m.lastClick.double(mo.X-m.sideW(), mo.Y, time.Now()))
+	}
 	if mo.X < m.sideW() {
 		if mo.Button == tea.MouseRight {
 			return m.sideMenu(mo)
@@ -221,7 +225,7 @@ func (m *dash) press(mo tea.Mouse) tea.Cmd {
 		return nil
 	}
 	if o := m.top(); o != nil {
-		return m.popupClick(o, mo.Button, x, y-1, double)
+		return m.popupClick(o, mo.Button, mo.X, mo.Y, double)
 	}
 	switch mo.Button {
 	case tea.MouseLeft:
@@ -259,12 +263,12 @@ func (m *dash) pressKey(name string) tea.Cmd {
 	return m.key(keyMsg(name))
 }
 
-// popupClick handles a button pressed on body cell (x, y) while o is the
+// popupClick handles a button pressed on window cell (x, y) while o is the
 // topmost overlay: a click outside closes it, as esc does; a
 // click on a line goes to the overlay.
 func (m *dash) popupClick(o overlay, btn tea.MouseButton, x, y int, double bool) tea.Cmd {
 	g := m.geo
-	if g == nil || y < 0 || y >= m.bodyRows() {
+	if g == nil {
 		return nil
 	}
 	if !g.inside(x, y) {

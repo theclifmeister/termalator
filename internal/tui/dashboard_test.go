@@ -179,9 +179,13 @@ func testData() Data {
 	}
 }
 
-// screen is the dashboard as text, without its colours or the sidebar.
+// screen is the dashboard as text, without its colours or the sidebar;
+// with a popup open the whole window, which the popup is centred on.
 func screen(m *dash) string {
 	lines := strings.Split(whole(m), "\n")
+	if m.geo != nil {
+		return strings.Join(lines, "\n")
+	}
 	for i, l := range lines {
 		r := []rune(l)
 		lines[i] = string(r[min(m.sideW(), len(r)):])
@@ -755,15 +759,15 @@ func TestPopupMargins(t *testing.T) {
 			m.setData(src.data)
 			m.sel = "th:beta:t-0005"
 			keyPress(m, key)
-			lines := strings.Split(screen(m), "\n")
+			lines := strings.Split(whole(m), "\n")
 			g := m.geo
 			if g == nil {
 				t.Fatalf("%d %s: no popup", w, key)
 			}
 			for y := g.y; y < g.y+g.h; y++ {
-				r := []rune(lines[y+1])
+				r := []rune(lines[y])
 				left, right := string(r[:g.x]), string(r[min(g.x+g.w, len(r)):])
-				if g.x < sliver && strings.TrimSpace(left) != "" || m.w-g.x-g.w < sliver && strings.TrimSpace(right) != "" {
+				if g.x-m.sideW() < sliver && strings.TrimSpace(left[min(m.sideW(), len(left)):]) != "" || m.winW-g.x-g.w < sliver && strings.TrimSpace(right) != "" {
 					t.Fatalf("%d %s: row %d shows %q | %q beside the box:\n%s", w, key, y, left, right, screen(m))
 				}
 			}

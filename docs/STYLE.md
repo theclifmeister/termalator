@@ -40,11 +40,16 @@ shots.html` (a page with a dark and a light palette).
 - **S4.** Key/value blocks use one faint, lowercase label column per block.
 - **S5.** A selection bar spans its region's full inner width.
 - **S6.** A rule inside a frame spans the full inner width.
-- **S7.** Popups come in two widths: a **dialog** (questions, prompts,
-  the prefix key, short lists) at most 64 columns, a **view** (help, the
-  project popup, the task list, the inbox, the switcher, the settings) at
-  most 96 and nine tenths of the window, both centred. A popup opened
-  from another stacks over it.
+- **S7.** Popups come in two fixed sizes (T122), whatever their
+  content: a **dialog** (a confirmation, a single question, one input:
+  the prefix key) is 64 columns by 12 rows; a **view** (the project popup
+  and its tabs, the task view, the inbox, help, the settings, lists) is
+  96 columns, at most nine tenths of the window's width, by four fifths
+  of its height, at most 40 rows. A view's content scrolls inside it
+  (`more ↓`). Both are centred on the whole window, header and sidebar
+  included, not on the body beside the sidebar; on a small window they
+  shrink to fit with a one-cell margin. A context menu stays where it was
+  clicked. A popup opened from another stacks over it, the same size.
 
 ## Type
 

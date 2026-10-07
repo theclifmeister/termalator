@@ -24,12 +24,20 @@ func at(t *testing.T, m *dash, text string) (int, int) {
 func atNth(t *testing.T, m *dash, text string, n int) (int, int) {
 	t.Helper()
 	for y, l := range strings.Split(screen(m), "\n") {
+		off := m.sideW()
+		if g := m.geo; g != nil { // a popup: screen is the whole window, look in the box
+			off = g.x
+			if y < g.y || y >= g.y+g.h {
+				continue
+			}
+			l = string([]rune(l)[g.x:min(g.x+g.w, len([]rune(l)))])
+		}
 		if i := strings.Index(l, text); i >= 0 {
 			if n > 0 {
 				n--
 				continue
 			}
-			return m.sideW() + ansi.StringWidth(l[:i]), y
+			return off + ansi.StringWidth(l[:i]), y
 		}
 	}
 	t.Fatalf("%q isn't on the screen:\n%s", text, whole(m))
@@ -74,7 +82,7 @@ func clickItem(t *testing.T, m *dash, label string) {
 	}
 	m.render()
 	g := m.geo
-	mouseAt(m, tea.MouseLeft, m.sideW()+g.x+2, 1+g.y+1+i-g.top)
+	mouseAt(m, tea.MouseLeft, g.x+2, g.y+1+i-g.top)
 }
 
 // clickOn clicks the first place text shows.
@@ -161,7 +169,7 @@ func TestNumberSettingButtons(t *testing.T) {
 				t.Fatalf("%s lacks %s: %q", r.label, b, line)
 			}
 			before := len(src.settings)
-			x := m.sideW() + ansi.StringWidth(line[:i+j])
+			x := ansi.StringWidth(line[:i+j])
 			if pv.settings.rows[pv.settings.sel].label != r.label {
 				// The first click on a setting selects it, and changes
 				// nothing.

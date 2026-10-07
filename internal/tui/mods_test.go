@@ -36,7 +36,12 @@ func TestModsSettings(t *testing.T) {
 	m := newDash(DashOptions{Source: src, Width: 120, Height: 80, State: DashState{Current: "beta"}})
 	m.setData(src.data)
 	press(m, ",")
+	// The box scrolls: take it from the top to the bottom.
 	out := screen(m)
+	for range 40 {
+		press(m, "down")
+		out += "\n" + screen(m)
+	}
 	// The help text wraps to the box's width: its words, one space apart.
 	words := strings.Join(strings.Fields(strings.ReplaceAll(out, "│", " ")), " ")
 	for _, want := range []string{"Mods  ", "Mods band", "early access", "Claude Code 2.1.289", "after the change", "the feed still runs", "needs Mods on"} {

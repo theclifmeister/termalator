@@ -33,7 +33,7 @@ func TestSmokeMouseDashboard(t *testing.T) {
 	top := w.Screen()
 	w.Wheel(false, 80, 10)
 	w.WaitUntil("the help scrolled", wait, func(sc string) bool { return sc != top })
-	w.Click(SideCols(140), 10) // beside the box, which leaves a column each side
+	w.Click(130, 10) // beside the box, which is centred on the whole window
 	w.WaitUntil("the help closed", wait, func(sc string) bool { return !strings.Contains(sc, "─ Help ─") })
 
 	w.ClickText("≡ menu", 28)
