@@ -758,13 +758,14 @@ func TestSendBack(t *testing.T) {
 	}
 }
 
-// TestSendBackDone: the t list shows done tasks last; x sends one back
+// TestSendBackDone: the Tasks tab shows done tasks last (after b); x sends one back
 // (the coordinator reopens it), A only says it isn't in review.
 func TestSendBackDone(t *testing.T) {
 	src, m := needsYouData(t, 86+sideDefault)
 	src.board.Tasks = append(src.board.Tasks, &tasks.Task{ID: 5, Title: "Shipped", Status: tasks.Done, Thread: "t-0009",
 		Notes: "done (2026-10-05): merged (PR #70), by the project's setting"})
 	m.Update(keyPress(m, "t")())
+	keyPress(m, "b") // the done tasks are collapsed until b
 	out := screen(m)
 	if !strings.Contains(out, "DONE") || !strings.Contains(out, "T5     Shipped") {
 		t.Fatalf("no done task:\n%s", out)
@@ -772,7 +773,7 @@ func TestSendBackDone(t *testing.T) {
 	for range 10 {
 		keyPress(m, "down")
 	}
-	if out := screen(m); !strings.Contains(out, "enter show · x send back · esc close") {
+	if out := screen(m); !strings.Contains(out, "enter show · x send back · b hide done · esc close") {
 		t.Fatalf("done keys:\n%s", out)
 	}
 	keyPress(m, "A")
@@ -1269,7 +1270,7 @@ func TestHistorySetting(t *testing.T) {
 
 // TestTasksTabCompact: the Tasks tab lists steps only under the selected
 // active task (the others show n/n), none under done tasks, the done
-// group newest first and capped at the newest ten, with m to list all.
+// group collapsed to a line until b lists them, newest first.
 func TestTasksTabCompact(t *testing.T) {
 	src, m := popupData(t)
 	src.board.Tasks[1].Steps = []tasks.Step{{N: 1, Text: "Other step"}}
@@ -1285,26 +1286,30 @@ func TestTasksTabCompact(t *testing.T) {
 	if !strings.Contains(out, "✓ Draft") || strings.Contains(out, "Other step") || strings.Contains(out, "Finished step") {
 		t.Fatalf("steps only under the selected active task:\n%s", out)
 	}
-	if !strings.Contains(out, "○ ready     ▱▱▱▱▱  0/1") || !strings.Contains(out, "✓ done      ▰▰▰▰▰  1/1") {
+	if !strings.Contains(out, "○ ready     ▱▱▱▱▱  0/1") {
 		t.Fatalf("rows keep n/n:\n%s", out)
 	}
-	if !strings.Contains(out, "… 2 more done") || strings.Contains(out, "Old job 20 ") || !strings.Contains(out, "Old job 31") {
-		t.Fatalf("done capped at the newest ten:\n%s", out)
-	}
-	if strings.Index(out, "Old job 31") > strings.Index(out, "Old job 30") {
-		t.Fatalf("done not newest first:\n%s", out)
+	if !strings.Contains(out, "… 12 done (b shows them)") || strings.Contains(out, "Old job") {
+		t.Fatalf("done collapsed:\n%s", out)
 	}
 	keyPress(m, "down")
 	if out = screen(m); !strings.Contains(out, "Other step") || strings.Contains(out, "Draft") {
 		t.Fatalf("steps follow the selection:\n%s", out)
 	}
-	keyPress(m, "m")
-	if !pv.doneAll || len(pv.tasks()) != 14 {
-		t.Fatalf("m: doneAll %v, %d tasks", pv.doneAll, len(pv.tasks()))
+	keyPress(m, "b")
+	out = screen(m)
+	if !pv.doneAll || len(pv.tasks()) != 14 || !strings.Contains(out, "b hide done") {
+		t.Fatalf("b: doneAll %v, %d tasks", pv.doneAll, len(pv.tasks()))
 	}
-	keyPress(m, "m")
-	if pv.doneAll || len(pv.tasks()) != 12 {
-		t.Fatalf("m again: doneAll %v, %d tasks", pv.doneAll, len(pv.tasks()))
+	if strings.Index(out, "Old job 31") > strings.Index(out, "Old job 30") {
+		t.Fatalf("done not newest first:\n%s", out)
+	}
+	if !strings.Contains(out, "✓ done      ▰▰▰▰▰  1/1") || strings.Contains(out, "Finished step") {
+		t.Fatalf("done rows keep n/n, no steps:\n%s", out)
+	}
+	keyPress(m, "b")
+	if pv.doneAll || len(pv.tasks()) != 2 {
+		t.Fatalf("b again: doneAll %v, %d tasks", pv.doneAll, len(pv.tasks()))
 	}
 }
 
@@ -1319,7 +1324,8 @@ func lineWith(out, s string) string {
 }
 
 // TestTasksTabBacklog: open tasks are their own BACKLOG group after ON
-// DECK, collapsed to a line until b lists them (T108).
+// DECK, listed by default; the DONE group after it is collapsed to a
+// line until b lists it (T135).
 func TestTasksTabBacklog(t *testing.T) {
 	src, m := popupData(t)
 	src.board.Tasks = append(src.board.Tasks,
@@ -1330,29 +1336,30 @@ func TestTasksTabBacklog(t *testing.T) {
 	keyPress(m, "right")
 	keyPress(m, "right")
 	out := screen(m)
-	if !strings.Contains(out, "BACKLOG") || !strings.Contains(out, "1 for later (b shows them)") || strings.Contains(out, "Someday idea") {
-		t.Fatalf("collapsed backlog:\n%s", out)
+	if !strings.Contains(out, "BACKLOG") || !strings.Contains(out, "Someday idea") || strings.Contains(out, "Done thing") ||
+		!strings.Contains(out, "1 done (b shows them)") {
+		t.Fatalf("backlog listed, done collapsed:\n%s", out)
 	}
 	if strings.Index(out, "ON DECK") > strings.Index(out, "BACKLOG") || strings.Index(out, "BACKLOG") > strings.Index(out, "DONE") {
 		t.Fatalf("backlog sits between on deck and done:\n%s", out)
 	}
-	if !strings.Contains(out, "b backlog") {
+	if !strings.Contains(out, "b done") {
 		t.Fatalf("keys lack b:\n%s", out)
 	}
 	keyPress(m, "b")
 	out = screen(m)
-	if !pv.backlogAll || !strings.Contains(out, "Someday idea") || strings.Contains(out, "for later") || !strings.Contains(out, "b hide backlog") {
-		t.Fatalf("b shows the backlog:\n%s", out)
+	if !pv.doneAll || !strings.Contains(out, "Done thing") || strings.Contains(out, "b shows them") || !strings.Contains(out, "b hide done") {
+		t.Fatalf("b shows the done tasks:\n%s", out)
 	}
 	keyPress(m, "b")
-	if pv.backlogAll || strings.Contains(screen(m), "Someday idea") {
-		t.Fatalf("b again collapses it")
+	if pv.doneAll || strings.Contains(screen(m), "Done thing") {
+		t.Fatalf("b again collapses them")
 	}
 }
 
 // TestTasksTabBacklogEnter: enter on a backlog task opens that task, not
-// another one, with the backlog expanded, and showTask on a backlog task
-// selects it with the backlog expanded (T133).
+// another one (T133), and showTask on a done task selects it with the
+// done tasks expanded.
 func TestTasksTabBacklogEnter(t *testing.T) {
 	src, m := popupData(t)
 	src.board.Tasks = append(src.board.Tasks,
@@ -1362,7 +1369,6 @@ func TestTasksTabBacklogEnter(t *testing.T) {
 	pv := m.top().(*projectView)
 	keyPress(m, "right")
 	keyPress(m, "right")
-	keyPress(m, "b")
 	for i, tk := range pv.tasks() {
 		if tk.ID != 7 {
 			continue
@@ -1379,11 +1385,12 @@ func TestTasksTabBacklogEnter(t *testing.T) {
 	}
 	m.pop()
 	m.pop()
-	m.showTask(pv.slug, 5)
+	src.board.Tasks = append(src.board.Tasks, &tasks.Task{ID: 9, Title: "Old job", Status: tasks.Done})
+	m.showTask(pv.slug, 9)
 	pv = m.top().(*projectView)
 	pv.setBoard(src.board)
-	if !pv.backlogAll || pv.selTask() == nil || pv.selTask().ID != 5 || pv.tab != tabTasks {
-		t.Fatalf("showTask on a backlog task selects %v (backlog %v)", pv.selTask(), pv.backlogAll)
+	if !pv.doneAll || pv.selTask() == nil || pv.selTask().ID != 9 || pv.tab != tabTasks {
+		t.Fatalf("showTask on a done task selects %v (done %v)", pv.selTask(), pv.doneAll)
 	}
 }
 

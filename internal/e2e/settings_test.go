@@ -112,8 +112,8 @@ cmd = 'printf "## Report\nDone.\n\n## Next\nMerge the PR\n" | "$TERMINATR_BIN" r
 
 // TestSmokeTickerCompleteOnMerge: with Complete tasks "when merged", a
 // task in review is done once its thread's PR merged on origin: the
-// ticker marks it done, journals it and tells the coordinator. The t
-// list shows it under DONE, and x still sends it back.
+// ticker marks it done, journals it and tells the coordinator. The Tasks
+// tab shows it under DONE after b, and x still sends it back.
 func TestSmokeTickerCompleteOnMerge(t *testing.T) {
 	env, projDir, _ := tickerEnv(t)
 	state := fakeGH(t, env)
@@ -155,7 +155,8 @@ func TestSmokeTickerCompleteOnMerge(t *testing.T) {
 	w := env.Window(110, 30)
 	w.WaitFor("SESSIONS", wait)
 	w.Type("t")
-	w.WaitFor("DONE", wait)
+	w.WaitFor("1 done (b shows them)", wait)
+	w.Type("b")
 	w.WaitFor("x send back", wait)
 	w.Type("x")
 	w.WaitFor("What should change?", wait)

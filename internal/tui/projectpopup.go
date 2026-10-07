@@ -60,16 +60,10 @@ type projectView struct {
 	memErr error
 	// pick is the task to select once the board loads, 0 for none.
 	pick int
-	// doneAll lists every done task on the Tasks tab, not the newest
-	// doneShown (m).
+	// doneAll lists the done tasks on the Tasks tab; they are collapsed
+	// until b (the backlog, open tasks, is always listed; T135).
 	doneAll bool
-	// backlogAll lists the backlog (open tasks) on the Tasks tab; it is
-	// collapsed until b (T108).
-	backlogAll bool
 }
-
-// doneShown is how many done tasks the Tasks tab lists until m shows all.
-const doneShown = 10
 
 func (m *dash) projectPopup(string) tea.Cmd {
 	slug := m.needProject()
@@ -96,12 +90,12 @@ func (pv *projectView) setBoard(b *tasks.Board) {
 	if pv.pick == 0 {
 		return
 	}
-	if b != nil && !pv.backlogAll {
-		// A backlog task is in no list while the backlog is collapsed:
-		// show the backlog rather than another task.
+	if b != nil && !pv.doneAll {
+		// A done task is in no list while the done tasks are collapsed:
+		// show them rather than another task.
 		for _, t := range b.Tasks {
-			if t.ID == pv.pick && tasks.GroupOf(t.Status) == tasks.Backlog {
-				pv.backlogAll = true
+			if t.ID == pv.pick && tasks.GroupOf(t.Status) == tasks.DoneG {
+				pv.doneAll = true
 			}
 		}
 	}
@@ -141,12 +135,7 @@ func (pv *projectView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 				return m.taskKey(pv.slug, t, k.String())
 			}
 		}
-		if k.String() == "b" && (pv.backlogAll || backlogCount(pv.board) > 0) {
-			pv.backlogAll = !pv.backlogAll
-			pv.sel[tabTasks] = min(pv.sel[tabTasks], max(len(pv.tasks())-1, 0))
-			return nil
-		}
-		if k.String() == "m" && (pv.doneAll || pv.hiddenDone() > 0) {
+		if k.String() == "b" && (pv.doneAll || doneCount(pv.board) > 0) {
 			pv.doneAll = !pv.doneAll
 			pv.sel[tabTasks] = min(pv.sel[tabTasks], max(len(pv.tasks())-1, 0))
 			return nil
@@ -327,49 +316,20 @@ func (pv *projectView) tasks() []*tasks.Task {
 	if pv.board == nil {
 		return nil
 	}
-	return shown(pv.board, pv.backlogAll, pv.doneAll)
-}
-
-// hiddenDone is how many done tasks the Tasks tab leaves out.
-func (pv *projectView) hiddenDone() int {
-	if pv.board == nil {
-		return 0
-	}
-	return hiddenDone(pv.board, pv.backlogAll, pv.doneAll)
+	return shown(pv.board, pv.doneAll)
 }
 
 // shown are the tasks a task list shows, in board order: needs you, in
-// motion, on deck, the backlog (after b), then the newest done ones (all
-// of them after m). The project popup's Tasks tab lists these.
-func shown(b *tasks.Board, backlog, doneAll bool) []*tasks.Task {
-	all := listed(b, backlog)
-	if doneAll {
-		return all
-	}
-	var out []*tasks.Task
-	done := 0
-	for _, t := range all {
-		if t.Status == tasks.Done {
-			if done++; done > doneShown {
-				continue
-			}
-		}
-		out = append(out, t)
-	}
-	return out
-}
+// motion, on deck, the backlog, then the done ones (newest first) after
+// b. The project popup's Tasks tab lists these.
+func shown(b *tasks.Board, doneAll bool) []*tasks.Task { return listed(b, doneAll) }
 
-// hiddenDone is how many done tasks shown leaves out.
-func hiddenDone(b *tasks.Board, backlog, doneAll bool) int {
-	return len(listed(b, backlog)) - len(shown(b, backlog, doneAll))
-}
-
-// backlogCount is how many open tasks (the backlog) a board has.
-func backlogCount(b *tasks.Board) int {
+// doneCount is how many done tasks a board has.
+func doneCount(b *tasks.Board) int {
 	n := 0
 	if b != nil {
 		for _, t := range b.Tasks {
-			if tasks.GroupOf(t.Status) == tasks.Backlog {
+			if tasks.GroupOf(t.Status) == tasks.DoneG {
 				n++
 			}
 		}
@@ -377,21 +337,21 @@ func backlogCount(b *tasks.Board) int {
 	return n
 }
 
-// backlogNote is the collapsed BACKLOG group's one line, with its rule.
-func backlogNote(n, w int) []string {
+// doneNote is the collapsed DONE group's one line, with its rule.
+func doneNote(n, w int) []string {
 	return []string{
-		sectionRule("BACKLOG", sectionStyle("BACKLOG"), w),
-		styleFaint.Render(fmt.Sprintf("… %d for later (b shows them)", n)),
+		sectionRule("DONE", sectionStyle("DONE"), w),
+		styleFaint.Render(fmt.Sprintf("… %d done (b shows them)", n)),
 	}
 }
 
 // listed are a board's tasks as the task lists show them, by group:
 // done ones last, newest first (by updated date, then id), so x can
-// still send one back. The backlog is left out unless backlog.
-func listed(b *tasks.Board, backlog bool) []*tasks.Task {
+// still send one back. The done ones are left out unless done.
+func listed(b *tasks.Board, done bool) []*tasks.Task {
 	var out []*tasks.Task
 	for _, g := range tasks.Groups {
-		if g == tasks.Backlog && !backlog {
+		if g == tasks.DoneG && !done {
 			continue
 		}
 		start := len(out)
@@ -427,7 +387,7 @@ func (pv *projectView) box(m *dash) box {
 		body = append(body, "", styleFaint.Render("Read-only: the coordinator handles these."))
 	case tabTasks:
 		body, sel, hits = pv.taskLines(m, w)
-		keys = taskListKeys(pv.selTask(), pv.board, pv.backlogAll, pv.doneAll, "esc close")
+		keys = taskListKeys(pv.selTask(), pv.board, pv.doneAll, "esc close")
 		if pv.selTask() != nil {
 			keys = joinKeys("enter show", keys)
 		}
@@ -666,7 +626,7 @@ func (pv *projectView) taskLines(m *dash, w int) ([]string, int, []int) {
 	if pv.board == nil {
 		return []string{styleFaint.Render("loading…")}, -1, nil
 	}
-	return taskList(m, pv.slug, pv.board, pv.tasks(), pv.sel[tabTasks], pv.backlogAll, pv.doneAll, w)
+	return taskList(m, pv.slug, pv.board, pv.tasks(), pv.sel[tabTasks], pv.doneAll, w)
 }
 
 // taskList is how the project popup's Tasks tab draws a project's tasks:
@@ -674,7 +634,7 @@ func (pv *projectView) taskLines(m *dash, w int) ([]string, int, []int) {
 // that isn't done listing its steps (the others show n/n), the collapsed
 // backlog and the older done tasks left out each in a line. It returns the
 // lines, the selected task's line and each line's task (noHit for none).
-func taskList(m *dash, slug string, b *tasks.Board, list []*tasks.Task, selected int, backlog, doneAll bool, w int) ([]string, int, []int) {
+func taskList(m *dash, slug string, b *tasks.Board, list []*tasks.Task, selected int, doneAll bool, w int) ([]string, int, []int) {
 	var out []string
 	var hits []int
 	add := func(hit int, l ...string) {
@@ -685,23 +645,11 @@ func taskList(m *dash, slug string, b *tasks.Board, list []*tasks.Task, selected
 	}
 	sel := -1
 	var group tasks.Group
-	collapsed := !backlog && backlogCount(b) > 0
-	// note puts the collapsed backlog where its group would be.
-	note := func() {
-		if collapsed {
-			collapsed = false
-			if len(out) > 0 {
-				add(noHit, "")
-			}
-			add(noHit, backlogNote(backlogCount(b), w)...)
-		}
-	}
+	// The collapsed done tasks are one line at the end.
+	collapsed := !doneAll && doneCount(b) > 0
 	for i, t := range list {
 		if g := tasks.GroupOf(t.Status); g != group {
 			group = g
-			if g == tasks.DoneG {
-				note()
-			}
 			if len(out) > 0 {
 				add(noHit, "")
 			}
@@ -721,9 +669,11 @@ func taskList(m *dash, slug string, b *tasks.Board, list []*tasks.Task, selected
 			add(i, fit(strings.Repeat(" ", taskTitleCol)+todoGlyph(map[bool]string{true: "done"}[s.Done])+" "+oneLine(s.Text), w))
 		}
 	}
-	note()
-	if n := hiddenDone(b, backlog, doneAll); n > 0 {
-		add(noHit, styleFaint.Render(fmt.Sprintf("… %d more done (m shows them)", n)))
+	if collapsed {
+		if len(out) > 0 {
+			add(noHit, "")
+		}
+		add(noHit, doneNote(doneCount(b), w)...)
 	}
 	if len(out) == 0 {
 		add(noHit, styleFaint.Render("no tasks"))
@@ -731,23 +681,17 @@ func taskList(m *dash, slug string, b *tasks.Board, list []*tasks.Task, selected
 	return out, sel, hits
 }
 
-// taskListKeys are a task list's keys: the selected task's, then m and b
-// for the older done tasks and the backlog, then close.
-func taskListKeys(t *tasks.Task, b *tasks.Board, backlog, doneAll bool, close string) string {
-	more, later := "", ""
+// taskListKeys are a task list's keys: the selected task's, then b for
+// the done tasks, then close.
+func taskListKeys(t *tasks.Task, b *tasks.Board, doneAll bool, close string) string {
+	done := ""
 	switch {
 	case doneAll:
-		more = "m fewer"
-	case b != nil && hiddenDone(b, backlog, doneAll) > 0:
-		more = "m more"
+		done = "b hide done"
+	case doneCount(b) > 0:
+		done = "b done"
 	}
-	switch {
-	case backlog:
-		later = "b hide backlog"
-	case backlogCount(b) > 0:
-		later = "b backlog"
-	}
-	return joinKeys(taskKeys(t), more, later, close)
+	return joinKeys(taskKeys(t), done, close)
 }
 
 // kindStyle is the style of an inbox item's kind: red for what went
