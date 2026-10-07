@@ -4,7 +4,7 @@
 class Terminatr < Formula
   desc "Terminal workspace where coding agents work through a project's tasks"
   homepage "https://github.com/theclifmeister/terminatr"
-  version "0.11.8"
+  version "0.11.9"
   license "MIT"
 
   livecheck do
@@ -15,22 +15,22 @@ class Terminatr < Formula
   on_macos do
     on_arm do
       url "https://github.com/theclifmeister/terminatr/releases/download/v#{version}/tm_darwin_arm64.tar.gz"
-      sha256 "a0c594957caf33d9bfee20d44c580415b736933a32ba2ada0b968765b5c6303d"
+      sha256 "4797f2a076f37642317ea6084b489af2a8cdbbe68e620eefc966ecea27fb14a2"
     end
     on_intel do
       url "https://github.com/theclifmeister/terminatr/releases/download/v#{version}/tm_darwin_amd64.tar.gz"
-      sha256 "aca212a00c19abe2a078530f0e77b53614e89f5f7a7911e6896b4a516aedb3e7"
+      sha256 "7c9e54f88ef66d1aa3952d49473d90e64c27ad6c081978f12e1f0001db794a63"
     end
   end
 
   on_linux do
     on_arm do
       url "https://github.com/theclifmeister/terminatr/releases/download/v#{version}/tm_linux_arm64.tar.gz"
-      sha256 "587a481ab4e4704ab5be72f7121a02bdaea9866ca9b48078f032b0c68b22e3ce"
+      sha256 "edf45d2630d77fdd3c73cf4b0699e434ae53dd0c13d44e5cfe43c78ea89faff1"
     end
     on_intel do
       url "https://github.com/theclifmeister/terminatr/releases/download/v#{version}/tm_linux_amd64.tar.gz"
-      sha256 "a83594c1ec73a57270fb43428b9f7368e599d90b4ab2876eafb50ad6ff3df559"
+      sha256 "bbdb5812d87af6369d8897acdbfc306a4eacea7ade06161b50a7a08013b8ca86"
     end
   end
 
