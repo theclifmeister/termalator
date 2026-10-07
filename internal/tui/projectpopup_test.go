@@ -95,7 +95,7 @@ func TestProjectPopup(t *testing.T) {
 	}
 	m.Update(cmd()) // the board
 	out := screen(m)
-	for _, want := range []string{"─ Alpha ─", "1 Overview", "2 Inbox 1", "5 Keys",
+	for _, want := range []string{"─ Alpha ─", "1 overview", "2 inbox 1", "5 keys",
 		"Project", "Alpha", "Goal", "Ship the alpha", "Repositories", "/src/alpha", "local main is 3 behind origin (uncommitted changes)", "Machines", "this one",
 		"Coordinator", "claude · s-1 blocked", "1 needs you (Tasks tab) · 1 in motion"} {
 		if !strings.Contains(out, want) {
@@ -104,7 +104,7 @@ func TestProjectPopup(t *testing.T) {
 	}
 
 	keyPress(m, "right")
-	if out := screen(m); pv.tab != tabInbox || !strings.Contains(out, "t-0002 handed in report 1") || !strings.Contains(out, "Read-only") {
+	if out := screen(m); pv.tab != tabInbox || !strings.Contains(out, "t-0002 handed in report 1") || !strings.Contains(out, "The coordinator handles these") {
 		t.Fatalf("inbox tab:\n%s", out)
 	}
 	keyPress(m, "right")
@@ -609,7 +609,7 @@ func TestProjectPopupFixed(t *testing.T) {
 	}
 	out := screen(m)
 	sel := pv.tasks()[pv.sel[tabTasks]].Title
-	if pv.sel[tabTasks] != 30 || !strings.Contains(out, sel) || !strings.Contains(out, "1 Overview") || !strings.Contains(out, "more ↑ ↓") {
+	if pv.sel[tabTasks] != 30 || !strings.Contains(out, sel) || !strings.Contains(out, "1 overview") || !strings.Contains(out, "more ↑ ↓") {
 		t.Fatalf("down 30 times: sel %d (%s), tab bar and both arrows wanted:\n%s", pv.sel[tabTasks], sel, out)
 	}
 	if strings.Contains(out, "IN MOTION") {
@@ -622,7 +622,7 @@ func TestProjectPopupFixed(t *testing.T) {
 		mouseAt(m, tea.MouseWheelDown, x, y)
 	}
 	out = screen(m)
-	if sel = pv.tasks()[pv.sel[tabTasks]].Title; pv.sel[tabTasks] != 41 || !strings.Contains(out, sel) || !strings.Contains(out, "1 Overview") {
+	if sel = pv.tasks()[pv.sel[tabTasks]].Title; pv.sel[tabTasks] != 41 || !strings.Contains(out, sel) || !strings.Contains(out, "1 overview") {
 		t.Fatalf("wheel: sel %d (%s):\n%s", pv.sel[tabTasks], sel, out)
 	}
 	// Past the last task the arrows scroll on to the content's end.
@@ -641,14 +641,14 @@ func TestProjectPopupFixed(t *testing.T) {
 		t.Fatalf("back up: sel %d:\n%s", pv.sel[tabTasks], out)
 	}
 	// A click on a tab still picks it, wherever the content is scrolled.
-	clickOn(t, m, "5 Keys")
+	clickOn(t, m, "5 keys")
 	if pv.tab != tabKeys {
-		t.Fatalf("click on 5 Keys: tab %d", pv.tab)
+		t.Fatalf("click on 5 keys: tab %d", pv.tab)
 	}
 	for range 3 {
 		mouseAt(m, tea.MouseWheelDown, x, y)
 	}
-	if out = screen(m); pv.top[tabKeys] != 9 || !strings.Contains(out, "1 Overview") {
+	if out = screen(m); pv.top[tabKeys] != 9 || !strings.Contains(out, "1 overview") {
 		t.Fatalf("wheel on the keys: top %d:\n%s", pv.top[tabKeys], out)
 	}
 }
@@ -1028,7 +1028,7 @@ func TestMemoryTab(t *testing.T) {
 	if !regexp.MustCompile(`│   (a )?(long )?item`).MatchString(out) {
 		t.Errorf("memory tab: a wrapped item doesn't hang:\n%s", out)
 	}
-	for _, want := range []string{"6 Memory", "CONTEXT", "The plan, see the doc.", "Where things stand", "- a long item",
+	for _, want := range []string{"6 memory", "CONTEXT", "The plan, see the doc.", "Where things stand", "- a long item",
 		"MEMORY", "- Decisions: host choices", "NOTES", "- Design decisions", "Read-only", "↑ ↓ scroll"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("memory tab lacks %q:\n%s", want, out)
@@ -1088,14 +1088,14 @@ func TestListsPage(t *testing.T) {
 	}
 	m.setData(src.Load())
 	keyPress(m, "i")
-	in := m.top().(*inboxView)
+	in := m.top().(*projectView)
 	keyPress(m, "pgdown")
-	if in.sel != 10 {
-		t.Errorf("inbox pgdown: %d", in.sel)
+	if in.sel[tabInbox] != 10 {
+		t.Errorf("inbox pgdown: %d", in.sel[tabInbox])
 	}
 	keyPress(m, "pgup")
-	if in.sel != 0 {
-		t.Errorf("inbox pgup: %d", in.sel)
+	if in.sel[tabInbox] != 0 {
+		t.Errorf("inbox pgup: %d", in.sel[tabInbox])
 	}
 	keyPress(m, "esc")
 	keyPress(m, "p")

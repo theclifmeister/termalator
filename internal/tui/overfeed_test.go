@@ -43,7 +43,7 @@ func TestDashboardOverLive(t *testing.T) {
 	if out := screen(m); !strings.Contains(out, "  first output") {
 		t.Fatalf("the output isn't under the popup:\n%s", out)
 	}
-	if _, ok := m.top().(*inboxView); !ok {
+	if _, ok := m.top().(*projectView); !ok {
 		t.Fatalf("the popup closed: %T", m.top())
 	}
 

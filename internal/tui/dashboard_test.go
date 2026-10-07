@@ -389,7 +389,7 @@ func TestDashboardThreadRow(t *testing.T) {
 		}
 	}
 	press(m, "i")
-	if _, ok := m.top().(*inboxView); !ok || !strings.Contains(screen(m), "t-0005 handed in report 1") {
+	if pv, ok := m.top().(*projectView); !ok || pv.tab != tabInbox || !strings.Contains(screen(m), "t-0005 handed in report 1") {
 		t.Fatalf("inbox view:\n%s", screen(m))
 	}
 }
@@ -616,11 +616,11 @@ func TestDashboardOver(t *testing.T) {
 	m := newDash(DashOptions{Source: src, Width: 100, Height: 30, State: DashState{Current: "beta"},
 		Over: &Over{Key: "i", Project: "alpha", Session: "s-5", Title: "s-5 · beta t-0005", Screen: scr}})
 	m.setData(src.data)
-	if in, ok := m.top().(*inboxView); !ok || in.slug != "alpha" {
+	if pv, ok := m.top().(*projectView); !ok || pv.slug != "alpha" || pv.tab != tabInbox {
 		t.Fatalf("over: overlay %T %+v", m.top(), m.top())
 	}
 	out := screen(m)
-	for _, want := range []string{"tm s-5 · beta t-0005", "the session's second row", "Inbox · alpha"} {
+	for _, want := range []string{"tm s-5 · beta t-0005", "the session's second row", "2 inbox"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("over lacks %q:\n%s", want, out)
 		}
@@ -687,7 +687,7 @@ func TestDashboardPopups(t *testing.T) {
 
 	press(m, "i")
 	out := screen(m)
-	for _, want := range []string{"╭─ Inbox · alpha ─", "│ ", "t-0002 handed in report 1", "╰─", "esc close",
+	for _, want := range []string{"╭─ alpha ─", "2 inbox", "│ ", "t-0002 handed in report 1", "╰─", "esc close",
 		"NEEDS YOU 2"} { // the list stays in view behind the box
 		if !strings.Contains(out, want) {
 			t.Errorf("inbox popup lacks %q:\n%s", want, out)

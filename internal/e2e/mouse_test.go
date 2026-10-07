@@ -129,8 +129,8 @@ func TestSmokeMousePopupsAndAttach(t *testing.T) {
 	})
 
 	w.ClickText("a project", 28)
-	w.WaitFor("1 Overview", wait)
-	w.ClickText("4 Settings", 1)
+	w.WaitFor("1 overview", wait)
+	w.ClickText("4 settings", 1)
 	w.WaitFor("Coordinator approves", wait)
 	_, y := w.TextAt("Coordinator approves", 1)
 	before := strings.Split(w.Screen(), "\n")[y]
@@ -138,7 +138,7 @@ func TestSmokeMousePopupsAndAttach(t *testing.T) {
 	w.ClickText("Coordinator approves", 1) // changes it
 	saved(w, "the setting changed", func(sc string) bool { return strings.Split(sc, "\n")[y] != before })
 	w.Click(40, 1) // above the popup, which takes the dashboard's width
-	w.WaitUntil("the popup closed", wait, func(sc string) bool { return !strings.Contains(sc, "1 Overview") })
+	w.WaitUntil("the popup closed", wait, func(sc string) bool { return !strings.Contains(sc, "1 overview") })
 
 	x, y := w.TextAt("│  t-0001 Small fix", 1) // the list's row, not the sidebar's
 	w.RightClick(x+3, y)

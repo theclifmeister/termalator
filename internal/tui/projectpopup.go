@@ -37,7 +37,7 @@ const (
 	tabCount
 )
 
-var tabNames = [tabCount]string{"Overview", "Inbox", "Tasks", "Settings", "Keys", "Memory"}
+var tabNames = [tabCount]string{"overview", "inbox", "tasks", "settings", "keys", "memory"}
 
 type projectView struct {
 	slug string
@@ -79,7 +79,14 @@ func (m *dash) projectPopup(string) tea.Cmd {
 // selected when it isn't 0: t, and enter on a NEEDS YOU task. It only
 // shows the task; the coordinator acts on it.
 func (m *dash) showTask(slug string, id int) tea.Cmd {
-	pv := &projectView{slug: slug, tab: tabTasks, pick: id, settings: settingsList{rows: projectSettings(slug)}}
+	return m.openTab(slug, tabTasks, id)
+}
+
+// showTab opens slug's project popup on tab: i opens the Inbox tab.
+func (m *dash) showTab(slug string, tab int) tea.Cmd { return m.openTab(slug, tab, 0) }
+
+func (m *dash) openTab(slug string, tab, pick int) tea.Cmd {
+	pv := &projectView{slug: slug, tab: tab, pick: pick, settings: settingsList{rows: projectSettings(slug)}}
 	m.push(pv)
 	return m.loadPopup(slug)
 }
@@ -384,7 +391,7 @@ func (pv *projectView) box(m *dash) box {
 		keys = "+ add repository · x remove it · " + keys
 	case tabInbox:
 		body, sel, hits = inboxLines(p.Items, pv.sel[tabInbox], w)
-		body = append(body, "", styleFaint.Render("Read-only: the coordinator handles these."))
+		body = append(body, "", styleFaint.Render("The coordinator handles these (tm inbox done)."))
 	case tabTasks:
 		body, sel, hits = pv.taskLines(m, w)
 		keys = taskListKeys(pv.selTask(), pv.board, pv.doneAll, "esc close")

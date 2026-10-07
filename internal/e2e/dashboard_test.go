@@ -79,7 +79,7 @@ func TestSmokeDashboard(t *testing.T) {
 
 	// The Tasks tab: T1 first (needs you); it only shows.
 	w.Type("t")
-	w.WaitFor("3 Tasks", wait)
+	w.WaitFor("3 tasks", wait)
 	w.WaitFor("T1", wait)
 	w.Golden("dashboard-tasks.txt", dashMasks...)
 	w.Type("D")

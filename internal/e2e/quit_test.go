@@ -30,10 +30,10 @@ func TestSmokePrefixQuit(t *testing.T) {
 		name, keys, shows string
 	}{
 		{"the list", "", "SESSIONS"},
-		{"the project popup", "a", "1 Overview"},
+		{"the project popup", "a", "1 overview"},
 		{"the keys tab", "a5", "On the dashboard"},
-		{"the inbox", "i", "Inbox · " + alpha},
-		{"the tasks", "t", "3 Tasks"},
+		{"the inbox", "i", "The coordinator handles these"},
+		{"the tasks", "t", "3 tasks"},
 		{"the settings", ",", "enter change"},
 		{"the help", "?", "↑ ↓ scroll · esc close"},
 		{"the switcher", "p", "enter open its coordinator"},
@@ -84,7 +84,7 @@ func TestSmokePrefixQuit(t *testing.T) {
 		open  func(w *Window)
 		shows string
 	}{
-		{"a popup over the session", func(w *Window) { w.Prefix("i") }, "Inbox · " + alpha},
+		{"a popup over the session", func(w *Window) { w.Prefix("i") }, "The coordinator handles these"},
 		{"the sidebar", func(w *Window) { w.Key(CtrlB); w.Key(tab) }, "sidebar: ↑"},
 		{"the menu", func(w *Window) { w.ClickText("≡", 29) }, "send the prefix key"},
 		{"the question", func(w *Window) { w.Prefix("r") }, "Turn remote control"},

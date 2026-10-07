@@ -6,13 +6,12 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/tasks"
 )
 
 // Overlays: the views opened on top of the list (help, a prompt, the
-// project switcher, the inbox, the settings, the project popup, a task).
+// project switcher, the settings, the project popup, a task).
 // Each keeps its own state and draws as a popup (popup.go); keys go to the topmost,
 // and closing it returns to the one below, or to the list.
 type overlay interface {
@@ -254,42 +253,3 @@ func (sw *switchView) click(m *dash, item, _ int, double bool) tea.Cmd {
 }
 
 func (sw *switchView) wheel(m *dash, d int) { sw.key(m, arrow(d)) }
-
-// inboxView is a project's unhandled inbox items, read-only: the
-// coordinator handles them.
-type inboxView struct {
-	slug string
-	sel  int
-}
-
-func (in *inboxView) items(m *dash) []project.Item {
-	for _, p := range m.data.Projects {
-		if p.Slug == in.slug {
-			return p.Items
-		}
-	}
-	return nil
-}
-
-func (in *inboxView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
-	switch k.String() {
-	case "esc":
-		m.pop()
-	case "up", "k", "down", "j", "pgup", "pgdown":
-		in.sel = moveSel(in.sel, scrollKeys[k.String()], len(project.Rows(in.items(m))))
-	}
-	return nil
-}
-
-func (in *inboxView) render(m *dash) string {
-	lines, sel, hits := inboxLines(in.items(m), in.sel, m.inner(viewWidth))
-	lines = append(lines, "", styleFaint.Render("The coordinator handles these (tm inbox done)."))
-	return m.popup(box{title: "Inbox · " + in.slug, body: lines, sel: sel, hits: hits, keys: "esc close"})
-}
-
-func (in *inboxView) click(_ *dash, item, _ int, _ bool) tea.Cmd {
-	in.sel = item
-	return nil
-}
-
-func (in *inboxView) wheel(m *dash, d int) { in.key(m, arrow(d)) }
