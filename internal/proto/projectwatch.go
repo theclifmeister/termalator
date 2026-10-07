@@ -31,7 +31,7 @@ type ProjectWatch struct {
 	Inbox []WatchItem `json:"inbox"`
 	// Threads are the project's unresolved threads, in id order.
 	Threads []WatchThread `json:"threads"`
-	// Ready are the tasks on deck (open or ready), which the user may
+	// Ready are the tasks on deck (ready, not the open ones: they are the backlog), which the user may
 	// delegate, in board order.
 	Ready []WatchTodo `json:"ready"`
 	// Context is the coordinator's context window use; nil when no

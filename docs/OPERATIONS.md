@@ -49,7 +49,7 @@ Everything is under `~/.terminatr`, or `$TERMINATR_HOME` when that is set. Nothi
 | `state/ticker.json` | what the ticker already reported (thread states, PRs, nudges, checkout syncs), so a restart repeats nothing |
 | `logs/server.log` | the server log, rotated at 10 MB (`server.log.1` … `.3` kept) |
 | `logs/service.log` | output of a server started by launchd (macOS service only) |
-| `run/` | `tm.sock`, `server.lock`, `server.pid` and per-session runtime dirs (`s/<id>/`: the agent's generated settings and plugin, with terminatr's mod when it is on) and `bin/`: the running server's own copy of its binary (`tm-<build>`), so `tm update` or `brew upgrade` can't pull it from under the server; a leftover `server-bin/` from older versions is removed on start |
+| `run/` | `tm.sock`, `server.lock`, `server.pid` and per-session runtime dirs (`s/<id>/`: the agent's generated settings and plugin, with terminatr's mod when it is on) and `bin/tm`: the running server's own copy of its binary, which it runs from, so `tm update` or `brew upgrade` can't pull it from under the server and macOS privacy settings see one `tm` across releases ([macOS privacy prompts](#macos-privacy-prompts)); per-build `bin/tm-<build>` copies and a `server-bin/` from older versions are removed on start |
 
 The run directory is `$XDG_RUNTIME_DIR/terminatr` on Linux when that variable is set (and `TERMINATR_HOME` isn't), and falls back to `/tmp/terminatr-<uid>-<hash>` when the path to the socket would be too long. `tm server status` and `tm doctor` print the one in use. `$TERMINATR_SOCKET` overrides the socket path.
 
@@ -164,7 +164,7 @@ tm update --check    # only says whether there is one
 - **Homebrew:** `tm update` never touches Homebrew's files: it shows `brew upgrade terminatr` and runs it if you say yes.
 - **Built from source:** `tm update` refuses; `git pull && make`.
 
-The running server keeps the old build until it restarts, and keeps working meanwhile: it runs from its own copy of its binary (`~/.terminatr/run/bin/`), so attaching and agent hooks are unaffected. Restarting switches it to the new build but stops every session: agents are resumed and lose only the turn they are in, shells are lost. So `tm update` asks before restarting (or restarts with `--restart`), and otherwise leaves it to you:
+The running server keeps the old build until it restarts, and keeps working meanwhile: it runs from its own copy of its binary (`~/.terminatr/run/bin/tm`), so attaching and agent hooks are unaffected. Restarting switches it to the new build but stops every session: agents are resumed and lose only the turn they are in, shells are lost. So `tm update` asks before restarting (or restarts with `--restart`), and otherwise leaves it to you:
 
 ```sh
 tm server restart
@@ -173,6 +173,23 @@ tm server restart
 On a terminal the restart asks again before stopping agents that are mid-turn (`--yes` skips that). The restart works even when the server is older than the `tm` you ran `tm update` with.
 
 On macOS the restart goes through launchd, so upgrading and restarting over SSH is fine as long as someone is logged in at the Mac ([Over SSH](#over-ssh-macos)).
+
+### macOS privacy prompts
+
+The server runs from `~/.terminatr/run/bin/tm` whatever version is installed. macOS counts every agent, `git` and tool a session runs as the server's doing (it is their *responsible process*), so their prompts, like *"tm" would like to access files on a network volume* or *"tm" would like to access data from other apps*, name `tm`, and the answer is kept for that path. After 0.11.3 the path stays the same across upgrades, so you answer once. Only the server's binary changes at that path, and macOS accepts the new one because the Developer ID signature has the same identifier (`dev.terminatr.tm`) and team.
+
+Versions up to 0.11.3 ran from a path that changed every release, so System Settings › Privacy & Security › Files & Folders may list one `tm-v0.x.y+…` entry per release and one `tm` per Homebrew version (`/opt/homebrew/Cellar/terminatr/<version>/bin/tm`). macOS never matches them again, so they do no harm. To clear them:
+
+- **System Settings:** in Privacy & Security › Files & Folders (and Full Disk Access, if you added `tm` there), select an old entry and click **−** (remove), or turn its switches off. Not every list on every macOS version has the **−** button.
+- **tccutil:** `tccutil reset <service>` resets that permission for every app, not just `tm`, and they all ask again. Use `SystemPolicyNetworkVolumes` (network volumes), `SystemPolicyAppData` (data from other apps), or `SystemPolicyDocumentsFolder`, `SystemPolicyDownloadsFolder` and `SystemPolicyDesktopFolder`. `tccutil reset All dev.terminatr.tm` doesn't reach these entries, because macOS stores command-line tools by path, not by identifier.
+
+Then restart the server (`tm server restart`) and answer the next prompt for the `tm` at `~/.terminatr/run/bin/tm`. If you'd rather not be asked, you can add that file to Full Disk Access, but that gives every agent you run full disk access.
+
+To see what asked, stream the privacy log while you reproduce the prompt. Each request names the service and the process it holds responsible:
+
+```sh
+/usr/bin/log stream --style compact --predicate 'subsystem == "com.apple.TCC" AND eventMessage CONTAINS "AUTHREQ"'
+```
 
 ### Upgrading from Termilator
 

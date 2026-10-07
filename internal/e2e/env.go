@@ -140,6 +140,7 @@ func New(t testing.TB) *Env {
 	if err != nil {
 		t.Fatal(err)
 	}
+	noteRunDir(runDir)
 	root := t.TempDir()
 	e := &Env{
 		T:      t,

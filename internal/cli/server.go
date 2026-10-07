@@ -124,7 +124,13 @@ func serverRun(e *Env, args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), sigs...)
 	defer stop()
 	bin, _ := os.Executable()
-	err = server.Run(ctx, server.Options{Paths: p, Log: logger, Bin: bin, RunCLI: RunInServer})
+	opts := server.Options{Paths: p, Log: logger, Bin: bin, RunCLI: RunInServer}
+	if len(os.Args) > 2 && os.Args[1] == "server" && os.Args[2] == "run" {
+		// This process is `tm server run` (not a test calling in): the
+		// server runs from its pin (docs/SPEC.md §3.6).
+		opts.Exec, opts.Args = syscall.Exec, os.Args[1:]
+	}
+	err = server.Run(ctx, opts)
 	var running *server.AlreadyRunningError
 	if errors.As(err, &running) {
 		logger.Printf("%v", err)

@@ -63,6 +63,9 @@ type projectView struct {
 	// doneAll lists every done task on the Tasks tab, not the newest
 	// doneShown (m).
 	doneAll bool
+	// backlogAll lists the backlog (open tasks) on the Tasks tab; it is
+	// collapsed until b (T108).
+	backlogAll bool
 }
 
 // doneShown is how many done tasks the Tasks tab lists until m shows all.
@@ -128,6 +131,11 @@ func (pv *projectView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 			case "D", "A", "x", "c":
 				return m.taskKey(pv.slug, t, k.String())
 			}
+		}
+		if k.String() == "b" && (pv.backlogAll || backlogCount(pv.board) > 0) {
+			pv.backlogAll = !pv.backlogAll
+			pv.sel[tabTasks] = min(pv.sel[tabTasks], max(len(pv.tasks())-1, 0))
+			return nil
 		}
 		if k.String() == "m" && (pv.doneAll || pv.hiddenDone() > 0) {
 			pv.doneAll = !pv.doneAll
@@ -256,12 +264,13 @@ func absPath(p, cwd string) string {
 }
 
 // tasks are the live tasks the Tasks tab lists, in board order: needs
-// you, in motion, on deck, then the newest done ones (all of them after m).
+// you, in motion, on deck, the backlog (after b), then the newest done ones
+// (all of them after m).
 func (pv *projectView) tasks() []*tasks.Task {
 	if pv.board == nil {
 		return nil
 	}
-	all := listed(pv.board)
+	all := listed(pv.board, pv.backlogAll)
 	if pv.doneAll {
 		return all
 	}
@@ -283,15 +292,39 @@ func (pv *projectView) hiddenDone() int {
 	if pv.board == nil || pv.doneAll {
 		return 0
 	}
-	return len(listed(pv.board)) - len(pv.tasks())
+	return len(listed(pv.board, pv.backlogAll)) - len(pv.tasks())
+}
+
+// backlogCount is how many open tasks (the backlog) a board has.
+func backlogCount(b *tasks.Board) int {
+	n := 0
+	if b != nil {
+		for _, t := range b.Tasks {
+			if tasks.GroupOf(t.Status) == tasks.Backlog {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// backlogNote is the collapsed BACKLOG group's one line, with its rule.
+func backlogNote(n, w int) []string {
+	return []string{
+		sectionRule("BACKLOG", sectionStyle("BACKLOG"), w),
+		styleFaint.Render(fmt.Sprintf("… %d for later (b shows them)", n)),
+	}
 }
 
 // listed are a board's tasks as the task lists show them, by group:
 // done ones last, newest first (by updated date, then id), so x can
-// still send one back.
-func listed(b *tasks.Board) []*tasks.Task {
+// still send one back. The backlog is left out unless backlog.
+func listed(b *tasks.Board, backlog bool) []*tasks.Task {
 	var out []*tasks.Task
 	for _, g := range tasks.Groups {
+		if g == tasks.Backlog && !backlog {
+			continue
+		}
 		start := len(out)
 		for _, t := range b.Tasks {
 			if tasks.GroupOf(t.Status) == g {
@@ -334,14 +367,20 @@ func (pv *projectView) box(m *dash) box {
 	case tabTasks:
 		body, sel, hits = pv.taskLines(m, w)
 		// Short, so the task's keys fit beside a 32-column sidebar.
-		more := ""
+		more, later := "", ""
 		switch {
 		case pv.doneAll:
 			more = "m fewer"
 		case pv.hiddenDone() > 0:
 			more = "m more"
 		}
-		keys = joinKeys(taskKeys(pv.selTask()), more, "enter show · esc close")
+		switch {
+		case pv.backlogAll:
+			later = "b hide backlog"
+		case backlogCount(pv.board) > 0:
+			later = "b backlog"
+		}
+		keys = joinKeys(taskKeys(pv.selTask()), more, later, "enter show · esc close")
 	case tabSettings:
 		body, sel, hits = pv.settings.lines(m, w)
 		keys = "enter change · + - number · ↑ ↓ move · " + keys
@@ -578,9 +617,23 @@ func (pv *projectView) taskLines(m *dash, w int) ([]string, int, []int) {
 	taskAt := map[int]int{} // a task's lines, its steps' too: its index
 	sel := -1
 	var group tasks.Group
+	collapsed := !pv.backlogAll && backlogCount(pv.board) > 0
+	// note puts the collapsed backlog where its group would be.
+	note := func() {
+		if collapsed {
+			collapsed = false
+			if len(out) > 0 {
+				out = append(out, "")
+			}
+			out = append(out, backlogNote(backlogCount(pv.board), w)...)
+		}
+	}
 	for i, t := range pv.tasks() {
 		if g := tasks.GroupOf(t.Status); g != group {
 			group = g
+			if g == tasks.DoneG {
+				note()
+			}
 			if len(out) > 0 {
 				out = append(out, "")
 			}
@@ -603,6 +656,7 @@ func (pv *projectView) taskLines(m *dash, w int) ([]string, int, []int) {
 			out = append(out, fit(strings.Repeat(" ", taskTitleCol)+todoGlyph(map[bool]string{true: "done"}[s.Done])+" "+oneLine(s.Text), w))
 		}
 	}
+	note()
 	if n := pv.hiddenDone(); n > 0 {
 		out = append(out, styleFaint.Render(fmt.Sprintf("… %d more done (m shows them)", n)))
 	}

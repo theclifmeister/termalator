@@ -335,7 +335,7 @@ func TestSmokeDelegateFromList(t *testing.T) {
 	env, projDir, _ := tickerEnv(t)
 	coord := env.StartAgent("claude", projDir, "--role", "coordinator", "--project", "demo")
 	env.WaitState(coord, "idle", agentWait)
-	env.MustCLI("task", "add", "Ship it", "--project", "demo")
+	env.MustCLI("task", "add", "Ship it", "--status", "ready", "--project", "demo")
 	env.MustCLI("task", "add", "Write the README", "--project", "demo")
 	env.MustCLI("task", "status", "T2", "started", "--project", "demo")
 
@@ -368,7 +368,7 @@ func TestSmokeDelegateFromList(t *testing.T) {
 	if items := env.MustCLI("inbox", "list", "--project", "demo"); strings.Count(items, "delegate:") != 1 {
 		t.Fatalf("inbox:\n%s", items)
 	}
-	if out := env.MustCLI("task", "show", "T1", "--project", "demo", "--json"); !strings.Contains(out, `"status": "open"`) {
+	if out := env.MustCLI("task", "show", "T1", "--project", "demo", "--json"); !strings.Contains(out, `"status": "ready"`) {
 		t.Fatalf("T1 changed:\n%s", out)
 	}
 	w.Key(keyEsc)

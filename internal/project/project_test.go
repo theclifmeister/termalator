@@ -100,7 +100,7 @@ func TestList(t *testing.T) {
 	}
 	New(Options{Name: "beta"})
 	p, _ := New(Options{Name: "alpha"})
-	p.Tasks().Add(human, []tasks.NewTask{{Title: "a", Status: "review"}, {Title: "b"}})
+	p.Tasks().Add(human, []tasks.NewTask{{Title: "a", Status: "review"}, {Title: "b", Status: "ready"}})
 	l, err := List()
 	if err != nil || len(l) != 2 || l[0].Slug != "alpha" {
 		t.Fatalf("list %+v %v", l, err)
@@ -581,5 +581,13 @@ func TestRefreshRoleFile(t *testing.T) {
 	p.RefreshRoleFile()
 	if b, _ := os.ReadFile(path); string(b) != "my own notes\n" {
 		t.Fatalf("the user's file was rewritten:\n%s", b)
+	}
+}
+
+// TestCountsBacklog: open tasks are the backlog, not on deck (T108).
+func TestCountsBacklog(t *testing.T) {
+	b := &tasks.Board{Tasks: []*tasks.Task{{ID: 1, Status: tasks.Open}, {ID: 2, Status: tasks.Ready}}}
+	if c := Counts(b); c["backlog"] != 1 || c["on_deck"] != 1 {
+		t.Fatalf("counts %v", c)
 	}
 }
