@@ -403,7 +403,9 @@ func (t *Ticker) Sweep() {
 		if t.syncRepos(p, safety, now, merged) {
 			t.completeTasks(p, safety)
 		}
-		t.followMain(p, sessions, safety, now)
+		if t.followMain(p, sessions, safety, now) {
+			t.completeTasks(p, safety)
+		}
 		t.ghHealth(p)
 		if !safety.Paused {
 			t.nudge(p, sessions, now)
