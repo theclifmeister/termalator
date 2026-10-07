@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/tasks"
 	"github.com/theclifmeister/terminatr/internal/thread"
 )
 
@@ -281,5 +282,48 @@ func TestConflictPromptRefresh(t *testing.T) {
 	cur = "CLOSED"
 	if _, ok := r.host.refresh(); ok {
 		t.Fatal("a prompt for a closed PR is still delivered")
+	}
+}
+
+// TestFollowMainMergeHint (T116): main gaining a thread's PR head (a
+// merge commit with a custom subject, on any host) asks about the PR at
+// once, in the same sweep, though the poll that just ran still read it
+// open; the merge completes its task.
+func TestFollowMainMergeHint(t *testing.T) {
+	repo, other := gitFixture(t)
+	gitT(t, repo, "checkout", "-q", "-b", "tm/demo/t-0001-fix-it")
+	prHead := commitT(t, repo, "h", "thread\n", "thread work")
+	gitT(t, repo, "push", "-q", "origin", "HEAD")
+	gitT(t, repo, "checkout", "-q", "main")
+	r := newRigIn(t, repo, []string{repo})
+	r.setConfig("[projects.demo]\ncomplete_tasks = \"merged\"\n")
+	r.addTask("Fix it", "review", "t-0001", "")
+	open := fmt.Sprintf(`{"number":9,"url":"https://github.com/o/r/pull/9","state":"OPEN","statusCheckRollup":[],"headRefOid":%q,"baseRefName":"main","mergeable":"MERGEABLE","mergeStateStatus":"CLEAN"}`, prHead)
+	r.gh = []string{open, open}
+	r.sweep(0)
+	r.handleAll()
+
+	gitT(t, other, "fetch", "-q", "origin")
+	gitT(t, other, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-ff", "-m", "Ship the fix", "origin/tm/demo/t-0001-fix-it")
+	gitT(t, other, "push", "-q", "origin", "main")
+	merge := gitT(t, other, "rev-parse", "HEAD")
+	r.gh = append(r.gh, fmt.Sprintf(`{"number":9,"url":"https://github.com/o/r/pull/9","state":"MERGED","mergedAt":"2026-10-04T12:01:00Z","mergeCommit":{"oid":%q},"statusCheckRollup":[],"headRefOid":%q,"baseRefName":"main"}`, merge, prHead))
+	r.sweep(2 * time.Minute)
+	if r.ghN != 3 {
+		t.Fatalf("asked gh %d times", r.ghN)
+	}
+	if k := r.kinds(); k != KindPRMerged+","+KindTaskDone {
+		t.Fatalf("items %s:\n%s", k, r.summaries())
+	}
+	if st := r.status(1); st != tasks.Done {
+		t.Fatalf("task %s", st)
+	}
+	if len(r.host.prompts) != 0 {
+		t.Fatalf("prompts %q", r.host.prompts)
+	}
+	// Merged, it isn't asked about again.
+	r.sweep(2 * time.Minute)
+	if r.ghN != 3 {
+		t.Fatalf("asked gh %d times", r.ghN)
 	}
 }

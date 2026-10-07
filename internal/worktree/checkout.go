@@ -194,6 +194,18 @@ func HeadState(repo, head, base string) (state string, ok bool) {
 	return "", false
 }
 
+// Contains reports whether base (origin's default branch head) has
+// head, a PR's head commit: so a merge commit or a fast-forward merged
+// it, by git alone. False when either is no commit id of the repo; a
+// squash or rebase merge leaves head out, so only the host can tell.
+func Contains(repo, base, head string) bool {
+	if !oidRE.MatchString(head) || !oidRE.MatchString(base) {
+		return false
+	}
+	_, err := git(repo, "merge-base", "--is-ancestor", head, base)
+	return err == nil
+}
+
 var oidRE = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
 
 // MergedPR is the PR number the commit's subject says it merged, 0 for

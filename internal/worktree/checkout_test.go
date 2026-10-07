@@ -190,6 +190,12 @@ func TestHeadState(t *testing.T) {
 	if s, ok := HeadState(repo, head, base); !ok || s != "conflict" {
 		t.Fatalf("conflict: %q %v", s, ok)
 	}
+	if Contains(repo, base, head) || !Contains(repo, head, out(t, repo, "rev-parse", "HEAD~1")) {
+		t.Fatal("Contains: main lacks the head, the head has its parent")
+	}
+	if Contains(repo, base, strings.Repeat("a", 40)) || Contains(repo, "HEAD", head) || Contains(repo, base, "--help") {
+		t.Fatal("Contains judged no commit id")
+	}
 	if _, ok := HeadState(repo, strings.Repeat("a", 40), base); ok {
 		t.Fatal("a missing commit was judged")
 	}
