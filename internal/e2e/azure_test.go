@@ -367,6 +367,7 @@ func TestDoctorAzure(t *testing.T) {
 	}
 	env.Setenv("AZ_NOLOGIN", "1")
 	env.Setenv("AZ_NOACCESS", "1")
+	env.RestartServer() // the server's context is what doctor shows
 	res = doctor()
 	if got := status(res, "az login"); !strings.HasPrefix(got, "warn ") || !strings.Contains(got, "az login") {
 		t.Errorf("az login: %q", got)
@@ -375,6 +376,7 @@ func TestDoctorAzure(t *testing.T) {
 		t.Errorf("az repo: %q", got)
 	}
 	env.Setenv("AZURE_DEVOPS_EXT_PAT", "s3cret-token")
+	env.RestartServer()
 	r := env.CLI("doctor", "--json")
 	if strings.Contains(r.Stdout+r.Stderr, "s3cret-token") || !strings.Contains(r.Stdout, "AZURE_DEVOPS_EXT_PAT is set") {
 		t.Errorf("PAT set:\n%s", r.Stdout)

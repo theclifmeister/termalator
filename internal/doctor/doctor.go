@@ -45,6 +45,10 @@ type Check struct {
 	Name   string `json:"name"`
 	Status Status `json:"status"`
 	Detail string `json:"detail,omitempty"`
+	// Source says where a code-host check ran: "server" (in the running
+	// server's context, as its sessions see it) or "local" (in this
+	// process, no server answered). Empty for every other check.
+	Source string `json:"source,omitempty"`
 	// Fix repairs the problem; nil when there is nothing tm may do.
 	Fix *Fix `json:"fix,omitempty"`
 }
@@ -99,10 +103,7 @@ type Deps struct {
 }
 
 // RepoHost is one repo in use and where its PRs live.
-type RepoHost struct {
-	Repo   string // the checkout
-	Target codehost.Target
-}
+type RepoHost = codehost.RepoHost
 
 // DefaultDeps uses the real system.
 func DefaultDeps(p server.Paths, version, build string) Deps {
@@ -140,9 +141,10 @@ func firstLine(s string) string {
 // Run runs every check, in a stable order.
 func Run(d Deps) []Check {
 	var out []Check
-	out = append(out, Toolchain(d)...)
-	out = append(out, Install(d)...)
 	srv, live := Server(d)
+	out = append(out, toolchain(d)...)
+	out = append(out, codeHosts(d, live)...)
+	out = append(out, Install(d)...)
 	out = append(out, srv...)
 	out = append(out, Agents(d)...)
 	out = append(out, Plugins(d)...)
@@ -179,8 +181,13 @@ func Fixes(cs []Check) []*Fix {
 	return out
 }
 
-// Toolchain checks this binary and the programs threads rely on.
+// Toolchain checks this binary and the programs threads rely on, the
+// code host's CLIs in this process's context (no server asked).
 func Toolchain(d Deps) []Check {
+	return append(toolchain(d), codeHosts(d, Live{})...)
+}
+
+func toolchain(d Deps) []Check {
 	const g = "toolchain"
 	out := []Check{{Group: g, Name: "tm", Status: OK, Detail: d.Version + " build " + d.Build}}
 	if d.Selftest != nil {
@@ -196,94 +203,73 @@ func Toolchain(d Deps) []Check {
 		v, _ := d.Run("", p, "--version")
 		out = append(out, Check{Group: g, Name: "git", Status: OK, Detail: strings.TrimPrefix(firstLine(v), "git version ")})
 	}
-	return append(out, codeHosts(d)...)
+	return out
 }
 
-// codeHosts checks the CLI, login and access of each code host kind
-// among the repos in use, whose PR polls fail without them (a
-// gh-failing inbox item, §7.5): GitHub's gh once, and for Azure DevOps
-// az once, then each repo's access and git credentials.
-func codeHosts(d Deps) []Check {
+// codeHosts shows the CLI, login and access of each code host kind among
+// the repos in use, whose PR polls fail without them (a gh-failing inbox
+// item, §7.5). With a server running they are its results (server.codehost):
+// its context, not this shell's, is what the sessions' gh, az and git
+// have; over SSH on a Mac this shell has no login keychain and would
+// warn about a gh that works fine there. Where this shell fails what the
+// server passes, a "local shell" note says so instead of a warning. With
+// no server (or an older one) the checks run here, labelled local.
+func codeHosts(d Deps, live Live) []Check {
 	const g = "toolchain"
 	var hosts []RepoHost
 	if d.Hosts != nil {
 		hosts = d.Hosts()
 	}
-	github, azure := len(hosts) == 0, false
-	for _, h := range hosts {
-		switch h.Target.Kind {
-		case codehost.AzureKind:
-			azure = true
-		default:
-			github = true
-		}
-	}
 	dd := codehost.DoctorDeps{LookPath: d.LookPath, Run: d.Run, Getenv: d.Getenv, PATGet: d.PATGet}
-	var out []Check
-	add := func(cs []codehost.Check) {
+	convert := func(cs []codehost.Check, source string) []Check {
+		var out []Check
 		for _, c := range cs {
 			st := Warn
 			if c.OK {
 				st = OK
 			}
-			out = append(out, Check{Group: g, Name: c.Name, Status: st, Detail: c.Detail})
+			out = append(out, Check{Group: g, Name: c.Name, Status: st, Detail: c.Detail, Source: source})
 		}
-	}
-	if github {
-		add((codehost.GitHub{}).Doctor(dd))
-	}
-	if !azure {
 		return out
 	}
-	add((codehost.Azure{}).Doctor(dd))
-	seen := map[codehost.Target]bool{}
-	for _, h := range hosts {
-		if h.Target.Kind != codehost.AzureKind || seen[h.Target] {
-			continue
+	local := convert(codehost.Checks(dd, hosts), "local")
+	if live.CodeHost == nil {
+		return local
+	}
+	var out []Check
+	passed := map[string]bool{}
+	for _, c := range live.CodeHost.Checks {
+		st := Warn
+		if c.OK {
+			st = OK
+			passed[c.Name] = true
 		}
-		seen[h.Target] = true
-		add((codehost.Azure{Target: h.Target}).Access(dd))
-		out = append(out, gitCredentials(d, h))
+		out = append(out, Check{Group: g, Name: c.Name, Status: st, Detail: c.Detail, Source: "server"})
 	}
-	return out
-}
-
-// gitCredentials proves git can read the repo's origin without asking
-// for a password (the run helper sets GIT_TERMINAL_PROMPT=0): what
-// fetches and pushes of a thread's branch need.
-func gitCredentials(d Deps, h RepoHost) Check {
-	name := "git origin " + h.Target.Project + "/" + h.Target.Repo
-	if _, err := d.Run(h.Repo, "git", "ls-remote", "origin", "HEAD"); err != nil {
-		return Check{Group: "toolchain", Name: name, Status: Warn, Detail: "git can't read origin without a prompt: set up a git credential helper for Azure DevOps (" + firstLine(err.Error()) + ")"}
+	var differs []string
+	for _, c := range local {
+		if c.Status != OK && passed[c.Name] {
+			differs = append(differs, c.Name)
+		}
 	}
-	return Check{Group: "toolchain", Name: name, Status: OK, Detail: "readable"}
+	if len(differs) == 0 {
+		return out
+	}
+	why := "this shell fails " + strings.Join(differs, ", ") + " (its environment differs from the server's)"
+	if d.Keychain != nil && d.GOOS == "darwin" {
+		if ks := d.Keychain(); ks.Checked && !ks.OK {
+			why = "this shell can't reach the keychain"
+			if ks.OverSSH {
+				why += " (SSH)"
+			}
+			why += ": " + strings.Join(differs, ", ") + " fail here"
+		}
+	}
+	return append(out, Check{Group: g, Name: "local shell", Status: OK, Detail: why + "; the server's sessions pass", Source: "local"})
 }
 
 // usedHosts is every repo of every project, with its code host.
-func usedHosts() []RepoHost {
-	list, err := project.List()
-	if err != nil {
-		return nil
-	}
-	var out []RepoHost
-	seen := map[string]bool{}
-	for _, s := range list {
-		if s.Error != "" {
-			continue
-		}
-		p, err := project.Open(s.Slug)
-		if err != nil {
-			continue
-		}
-		for _, r := range p.Meta.Repos {
-			if k := s.Slug + "\x00" + r; !seen[k] {
-				seen[k] = true
-				out = append(out, RepoHost{Repo: r, Target: codehost.Detect(r, p.CodeHost())})
-			}
-		}
-	}
-	return out
-}
+func usedHosts() []RepoHost { return project.CodeHosts() }
 
 // Install reports how this tm was installed and whether a newer release
 // exists (`tm update`).

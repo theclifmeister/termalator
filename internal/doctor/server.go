@@ -21,6 +21,9 @@ type Live struct {
 	Running bool
 	// Sessions are the ids of the server's sessions; nil when unknown.
 	Sessions map[string]bool
+	// CodeHost is the server's answer to server.codehost; nil when it
+	// is not running or can't tell (an older server).
+	CodeHost *proto.CodeHostStatus
 }
 
 // lockHeld reports whether some process holds the server lock. It never
@@ -126,6 +129,10 @@ func Server(d Deps) ([]Check, Live) {
 		var ks proto.KeychainStatus
 		err := c.Call(proto.MethodServerKeychain, nil, &ks)
 		out = append(out, keychainCheck(d, ks, err)...)
+	}
+	var ch proto.CodeHostStatus
+	if err := c.Call(proto.MethodServerCodeHost, nil, &ch); err == nil {
+		live.CodeHost = &ch
 	}
 	if st.PreviousShutdown == "crash" {
 		detail := "the previous server crashed"

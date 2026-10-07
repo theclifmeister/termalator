@@ -5,6 +5,7 @@ package e2e
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -76,5 +77,62 @@ func TestDoctorStaleSocket(t *testing.T) {
 	}
 	if out := env.MustCLI("doctor"); strings.Contains(out, "stale") {
 		t.Fatalf("still stale:\n%s", out)
+	}
+}
+
+// TestDoctorServerContext: the code-host checks run in the server's
+// context, as its sessions see them. Here the server's gh is logged in
+// and the shell's is not (as over SSH on a Mac, without the keychain):
+// doctor shows the server's result, and a note instead of a warning. With
+// no server it checks in this shell and says so.
+func TestDoctorServerContext(t *testing.T) {
+	env, _, _ := tickerEnv(t)
+	// tickerEnv's fake gh: `gh auth status` succeeds while $GH_STATE exists.
+	// The server's gh is logged in; this shell's is not.
+	good := filepath.Join(t.TempDir(), "auth.json")
+	os.WriteFile(good, []byte("{}"), 0o644)
+	env.Setenv("GH_STATE", good)
+	env.RestartServer()
+	env.Setenv("GH_STATE", filepath.Join(t.TempDir(), "none.json"))
+
+	type result struct {
+		Status string
+		Checks []struct{ Group, Name, Status, Detail, Source string }
+	}
+	var res result
+	r := env.CLI("doctor", "--json")
+	if err := json.Unmarshal([]byte(r.Stdout), &res); err != nil {
+		t.Fatalf("doctor --json: %v\n%s%s", err, r.Stdout, r.Stderr)
+	}
+	found := map[string]string{}
+	for _, c := range res.Checks {
+		found[c.Name] = c.Status + " " + c.Source + " " + c.Detail
+	}
+	if got := found["gh auth"]; got != "ok server logged in" {
+		t.Errorf("gh auth: %q", got)
+	}
+	if got := found["local shell"]; !strings.HasPrefix(got, "ok local ") || !strings.Contains(got, "gh auth") || !strings.Contains(got, "the server's sessions pass") {
+		t.Errorf("local shell note: %q", got)
+	}
+	if out := env.MustCLI("doctor"); !strings.Contains(out, "logged in [server]") || strings.Contains(out, "not logged in") {
+		t.Errorf("doctor text:\n%s", out)
+	}
+
+	// No server: this shell's checks, labelled local.
+	env.MustCLI("server", "stop", "--yes")
+	res = result{}
+	r = env.CLI("doctor", "--json")
+	if err := json.Unmarshal([]byte(r.Stdout), &res); err != nil {
+		t.Fatalf("doctor --json: %v\n%s%s", err, r.Stdout, r.Stderr)
+	}
+	found = map[string]string{}
+	for _, c := range res.Checks {
+		found[c.Name] = c.Status + " " + c.Source
+	}
+	if got := found["gh auth"]; got != "warn local" {
+		t.Errorf("no server, gh auth: %q", got)
+	}
+	if _, ok := found["local shell"]; ok {
+		t.Error("a local shell note without a server")
 	}
 }
