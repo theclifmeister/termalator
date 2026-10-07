@@ -378,7 +378,8 @@ func TestAzureParsePRURL(t *testing.T) {
 	a := Azure{Target: shop}
 	for s, want := range map[string]int{
 		"https://dev.azure.com/acme/Shop/_git/web/pullrequest/12":  12,
-		"https://dev.azure.com/acme/shop/_git/WEB/pullrequest/12/": 12,
+		"https://dev.azure.com/acme/shop/_git/WEB/pullrequest/12":  12,
+		"https://dev.azure.com/acme/Shop/_git/web/pullrequest/12/": 0,
 		"https://dev.azure.com/acme/Shop/_git/web/pullrequest/0":   0,
 		"https://dev.azure.com/acme/Shop/_git/api/pullrequest/12":  0,
 		"https://dev.azure.com/evil/Shop/_git/web/pullrequest/12":  0,
@@ -390,7 +391,7 @@ func TestAzureParsePRURL(t *testing.T) {
 			t.Errorf("%q: %d %v", s, n, ok)
 		}
 	}
-	vs := Azure{Target: Target{OrgURL: "https://acme.visualstudio.com", Project: "My Project", Repo: "web"}}
+	vs := Azure{Target: Target{Kind: AzureKind, OrgURL: "https://acme.visualstudio.com", Project: "My Project", Repo: "web"}}
 	for _, s := range []string{"https://acme.visualstudio.com/My%20Project/_git/web/pullrequest/7", "https://acme.visualstudio.com/DefaultCollection/My%20Project/_git/web/pullrequest/7"} {
 		if n, ok := vs.ParsePRURL(s); !ok || n != 7 {
 			t.Errorf("%q: %d %v", s, n, ok)

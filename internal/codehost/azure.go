@@ -469,23 +469,14 @@ func AzurePRURL(t Target, n int) string {
 	return fmt.Sprintf("%s/%s/_git/%s/pullrequest/%d", t.OrgURL, url.PathEscape(t.Project), url.PathEscape(t.Repo), n)
 }
 
-// azPRURLRE is the tail of an Azure DevOps PR web URL.
-var azPRURLRE = regexp.MustCompile(`^(https://[^?#]+/_git/[^/?#]+)/pullrequest/([0-9]{1,9})/?$`)
-
-// ParsePRURL is the number of a PR URL of this repo (the forms of
-// ParseRemote's https ones plus /pullrequest/N); a PR URL of any other
-// organization, project or repo is not this host's.
+// ParsePRURL is the number of a PR URL of this repo (OwnsPRURL); a PR
+// URL of any other organization, project or repo is not this host's.
 func (a Azure) ParsePRURL(s string) (int, bool) {
-	m := azPRURLRE.FindStringSubmatch(strings.TrimSpace(s))
-	if m == nil {
+	if !OwnsPRURL(a.Target, s) {
 		return 0, false
 	}
-	t, ok := ParseRemote(m[1])
-	if !ok || !strings.EqualFold(t.OrgURL, a.Target.OrgURL) || !strings.EqualFold(t.Project, a.Target.Project) || !strings.EqualFold(t.Repo, a.Target.Repo) {
-		return 0, false
-	}
-	n, err := strconv.Atoi(m[2])
-	return n, err == nil && n > 0
+	l, _ := ParsePR(s)
+	return l.Number, true
 }
 
 // FailedLog is a stub until T115 (the failing build's timeline and log
