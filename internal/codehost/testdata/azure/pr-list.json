@@ -1,0 +1,5 @@
+[
+  {"pullRequestId": 3, "status": "completed", "closedDate": "2026-09-01T08:00:00+00:00", "mergeStatus": "succeeded", "sourceRefName": "refs/heads/feature/login", "targetRefName": "refs/heads/main", "lastMergeCommit": {"commitId": "1111111111111111111111111111111111111111"}, "repository": {"name": "web", "project": {"name": "Shop"}}, "reviewers": []},
+  {"pullRequestId": 12, "status": "active", "isDraft": false, "closedDate": null, "mergeStatus": "succeeded", "sourceRefName": "refs/heads/feature/login", "targetRefName": "refs/heads/main", "lastMergeSourceCommit": {"commitId": "0123456789abcdef0123456789abcdef01234567"}, "repository": {"name": "web", "project": {"name": "Shop"}}, "reviewers": [{"isRequired": true, "vote": 0}]},
+  {"pullRequestId": 9, "status": "abandoned", "closedDate": "2026-10-01T08:00:00+00:00", "mergeStatus": "notSet", "sourceRefName": "refs/heads/feature/login", "targetRefName": "refs/heads/release", "repository": {"name": "web", "project": {"name": "Shop"}}, "reviewers": []}
+]

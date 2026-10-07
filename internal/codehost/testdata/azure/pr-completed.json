@@ -1,0 +1,21 @@
+{
+  "closedBy": {"displayName": "The Coordinator", "id": "a1b2c3d4-0000-0000-0000-000000000004"},
+  "closedDate": "2026-10-07T11:40:02.716023+00:00",
+  "codeReviewId": 12,
+  "completionOptions": {"bypassPolicy": false, "deleteSourceBranch": false, "mergeCommitMessage": "Merged PR 12: Login fix", "mergeStrategy": "squash", "transitionWorkItems": true},
+  "creationDate": "2026-10-07T09:12:31.904525+00:00",
+  "isDraft": false,
+  "lastMergeCommit": {"commitId": "9a8b7c6d5e4f30211203f4e5d6c7b8a990a1b2c3"},
+  "lastMergeSourceCommit": {"commitId": "0123456789abcdef0123456789abcdef01234567"},
+  "lastMergeTargetCommit": {"commitId": "fedcba9876543210fedcba9876543210fedcba98"},
+  "mergeStatus": "succeeded",
+  "pullRequestId": 12,
+  "repository": {"id": "3411ebc1-d5aa-464f-9615-0b527bc66719", "name": "web", "project": {"id": "6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c", "name": "Shop"}, "webUrl": "https://dev.azure.com/acme/Shop/_git/web"},
+  "reviewers": [
+    {"displayName": "Reviewer One", "hasDeclined": false, "isRequired": true, "vote": 10}
+  ],
+  "sourceRefName": "refs/heads/feature/login",
+  "status": "completed",
+  "targetRefName": "refs/heads/main",
+  "title": "Login fix"
+}
