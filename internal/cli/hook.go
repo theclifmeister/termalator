@@ -22,6 +22,10 @@ var (
 	hookWrite    = 100 * time.Millisecond
 	hookAck      = 250 * time.Millisecond // total, for events nobody answers
 	hookResponse = 500 * time.Millisecond // total, when a response is expected
+	// hookContext is the total for SessionStart: its response is the
+	// session's brief and context, and a loaded machine after /clear can
+	// miss 500 ms, which would leave the session without them.
+	hookContext = 3 * time.Second
 )
 
 // maxHookPayload bounds what tm hook reads from the agent.
@@ -76,6 +80,9 @@ func runHook(e *Env, args []string) error {
 	total := hookAck
 	if respond {
 		total = hookResponse
+		if event == "SessionStart" {
+			total = hookContext
+		}
 	}
 	params := proto.HookEventParams{Session: session, Agent: name, Event: event,
 		PPID: os.Getppid(), At: time.Now(), Payload: payload, Token: token}
