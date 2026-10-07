@@ -1481,7 +1481,7 @@ func (e *Env) threadResolve(p *project.Project, id string, discard bool) error {
 	if err != nil {
 		return err
 	}
-	if r.State == thread.Resolved {
+	if r.State == thread.Resolved && !(discard && leftover(r)) {
 		fmt.Fprintf(e.Stdout, "%s unchanged (already resolved)\n", id)
 		return nil
 	}
@@ -1587,7 +1587,10 @@ func (e *Env) threadResolve(p *project.Project, id string, discard bool) error {
 		}
 	}
 	if _, err := thread.Update(p, id, func(x *thread.Record) error {
-		x.State, x.Repo, x.ResolvedAt = thread.Resolved, r.Repo, time.Now().UTC().Truncate(time.Second)
+		x.State, x.Repo = thread.Resolved, r.Repo
+		if x.ResolvedAt.IsZero() {
+			x.ResolvedAt = time.Now().UTC().Truncate(time.Second)
+		}
 		return nil
 	}); err != nil {
 		return err
@@ -1601,6 +1604,18 @@ func (e *Env) threadResolve(p *project.Project, id string, discard bool) error {
 	}
 	fmt.Fprintln(e.Stdout, summary)
 	return nil
+}
+
+// leftover says whether a resolved thread still has a worktree or branch
+// of tm's own for resolve --discard to clean up.
+func leftover(r *thread.Record) bool {
+	if r.Checkout || r.Adopted || r.Repo == "" {
+		return false
+	}
+	if _, err := os.Stat(r.Worktree); err == nil {
+		return true
+	}
+	return r.Branch != "" && worktree.BranchExists(r.Repo, r.Branch)
 }
 
 // discardable says whether resolve --discard may throw the thread's
