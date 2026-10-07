@@ -227,6 +227,18 @@ func (b *boardView) selectID(id int) {
 			return
 		}
 	}
+	if b.board != nil && !b.backlog && id != 0 {
+		// A backlog task is in no list while the backlog is collapsed:
+		// show the backlog rather than another task.
+		for _, t := range b.board.Tasks {
+			if t.ID == id && tasks.GroupOf(t.Status) == tasks.Backlog {
+				b.backlog = true
+				b.list = listed(b.board, true)
+				b.selectID(id)
+				return
+			}
+		}
+	}
 	b.sel = min(b.sel, max(len(b.list)-1, 0))
 	if b.board == nil && id != 0 {
 		// The board isn't loaded yet: select once it is.

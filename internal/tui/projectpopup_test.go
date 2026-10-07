@@ -1349,3 +1349,41 @@ func TestTasksTabBacklog(t *testing.T) {
 		t.Fatalf("b again collapses it")
 	}
 }
+
+// TestTasksTabBacklogEnter: enter on a backlog task opens that task, not
+// another one, with the backlog expanded, and openBoard on a backlog task
+// shows it with the backlog collapsed (T133).
+func TestTasksTabBacklogEnter(t *testing.T) {
+	src, m := popupData(t)
+	src.board.Tasks = append(src.board.Tasks,
+		&tasks.Task{ID: 5, Title: "Someday idea", Status: tasks.Open},
+		&tasks.Task{ID: 7, Title: "Later idea", Status: tasks.Open})
+	m.Update(keyPress(m, "a")())
+	pv := m.top().(*projectView)
+	keyPress(m, "right")
+	keyPress(m, "right")
+	keyPress(m, "b")
+	for i, tk := range pv.tasks() {
+		if tk.ID != 7 {
+			continue
+		}
+		pv.sel[tabTasks] = i
+	}
+	keyPress(m, "enter")
+	b, ok := m.top().(*boardView)
+	if !ok || !b.open || b.list[b.sel].ID != 7 {
+		t.Fatalf("enter on the backlog task: %#v", m.top())
+	}
+	if out := screen(m); !strings.Contains(out, "Later idea") {
+		t.Fatalf("task panel:\n%s", out)
+	}
+	m.pop()
+	m.openBoard(pv.slug, 5)
+	b = m.top().(*boardView)
+	if b.board == nil {
+		b.setBoard(src.board)
+	}
+	if b.list[b.sel].ID != 5 {
+		t.Fatalf("openBoard on a backlog task selects %d", b.list[b.sel].ID)
+	}
+}
