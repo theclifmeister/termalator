@@ -206,14 +206,14 @@ func TestPickAzurePR(t *testing.T) {
 		}
 		return fmt.Sprint(p.ID)
 	}
-	for list, want := range map[string]string{
-		string(fixture(t, "pr-list.json")): "12",
-		`[{"pullRequestId":3,"status":"completed"},{"pullRequestId":9,"status":"abandoned"}]`:                                     "9",
-		`[{"pullRequestId":4,"status":"active"},{"pullRequestId":8,"status":"active"},{"pullRequestId":20,"status":"abandoned"}]`: "8",
-		`[]`: "none", `{}`: "none", `[{"pullRequestId":0}]`: "none", ``: "none",
+	for _, c := range [][2]string{
+		{string(fixture(t, "pr-list.json")), "12"},
+		{`[{"pullRequestId":3,"status":"completed"},{"pullRequestId":9,"status":"abandoned"}]`, "9"},
+		{`[{"pullRequestId":4,"status":"active"},{"pullRequestId":8,"status":"active"},{"pullRequestId":20,"status":"abandoned"}]`, "8"},
+		{`[]`, "none"}, {`{}`, "none"}, {`[{"pullRequestId":0}]`, "none"}, {``, "none"},
 	} {
-		if got := id(pickAzurePR([]byte(list))); got != want {
-			t.Errorf("%.60s: got %s want %s", list, got, want)
+		if got := id(pickAzurePR([]byte(c[0]))); got != c[1] {
+			t.Errorf("%.60s: got %s want %s", c[0], got, c[1])
 		}
 	}
 }
