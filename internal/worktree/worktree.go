@@ -120,6 +120,21 @@ func Remove(repo, dir string) error {
 	return err
 }
 
+// RemoveForce removes a worktree with its uncommitted changes (git
+// worktree remove --force): resolve --discard, after BranchUnsaved found
+// no commit that is nowhere else. A worktree already gone is pruned.
+func RemoveForce(repo, dir string) error {
+	if _, err := os.Stat(repo); errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("%s: %w", repo, ErrNoRepo)
+	}
+	if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
+		_, err := git(repo, "worktree", "prune")
+		return err
+	}
+	_, err := git(repo, "worktree", "remove", "--force", dir)
+	return err
+}
+
 // Repair reconnects repo with its linked worktrees at dirs after either
 // side moved (git worktree repair): the worktrees' .git files and the
 // repo's records of them then name each other's current paths.

@@ -23,6 +23,13 @@ the coordinator; it talks to the human, you don't need to.
   `title` and `description`. Put the PR's URL on the report's `PR:` line.
   Completing or merging it is not yours (`merge = "coordinator"`): the
   guard refuses it, on either host.
+- Work that makes no pull request (research, a review, notes, a data
+  file) goes to the thread's library, not into the worktree: write the
+  files in your scratchpad or temp folder, outside the worktree, and
+  hand them in with `tm report --attach FILE`. The worktree then stays
+  clean and the branch has no commits, so `tm thread resolve` (and
+  auto-close) can remove both. Files left uncommitted in the worktree
+  keep it and its branch.
 - You can't change the task's status, notes or other tasks: the
   coordinator moves it after reading your report.
 - When something you need is missing (a decision, access, a file,

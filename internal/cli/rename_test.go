@@ -9,6 +9,7 @@ import (
 
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/thread"
+	"github.com/theclifmeister/terminatr/internal/worktree"
 )
 
 func git(t *testing.T, dir string, args ...string) string {
@@ -167,5 +168,40 @@ func TestResolveMissingOrMovedRepo(t *testing.T) {
 	out = h2.ok(coord, "thread", "resolve", rec.ID, "--project", "demo")
 	if !strings.Contains(out, "repo "+repo+" is gone") || !strings.Contains(out, "kept worktree") || strings.Contains(out, "chdir") {
 		t.Fatalf("resolve without a repo: %q", out)
+	}
+}
+
+// T131: resolve --discard removes a worktree with uncommitted files and
+// its branch; a branch with commits that are nowhere else is refused.
+func TestResolveDiscard(t *testing.T) {
+	h := newHarness(t)
+	h.ok(human, "project", "new", "Demo")
+	repo, rec := threadWithWorktree(t, h, "demo")
+	os.WriteFile(filepath.Join(rec.Worktree, "report.md"), []byte("notes"), 0o644)
+
+	// Plain resolve keeps a dirty worktree and its branch.
+	h.expect(2, "unknown flag", coord, "thread", "ack", rec.ID, "--discard", "--project", "demo")
+	h.expect(1, "coordinator-only", thr, "thread", "resolve", rec.ID, "--discard", "--project", "demo")
+
+	// A commit on the branch is unsaved work: refused, nothing touched.
+	git(t, rec.Worktree, "add", ".")
+	git(t, rec.Worktree, "commit", "-q", "-m", "work")
+	os.WriteFile(filepath.Join(rec.Worktree, "more.md"), []byte("x"), 0o644)
+	h.expect(1, "unsaved work", coord, "thread", "resolve", rec.ID, "--discard", "--project", "demo")
+	if _, err := os.Stat(rec.Worktree); err != nil {
+		t.Fatalf("worktree touched by a refused discard: %v", err)
+	}
+	git(t, rec.Worktree, "reset", "-q", "--hard", "HEAD~1")
+	os.WriteFile(filepath.Join(rec.Worktree, "report.md"), []byte("notes"), 0o644)
+
+	out := h.ok(coord, "thread", "resolve", rec.ID, "--discard", "--project", "demo")
+	if !strings.Contains(out, "removed worktree "+rec.Worktree) || !strings.Contains(out, "deleted branch "+rec.Branch+" (discarded)") {
+		t.Fatalf("discard: %q", out)
+	}
+	if _, err := os.Stat(rec.Worktree); !os.IsNotExist(err) {
+		t.Fatalf("worktree still there: %v", err)
+	}
+	if worktree.BranchExists(repo, rec.Branch) {
+		t.Fatal("branch still there")
 	}
 }
