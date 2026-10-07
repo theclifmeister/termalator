@@ -58,6 +58,52 @@ test('gh pr merge: refused for a thread under merge = "coordinator", the coordin
   expect(bash(thread, 'gh pr view 42 && gh pr checks 42')).toBe(null)
 })
 
+test('az: completing a PR, deleting branches and reading tokens are refused', () => {
+  const org = '--org=https://dev.azure.com/o'
+  for (const c of [
+    'az repos pr update --id 7 --status completed', 'az repos pr update --id 7 --status=completed', 'az repos pr update --id 7 --auto-complete true',
+    'az repos pr update --id 7 --auto-complete', 'az repos pr update --id 7 --bypass-policy true', `az repos pr update ${org} --id 7 --status completed`,
+    'az repos pr create --auto-complete true', 'az --only-show-errors repos pr update --id 7 --status completed', 'az -o json repos pr update --id 7 --status Completed',
+    'az rest --method patch --url https://dev.azure.com/o/p/_apis/git/repositories/r/pullrequests/7?api-version=7.1 --body @b.json',
+    'az rest -m PATCH -u https://dev.azure.com/o/p/_apis/git/repositories/r/pullRequests/7', 'az rest --method post --url https://dev.azure.com/o/p/_apis/git/repositories/r/merges',
+    'az devops invoke --area git --resource pullRequests --http-method PATCH --route-parameters project=p repositoryId=r pullRequestId=7',
+    'curl -X PATCH https://dev.azure.com/o/p/_apis/git/repositories/r/pullrequests/7 -d @b.json',
+  ]) {
+    expect([c, bash(thread, c)]).toEqual([c, 'merge'])
+  }
+  for (const c of [
+    'az repos delete --id r --yes', 'az repos ref delete --name refs/heads/x --object-id abc', 'az repos pr update --id 7 --delete-source-branch true', 'az repos pr create --delete-source-branch true',
+    'az rest --method delete --url https://dev.azure.com/o/p/_apis/git/repositories/r', 'az rest --method post --url https://dev.azure.com/o/p/_apis/git/repositories/r/refs --body @zero.json',
+    'az devops invoke --area git --resource refs --http-method POST --route-parameters project=p repositoryId=r --in-file z.json',
+    'curl --request DELETE https://dev.azure.com/o/p/_apis/git/repositories/r', 'curl -XPOST https://dev.azure.com/o/p/_apis/git/repositories/r/refs',
+  ]) {
+    expect([c, bash(thread, c)]).toEqual([c, 'delete-branch'])
+  }
+  for (const c of [
+    'az account get-access-token', 'az account get-access-token --resource 499b84ac-1321-427f-aa17-267ca6975798', 'az devops login --organization https://dev.azure.com/o',
+    'echo $AZURE_DEVOPS_EXT_PAT', 'echo "pat: ${AZURE_DEVOPS_EXT_PAT}"', 'printenv AZURE_DEVOPS_EXT_PAT', 'curl -u :$AZURE_DEVOPS_EXT_PAT https://dev.azure.com/o/_apis/projects',
+    'curl -H "Authorization: Basic abc" https://dev.azure.com/o/_apis/projects', 'curl --user me:pat https://o.visualstudio.com/_apis/projects',
+  ]) {
+    expect([c, bash(thread, c)]).toEqual([c, 'credentials'])
+  }
+  for (const c of [
+    'az repos pr list --status completed', 'az repos pr show --id 7', 'az repos pr create --title t --source-branch tm/x --target-branch main', 'az repos pr create --auto-complete false --delete-source-branch false',
+    'az repos pr update --id 7 --description d', 'az repos pr update --id 7 --status abandoned', 'az repos pr set-vote --id 7 --vote approve', 'az repos pr list --status active', 'az repos list', 'az repos ref list --filter heads/tm',
+    'az account show', 'az devops configure --defaults organization=https://dev.azure.com/o', 'az pipelines runs list',
+    'az rest --method get --url https://dev.azure.com/o/p/_apis/git/repositories/r/pullrequests/7',
+    'az rest --method post --url https://dev.azure.com/o/p/_apis/git/repositories/r/pullrequests --body @pr.json',
+    'az rest --method post --url https://dev.azure.com/o/p/_apis/git/repositories/r/pullrequests/7/threads --body @c.json',
+    'az devops invoke --area git --resource pullRequests --route-parameters project=p repositoryId=r pullRequestId=7',
+    'az devops invoke --area git --resource pullRequestThreads --http-method POST --route-parameters pullRequestId=7',
+    'curl https://dev.azure.com/o/p/_apis/git/repositories/r/pullrequests/7', 'printenv AZURE_CONFIG_DIR', 'echo $HOME',
+  ]) {
+    expect([c, bash(thread, c)]).toEqual([c, null])
+  }
+  expect(bash(coordinator, 'az repos pr update --id 7 --status completed')).toBe(null)
+  expect(bash(coordinator, 'az repos delete --id r')).toBe('delete-branch')
+  expect(judge(thread, 'Bash', { command: 'az repos pr update --id 7 --auto-complete true' })?.message).toBe(judge(thread, 'Bash', { command: 'gh pr merge 42' })?.message)
+})
+
 test('a thread writes only in its worktree and the temporary folders', () => {
   expect(judge(thread, 'Edit', { file_path: `${WT}/main.go` })).toBe(null)
   expect(judge(thread, 'Write', { file_path: '/tmp/claude-501/x/notes.md' })).toBe(null)
