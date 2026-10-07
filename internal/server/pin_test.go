@@ -252,3 +252,47 @@ func TestPinHelperSleep(t *testing.T) {
 		time.Sleep(time.Minute)
 	}
 }
+
+// TestPinFor: launchd runs the pin and the launch file names the tm that
+// started it (T129). The server execs only when it runs another file or
+// the pin now holds another build, and a gone source leaves the pin.
+func TestPinFor(t *testing.T) {
+	run := t.TempDir()
+	pin := filepath.Join(run, pinDir, pinName)
+	keg := func(v, content string) string {
+		p := filepath.Join(t.TempDir(), v, "tm")
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		os.WriteFile(p, []byte(content), 0o755)
+		return p
+	}
+	var logged []string
+	logf := func(f string, a ...any) { logged = append(logged, f) }
+	check := func(name, bin, source, content string, wantExec bool) {
+		t.Helper()
+		got, again, err := pinFor(run, bin, source, logf)
+		if err != nil || got != pin || again != wantExec {
+			t.Fatalf("%s: %s exec=%v %v", name, got, again, err)
+		}
+		if b, _ := os.ReadFile(pin); string(b) != content {
+			t.Fatalf("%s: pin reads %q", name, b)
+		}
+	}
+	one := keg("1.0", "build one")
+	// An older tm's start: launchd ran the versioned binary.
+	check("from the keg", one, "", "build one", true)
+	// launchd runs the pin, which holds the build that started it.
+	check("from the pin", pin, one, "build one", false)
+	// An upgrade: the launch file names the new build.
+	two := keg("2.0", "build two")
+	check("upgraded", pin, two, "build two", true)
+	// Homebrew removed the keg the launch file names: keep the pin.
+	os.Remove(two)
+	check("keg gone", pin, two, "build two", false)
+	if len(logged) != 1 {
+		t.Fatalf("logged %q", logged)
+	}
+	// Through a symlink, as Homebrew's bin/tm.
+	link := filepath.Join(t.TempDir(), "tm")
+	os.Symlink(one, link)
+	check("through a link", pin, link, "build one", true)
+}

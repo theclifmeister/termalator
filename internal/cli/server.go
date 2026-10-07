@@ -69,10 +69,12 @@ func serverRun(e *Env, args []string) int {
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
+	var source string
 	if *launchFile != "" {
 		// Before the paths: the starting tm's environment says where
 		// they are.
-		if err := service.ApplyLaunchFile(*launchFile); err != nil {
+		var err error
+		if source, err = service.ApplyLaunchFile(*launchFile); err != nil {
 			return e.srvFail("server run", err)
 		}
 	}
@@ -124,7 +126,7 @@ func serverRun(e *Env, args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), sigs...)
 	defer stop()
 	bin, _ := os.Executable()
-	opts := server.Options{Paths: p, Log: logger, Bin: bin, RunCLI: RunInServer}
+	opts := server.Options{Paths: p, Log: logger, Bin: bin, Source: source, RunCLI: RunInServer}
 	if len(os.Args) > 2 && os.Args[1] == "server" && os.Args[2] == "run" {
 		// This process is `tm server run` (not a test calling in): the
 		// server runs from its pin (docs/SPEC.md §3.6).

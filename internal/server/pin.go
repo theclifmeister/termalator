@@ -11,16 +11,19 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/theclifmeister/terminatr/internal/service"
 	"golang.org/x/sys/unix"
 )
 
 // pinDir holds the server's own copy of its binary, under the run dir.
-const pinDir = "bin"
+const pinDir = service.PinDir
 
 // pinName is that copy's name. It is the same for every build: macOS
 // privacy settings (TCC) know a command-line tool by its path, so one
-// path keeps one entry, and one answer, across upgrades.
-const pinName = "tm"
+// path keeps one entry, and one answer, across upgrades. launchd starts
+// the server from it (service.Config.Program), because TCC keeps the
+// path launchd started a process with, whatever that process execs.
+const pinName = service.PinName
 
 // legacyPinDir is where servers before T87 pinned it, under the home.
 const legacyPinDir = "server-bin"
@@ -74,6 +77,55 @@ func pinBinary(runDir, bin string) (string, error) {
 		return "", err
 	}
 	return dst, nil
+}
+
+// EnsurePin puts bin at the pin in runDir when there is none, for a
+// launchd job that runs the pin (service.Config.Program) before any
+// server has pinned itself. An existing pin is left alone: a running
+// server may use it, and the server re-pins from the launch file when it
+// starts.
+func EnsurePin(runDir, bin string) error {
+	if _, err := os.Stat(filepath.Join(runDir, pinDir, pinName)); err == nil {
+		return nil
+	}
+	_, err := pinBinary(runDir, bin)
+	return err
+}
+
+// pinFor pins the binary for a server running bin: source when it is
+// set and exists (launchd runs the pin, and the launch file names the tm
+// that started it), else bin. It returns the pin and whether the server
+// must exec it: when it runs another file, or the pin now holds another
+// build.
+func pinFor(runDir, bin, source string, logf func(string, ...any)) (string, bool, error) {
+	src := bin
+	if source != "" {
+		if _, err := os.Stat(source); err == nil {
+			src = source
+		} else {
+			logf("pin %s: %v; pinning %s", source, err, bin)
+		}
+	}
+	before, _ := os.Stat(filepath.Join(runDir, pinDir, pinName))
+	pin, err := pinBinary(runDir, src)
+	if err != nil {
+		return "", false, fmt.Errorf("%s: %w", src, err)
+	}
+	after, err := os.Stat(pin)
+	replaced := before == nil || err != nil || !os.SameFile(before, after)
+	return pin, replaced || !samePath(bin, pin), nil
+}
+
+// samePath reports whether a and b name the same file by path, after
+// symlinks.
+func samePath(a, b string) bool {
+	if r, err := filepath.EvalSymlinks(a); err == nil {
+		a = r
+	}
+	if r, err := filepath.EvalSymlinks(b); err == nil {
+		b = r
+	}
+	return a == b
 }
 
 // removeOtherPins removes all but the pin from dir: older per-build

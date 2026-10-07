@@ -211,19 +211,21 @@ On macOS the restart goes through launchd, so upgrading and restarting over SSH 
 
 ### macOS privacy prompts
 
-The server runs from `~/.terminatr/run/bin/tm` whatever version is installed. macOS counts every agent, `git` and tool a session runs as the server's doing (it is their *responsible process*), so their prompts, like *"tm" would like to access files on a network volume* or *"tm" would like to access data from other apps*, name `tm`, and the answer is kept for that path. After 0.11.3 the path stays the same across upgrades, so you answer once. Only the server's binary changes at that path, and macOS accepts the new one because the Developer ID signature has the same identifier (`dev.terminatr.tm`) and team.
+macOS counts every agent, `git` and tool a session runs as the server's doing (the server is their *responsible process*), so its privacy prompts and notices name `tm`: *"tm" would like to access files on a network volume*, *"tm" would like to access data from other apps*, or a *Data Access Blocked* notice. macOS keeps the answer for the path launchd started the server from. launchd starts it from `~/.terminatr/run/bin/tm` whatever version is installed: `tm` copies itself there before it starts the server, and an upgrade only replaces the file at that path. So there is one `tm` entry, and you answer once. macOS accepts each new build at that path because the Developer ID signature has the same identifier (`dev.terminatr.tm`) and team.
 
-Versions up to 0.11.3 ran from a path that changed every release, so System Settings › Privacy & Security › Files & Folders may list one `tm-v0.x.y+…` entry per release and one `tm` per Homebrew version (`/opt/homebrew/Cellar/terminatr/<version>/bin/tm`). macOS never matches them again, so they do no harm. To clear them:
+*Data Access Blocked* means something a session ran opened another app's data, and macOS doesn't ask on behalf of a command-line tool like `tm`: it refuses and says so. One cause seen in the privacy log is Claude Code itself, running in a session, reading Google Chrome's data. Nothing breaks: that access is just refused. To allow it, add `~/.terminatr/run/bin/tm` to Full Disk Access, but that gives every agent you run full disk access.
 
-- **System Settings:** in Privacy & Security › Files & Folders (and Full Disk Access, if you added `tm` there), select an old entry and click **−** (remove), or turn its switches off. Not every list on every macOS version has the **−** button.
+Releases up to 0.11.8 started the server from Homebrew's versioned path (`/opt/homebrew/Cellar/terminatr/<version>/bin/tm`) and only then switched to the pin. That didn't help, because macOS keeps the path launchd started, so every release added a `tm` entry and asked again. Even older releases (up to 0.11.3) also ran from `~/.terminatr/server-bin/tm-v0.x.y+…`, which left `tm-v0…` entries. macOS never matches these entries again, so they do no harm. To clear them:
+
+- **System Settings:** in Privacy & Security › Files & Folders (and Full Disk Access, if you added `tm` there), select an old entry and click **−** (remove), or turn its switches off. Not every list on every macOS version has the **−** button. Keep the one for `~/.terminatr/run/bin/tm`.
 - **tccutil:** `tccutil reset <service>` resets that permission for every app, not just `tm`, and they all ask again. Use `SystemPolicyNetworkVolumes` (network volumes), `SystemPolicyAppData` (data from other apps), or `SystemPolicyDocumentsFolder`, `SystemPolicyDownloadsFolder` and `SystemPolicyDesktopFolder`. `tccutil reset All dev.terminatr.tm` doesn't reach these entries, because macOS stores command-line tools by path, not by identifier.
 
-Then restart the server (`tm server restart`) and answer the next prompt for the `tm` at `~/.terminatr/run/bin/tm`. If you'd rather not be asked, you can add that file to Full Disk Access, but that gives every agent you run full disk access.
+Then restart the server (`tm server restart`) with the new `tm`, so launchd starts it from the pin, and answer the next prompt for the `tm` at `~/.terminatr/run/bin/tm`.
 
-To see what asked, stream the privacy log while you reproduce the prompt. Each request names the service and the process it holds responsible:
+To see what asked, stream the privacy log while you reproduce the prompt. Each request names the service, the process that tried (`accessing`) and the one held responsible: `responsible_path` is the path macOS keeps the answer for, and should be `~/.terminatr/run/bin/tm`.
 
 ```sh
-/usr/bin/log stream --style compact --predicate 'subsystem == "com.apple.TCC" AND eventMessage CONTAINS "AUTHREQ"'
+/usr/bin/log stream --style compact --info --predicate 'subsystem == "com.apple.TCC" AND eventMessage CONTAINS "AUTHREQ"'
 ```
 
 ### Upgrading from Termilator
