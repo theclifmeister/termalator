@@ -23,6 +23,7 @@ import (
 
 	"github.com/theclifmeister/terminatr/internal/codehost"
 	"github.com/theclifmeister/terminatr/internal/keychain"
+	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/server"
 	"github.com/theclifmeister/terminatr/internal/service"
@@ -87,11 +88,23 @@ type Deps struct {
 	// server needs, and Bootout unloads one by label (macOS); nil skips.
 	Strays  func() ([]service.Stray, error)
 	Bootout func(label string) error
+	// Hosts lists the project's repos in use with the code host each
+	// one's PRs live on (codehost.Detect); empty means GitHub, as for a
+	// fresh install.
+	Hosts func() []RepoHost
+	// Getenv reads the environment (AZURE_DEVOPS_EXT_PAT); nil reads none.
+	Getenv func(string) string
+}
+
+// RepoHost is one repo in use and where its PRs live.
+type RepoHost struct {
+	Repo   string // the checkout
+	Target codehost.Target
 }
 
 // DefaultDeps uses the real system.
 func DefaultDeps(p server.Paths, version, build string) Deps {
-	return Deps{Paths: p, GOOS: runtime.GOOS, LookPath: exec.LookPath, Run: run, Version: version, Build: build,
+	return Deps{Paths: p, GOOS: runtime.GOOS, LookPath: exec.LookPath, Run: run, Version: version, Build: build, Getenv: os.Getenv, Hosts: usedHosts,
 		Keychain: func() proto.KeychainStatus { return keychain.Probe(runtime.GOOS, os.Getenv, keychain.Run) }}
 }
 
@@ -181,14 +194,91 @@ func Toolchain(d Deps) []Check {
 		v, _ := d.Run("", p, "--version")
 		out = append(out, Check{Group: g, Name: "git", Status: OK, Detail: strings.TrimPrefix(firstLine(v), "git version ")})
 	}
-	// The code host's CLI and login: GitHub's gh, whose PR polls fail
-	// without them (a gh-failing inbox item, §7.5).
-	for _, c := range (codehost.GitHub{}).Doctor(codehost.DoctorDeps{LookPath: d.LookPath, Run: d.Run}) {
-		st := Warn
-		if c.OK {
-			st = OK
+	return append(out, codeHosts(d)...)
+}
+
+// codeHosts checks the CLI, login and access of each code host kind
+// among the repos in use, whose PR polls fail without them (a
+// gh-failing inbox item, §7.5): GitHub's gh once, and for Azure DevOps
+// az once, then each repo's access and git credentials.
+func codeHosts(d Deps) []Check {
+	const g = "toolchain"
+	var hosts []RepoHost
+	if d.Hosts != nil {
+		hosts = d.Hosts()
+	}
+	github, azure := len(hosts) == 0, false
+	for _, h := range hosts {
+		switch h.Target.Kind {
+		case codehost.AzureKind:
+			azure = true
+		default:
+			github = true
 		}
-		out = append(out, Check{Group: g, Name: c.Name, Status: st, Detail: c.Detail})
+	}
+	dd := codehost.DoctorDeps{LookPath: d.LookPath, Run: d.Run, Getenv: d.Getenv}
+	var out []Check
+	add := func(cs []codehost.Check) {
+		for _, c := range cs {
+			st := Warn
+			if c.OK {
+				st = OK
+			}
+			out = append(out, Check{Group: g, Name: c.Name, Status: st, Detail: c.Detail})
+		}
+	}
+	if github {
+		add((codehost.GitHub{}).Doctor(dd))
+	}
+	if !azure {
+		return out
+	}
+	add((codehost.Azure{}).Doctor(dd))
+	seen := map[codehost.Target]bool{}
+	for _, h := range hosts {
+		if h.Target.Kind != codehost.AzureKind || seen[h.Target] {
+			continue
+		}
+		seen[h.Target] = true
+		add((codehost.Azure{Target: h.Target}).Access(dd))
+		out = append(out, gitCredentials(d, h))
+	}
+	return out
+}
+
+// gitCredentials proves git can read the repo's origin without asking
+// for a password (the run helper sets GIT_TERMINAL_PROMPT=0): what
+// fetches and pushes of a thread's branch need.
+func gitCredentials(d Deps, h RepoHost) Check {
+	name := "git origin " + h.Target.Project + "/" + h.Target.Repo
+	if _, err := d.Run(h.Repo, "git", "ls-remote", "origin", "HEAD"); err != nil {
+		return Check{Group: "toolchain", Name: name, Status: Warn, Detail: "git can't read origin without a prompt: set up a git credential helper for Azure DevOps (" + firstLine(err.Error()) + ")"}
+	}
+	return Check{Group: "toolchain", Name: name, Status: OK, Detail: "readable"}
+}
+
+// usedHosts is every repo of every project, with its code host.
+func usedHosts() []RepoHost {
+	list, err := project.List()
+	if err != nil {
+		return nil
+	}
+	var out []RepoHost
+	seen := map[string]bool{}
+	for _, s := range list {
+		if s.Error != "" {
+			continue
+		}
+		p, err := project.Open(s.Slug)
+		if err != nil {
+			continue
+		}
+		for _, r := range p.Meta.Repos {
+			if k := s.Slug + "\x00" + r; !seen[k] {
+				seen[k] = true
+				out = append(out, RepoHost{Repo: r, Target: codehost.Detect(r, p.CodeHost())})
+			}
+		}
 	}
 	return out
 }

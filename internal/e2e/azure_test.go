@@ -6,6 +6,7 @@ package e2e
 // organization.
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -39,6 +40,9 @@ case "$*" in
 	cat "$AZ_DIR/pr-$5.json" 2>/dev/null || { echo "ERROR: TF401180: The requested pull request was not found." >&2; exit 1; } ;;
 "repos pr policy list "*) cat "$AZ_POLICY" 2>/dev/null || echo '[]' ;;
 "devops invoke "*) echo '{"count":0,"value":[]}' ;;
+"extension show "*) ;;
+"account show "*) [ -z "$AZ_NOLOGIN" ] || { echo "ERROR: Please run 'az login'" >&2; exit 1; } ;;
+"repos show "*) [ -z "$AZ_NOACCESS" ] || { echo "ERROR: TF401019" >&2; exit 1; } ;;
 *) echo "ERROR: the fake az doesn't know: $*" >&2; exit 2 ;;
 esac
 `
@@ -313,5 +317,57 @@ func TestSmokeTickerAzureCompleteOnMerge(t *testing.T) {
 	}
 	if items := env.MustCLI("inbox", "list", "--project", "demo"); strings.Contains(items, "gh-failing") {
 		t.Fatalf("inbox:\n%s", items)
+	}
+}
+
+// TestDoctorAzure: with an Azure DevOps repo among the project's, tm
+// doctor checks az, its extension, the login, access to the repo and
+// git's credentials, and not gh; the --json shape is the usual one. A
+// logged-out az and an unreadable repo are warnings with their way out.
+func TestDoctorAzure(t *testing.T) {
+	env, projDir, _ := tickerEnv(t)
+	azureRepo(t, projDir)
+	fakeAZ(t, env)
+	type result struct {
+		Status string
+		Checks []struct{ Group, Name, Status, Detail string }
+	}
+	doctor := func() result {
+		t.Helper()
+		var res result
+		r := env.CLI("doctor", "--json")
+		if err := json.Unmarshal([]byte(r.Stdout), &res); err != nil {
+			t.Fatalf("doctor --json: %v\n%s%s", err, r.Stdout, r.Stderr)
+		}
+		return res
+	}
+	status := func(res result, name string) string {
+		for _, c := range res.Checks {
+			if c.Name == name {
+				return c.Status + " " + c.Detail
+			}
+		}
+		return ""
+	}
+	res := doctor()
+	for name, want := range map[string]string{"az": "ok found", "az azure-devops": "ok ", "az login": "ok logged in",
+		"az repo Shop/web": "ok readable", "git origin Shop/web": "ok readable", "gh": ""} {
+		if got := status(res, name); !strings.HasPrefix(got, want) || (want == "" && got != "") {
+			t.Errorf("%s: %q, want %q", name, got, want)
+		}
+	}
+	env.Setenv("AZ_NOLOGIN", "1")
+	env.Setenv("AZ_NOACCESS", "1")
+	res = doctor()
+	if got := status(res, "az login"); !strings.HasPrefix(got, "warn ") || !strings.Contains(got, "az login") {
+		t.Errorf("az login: %q", got)
+	}
+	if got := status(res, "az repo Shop/web"); !strings.HasPrefix(got, "warn ") || !strings.Contains(got, "https://dev.azure.com/acme") {
+		t.Errorf("az repo: %q", got)
+	}
+	env.Setenv("AZURE_DEVOPS_EXT_PAT", "s3cret-token")
+	r := env.CLI("doctor", "--json")
+	if strings.Contains(r.Stdout+r.Stderr, "s3cret-token") || !strings.Contains(r.Stdout, "AZURE_DEVOPS_EXT_PAT is set") {
+		t.Errorf("PAT set:\n%s", r.Stdout)
 	}
 }

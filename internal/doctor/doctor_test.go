@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/theclifmeister/terminatr/internal/codehost"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/server"
@@ -166,6 +167,79 @@ func TestGHAuth(t *testing.T) {
 	d.LookPath = func(n string) (string, error) { return "", exec.ErrNotFound }
 	if c := find(Toolchain(d), "gh auth"); len(c) != 0 {
 		t.Fatalf("no gh: %+v", c)
+	}
+}
+
+func TestCodeHosts(t *testing.T) {
+	d := testDeps(t)
+	d.LookPath = func(n string) (string, error) { return "/bin/" + n, nil }
+	var ran []string
+	fail := ""
+	d.Run = func(dir, name string, args ...string) (string, error) {
+		line := name + " " + strings.Join(args, " ")
+		ran = append(ran, dir+"|"+line)
+		if fail != "" && strings.Contains(line, fail) {
+			return "boom", errors.New("exit 1")
+		}
+		return "ok", nil
+	}
+	shop := codehost.Target{Kind: codehost.AzureKind, OrgURL: "https://dev.azure.com/acme", Project: "Shop", Repo: "web"}
+	d.Hosts = func() []RepoHost { return []RepoHost{{Repo: "/r/web", Target: shop}, {Repo: "/r/web2", Target: shop}} }
+	var env map[string]string
+	d.Getenv = func(k string) string { return env[k] }
+
+	cs := Toolchain(d)
+	if len(find(cs, "gh")) != 0 || len(find(cs, "gh auth")) != 0 {
+		t.Fatalf("gh checked with only an Azure repo: %+v", cs)
+	}
+	for _, n := range []string{"az", "az azure-devops", "az login", "az repo Shop/web", "git origin Shop/web"} {
+		if c := find(cs, n); len(c) != 1 || c[0].Status != OK || c[0].Group != "toolchain" {
+			t.Errorf("%s: %+v", n, c)
+		}
+	}
+	got := strings.Join(ran, "\n")
+	for _, want := range []string{"/bin/az repos show --repository web --organization https://dev.azure.com/acme --project Shop", "/r/web|git ls-remote origin HEAD"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("didn't run %q:\n%s", want, got)
+		}
+	}
+
+	fail = "account show"
+	if c := find(Toolchain(d), "az login"); c[0].Status != Warn || !strings.Contains(c[0].Detail, "az login") {
+		t.Errorf("logged out: %+v", c)
+	}
+	env = map[string]string{"AZURE_DEVOPS_EXT_PAT": "s3cret"}
+	c := find(Toolchain(d), "az login")
+	if c[0].Status != OK || strings.Contains(c[0].Detail, "s3cret") || !strings.Contains(c[0].Detail, "AZURE_DEVOPS_EXT_PAT") {
+		t.Errorf("PAT: %+v", c)
+	}
+	fail = "repos show"
+	if c := find(Toolchain(d), "az repo Shop/web"); c[0].Status != Warn || !strings.Contains(c[0].Detail, "https://dev.azure.com/acme") {
+		t.Errorf("no access: %+v", c)
+	}
+	fail = "ls-remote"
+	if c := find(Toolchain(d), "git origin Shop/web"); c[0].Status != Warn || !strings.Contains(c[0].Detail, "credential helper") {
+		t.Errorf("git credentials: %+v", c)
+	}
+	d.LookPath = func(n string) (string, error) { return "", exec.ErrNotFound }
+	if cs := Toolchain(d); len(find(cs, "az")) != 1 || find(cs, "az")[0].Status != Warn || len(find(cs, "az repo Shop/web")) != 0 {
+		t.Errorf("no az: %+v", cs)
+	}
+
+	// Both kinds in use: both CLIs are checked, once each.
+	d.LookPath = func(n string) (string, error) { return "/bin/" + n, nil }
+	fail = ""
+	d.Hosts = func() []RepoHost {
+		return []RepoHost{{Repo: "/r/a", Target: codehost.Target{Kind: codehost.GitHubKind}}, {Repo: "/r/b", Target: shop}}
+	}
+	cs = Toolchain(d)
+	if len(find(cs, "gh auth")) != 1 || len(find(cs, "az login")) != 1 {
+		t.Errorf("both kinds: %+v", cs)
+	}
+	// No repos: GitHub, as on a fresh install.
+	d.Hosts = func() []RepoHost { return nil }
+	if cs := Toolchain(d); len(find(cs, "gh auth")) != 1 || len(find(cs, "az")) != 0 {
+		t.Errorf("no repos: %+v", cs)
 	}
 }
 

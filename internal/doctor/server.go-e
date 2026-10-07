@@ -190,7 +190,7 @@ func keychainCheck(d Deps, ks proto.KeychainStatus, err error) []Check {
 		return []Check{{Group: g, Name: name, Status: OK, Detail: "sessions can reach the login keychain"}}
 	}
 	c := Check{Group: g, Name: name, Status: Warn,
-		Detail: ks.Detail + "; the PR CLI (gh, az) and git credential helpers fail in its sessions: " + keychain.Fix}
+		Detail: ks.Detail + "; gh and git push over https fail in its sessions: " + keychain.Fix}
 	switch {
 	case d.Restart == nil:
 	case d.Launchd != nil && d.Launchd():
