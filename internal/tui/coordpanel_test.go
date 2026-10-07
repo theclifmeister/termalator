@@ -269,14 +269,14 @@ func TestCoordLinesTicker(t *testing.T) {
 	w.Threads[0].PRChecked = now.Add(-30 * time.Second)
 	lines, _ := coordLines(w, 80, now)
 	text := ansi.Strip(strings.Join(lines, "\n"))
-	for _, want := range []string{"ticker · PRs checked 40s ago, next 1m20s · synced 1m ago · gh ok", "#121 open, checks passed · checked 30s ago"} {
+	for _, want := range []string{"ticker · PRs checked 40s ago, next 1m20s · synced 1m ago · PR host ok", "#121 open, checks passed · checked 30s ago"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("missing %q:\n%s", want, text)
 		}
 	}
 	w.Ticker.GHFailing = true
 	lines, _ = coordLines(w, 80, now)
-	if text = ansi.Strip(strings.Join(lines, "\n")); !strings.Contains(text, "gh failing") || strings.Contains(text, "gh ok") {
-		t.Errorf("gh failing:\n%s", text)
+	if text = ansi.Strip(strings.Join(lines, "\n")); !strings.Contains(text, "PR host failing") || strings.Contains(text, "PR host ok") {
+		t.Errorf("PR host failing:\n%s", text)
 	}
 }

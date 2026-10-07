@@ -188,7 +188,7 @@ func CheckedWords(t, now time.Time) string {
 }
 
 // Line is the ticker's timers in one line: "ticker · PRs checked 40s
-// ago, next 1m20s · synced 1m ago · gh ok"; "gh failing" when PR polls
+// ago, next 1m20s · synced 1m ago · PR host ok"; "PR host failing" when PR polls
 // fail. now is the reader's clock.
 func (t WatchTicker) Line(now time.Time) string {
 	parts := []string{"ticker"}
@@ -208,9 +208,9 @@ func (t WatchTicker) Line(now time.Time) string {
 		parts = append(parts, "synced "+AgeWords(now.Sub(t.Synced))+" ago")
 	}
 	if t.GHFailing {
-		parts = append(parts, "gh failing")
+		parts = append(parts, "PR host failing")
 	} else if !t.PRChecked.IsZero() {
-		parts = append(parts, "gh ok")
+		parts = append(parts, "PR host ok")
 	}
 	return strings.Join(parts, " · ")
 }

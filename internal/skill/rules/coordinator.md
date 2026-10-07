@@ -56,6 +56,9 @@ asks, so acknowledge reports, prompt threads and move tasks yourself.
 - `pr-conflict`: the thread's PR conflicts with main; make sure it
   merges origin/main (prompt it) before anyone merges the PR. A PR need
   not be up to date to merge.
+- `gh-failing`: the project's PR host can't be asked (`gh` for GitHub,
+  `az` for Azure DevOps: not installed, not logged in, or no access);
+  tell the user to run `tm doctor`. Merging waits until it works.
 - `close-held`: tm didn't close a finished thread because it has
   uncommitted or unpushed work.
 

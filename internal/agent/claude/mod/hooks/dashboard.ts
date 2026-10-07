@@ -96,7 +96,7 @@ const KIND_WORDS: Record<string, string> = {
   'pr-closed': 'PR closed',
   'pr-conflict': 'PR conflict',
   'close-held': 'kept open',
-  'gh-failing': 'gh failing',
+  'gh-failing': 'PR host failing',
   guard: 'guard refused',
 }
 
@@ -162,7 +162,7 @@ export function ageWords(ms: number): string {
 }
 
 // tickerLine is the ticker's timers in a line: "ticker · PRs checked 40s
-// ago, next 1m20s · synced 1m ago · gh ok"; tone is error while gh fails.
+// ago, next 1m20s · synced 1m ago · PR host ok"; tone is error while the PR host fails.
 export function tickerLine(t: TerminatrTicker, now = Date.now()): { text: string; tone: 'ok' | 'error' } {
   const parts = ['ticker']
   if (t.pr_checked) {
@@ -171,8 +171,8 @@ export function tickerLine(t: TerminatrTicker, now = Date.now()): { text: string
     parts.push(`PRs checked ${ageWords(now - at)} ago, ` + (next > 0 ? `next ${ageWords(next)}` : 'due'))
   }
   if (t.synced) parts.push(`synced ${ageWords(now - Date.parse(t.synced))} ago`)
-  if (t.gh_failing) parts.push('gh failing')
-  else if (t.pr_checked) parts.push('gh ok')
+  if (t.gh_failing) parts.push('PR host failing')
+  else if (t.pr_checked) parts.push('PR host ok')
   return { text: parts.join(' · '), tone: t.gh_failing ? 'error' : 'ok' }
 }
 

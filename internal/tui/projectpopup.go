@@ -682,7 +682,7 @@ var kindWords = map[string]string{
 	"pr-closed":        "PR closed",
 	"pr-conflict":      "PR conflict",
 	"close-held":       "kept open",
-	"gh-failing":       "gh failing",
+	"gh-failing":       "PR host failing",
 	"guard":            "guard refused",
 }
 
