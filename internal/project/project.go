@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/caller"
+	"github.com/theclifmeister/terminatr/internal/codehost"
 	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/home"
 	"github.com/theclifmeister/terminatr/internal/mdfile"
@@ -24,6 +25,17 @@ type Meta struct {
 	Goal    string    `toml:"goal"`
 	Repos   []string  `toml:"repos"`
 	Created time.Time `toml:"created"`
+	// CodeHost and AzureURL override where the repos' pull requests live
+	// (codehost.Config): "github" or "azure", and the Azure DevOps
+	// organization URL for a server tm doesn't recognize. Unset, each
+	// repo's origin URL decides.
+	CodeHost string `toml:"code_host,omitempty"`
+	AzureURL string `toml:"azure_url,omitempty"`
+}
+
+// CodeHost is the project's code host override, for codehost.Pick.
+func (p *Project) CodeHost() codehost.Config {
+	return codehost.Config{CodeHost: p.Meta.CodeHost, AzureURL: p.Meta.AzureURL}
 }
 
 // Project is one project folder, ~/.terminatr/projects/<slug>/.

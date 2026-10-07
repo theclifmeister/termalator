@@ -15,7 +15,6 @@ import (
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/tasks"
 	"github.com/theclifmeister/terminatr/internal/thread"
-	"github.com/theclifmeister/terminatr/internal/worktree"
 )
 
 // KindTaskDone: the ticker marked a task done by complete_tasks.
@@ -60,7 +59,7 @@ func (t *Ticker) mergeOf(p *project.Project, pm *projectMemo, id string) *mergeM
 		return nil
 	}
 	n := PRNumber(rep.PR)
-	if merge := worktree.MergeCommit(r.Repo, n); n > 0 && oidRE.MatchString(merge) {
+	if merge := t.host(p, r.Repo).MergeCommit(r.Repo, n); n > 0 && oidRE.MatchString(merge) {
 		return &mergeMemo{Repo: r.Repo, PR: n, Merge: merge}
 	}
 	return nil

@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/theclifmeister/terminatr/internal/codehost"
 	"github.com/theclifmeister/terminatr/internal/keychain"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/server"
@@ -180,22 +181,16 @@ func Toolchain(d Deps) []Check {
 		v, _ := d.Run("", p, "--version")
 		out = append(out, Check{Group: g, Name: "git", Status: OK, Detail: strings.TrimPrefix(firstLine(v), "git version ")})
 	}
-	if p, err := d.LookPath("gh"); err != nil {
-		out = append(out, Check{Group: g, Name: "gh", Status: Warn, Detail: "not found; tm thread resolve can't tell whether a PR was merged"})
-	} else {
-		out = append(out, Check{Group: g, Name: "gh", Status: OK, Detail: "found"}, ghAuth(d, p))
+	// The code host's CLI and login: GitHub's gh, whose PR polls fail
+	// without them (a gh-failing inbox item, §7.5).
+	for _, c := range (codehost.GitHub{}).Doctor(codehost.DoctorDeps{LookPath: d.LookPath, Run: d.Run}) {
+		st := Warn
+		if c.OK {
+			st = OK
+		}
+		out = append(out, Check{Group: g, Name: c.Name, Status: st, Detail: c.Detail})
 	}
 	return out
-}
-
-// ghAuth checks that gh is logged in and can read its token: without it
-// the ticker's PR polls fail (a gh-failing inbox item, §7.5).
-func ghAuth(d Deps, gh string) Check {
-	const g, name = "toolchain", "gh auth"
-	if _, err := d.Run("", gh, "auth", "status"); err != nil {
-		return Check{Group: g, Name: name, Status: Warn, Detail: "not logged in, or its token can't be read: run gh auth login (PR follow-up, auto-close and completing tasks need it)"}
-	}
-	return Check{Group: g, Name: name, Status: OK, Detail: "logged in"}
 }
 
 // Install reports how this tm was installed and whether a newer release

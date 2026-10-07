@@ -21,6 +21,7 @@ import (
 
 	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/caller"
+	"github.com/theclifmeister/terminatr/internal/codehost"
 	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/home"
 	"github.com/theclifmeister/terminatr/internal/project"
@@ -1520,7 +1521,7 @@ func (e *Env) threadResolve(p *project.Project, id string) error {
 		}
 		var deleted []string
 		if r.Branch != "" && worktree.BranchExists(r.Repo, r.Branch) {
-			switch st := worktree.PRState(r.Repo, r.Branch); st {
+			switch st := codehost.Pick(r.Repo, p.CodeHost()).PRState(r.Repo, r.Branch); st {
 			case "MERGED":
 				if err := worktree.DeleteBranch(r.Repo, r.Branch); err != nil {
 					did = append(did, "kept branch "+r.Branch+" ("+oneLine(err.Error(), 120)+")")
@@ -1612,8 +1613,9 @@ func followRepo(p *project.Project, r *thread.Record) bool {
 func otherBranches(p *project.Project, r *thread.Record) (did, deleted []string) {
 	prOf := map[string]string{} // branch → its PR, "PR #12 merged", or ""
 	open := map[string]bool{}
+	host := codehost.Pick(r.Repo, p.CodeHost())
 	for _, url := range thread.ReportPRs(p, r.ID) {
-		st, n, head := worktree.PRHead(r.Repo, url)
+		st, n, head := host.PRHead(r.Repo, url)
 		if head == "" || head == r.Branch || !worktree.BranchExists(r.Repo, head) {
 			continue
 		}

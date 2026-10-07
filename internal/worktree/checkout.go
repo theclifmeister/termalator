@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/theclifmeister/terminatr/internal/codehost"
 )
 
 // fetchTimeout bounds Sync's fetch, so a hung remote can't stall the
@@ -194,24 +196,9 @@ func HeadState(repo, head, base string) (state string, ok bool) {
 
 var oidRE = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
 
-// mergedPRRE finds the PR number in a merge commit's subject: GitHub's
-// "Merge pull request #12 from …" or a squash merge's "… (#12)".
-var mergedPRRE = regexp.MustCompile(`^Merge pull request #([0-9]{1,9}) |\(#([0-9]{1,9})\)$`)
-
 // MergedPR is the PR number the commit's subject says it merged, 0 for
-// none. Only the number is taken from the subject.
+// none, by repo's code host's rules (codehost.Host.MergedPR). Only the
+// number is taken from the subject.
 func MergedPR(repo, commit string) int {
-	if !oidRE.MatchString(commit) {
-		return 0
-	}
-	s, err := git(repo, "log", "-1", "--format=%s", commit)
-	if err != nil {
-		return 0
-	}
-	m := mergedPRRE.FindStringSubmatch(s)
-	if m == nil {
-		return 0
-	}
-	n, _ := strconv.Atoi(m[1] + m[2])
-	return n
+	return codehost.Pick(repo, codehost.Config{}).MergedPR(repo, commit)
 }
