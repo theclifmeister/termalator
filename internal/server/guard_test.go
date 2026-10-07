@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/proto"
 )
 
@@ -158,5 +159,13 @@ func TestGuardRoutes(t *testing.T) {
 	}
 	if n != 5 {
 		t.Errorf("journal %q", lines)
+	}
+}
+
+func TestAgentSecretEnv(t *testing.T) {
+	base := []string{"PATH=/bin", "AZURE_DEVOPS_EXT_PAT=x", "AZURE_CONFIG_DIR=/c"}
+	got := agent.FilterEnv(base, agentSecretEnv)
+	if !slices.Equal(got, []string{"PATH=/bin", "AZURE_CONFIG_DIR=/c"}) {
+		t.Fatalf("env = %v", got)
 	}
 }

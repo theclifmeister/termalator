@@ -76,7 +76,7 @@ var guardNow = time.Now
 // guardSecrets are the credential stores, relative to home.
 var guardSecrets = []string{
 	".ssh", ".aws", ".gnupg", ".netrc", ".git-credentials", ".npmrc", ".pypirc",
-	".config/gh", ".config/gcloud", ".azure", ".docker/config.json", ".kube",
+	".config/gh", ".config/gcloud", ".azure", ".azure-devops", ".docker/config.json", ".kube",
 	".claude/.credentials.json",
 }
 

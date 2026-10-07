@@ -99,6 +99,12 @@ function judgeBash(r: Rules, has: (id: string) => boolean, command: string): Den
     } else if (cmd === 'gh') {
       const d = judgeGh(r, has, args)
       if (d) return d
+    } else if (cmd === 'az') {
+      const d = judgeAz(r, has, args)
+      if (d) return d
+    } else if (HTTP_CLIENTS.has(cmd)) {
+      const d = judgeHttp(r, has, args)
+      if (d) return d
     } else if (cmd === 'rm' && has('delete-branch') && args.some(a => /^-[a-zA-Z]*[rR]/.test(a) || a === '--recursive')) {
       for (const a of args) {
         if (a.startsWith('-')) continue
@@ -178,6 +184,131 @@ function judgeGh(r: Rules, has: (id: string) => boolean, args: string[]): Denial
   return null
 }
 
+// az (the Azure CLI with its azure-devops extension) is judged like gh,
+// with the same rules and sentences. The extension's verbs: completing a
+// PR (`az repos pr update --status completed`, `--auto-complete`,
+// `--bypass-policy`, also on create) is the merge; `--delete-source-branch`,
+// `az repos delete` and `az repos ref delete` delete; the REST routes under
+// az rest, az devops invoke and curl are held to the same, by method and
+// route.
+function judgeAz(r: Rules, has: (id: string) => boolean, args: string[]): Denial | null {
+  // The command words come first; flags (any order, --x=v or --x v) after.
+  let i = 0
+  while (i < args.length && args[i].startsWith('-')) i += optionTakesValue(args[i]) ? 2 : 1
+  const words: string[] = []
+  for (; i < args.length && !args[i].startsWith('-'); i++) words.push(args[i].toLowerCase())
+  const rest = args.slice(i)
+  const [a, b, c] = words
+  if (a === 'repos' && b === 'pr' && (c === 'update' || c === 'create')) {
+    const completes = opts(rest, '--status').some(v => v.toLowerCase() === 'completed') ||
+      truthy(rest, '--auto-complete') || truthy(rest, '--bypass-policy')
+    if (has('merge') && completes) return deny(r, 'merge', `az repos pr ${c} completing a PR`)
+    if (has('delete-branch') && truthy(rest, '--delete-source-branch')) return deny(r, 'delete-branch', `az repos pr ${c} --delete-source-branch`)
+  }
+  if (a === 'repos' && b === 'delete' && has('delete-branch')) return deny(r, 'delete-branch', 'az repos delete')
+  if (a === 'repos' && b === 'ref' && c === 'delete' && has('delete-branch')) return deny(r, 'delete-branch', 'az repos ref delete')
+  if (has('credentials')) {
+    if (a === 'account' && b === 'get-access-token') return deny(r, 'credentials', 'az account get-access-token')
+    if (a === 'devops' && b === 'login') return deny(r, 'credentials', 'az devops login')
+  }
+  if (a === 'rest') {
+    const method = opts(rest, '--method', '-m')[0] ?? 'GET'
+    return judgeRoute(r, has, method, opts(rest, '--url', '--uri', '-u')[0] ?? '')
+  }
+  if (a === 'devops' && b === 'invoke') {
+    const resource = (opts(rest, '--resource')[0] ?? '').toLowerCase()
+    const method = opts(rest, '--http-method')[0] ?? 'GET'
+    const params = optsMulti(rest, '--route-parameters').map(p => p.toLowerCase())
+    const area = (opts(rest, '--area')[0] ?? 'git').toLowerCase()
+    if (area !== 'git') return null
+    if (!isWrite(method)) return null
+    if (has('merge') && (resource === 'merges' || (resource === 'pullrequests' && params.some(p => p.startsWith('pullrequestid='))))) {
+      return deny(r, 'merge', `az devops invoke ${safe(method.toUpperCase())} on ${safe(resource)}`)
+    }
+    if (has('delete-branch') && (resource === 'refs' || (resource === 'repositories' && method.toUpperCase() === 'DELETE'))) {
+      return deny(r, 'delete-branch', `az devops invoke ${safe(method.toUpperCase())} on ${safe(resource)}`)
+    }
+  }
+  return null
+}
+
+// Clients that speak HTTP; given an Azure DevOps address they are judged
+// by route and method as az rest is, and by what they authenticate with.
+const HTTP_CLIENTS = new Set(['curl', 'wget', 'http', 'https', 'xh'])
+
+const AZURE_HOST = /(^|[/@.])(dev\.azure\.com|[a-z0-9-]+\.visualstudio\.com|vssps\.dev\.azure\.com)([/:?#]|$)/i
+
+function judgeHttp(r: Rules, has: (id: string) => boolean, args: string[]): Denial | null {
+  const url = args.find(a => AZURE_HOST.test(a))
+  if (!url) return null
+  if (has('credentials') && args.some(a => /^(-u.*|--user(=.*)?|--oauth2-bearer(=.*)?)$/.test(a) || /authorization:|AZURE_DEVOPS_EXT_PAT/i.test(a))) {
+    return deny(r, 'credentials', 'an HTTP call to Azure DevOps with credentials')
+  }
+  let method = ''
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]
+    if (a === '-X' || a === '--request') method = args[i + 1] ?? ''
+    else if (a.startsWith('--request=')) method = a.slice(10)
+    else if (/^-X./.test(a)) method = a.slice(2)
+  }
+  return judgeRoute(r, has, method || 'GET', url)
+}
+
+// judgeRoute: a write method on an Azure DevOps Git route that completes
+// a PR or deletes a ref or a repository.
+function judgeRoute(r: Rules, has: (id: string) => boolean, method: string, url: string): Denial | null {
+  const m = method.toUpperCase()
+  if (!isWrite(m)) return null
+  const path = url.split(/[?#]/)[0].toLowerCase().replace(/\/+$/, '')
+  if (!path.includes('/_apis/git/')) return null
+  if (has('merge') && (/\/pullrequests\/[^/]+$/.test(path) || /\/merges$/.test(path))) {
+    return deny(r, 'merge', `${safe(m)} on an Azure DevOps pull request`)
+  }
+  if (has('delete-branch') && (/\/refs$/.test(path) || (m === 'DELETE' && /\/repositories\/[^/]+$/.test(path)))) {
+    return deny(r, 'delete-branch', `${safe(m)} on an Azure DevOps ref or repository`)
+  }
+  return null
+}
+
+function isWrite(method: string): boolean {
+  return !['GET', 'HEAD', 'OPTIONS', ''].includes(method.toUpperCase())
+}
+
+// az's global options that take a value before the command words.
+function optionTakesValue(a: string): boolean {
+  return ['--output', '-o', '--query', '--subscription', '--organization', '--org', '--project', '-p'].includes(a)
+}
+
+// opts: the values of the option under any of names, as --x v or --x=v.
+function opts(args: string[], ...names: string[]): string[] {
+  const out: string[] = []
+  for (let i = 0; i < args.length; i++) {
+    for (const n of names) {
+      if (args[i] === n) out.push(args[i + 1] !== undefined && !args[i + 1].startsWith('-') ? args[i + 1] : '')
+      else if (args[i].startsWith(n + '=')) out.push(args[i].slice(n.length + 1))
+    }
+  }
+  return out
+}
+
+// optsMulti: every value after the option up to the next option, for
+// those that take several (--route-parameters a=1 b=2).
+function optsMulti(args: string[], name: string): string[] {
+  const out: string[] = []
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === name) {
+      for (let j = i + 1; j < args.length && !args[j].startsWith('-'); j++) out.push(args[j])
+    } else if (args[i].startsWith(name + '=')) out.push(args[i].slice(name.length + 1))
+  }
+  return out
+}
+
+// truthy: a boolean option given true, or bare (az takes true/false, and
+// a bare flag counts as given).
+function truthy(args: string[], name: string): boolean {
+  return opts(args, name).some(v => !['false', 'no', 'n', '0', 'off'].includes(v.toLowerCase()))
+}
+
 // Commands that print or copy what they are given.
 const READERS = new Set([
   'cat', 'head', 'tail', 'less', 'more', 'bat', 'nl', 'tac', 'cp', 'mv', 'scp', 'rsync', 'base64', 'xxd', 'od',
@@ -186,7 +317,7 @@ const READERS = new Set([
 ])
 
 // Environment variable names that look like they hold a secret.
-const SECRET_NAME = /token|secret|key|password|passwd|credential/i
+const SECRET_NAME = /token|secret|key|password|passwd|credential|(^|_)pat$/i
 
 function judgeSecret(r: Rules, cmd: string, args: string[], words: string[]): Denial | null {
   if (cmd === 'security' && /^(find-(generic|internet)-password|dump-keychain|export)$/.test(args[0] ?? '')) {
@@ -201,6 +332,13 @@ function judgeSecret(r: Rules, cmd: string, args: string[], words: string[]): De
     if (secret) return deny(r, 'credentials', `printenv ${safe(secret)}`)
   } else if (cmd === 'env' && args.every(a => a.startsWith('-'))) {
     return deny(r, 'credentials', 'env printing the environment')
+  }
+  // echo and the like given a secret variable ($AZURE_DEVOPS_EXT_PAT).
+  if (cmd === 'echo' || cmd === 'printf' || cmd === 'print' || READERS.has(cmd)) {
+    for (const w of words) {
+      const v = /\$\{?([A-Za-z_][A-Za-z0-9_]*)/.exec(w)?.[1]
+      if (v && /^AZURE_DEVOPS_EXT_PAT$|^AZURE_DEVOPS_.*(PAT|TOKEN)$/i.test(v)) return deny(r, 'credentials', `${cmd} of ${safe(v)}`)
+    }
   }
   // A reader given a secret, or a secret redirected in.
   for (let i = 0; i < words.length; i++) {
