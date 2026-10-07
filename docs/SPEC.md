@@ -161,7 +161,7 @@ The types are in `internal/proto`.
 // client → server
 {"protocol": 9, "version": "v0.8.1", "build": "v0.8.1+33da6848d63b+3f2a…", "kind": "control" | "attach" | "hook"}
 // server → client
-{"protocol": 9, "version": "v0.8.1", "build": "v0.8.1+33da6848d63b+3f2a…", "bin": "~/.terminatr/run/bin/tm-…", "pid": 4242}
+{"protocol": 9, "version": "v0.8.1", "build": "v0.8.1+33da6848d63b+3f2a…", "bin": "~/.terminatr/run/bin/tm", "pid": 4242}
 ```
 
 `build` is `version.BuildID()`: the version, the Ghostty commit, and a hash of the executable.
