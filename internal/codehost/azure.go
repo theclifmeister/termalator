@@ -488,8 +488,8 @@ func (a Azure) ParsePRURL(s string) (int, bool) {
 	return n, err == nil && n > 0
 }
 
-// FailedLog: the failing build's log is a later step (build timeline
-// and logs through az devops invoke); none yet.
+// FailedLog is a stub until T115 (the failing build's timeline and log
+// through az devops invoke): no log.
 func (Azure) FailedLog(repo string, pr PR) (job, log string) { return "", "" }
 
 // PRState is the state of the PR whose head is branch (PR by branch).
@@ -524,8 +524,9 @@ func (a Azure) PRHead(repo, prURL string) (state string, number int, head string
 	return pr.State, n, b
 }
 
-// MergeCommit and MergedPR read Azure DevOps' merge commit subjects
-// ("Merged PR 12: …"), a later step; the PR's state says it until then.
+// MergeCommit and MergedPR are stubs until T116 (Azure DevOps' merge
+// commit subjects, "Merged PR 12: …"); the PR's state says it until
+// then.
 func (Azure) MergeCommit(repo string, n int) string { return "" }
 func (Azure) MergedPR(repo, commit string) int      { return 0 }
 
@@ -560,7 +561,9 @@ func (a Azure) Hints(n int) Hints {
 }
 
 // Doctor checks that az is installed, has the azure-devops extension
-// and is logged in: without them the ticker's PR polls fail.
+// and is logged in: without them the ticker's PR polls fail. A minimal
+// start: tm doctor doesn't call it yet; T118 wires it per host kind and
+// adds the repo access check.
 func (a Azure) Doctor(d DoctorDeps) []Check {
 	p, err := d.LookPath("az")
 	if err != nil {
