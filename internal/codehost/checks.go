@@ -18,7 +18,8 @@ type RepoHost struct {
 
 // Checks is every code-host line tm doctor shows, for the repos in use:
 // GitHub's gh once (also when there are no repos, as on a fresh
-// install), Azure DevOps' az once, then each Azure repo's access and
+// install), Azure DevOps' az once (with no Azure repo, only when az is
+// installed, marked unused), then each Azure repo's access and
 // git's credentials for its origin. Both tm doctor and the server run
 // it, the server so that it answers from the context its sessions have
 // (docs/SPEC.md §3.3 server.codehost).
@@ -37,7 +38,7 @@ func Checks(d DoctorDeps, hosts []RepoHost) []Check {
 		out = append(out, GitHub{}.Doctor(d)...)
 	}
 	if !azure {
-		return out
+		return append(out, unusedAzure(d)...)
 	}
 	out = append(out, Azure{}.Doctor(d)...)
 	seen := map[Target]bool{}
@@ -50,6 +51,26 @@ func Checks(d DoctorDeps, hosts []RepoHost) []Check {
 		out = append(out, gitCredentials(d, h))
 	}
 	return out
+}
+
+// unusedAzure is the az and az login lines when no repo uses Azure
+// DevOps: shown only when az is on PATH, marked as unused and never a
+// warning (as gh on a fresh install), so a login done ahead of the first
+// Azure repo is seen.
+func unusedAzure(d DoctorDeps) []Check {
+	const unused = " · no project uses Azure DevOps"
+	p, err := d.LookPath("az")
+	if err != nil {
+		return nil
+	}
+	login := "logged in"
+	if _, err := d.Run("", p, "account", "show", "--only-show-errors", "--output", "none"); err != nil {
+		login = "not logged in"
+	}
+	return []Check{
+		{Name: "az", OK: true, Detail: "found" + unused},
+		{Name: "az login", OK: true, Detail: login + unused},
+	}
 }
 
 // gitCredentials proves git can read the repo's origin without asking

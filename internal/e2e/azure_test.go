@@ -382,3 +382,43 @@ func TestDoctorAzure(t *testing.T) {
 		t.Errorf("PAT set:\n%s", r.Stdout)
 	}
 }
+
+// With az installed and no Azure repo in use, tm doctor still shows az
+// and az login, marked unused and never failing; the per-repo lines stay
+// away.
+func TestDoctorAzureUnused(t *testing.T) {
+	env, _, _ := tickerEnv(t)
+	fakeAZ(t, env)
+	type result struct {
+		Checks []struct{ Group, Name, Status, Detail string }
+	}
+	doctor := func() map[string]string {
+		t.Helper()
+		var res result
+		r := env.CLI("doctor", "--json")
+		if err := json.Unmarshal([]byte(r.Stdout), &res); err != nil {
+			t.Fatalf("doctor --json: %v\n%s%s", err, r.Stdout, r.Stderr)
+		}
+		m := map[string]string{}
+		for _, c := range res.Checks {
+			m[c.Name] = c.Status + " " + c.Detail
+		}
+		return m
+	}
+	m := doctor()
+	for name, want := range map[string]string{"az": "ok found", "az login": "ok logged in"} {
+		if got := m[name]; !strings.HasPrefix(got, want) || !strings.Contains(got, "no project uses Azure DevOps") {
+			t.Errorf("%s: %q", name, got)
+		}
+	}
+	for name := range m {
+		if strings.HasPrefix(name, "az repo") || strings.HasPrefix(name, "git origin") || name == "az azure-devops" {
+			t.Errorf("Azure-only line %q without an Azure repo", name)
+		}
+	}
+	env.Setenv("AZ_NOLOGIN", "1")
+	env.RestartServer()
+	if got := doctor()["az login"]; !strings.HasPrefix(got, "ok not logged in") {
+		t.Errorf("logged out: %q", got)
+	}
+}
