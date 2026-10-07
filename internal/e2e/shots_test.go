@@ -304,9 +304,9 @@ func shootSize(t *testing.T, env *Env, dir string, sz shotSize) {
 	s.esc()
 
 	s.home()
-	// Task list, inbox, switcher, new project.
+	// t: the project popup on its Tasks tab; inbox, switcher, new project.
 	w.Type("t")
-	s.soft("Tasks · demo")
+	s.soft("3 Tasks")
 	s.shot("tasks")
 	w.Key(Enter)
 	time.Sleep(300 * time.Millisecond)

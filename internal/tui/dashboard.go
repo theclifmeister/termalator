@@ -86,7 +86,7 @@ type DashOptions struct {
 // as the dashboard.
 type Over struct {
 	Key     string   // the dashboard key that opens the popup
-	Task    int      // with Key t: the task the task view shows, 0 for the list
+	Task    int      // with Key t: the task the Tasks tab shows (opened), 0 for none
 	Project string   // the project it is about: the session's, or a sidebar row's
 	Session string   // the session it is drawn over
 	Title   string   // how the header names the session
@@ -330,9 +330,6 @@ func (m *dash) reloadBoards() tea.Cmd {
 		return nil
 	}
 	var cmds []tea.Cmd
-	if b := m.boardView(); b != nil {
-		cmds = append(cmds, m.loadBoard(b.slug))
-	}
 	if pv := m.projectPopupView(); pv != nil {
 		cmds = append(cmds, m.loadPopup(pv.slug))
 	}
@@ -530,17 +527,6 @@ func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				pv.memory, pv.memErr = msg.memory, msg.memErr
 			}
 		}
-		b := m.boardView()
-		if b == nil || msg.slug != b.slug {
-			return m, nil
-		}
-		if msg.err != nil {
-			m.fail(msg.err)
-			m.close(b)
-			return m, nil
-		}
-		b.setBoard(msg.board)
-		b.reviews = msg.reviews
 		return m, nil
 	case actionMsg:
 		m.busy = false
@@ -585,9 +571,6 @@ func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		cmds := []tea.Cmd{m.load()}
-		if b := m.boardView(); b != nil {
-			cmds = append(cmds, m.loadBoard(b.slug))
-		}
 		if pv := m.projectPopupView(); pv != nil {
 			cmds = append(cmds, m.loadBoard(pv.slug))
 		}
@@ -746,8 +729,12 @@ func (m *dash) setData(d Data) tea.Cmd {
 	}
 	switch {
 	case first && m.then == "t" && m.over != nil && m.over.Task > 0:
-		// The info panel's task, over its session.
-		cmds = append(cmds, m.openBoard(m.over.Project, m.over.Task))
+		// The info panel's task, over its session: in the popup's
+		// Tasks tab, shown.
+		cmds = append(cmds, m.showTask(m.over.Project, m.over.Task))
+		if pv := m.projectPopupView(); pv != nil {
+			m.push(&taskView{pv: pv, id: m.over.Task})
+		}
 		m.then = ""
 	case first && m.then != "":
 		// The key typed after the prefix in a session, now that the

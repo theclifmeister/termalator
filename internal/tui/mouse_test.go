@@ -290,7 +290,7 @@ func TestDashboardMenus(t *testing.T) {
 		t.Fatalf("the coordinator's menu: %s", got)
 	}
 	clickItem(t, m, "tasks")
-	if b, ok := m.top().(*boardView); !ok || b.slug != "alpha" {
+	if pv, ok := m.top().(*projectView); !ok || pv.slug != "alpha" || pv.tab != tabTasks {
 		t.Fatalf("the menu's tasks opened %T", m.top())
 	}
 	keyPress(m, "esc")

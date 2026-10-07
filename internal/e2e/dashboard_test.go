@@ -68,7 +68,7 @@ func TestSmokeDashboard(t *testing.T) {
 	w.Type("k")
 	w.WaitFor("enter show", wait)
 	w.Key(keyEnter)
-	w.WaitFor("A accept · x send back · enter show · esc close", wait)
+	w.WaitFor("enter show · A accept · x send back · esc close", wait)
 	w.Prefix("a")
 	w.WaitFor("+ add repository", wait)
 	if strings.Contains(w.Screen(), "Accept T1?") {
@@ -77,9 +77,9 @@ func TestSmokeDashboard(t *testing.T) {
 	w.Key(keyEsc)
 	w.WaitFor("NEEDS YOU 1", wait)
 
-	// The task view: T1 first (needs you); it only shows.
+	// The Tasks tab: T1 first (needs you); it only shows.
 	w.Type("t")
-	w.WaitFor("Tasks · demo", wait)
+	w.WaitFor("3 Tasks", wait)
 	w.WaitFor("T1", wait)
 	w.Golden("dashboard-tasks.txt", dashMasks...)
 	w.Type("D")

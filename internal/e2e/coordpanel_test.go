@@ -90,7 +90,7 @@ func TestSmokeCoordinatorPanel(t *testing.T) {
 		return lastLine(sc, "demo T1 ·") && strings.Contains(sc, "│ T1 Fix the login")
 	})
 	// Back on the coordinator, a click on a task on deck opens the task
-	// view over the session; esc goes back to the task list, and esc
+	// view over the session; esc goes back to the Tasks tab, and esc
 	// again to the session.
 	w.Click(4, treeRow(w.Screen(), "demo", "coordinator"))
 	w.WaitUntil("the coordinator's panel", wait, shown)
@@ -99,7 +99,7 @@ func TestSmokeCoordinatorPanel(t *testing.T) {
 		return strings.Contains(sc, "tm "+coord.ID) && strings.Contains(sc, "╭─ Task · demo ")
 	})
 	w.Key(keyEsc)
-	w.WaitFor("╭─ Tasks · demo ", wait)
+	w.WaitFor("enter show · D delegate · esc close", wait)
 	w.Key(keyEsc)
 	// The panel shows beside the popup too: back means the popup and
 	// the dashboard's header are gone.

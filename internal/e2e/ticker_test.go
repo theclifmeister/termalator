@@ -342,7 +342,7 @@ func TestSmokeDelegateFromList(t *testing.T) {
 	w := env.Window(110, 30)
 	w.WaitFor("1 in motion · 1 on deck", wait)
 	w.Type("t")
-	w.WaitFor("Tasks · demo", wait)
+	w.WaitFor("3 Tasks", wait)
 	// T2 (in motion) first: its footer offers no D, and D only says why.
 	w.WaitFor("enter show · esc close", wait)
 	w.Type("D")
@@ -396,7 +396,7 @@ func TestSmokeAcceptSendBack(t *testing.T) {
 	w := env.Window(110, 30)
 	w.WaitFor("3 need you", wait)
 	w.Type("t")
-	w.WaitFor("Tasks · demo", wait)
+	w.WaitFor("3 Tasks", wait)
 	w.WaitFor("A accept · x send back", wait)
 	w.Key(keyEnter)
 	w.WaitFor("• run tm and press t", wait)

@@ -131,7 +131,7 @@ func needsYou(t *testing.T) *dash {
 // gets the key (prefix+a on the Tasks tab opens the project popup anew
 // rather than accepting a task).
 func TestPrefixNeverReachesPopup(t *testing.T) {
-	want := map[string]string{"a": "*tui.projectView", "i": "*tui.inboxView", "t": "*tui.boardView",
+	want := map[string]string{"a": "*tui.projectView", "i": "*tui.inboxView", "t": "*tui.projectView",
 		",": "*tui.settingsView", "?": "*tui.helpView", "p": "*tui.switchView", "d": "<nil>", "tab": "<nil>",
 		"r": "*tui.confirmView"}
 	states := map[string]func(m *dash){"the list": func(*dash) {}}

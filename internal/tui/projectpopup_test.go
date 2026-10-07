@@ -423,7 +423,7 @@ func TestDelegateFromBoard(t *testing.T) {
 	m.Update(keyPress(m, "t")())
 	// Needs you first: T3 (review).
 	keyPress(m, "D")
-	if _, ok := m.top().(*boardView); !ok || !strings.Contains(m.msg, "T3 is in review") {
+	if _, ok := m.top().(*projectView); !ok || !strings.Contains(m.msg, "T3 is in review") {
 		t.Fatalf("d on review: %T, %q", m.top(), m.msg)
 	}
 	keyPress(m, "down")
@@ -675,7 +675,7 @@ func TestAcceptTask(t *testing.T) {
 	src, m := needsYouData(t, 86+sideDefault)
 	m.Update(keyPress(m, "a")())
 	keyPress(m, "3")
-	if out := screen(m); !strings.Contains(out, "A accept · x send back · enter show · esc close") {
+	if out := screen(m); !strings.Contains(out, "enter show · A accept · x send back · esc close") {
 		t.Fatalf("review keys:\n%s", out)
 	}
 	keyPress(m, "A")
@@ -727,7 +727,7 @@ func TestSendBack(t *testing.T) {
 		t.Fatalf("x opened %T", m.top())
 	}
 	keyPress(m, "esc")
-	if _, ok := m.top().(*boardView); !ok || m.msg != "T3 not sent back" {
+	if _, ok := m.top().(*projectView); !ok || m.msg != "T3 not sent back" {
 		t.Fatalf("esc: %T, %q", m.top(), m.msg)
 	}
 	keyPress(m, "x")
@@ -753,7 +753,7 @@ func TestSendBack(t *testing.T) {
 	// x on a task not in review or done only says why.
 	keyPress(m, "down")
 	keyPress(m, "x")
-	if _, ok := m.top().(*boardView); !ok || m.msg != "T4 is blocked, not in review or done; x sends back tasks in review or done" {
+	if _, ok := m.top().(*projectView); !ok || m.msg != "T4 is blocked, not in review or done; x sends back tasks in review or done" {
 		t.Fatalf("x on blocked: %T, %q", m.top(), m.msg)
 	}
 }
@@ -827,8 +827,8 @@ func TestReviewDetail(t *testing.T) {
 	m.Update(keyPress(m, "a")())
 	keyPress(m, "3")
 	keyPress(m, "enter")
-	b, ok := m.top().(*boardView)
-	if !ok || !b.open || !strings.Contains(screen(m), "PR #61 merged") {
+	_, ok := m.top().(*taskView)
+	if !ok || !strings.Contains(screen(m), "PR #61 merged") {
 		t.Fatalf("enter in the Tasks tab: %T\n%s", m.top(), screen(m))
 	}
 	keyPress(m, "down") // stays on the task
@@ -897,7 +897,7 @@ func TestNeedsYouNarrow(t *testing.T) {
 	keyPress(m, "esc")
 	m.Update(keyPress(m, "a")())
 	keyPress(m, "3")
-	if f := foot(); !strings.Contains(f, "A accept · x send back · enter show · esc close") {
+	if f := foot(); !strings.Contains(f, "enter show · A accept · x send back · esc close") {
 		t.Fatalf("Tasks tab keys:\n%s", f)
 	}
 	if out := screen(m); !strings.Contains(out, "◆ review    asked the coordinator") {
@@ -1105,10 +1105,10 @@ func TestListsPage(t *testing.T) {
 	}
 	keyPress(m, "esc")
 	m.Update(keyPress(m, "t")())
-	b := m.top().(*boardView)
+	pv := m.top().(*projectView)
 	keyPress(m, "pgdown")
-	if b.sel != len(b.list)-1 {
-		t.Errorf("task view pgdown: %d of %d", b.sel, len(b.list))
+	if pv.sel[tabTasks] != len(pv.tasks())-1 {
+		t.Errorf("Tasks tab pgdown: %d of %d", pv.sel[tabTasks], len(pv.tasks()))
 	}
 	keyPress(m, "esc")
 	keyPress(m, ",")
@@ -1351,8 +1351,8 @@ func TestTasksTabBacklog(t *testing.T) {
 }
 
 // TestTasksTabBacklogEnter: enter on a backlog task opens that task, not
-// another one, with the backlog expanded, and openBoard on a backlog task
-// shows it with the backlog collapsed (T133).
+// another one, with the backlog expanded, and showTask on a backlog task
+// selects it with the backlog expanded (T133).
 func TestTasksTabBacklogEnter(t *testing.T) {
 	src, m := popupData(t)
 	src.board.Tasks = append(src.board.Tasks,
@@ -1370,37 +1370,30 @@ func TestTasksTabBacklogEnter(t *testing.T) {
 		pv.sel[tabTasks] = i
 	}
 	keyPress(m, "enter")
-	b, ok := m.top().(*boardView)
-	if !ok || !b.open || b.list[b.sel].ID != 7 {
+	tv, ok := m.top().(*taskView)
+	if !ok || tv.id != 7 {
 		t.Fatalf("enter on the backlog task: %#v", m.top())
 	}
 	if out := screen(m); !strings.Contains(out, "Later idea") {
 		t.Fatalf("task panel:\n%s", out)
 	}
 	m.pop()
-	m.openBoard(pv.slug, 5)
-	b = m.top().(*boardView)
-	if b.board == nil {
-		b.setBoard(src.board)
-	}
-	if b.list[b.sel].ID != 5 {
-		t.Fatalf("openBoard on a backlog task selects %d", b.list[b.sel].ID)
+	m.pop()
+	m.showTask(pv.slug, 5)
+	pv = m.top().(*projectView)
+	pv.setBoard(src.board)
+	if !pv.backlogAll || pv.selTask() == nil || pv.selTask().ID != 5 || pv.tab != tabTasks {
+		t.Fatalf("showTask on a backlog task selects %v (backlog %v)", pv.selTask(), pv.backlogAll)
 	}
 }
 
-// TestTaskListsAlike: the Tasks tab and the task board draw the same list
-// (T134).
-func TestTaskListsAlike(t *testing.T) {
-	src, m := popupData(t)
-	src.board.Tasks = append(src.board.Tasks, &tasks.Task{ID: 5, Title: "Someday idea", Status: tasks.Open})
-	m.Update(keyPress(m, "a")())
-	keyPress(m, "3")
-	pv := m.top().(*projectView)
-	tab, _, _ := pv.taskLines(m, 80)
-	b := &boardView{slug: pv.slug}
-	b.setBoard(src.board)
-	lines, _, _ := taskList(m, b.slug, b.board, b.list, b.sel, b.backlog, b.doneAll, 80)
-	if strings.Join(tab, "\n") != strings.Join(lines, "\n") {
-		t.Fatalf("tab:\n%s\nboard:\n%s", strings.Join(tab, "\n"), strings.Join(lines, "\n"))
+// TestTaskKeyOpensTasksTab: t opens the project popup on its Tasks tab,
+// whose keys are the old task board's.
+func TestTaskKeyOpensTasksTab(t *testing.T) {
+	_, m := popupData(t)
+	m.Update(keyPress(m, "t")())
+	pv, ok := m.top().(*projectView)
+	if !ok || pv.tab != tabTasks {
+		t.Fatalf("t opened %T", m.top())
 	}
 }

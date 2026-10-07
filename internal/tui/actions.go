@@ -96,8 +96,8 @@ func init() {
 			run: (*dash).newProject},
 		{keys: []string{"a"}, label: "a", help: "the project popup: overview, inbox, tasks, settings and keys", menu: []string{"project popup"},
 			foot: withProject("project"), run: (*dash).projectPopup},
-		{keys: []string{"t"}, label: "t", help: "the project's tasks; enter shows one; D delegates, A accepts, x sends back (asking the coordinator); c opens it", menu: []string{"tasks"},
-			foot: withProject("tasks"), run: (*dash).taskBoard},
+		{keys: []string{"t"}, label: "t", help: "the project popup on its Tasks tab; enter shows a task; D delegates, A accepts, x sends back (asking the coordinator); c opens it", menu: []string{"tasks"},
+			foot: withProject("tasks"), run: (*dash).taskTab},
 		{keys: []string{"i"}, label: "i", help: "the project's inbox, read-only: what the coordinator is told about", menu: []string{"inbox"},
 			foot: withProject("inbox"), run: (*dash).inbox},
 		{keys: []string{"p"}, label: "p", help: "project switcher; enter opens that project's coordinator", menu: []string{"switch project"},
@@ -206,9 +206,10 @@ func (m *dash) needProject() string {
 	return slug
 }
 
-func (m *dash) taskBoard(string) tea.Cmd {
+// taskTab is the project popup with the Tasks tab selected.
+func (m *dash) taskTab(string) tea.Cmd {
 	if slug := m.needProject(); slug != "" {
-		return m.openBoard(slug, 0)
+		return m.showTask(slug, 0)
 	}
 	return nil
 }

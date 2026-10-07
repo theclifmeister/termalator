@@ -12,9 +12,8 @@ import (
 )
 
 // Overlays: the views opened on top of the list (help, a prompt, the
-// task board, the project switcher, the inbox, the settings, the project
-// popup). Each keeps
-// its own state and draws as a popup (popup.go); keys go to the topmost,
+// project switcher, the inbox, the settings, the project popup, a task).
+// Each keeps its own state and draws as a popup (popup.go); keys go to the topmost,
 // and closing it returns to the one below, or to the list.
 type overlay interface {
 	key(m *dash, k tea.KeyPressMsg) tea.Cmd
@@ -45,16 +44,6 @@ func (m *dash) top() overlay {
 		return nil
 	}
 	return m.stack[len(m.stack)-1]
-}
-
-// boardView is the open task board, if any.
-func (m *dash) boardView() *boardView {
-	for i := len(m.stack) - 1; i >= 0; i-- {
-		if b, ok := m.stack[i].(*boardView); ok {
-			return b
-		}
-	}
-	return nil
 }
 
 // line draws r w cells wide: plain in reverse video when selected,
@@ -186,139 +175,11 @@ func wrapInput(label, text string, w int) []string {
 	return lines
 }
 
-// boardView is a project's task board: its live tasks in board order
-// (needs you, in motion, on deck), or one of them when open. The
-// coordinator changes tasks (tm task); d, a and x ask it to (asks.go).
-type boardView struct {
-	slug    string
-	board   *tasks.Board
-	reviews map[int]Review // the tasks in review, by id
-	list    []*tasks.Task
-	sel     int
-	open    bool // showing the selected task
-	// backlog lists the open tasks, collapsed until b (T108).
-	backlog bool
-	// doneAll lists every done task, not the newest doneShown (m).
-	doneAll bool
-	// back: opened on one task from the project popup's Tasks tab, esc
-	// goes back there.
-	back bool
-}
-
-// openBoard opens slug's board, showing task id when it isn't 0.
-func (m *dash) openBoard(slug string, id int) tea.Cmd {
-	b := &boardView{slug: slug, open: id != 0}
-	b.selectID(id)
-	m.push(b)
-	return m.loadBoard(slug)
-}
-
-func (b *boardView) setBoard(t *tasks.Board) {
-	var keep int
-	if b.sel < len(b.list) {
-		keep = b.list[b.sel].ID
-	}
-	b.board, b.list = t, shown(t, b.backlog, b.doneAll)
-	b.selectID(keep)
-}
-
-func (b *boardView) selectID(id int) {
-	for i, t := range b.list {
-		if t.ID == id {
-			b.sel = i
-			return
-		}
-	}
-	if b.board != nil && !b.backlog && id != 0 {
-		// A backlog task is in no list while the backlog is collapsed:
-		// show the backlog rather than another task.
-		for _, t := range b.board.Tasks {
-			if t.ID == id && tasks.GroupOf(t.Status) == tasks.Backlog {
-				b.backlog = true
-				b.list = shown(b.board, true, b.doneAll)
-				b.selectID(id)
-				return
-			}
-		}
-	}
-	b.sel = min(b.sel, max(len(b.list)-1, 0))
-	if b.board == nil && id != 0 {
-		// The board isn't loaded yet: select once it is.
-		b.list = []*tasks.Task{{ID: id}}
-	}
-}
-
-func (b *boardView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
-	switch k.String() {
-	case "esc":
-		if b.open && !b.back {
-			b.open = false
-		} else {
-			m.pop()
-		}
-	case "up", "k", "down", "j", "pgup", "pgdown":
-		if !b.back {
-			b.sel = moveSel(b.sel, scrollKeys[k.String()], len(b.list))
-		}
-	case "enter":
-		if len(b.list) > 0 {
-			b.open = true
-		}
-	case "b":
-		if !b.open && b.board != nil && (b.backlog || backlogCount(b.board) > 0) {
-			b.backlog = !b.backlog
-			b.setBoard(b.board)
-		}
-	case "m":
-		if !b.open && b.board != nil && (b.doneAll || hiddenDone(b.board, b.backlog, b.doneAll) > 0) {
-			b.doneAll = !b.doneAll
-			b.setBoard(b.board)
-		}
-	case "D", "A", "x", "c":
-		if b.board != nil && b.sel < len(b.list) {
-			return m.taskKey(b.slug, b.list[b.sel], k.String())
-		}
-	}
-	return nil
-}
-
-func (b *boardView) render(m *dash) string {
-	title := "Tasks · " + b.slug
-	if b.board == nil {
-		return m.popup(box{title: title, body: []string{styleFaint.Render("loading…")}, sel: -1, keys: "esc close"})
-	}
-	if b.open && b.sel < len(b.list) {
-		t := b.list[b.sel]
-		d := &panel{w: m.inner(viewWidth) + 2} // panel lines start with a space, and keep one at the end
-		var rv *Review
-		if r, ok := b.reviews[t.ID]; ok {
-			rv = &r
-		}
-		taskPanelWith(d, t, rv, m.asked(b.slug, t), m.taskUsage(b.slug, t.ID))
-		for i, l := range d.lines {
-			// The box has its own gutters.
-			d.lines[i] = strings.TrimRight(strings.TrimSuffix(strings.TrimPrefix(l, " "), reset), " ") + reset
-		}
-		keys := joinKeys(taskKeys(t), "esc back")
-		return m.popup(box{title: "Task · " + b.slug, body: d.lines, sel: -1, keys: keys})
-	}
-	lines, sel, hits := taskList(m, b.slug, b.board, b.list, b.sel, b.backlog, b.doneAll, m.inner(viewWidth))
-	var cur *tasks.Task
-	if b.sel < len(b.list) {
-		cur = b.list[b.sel]
-	}
-	keys := taskListKeys(cur, b.board, b.backlog, b.doneAll, "esc close")
-	if cur != nil {
-		keys = joinKeys("enter show", keys)
-	}
-	return m.popup(box{title: title, body: lines, sel: sel, hits: hits, keys: keys})
-}
-
 // taskTitleCol is where a task row's title starts: after its id and
 // the gap (taskRow).
 const taskTitleCol = 5 + colGap
 
-// taskRow is a task as every task list draws it (the t list, the
+// taskRow is a task as every task list draws it (the
 // project popup's Tasks tab): id, title, state, progress, thread.
 func taskRow(t *tasks.Task, asked bool) row {
 	r := row{who: t.Ref(), what: oneLine(t.Title), state: string(t.Status), rest: t.Thread, pct: -1, whoW: 5, whatMin: 10}
@@ -341,23 +202,6 @@ func joinKeys(keys ...string) string {
 		}
 	}
 	return strings.Join(out, " · ")
-}
-
-// click selects a task; a double-click shows it.
-func (b *boardView) click(_ *dash, item, _ int, double bool) tea.Cmd {
-	if b.back {
-		return nil
-	}
-	if item < len(b.list) {
-		b.sel, b.open = item, double
-	}
-	return nil
-}
-
-func (b *boardView) wheel(m *dash, d int) {
-	if !b.open {
-		b.key(m, arrow(d))
-	}
 }
 
 // switchView is the project switcher: enter opens the selected

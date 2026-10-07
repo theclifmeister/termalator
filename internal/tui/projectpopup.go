@@ -81,9 +81,9 @@ func (m *dash) projectPopup(string) tea.Cmd {
 	return m.loadPopup(slug)
 }
 
-// showTask opens slug's project popup on the Tasks tab with task id
-// selected: enter on a NEEDS YOU task. It only shows the task; the
-// coordinator acts on it.
+// showTask opens slug's project popup on the Tasks tab, task id
+// selected when it isn't 0: t, and enter on a NEEDS YOU task. It only
+// shows the task; the coordinator acts on it.
 func (m *dash) showTask(slug string, id int) tea.Cmd {
 	pv := &projectView{slug: slug, tab: tabTasks, pick: id, settings: settingsList{rows: projectSettings(slug)}}
 	m.push(pv)
@@ -95,6 +95,15 @@ func (pv *projectView) setBoard(b *tasks.Board) {
 	pv.board = b
 	if pv.pick == 0 {
 		return
+	}
+	if b != nil && !pv.backlogAll {
+		// A backlog task is in no list while the backlog is collapsed:
+		// show the backlog rather than another task.
+		for _, t := range b.Tasks {
+			if t.ID == pv.pick && tasks.GroupOf(t.Status) == tasks.Backlog {
+				pv.backlogAll = true
+			}
+		}
 	}
 	for i, t := range pv.tasks() {
 		if t.ID == pv.pick {
@@ -191,14 +200,64 @@ func (pv *projectView) selTask() *tasks.Task {
 	return nil
 }
 
-// openTask shows task t of the popup's project over it, as the t list
-// shows one; esc comes back to the popup.
+// openTask shows task t of the popup's project over it; esc comes back
+// to the popup.
 func (m *dash) openTask(pv *projectView, t *tasks.Task) tea.Cmd {
-	b := &boardView{slug: pv.slug, reviews: pv.reviews, open: true, back: true}
-	b.setBoard(pv.board)
-	b.selectID(t.ID)
-	m.push(b)
+	m.push(&taskView{pv: pv, id: t.ID})
 	return nil
+}
+
+// taskView is one task of a project popup's Tasks tab, in full. It
+// follows the popup's board, which reloads while it is open.
+type taskView struct {
+	pv *projectView
+	id int
+}
+
+func (tv *taskView) task() *tasks.Task {
+	if tv.pv.board != nil {
+		for _, t := range tv.pv.board.Tasks {
+			if t.ID == tv.id {
+				return t
+			}
+		}
+	}
+	return nil
+}
+
+func (tv *taskView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
+	switch k.String() {
+	case "esc":
+		m.pop()
+	case "D", "A", "x", "c":
+		if t := tv.task(); t != nil {
+			return m.taskKey(tv.pv.slug, t, k.String())
+		}
+	}
+	return nil
+}
+
+func (tv *taskView) render(m *dash) string {
+	title := "Task · " + tv.pv.slug
+	t := tv.task()
+	if t == nil {
+		body := styleFaint.Render("loading…")
+		if tv.pv.board != nil {
+			body = styleFaint.Render("this task is gone")
+		}
+		return m.popup(box{title: title, body: []string{body}, sel: -1, keys: "esc back"})
+	}
+	d := &panel{w: m.inner(viewWidth) + 2} // panel lines start with a space, and keep one at the end
+	var rv *Review
+	if r, ok := tv.pv.reviews[t.ID]; ok {
+		rv = &r
+	}
+	taskPanelWith(d, t, rv, m.asked(tv.pv.slug, t), m.taskUsage(tv.pv.slug, t.ID))
+	for i, l := range d.lines {
+		// The box has its own gutters.
+		d.lines[i] = strings.TrimRight(strings.TrimSuffix(strings.TrimPrefix(l, " "), reset), " ") + reset
+	}
+	return m.popup(box{title: title, body: d.lines, sel: -1, keys: joinKeys(taskKeys(t), "esc back")})
 }
 
 // count is how many things the tab selects among.
@@ -263,7 +322,7 @@ func absPath(p, cwd string) string {
 	return filepath.Clean(p)
 }
 
-// tasks are the live tasks the Tasks tab lists, as the task board does.
+// tasks are the live tasks the Tasks tab lists.
 func (pv *projectView) tasks() []*tasks.Task {
 	if pv.board == nil {
 		return nil
@@ -281,8 +340,7 @@ func (pv *projectView) hiddenDone() int {
 
 // shown are the tasks a task list shows, in board order: needs you, in
 // motion, on deck, the backlog (after b), then the newest done ones (all
-// of them after m). The task board and the project popup's Tasks tab
-// both list these.
+// of them after m). The project popup's Tasks tab lists these.
 func shown(b *tasks.Board, backlog, doneAll bool) []*tasks.Task {
 	all := listed(b, backlog)
 	if doneAll {
@@ -369,7 +427,10 @@ func (pv *projectView) box(m *dash) box {
 		body = append(body, "", styleFaint.Render("Read-only: the coordinator handles these."))
 	case tabTasks:
 		body, sel, hits = pv.taskLines(m, w)
-		keys = taskListKeys(pv.selTask(), pv.board, pv.backlogAll, pv.doneAll, "enter show · esc close")
+		keys = taskListKeys(pv.selTask(), pv.board, pv.backlogAll, pv.doneAll, "esc close")
+		if pv.selTask() != nil {
+			keys = joinKeys("enter show", keys)
+		}
 	case tabSettings:
 		body, sel, hits = pv.settings.lines(m, w)
 		keys = "enter change · + - number · ↑ ↓ move · " + keys
@@ -421,7 +482,7 @@ const tabHit = -2
 
 // click picks a tab on the tab bar, else the clicked line's repository,
 // inbox item, task or setting (which it changes, as enter does).
-func (pv *projectView) click(m *dash, item, col int, _ bool) tea.Cmd {
+func (pv *projectView) click(m *dash, item, col int, double bool) tea.Cmd {
 	if item == tabHit {
 		if t := pv.tabAt(pv.data(m), col); t >= 0 {
 			pv.tab = t
@@ -432,6 +493,11 @@ func (pv *projectView) click(m *dash, item, col int, _ bool) tea.Cmd {
 		return pv.settings.click(m, item, col)
 	}
 	pv.sel[pv.tab] = item
+	if double && pv.tab == tabTasks {
+		if t := pv.selTask(); t != nil {
+			return m.openTask(pv, t)
+		}
+	}
 	return nil
 }
 
@@ -595,7 +661,7 @@ func (pv *projectView) coordinatorLine(m *dash, p ProjectData) string {
 	return config.DefaultAgent(DefaultAgent) + styleFaint.Render(" · not running; enter on the project starts it")
 }
 
-// taskLines are the Tasks tab's lines: the task board's list.
+// taskLines are the Tasks tab's lines.
 func (pv *projectView) taskLines(m *dash, w int) ([]string, int, []int) {
 	if pv.board == nil {
 		return []string{styleFaint.Render("loading…")}, -1, nil
@@ -603,8 +669,8 @@ func (pv *projectView) taskLines(m *dash, w int) ([]string, int, []int) {
 	return taskList(m, pv.slug, pv.board, pv.tasks(), pv.sel[tabTasks], pv.backlogAll, pv.doneAll, w)
 }
 
-// taskList is how every task list draws a project's tasks (the task
-// board, the project popup's Tasks tab): grouped, only the selected task
+// taskList is how the project popup's Tasks tab draws a project's tasks:
+// grouped, only the selected task
 // that isn't done listing its steps (the others show n/n), the collapsed
 // backlog and the older done tasks left out each in a line. It returns the
 // lines, the selected task's line and each line's task (noHit for none).
