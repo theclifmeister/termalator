@@ -27,7 +27,12 @@ var ErrLocked = errors.New("server lock is held")
 // lockFile is an exclusive flock on the server lock file. The kernel drops
 // it when the holder exits, however it exits, so a crashed server never
 // leaves a stale lock behind.
-type lockFile struct{ f *os.File }
+type lockFile struct {
+	f *os.File
+	// handedOver: this server came by exec into the pin (execPinned) and
+	// must not exec again.
+	handedOver bool
+}
 
 // tryLock takes the lock without waiting; it returns ErrLocked if another
 // open file description holds it.
@@ -52,11 +57,15 @@ func tryLock(path string) (*lockFile, error) {
 // just took it has not yet written its pid file.
 const lockWait = 2 * time.Second
 
-// takeLock takes the server lock for a starting server. It refuses at once
+// takeLock takes the server lock for a starting server, or keeps the one
+// it held before its exec into the pin (execPinned). It refuses at once
 // when the pid file names a live process, and otherwise retries until
 // lockWait, so a probe that holds the lock for a moment is not taken for a
 // server. It returns *AlreadyRunningError if the lock stays held.
 func takeLock(p Paths) (*lockFile, error) {
+	if lk := inheritedLock(p.Lock); lk != nil {
+		return lk, nil
+	}
 	deadline := time.Now().Add(lockWait)
 	for {
 		lk, err := tryLock(p.Lock)
