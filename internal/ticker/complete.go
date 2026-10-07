@@ -7,10 +7,10 @@ package ticker
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/theclifmeister/terminatr/internal/caller"
+	"github.com/theclifmeister/terminatr/internal/codehost"
 	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/tasks"
@@ -58,24 +58,20 @@ func (t *Ticker) mergeOf(p *project.Project, pm *projectMemo, id string) *mergeM
 	if rep == nil {
 		return nil
 	}
-	n := PRNumber(rep.PR)
+	// Only a URL of the repo's own host counts: a GitHub URL in an
+	// Azure DevOps repo's report names no PR there.
+	n, _ := t.host(p, r.Repo).ParsePRURL(rep.PR)
 	if merge := t.host(p, r.Repo).MergeCommit(r.Repo, n); n > 0 && oidRE.MatchString(merge) {
 		return &mergeMemo{Repo: r.Repo, PR: n, Merge: merge}
 	}
 	return nil
 }
 
-// PRNumber is the number at the end of a pull request's URL, 0 for none.
+// PRNumber is the number of a GitHub or Azure DevOps pull request's URL,
+// 0 for none.
 func PRNumber(url string) int {
-	_, n, ok := strings.Cut(url, "/pull/")
-	if !ok {
-		return 0
-	}
-	v, err := strconv.Atoi(n)
-	if err != nil || v < 0 {
-		return 0
-	}
-	return v
+	n, _, _ := codehost.ParsePRURL(url)
+	return n
 }
 
 // byUser: a task the user owns is theirs to accept.

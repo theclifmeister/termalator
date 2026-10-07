@@ -7,13 +7,13 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/theclifmeister/terminatr/internal/codehost"
 	"github.com/theclifmeister/terminatr/internal/mdfile"
 	"github.com/theclifmeister/terminatr/internal/project"
 )
@@ -24,7 +24,19 @@ const (
 	MaxNextLine = 100
 )
 
-var prRE = regexp.MustCompile(`^PR: https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/[0-9]+$`)
+// isPRLine says whether t is tm report's PR line: "PR: " and the URL of a
+// GitHub or Azure DevOps pull request.
+func isPRLine(t string) bool {
+	u, ok := strings.CutPrefix(t, "PR: ")
+	if !ok {
+		return false
+	}
+	_, _, ok = codehost.ParsePRURL(u)
+	return ok
+}
+
+// PRLineWant is what a PR line looks like, for the error and tool texts.
+const PRLineWant = "PR: https://github.com/<owner>/<repo>/pull/<n> or https://dev.azure.com/<org>/<project>/_git/<repo>/pullrequest/<n>"
 
 // Report is a validated report.
 type Report struct {
@@ -63,8 +75,8 @@ func Validate(text string) (*Report, error) {
 		if first && t != "" {
 			first = false
 			if strings.HasPrefix(t, "PR:") || strings.HasPrefix(t, "PR ") {
-				if !prRE.MatchString(t) {
-					return nil, refuse("invalid-report", "line %d: bad PR line; want PR: https://github.com/<owner>/<repo>/pull/<n>", i+1)
+				if !isPRLine(t) {
+					return nil, refuse("invalid-report", "line %d: bad PR line; want %s", i+1, PRLineWant)
 				}
 				r.PR = strings.TrimSpace(strings.TrimPrefix(t, "PR:"))
 				continue
@@ -225,7 +237,7 @@ func ReportPRs(p *project.Project, id string) []string {
 			continue
 		}
 		first, _, _ := strings.Cut(strings.TrimSpace(strings.ReplaceAll(string(data), "\r\n", "\n")), "\n")
-		if first = strings.TrimSpace(first); prRE.MatchString(first) {
+		if first = strings.TrimSpace(first); isPRLine(first) {
 			if u := strings.TrimSpace(strings.TrimPrefix(first, "PR:")); !seen[u] {
 				seen[u] = true
 				out = append(out, u)

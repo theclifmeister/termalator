@@ -97,7 +97,13 @@ func TestValidate(t *testing.T) {
 		len(r.Check) != 1 || r.Check[0] != "Run tm, press t" {
 		t.Fatalf("%+v", r)
 	}
+	az := "https://dev.azure.com/org/proj/_git/repo/pullrequest/34"
+	if r, err := Validate("PR: " + az + "\n## Report\nDone.\n## Next\nReview it\n"); err != nil || r.PR != az {
+		t.Fatalf("Azure PR line: %+v, %v", r, err)
+	}
 	for _, c := range []struct{ text, want string }{
+		{"PR: https://dev.azure.com/org/proj/_git/repo/pull/34\n## Report\n## Next\n", "pullrequest/<n>"},
+		{"PR: https://dev.azure.com/org/proj/_git/repo/pullrequest/x\n## Report\n## Next\n", "bad PR line"},
 		{"", "empty report"},
 		{"## Report\nx\n", "missing ## Next"},
 		{"## Next\nx\n", "missing ## Report"},

@@ -706,7 +706,7 @@ A thread hands in its report with `tm report` whenever it finishes or stops to w
 
 ```sh
 tm report <<'EOF'
-PR: https://github.com/<owner>/<repo>/pull/<n>
+PR: https://github.com/<owner>/<repo>/pull/<n>   # or https://dev.azure.com/<org>/<project>/_git/<repo>/pullrequest/<n>
 
 ## Report
 What was done, what was found, what is left, what the user must decide.
@@ -726,7 +726,7 @@ tm report --file /tmp/report.md --attach build/screenshot.png   # report from a 
 tm report --show                                                # print the current report (after a restart, say)
 ```
 
-The format is herdr-projects': an optional `PR:` first line, `## Report`, a required `## Next`, an optional `## Check` and an optional `## Remember`.
+The format is herdr-projects': an optional `PR:` first line (a GitHub PR URL, or an Azure DevOps one, `dev.azure.com/…/_git/<repo>/pullrequest/<n>` or the `visualstudio.com` form), `## Report`, a required `## Next`, an optional `## Check` and an optional `## Remember`.
 
 - `## Check` says in a few lines how the user can check the work (what to run, where to look). The task list shows it on the task while it waits in `review` (§4, **A task, shown**).
 
