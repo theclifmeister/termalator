@@ -160,3 +160,43 @@ func TestGuardRoutes(t *testing.T) {
 		t.Errorf("journal %q", lines)
 	}
 }
+
+// TestAccessMergeCommands: coordinator_merges (off by default) allows the
+// coordinator's PR merge commands, only while merge = coordinator, and a
+// thread never gets them.
+func TestAccessMergeCommands(t *testing.T) {
+	testPaths(t)
+	p := newWatchProject(t)
+	s := &Server{opts: Options{Paths: Paths{Home: os.Getenv("TERMINATR_HOME")}}}
+	cmds := func(role string) []string {
+		a, err := s.accessFor(role, p.Slug, t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return a.Commands
+	}
+	if got := cmds(proto.RoleCoordinator); got != nil {
+		t.Errorf("default: coordinator commands %q", got)
+	}
+	want := []string{"gh pr merge", "az repos pr update"}
+	for _, body := range []string{
+		"[projects." + p.Slug + "]\ncoordinator_merges = true\n",
+		"[defaults]\ncoordinator_merges = true\n",
+	} {
+		writeConfig(t, body)
+		if got := cmds(proto.RoleCoordinator); !slices.Equal(got, want) {
+			t.Errorf("%q: coordinator commands %q, want %q", body, got, want)
+		}
+		if got := cmds(proto.RoleThread); got != nil {
+			t.Errorf("%q: thread commands %q", body, got)
+		}
+	}
+	writeConfig(t, "[projects."+p.Slug+"]\ncoordinator_merges = true\nmerge = \"thread\"\n")
+	if got := cmds(proto.RoleCoordinator); got != nil {
+		t.Errorf("merge = thread: coordinator commands %q", got)
+	}
+	writeConfig(t, "[defaults]\ncoordinator_merges = true\n[projects."+p.Slug+"]\ncoordinator_merges = false\n")
+	if got := cmds(proto.RoleCoordinator); got != nil {
+		t.Errorf("project off: coordinator commands %q", got)
+	}
+}
