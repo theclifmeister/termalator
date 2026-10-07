@@ -548,9 +548,9 @@ func (a Azure) Hints(n int) Hints {
 }
 
 // Doctor checks that az is installed, has the azure-devops extension
-// and is logged in: without them the ticker's PR polls fail. A minimal
-// start: tm doctor doesn't call it yet; T118 wires it per host kind and
-// adds the repo access check.
+// and is logged in (az login, or AZURE_DEVOPS_EXT_PAT set, never
+// printed): without them the ticker's PR polls fail. Access to one repo
+// is Access.
 func (a Azure) Doctor(d DoctorDeps) []Check {
 	p, err := d.LookPath("az")
 	if err != nil {
@@ -563,7 +563,27 @@ func (a Azure) Doctor(d DoctorDeps) []Check {
 	}
 	auth := Check{Name: "az login", OK: true, Detail: "logged in"}
 	if _, err := d.Run("", p, "account", "show", "--only-show-errors", "--output", "none"); err != nil {
-		auth = Check{Name: "az login", Detail: "not logged in: run az login (PR follow-up, auto-close and completing tasks need it)"}
+		if d.Getenv != nil && d.Getenv("AZURE_DEVOPS_EXT_PAT") != "" {
+			auth.Detail = "AZURE_DEVOPS_EXT_PAT is set"
+		} else {
+			auth = Check{Name: "az login", Detail: "not logged in: run az login (PR follow-up, auto-close and completing tasks need it)"}
+		}
 	}
 	return append(checks, ext, auth)
+}
+
+// Access checks that az can read this repo, which proves the login
+// reaches its organization and project. It is one line named for the
+// repo; a Target az can't be given safely (an odd name) is skipped.
+func (a Azure) Access(d DoctorDeps) []Check {
+	t := a.Target
+	p, err := d.LookPath("az")
+	if err != nil || !azOrgURLRE.MatchString(t.OrgURL) || !azNameRE.MatchString(t.Project) || !azNameRE.MatchString(t.Repo) {
+		return nil
+	}
+	name := "az repo " + t.Project + "/" + t.Repo
+	if _, err := d.Run("", p, "repos", "show", "--repository", t.Repo, "--organization", t.OrgURL, "--project", t.Project, "--only-show-errors", "--output", "none"); err != nil {
+		return []Check{{Name: name, Detail: "az can't read it: check az login, and that your account is in " + t.OrgURL + " with access to the project"}}
+	}
+	return []Check{{Name: name, OK: true, Detail: "readable"}}
 }

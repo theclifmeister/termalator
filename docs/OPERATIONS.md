@@ -86,15 +86,17 @@ tm server stop --force    # a hung server: SIGKILL the pid that holds the lock
 
 ### Over SSH (macOS)
 
-On macOS a server started from an SSH login would run in that login's security session, and so would every session under it: the keychain refuses them, so `gh` says its token is invalid and `git push` over https fails ("Interaction with the Security Server is not allowed"). So every start (`tm server start` or `restart`, `tm update`'s restart, a command that auto-starts it, the TUI) goes through launchd: tm hands the server to your desktop session (`launchctl kickstart gui/<uid>/dev.terminatr.server`), wherever you typed the command. Starting over SSH is then the same as starting at the Mac, with the same environment: the server gets your shell's (`PATH`, `LANG`, tokens), less the SSH login's own variables.
+On macOS a server started from an SSH login would run in that login's security session, and so would every session under it: the keychain refuses them, so the PR CLI (`gh`, or `az` if its token cache is in the keychain) says its token is invalid and git's credential helper fails ("Interaction with the Security Server is not allowed"). So every start (`tm server start` or `restart`, `tm update`'s restart, a command that auto-starts it, the TUI) goes through launchd: tm hands the server to your desktop session (`launchctl kickstart gui/<uid>/dev.terminatr.server`), wherever you typed the command. Starting over SSH is then the same as starting at the Mac, with the same environment: the server gets your shell's (`PATH`, `LANG`, tokens), less the SSH login's own variables.
 
 That needs someone logged in at the Mac's console; the screen can stay locked. With nobody logged in, a start refuses:
 
 ```
-tm server start: nobody is logged in at the Mac's console, so the server can't run in the desktop's session and its sessions couldn't use the keychain (gh, git push over https); log in on the Mac (the screen can stay locked) and try again, or start a server without the keychain: tm server start --no-launchd
+tm server start: nobody is logged in at the Mac's console, so the server can't run in the desktop's session and its sessions couldn't use the keychain (the PR CLI's login, git credential helpers); log in on the Mac (the screen can stay locked) and try again, or start a server without the keychain: tm server start --no-launchd
 ```
 
 `tm server start --no-launchd` (or `TERMINATR_LAUNCHD=off`) starts the server from your session as before, and over SSH warns that its sessions can't use the keychain. If launchd fails for another reason, the error names `launchctl` and the same way out.
+
+Azure DevOps over SSH is not verified yet: whether `az`'s token cache works from a server started over SSH (it lives in `~/.azure/msal_token_cache.*`, in the keychain only when the Azure CLI's encrypted-cache setting is on) hasn't been run on a Mac. To check: log in at the Mac (`az login`), then from an SSH login run `tm server restart`, and from a session in it `az account get-access-token --resource 499b84ac-1321-427f-aa17-267ca6975798 -o none` and `tm doctor` (its `az login` and `az repo` lines). Note the result here.
 
 `tm doctor` shows whether the running server's sessions can reach the keychain (`server keychain`), wherever you run it from. The fix is `tm server restart`; `tm doctor --fix` offers it over SSH too, unless you run doctor from inside one of tm's own sessions. On Linux none of this applies.
 
@@ -132,7 +134,7 @@ Any `tm` command starts the server when needed, so you don't need a service. If 
 ## Checking an installation: tm doctor
 
 `tm doctor` checks your installation and changes nothing:
-- the `tm` build and libghostty-vt, git and gh;
+- the `tm` build and libghostty-vt, git, and for each code host your projects' repos use: `gh` and its login for GitHub; for Azure DevOps `az`, its `azure-devops` extension, `az login` (or `AZURE_DEVOPS_EXT_PAT` set, never shown), that `az repos show` can read each repo, and that `git ls-remote origin HEAD` works without a password prompt. With no project yet, the GitHub checks run;
 - how `tm` was installed (Homebrew, a direct download, or built from source) and whether a newer release exists, with the command that updates it;
 - the server: running and answering, the same build as this `tm` (a server of an older protocol is a warning; `tm doctor --fix` restarts it, agents are resumed), on macOS whether its sessions can reach the keychain (not when it was started over SSH without launchd; see [Over SSH](#over-ssh-macos)), a previous crash, stale `tm.sock`, `server.pid` and session runtime dirs (it never starts a server);
 - each agent's installed version against its manifest's `tested_versions`. An untested Claude still works, but terminatr stops trusting its undocumented status file and messaging socket;

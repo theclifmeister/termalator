@@ -15,7 +15,7 @@ import (
 // ErrNoConsole means nobody is logged in at the Mac's console, so there is
 // no GUI launchd domain to run the server in (docs/SPEC.md §3.1).
 var ErrNoConsole = errors.New("nobody is logged in at the Mac's console, so the server can't run in the desktop's session " +
-	"and its sessions couldn't use the keychain (the PR CLI's login, git credential helpers); log in on the Mac (the screen can stay locked) " +
+	"and its sessions couldn't use the keychain (gh, git push over https); log in on the Mac (the screen can stay locked) " +
 	"and try again, or start a server without the keychain: tm server start --no-launchd")
 
 // LaunchEnvVar turns the launchd start off when set to "off": tests, and
