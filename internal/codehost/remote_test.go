@@ -79,6 +79,12 @@ func TestDetect(t *testing.T) {
 	if got := Detect(repo, Config{}); got != (Target{Kind: AzureKind, OrgURL: "https://dev.azure.com/acme", Project: "Shop", Repo: "web"}) {
 		t.Fatalf("azure origin: %+v", got)
 	}
+	// An insteadOf rewrite (a mirror, a local copy) doesn't change whose
+	// PRs they are.
+	run("config", "url./srv/mirror/web.insteadOf", "https://acme@dev.azure.com/acme/Shop/_git/web")
+	if got := Detect(repo, Config{}); got.Kind != AzureKind || got.Repo != "web" {
+		t.Fatalf("rewritten origin: %+v", got)
+	}
 	if got := Detect(repo, Config{CodeHost: GitHubKind}); got.Kind != GitHubKind {
 		t.Fatalf("override github: %+v", got)
 	}

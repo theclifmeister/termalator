@@ -148,12 +148,14 @@ func Pick(repo string, cfg Config) Host {
 // none.
 var newAzure func(Target) Host
 
-// origin is repo's origin URL, "" for none.
+// origin is repo's origin URL as configured, "" for none: before any
+// url.<base>.insteadOf rewrite, which says how to reach the repo, not
+// whose PRs it has.
 func origin(repo string) string {
 	if repo == "" {
 		return ""
 	}
-	out, err := git(repo, "remote", "get-url", "origin")
+	out, err := git(repo, "config", "--get", "remote.origin.url")
 	if err != nil {
 		return ""
 	}
