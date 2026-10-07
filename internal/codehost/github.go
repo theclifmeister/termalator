@@ -254,13 +254,7 @@ func (GitHub) MergeCommit(repo string, n int) string {
 	if n <= 0 {
 		return ""
 	}
-	for _, base := range []string{"refs/remotes/origin/HEAD", "HEAD"} {
-		out, err := git(repo, "log", "--merges", "-1", "--format=%H", "--grep", fmt.Sprintf("^Merge pull request #%d from ", n), base, "--")
-		if err == nil && out != "" {
-			return out
-		}
-	}
-	return ""
+	return grepMerge(repo, fmt.Sprintf("^Merge pull request #%d from ", n), true)
 }
 
 // commitRE is a full commit id, SHA-1 or SHA-256.
@@ -273,19 +267,7 @@ var mergedPRRE = regexp.MustCompile(`^Merge pull request #([0-9]{1,9}) |\(#([0-9
 // MergedPR reads the PR number from the commit's subject. Only the
 // number is taken from it.
 func (GitHub) MergedPR(repo, commit string) int {
-	if !commitRE.MatchString(commit) {
-		return 0
-	}
-	s, err := git(repo, "log", "-1", "--format=%s", commit)
-	if err != nil {
-		return 0
-	}
-	m := mergedPRRE.FindStringSubmatch(s)
-	if m == nil {
-		return 0
-	}
-	n, _ := strconv.Atoi(m[1] + m[2])
-	return n
+	return subjectPR(repo, commit, mergedPRRE)
 }
 
 func (GitHub) Hints(n int) Hints {

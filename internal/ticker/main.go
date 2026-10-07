@@ -113,14 +113,19 @@ func short(oid string) string {
 // coordinator. One that is merely behind is left alone (T77). A head
 // that main already has is left alone, and the PR is asked about again
 // right before it is judged conflicting: main may have moved by merging it.
-func (t *Ticker) followMain(p *project.Project, sessions []proto.SessionInfo, safety config.Safety, now time.Time) {
+//
+// A head that main has is a hint that the PR merged (a merge commit or a
+// fast-forward, on any host): the PR is asked about at once instead of
+// on its next poll, and when it merged the merge is kept for
+// completeTasks. It reports whether a PR was seen merged.
+func (t *Ticker) followMain(p *project.Project, sessions []proto.SessionInfo, safety config.Safety, now time.Time) (merged bool) {
 	pm := t.projectMemo(p.Slug)
 	if len(pm.Repos) == 0 {
-		return
+		return false
 	}
 	recs, err := thread.List(p)
 	if err != nil {
-		return
+		return false
 	}
 	for _, r := range recs {
 		m := t.st.Threads[p.Slug+"/"+r.ID]
@@ -129,6 +134,18 @@ func (t *Ticker) followMain(p *project.Project, sessions []proto.SessionInfo, sa
 		}
 		rm := pm.Repos[filepath.Clean(r.Repo)]
 		if rm == nil || m.MainSeen == rm.Origin || (m.PR.Base != "" && m.PR.Base != rm.Branch) {
+			continue
+		}
+		if worktree.Contains(r.Repo, rm.Origin, m.PR.Head) {
+			m.MainSeen = rm.Origin
+			_, _, info, live := liveState(r, sessions)
+			if done, ok := t.refreshPR(p, r, m, info, live, safety, now); ok && done {
+				merged = true
+				t.rememberMerge(p, r, m.PR)
+				if rm.MergedPR == 0 {
+					rm.MergedPR = m.PR.Number
+				}
+			}
 			continue
 		}
 		state, ok := headState(r.Repo, m.PR, rm.Origin)
@@ -177,6 +194,7 @@ func (t *Ticker) followMain(p *project.Project, sessions []proto.SessionInfo, sa
 		}
 		t.item(p, KindPRConflict, r.ID, fmt.Sprintf("%s of %s conflicts with %s at %s%s", ref, r.ID, rm.Branch, short(rm.Origin), after), false)
 	}
+	return merged
 }
 
 // promptPR sends a PR-related prompt to a thread's session. It can wait
