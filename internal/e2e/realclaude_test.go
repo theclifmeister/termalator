@@ -186,7 +186,7 @@ func TestRealSession(t *testing.T) {
 func TestRealThreadAccess(t *testing.T) {
 	env := realEnv(t)
 	var p struct{ Slug, Dir string }
-	if err := json.Unmarshal([]byte(env.MustCLI("project", "new", "Real", "--json")), &p); err != nil {
+	if err := json.Unmarshal([]byte(env.MustCLI("project", "new", "real", "--json")), &p); err != nil {
 		t.Fatal(err)
 	}
 	for _, yolo := range []bool{false, true} {

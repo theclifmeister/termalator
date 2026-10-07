@@ -52,7 +52,7 @@ func TestSlugify(t *testing.T) {
 func TestNewLayout(t *testing.T) {
 	root := setup(t)
 	repo := t.TempDir()
-	p, err := New(Options{Name: "Demo App", Goal: "Ship it", Repos: []string{repo}})
+	p, err := New(Options{Slug: "demo-app", Goal: "Ship it", Repos: []string{repo}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestNewLayout(t *testing.T) {
 		t.Fatalf("CLAUDE.md link: %q %v", target, err)
 	}
 	role, _ := os.ReadFile(p.Path("AGENTS.md"))
-	if !strings.Contains(string(role), "tm skill coordinator") || !strings.Contains(string(role), "coordinator of the terminatr project \"Demo App\"") {
+	if !strings.Contains(string(role), "tm skill coordinator") || !strings.Contains(string(role), "coordinator of the terminatr project demo-app.") {
 		t.Fatalf("role file:\n%s", role)
 	}
 
@@ -76,20 +76,58 @@ func TestNewLayout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if q.Meta.Name != "Demo App" || q.Meta.Goal != "Ship it" || len(q.Meta.Repos) != 1 || q.Meta.Repos[0] != repo {
+	if q.Meta.Goal != "Ship it" || len(q.Meta.Repos) != 1 || q.Meta.Repos[0] != repo {
 		t.Fatalf("meta %+v", q.Meta)
 	}
 	if !strings.HasPrefix(q.Instructions, "# Instructions") {
 		t.Fatalf("instructions %q", q.Instructions)
 	}
-	if _, err := New(Options{Name: "demo app"}); err == nil || !strings.Contains(err.Error(), "project-exists") {
+	if _, err := New(Options{Slug: "demo-app"}); err == nil || !strings.Contains(err.Error(), "project-exists") {
 		t.Fatalf("second new: %v", err)
 	}
-	if _, err := New(Options{Name: "x", Repos: []string{filepath.Join(repo, "nope")}}); err == nil || !strings.Contains(err.Error(), "invalid-repo") {
+	for _, bad := range []string{"Demo App", "Demo", "-x", ""} {
+		if _, err := New(Options{Slug: bad}); err == nil || !strings.Contains(err.Error(), "invalid-project") {
+			t.Fatalf("new %q: %v", bad, err)
+		}
+	}
+	if _, err := New(Options{Slug: "Demo App"}); err == nil || !strings.Contains(err.Error(), "try demo-app") {
+		t.Fatalf("no suggestion: %v", err)
+	}
+	if _, err := New(Options{Slug: "x", Repos: []string{filepath.Join(repo, "nope")}}); err == nil || !strings.Contains(err.Error(), "invalid-repo") {
 		t.Fatalf("bad repo: %v", err)
 	}
 	if _, err := Open("nope"); err == nil || !strings.Contains(err.Error(), "unknown-project") {
 		t.Fatalf("open unknown: %v", err)
+	}
+}
+
+// TestLegacyName: a PROJECT.md with the display name an older tm wrote
+// loads unchanged, and the name goes when tm next rewrites the front
+// matter (T137).
+func TestLegacyName(t *testing.T) {
+	setup(t)
+	repo := t.TempDir()
+	p, err := New(Options{Slug: "demo", Goal: "Ship it"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := "+++\nname = \"Demo App\"\ngoal = \"Ship it\"\nrepos = []\ncreated = 2026-01-02T03:04:05Z\n+++\n# Instructions\n\nKeep it.\n"
+	if err := os.WriteFile(p.Path("PROJECT.md"), []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	q, err := Open("demo")
+	if err != nil || q.Meta.Goal != "Ship it" || q.Instructions != "# Instructions\n\nKeep it." {
+		t.Fatalf("open: %v %+v", err, q)
+	}
+	if l, err := List(); err != nil || len(l) != 1 || l[0].Slug != "demo" || l[0].Error != "" {
+		t.Fatalf("list: %v %+v", err, l)
+	}
+	if _, err := q.SetRepo(repo, true); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(p.Path("PROJECT.md"))
+	if strings.Contains(string(b), "name") || !strings.Contains(string(b), `goal = "Ship it"`) || !strings.Contains(string(b), "Keep it.") || !strings.Contains(string(b), repo) {
+		t.Fatalf("rewritten:\n%s", b)
 	}
 }
 
@@ -98,8 +136,8 @@ func TestList(t *testing.T) {
 	if l, err := List(); err != nil || len(l) != 0 {
 		t.Fatalf("empty list: %v %v", l, err)
 	}
-	New(Options{Name: "beta"})
-	p, _ := New(Options{Name: "alpha"})
+	New(Options{Slug: "beta"})
+	p, _ := New(Options{Slug: "alpha"})
 	p.Tasks().Add(human, []tasks.NewTask{{Title: "a", Status: "review"}, {Title: "b", Status: "ready"}})
 	l, err := List()
 	if err != nil || len(l) != 2 || l[0].Slug != "alpha" {
@@ -141,7 +179,7 @@ func TestResolve(t *testing.T) {
 
 func TestDoneApproved(t *testing.T) {
 	setup(t)
-	p, _ := New(Options{Name: "demo app"})
+	p, _ := New(Options{Slug: "demo-app"})
 	s := p.Tasks()
 	s.Add(coord, []tasks.NewTask{{Title: "Ship"}, {Title: "Docs"}})
 	_, err := s.SetStatus(coord, 1, tasks.Done, "")
@@ -169,7 +207,7 @@ func TestDoneApproved(t *testing.T) {
 func TestContextDeterministicAndCapped(t *testing.T) {
 	setup(t)
 	repo := t.TempDir()
-	p, _ := New(Options{Name: "demo app", Goal: "Ship v1", Repos: []string{repo}})
+	p, _ := New(Options{Slug: "demo-app", Goal: "Ship v1", Repos: []string{repo}})
 	s := p.Tasks()
 	var items []tasks.NewTask
 	for i := 0; i < 15; i++ {
@@ -266,7 +304,7 @@ func FuzzParseItem(f *testing.F) {
 // loose, and unhandled ones aren't touched.
 func TestArchiveInbox(t *testing.T) {
 	setup(t)
-	p, err := New(Options{Name: "Prune"})
+	p, err := New(Options{Slug: "prune"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +359,7 @@ func TestArchiveInbox(t *testing.T) {
 // month's gzip file, appended; the heading and newer lines stay.
 func TestArchiveJournal(t *testing.T) {
 	setup(t)
-	p, _ := New(Options{Name: "demo"})
+	p, _ := New(Options{Slug: "demo"})
 	os.WriteFile(p.Path("JOURNAL.md"), []byte("# Journal\n\n"+
 		"2026-08-30T10:00:00Z human a\n2026-09-02T10:00:00Z human b\n2026-09-20T10:00:00Z human c\n2026-10-03T10:00:00Z human d\n"), 0o644)
 	at := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
@@ -362,7 +400,7 @@ func TestArchiveJournal(t *testing.T) {
 
 func TestAskDelegate(t *testing.T) {
 	setup(t)
-	p, err := New(Options{Name: "Delegate"})
+	p, err := New(Options{Slug: "delegate"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,7 +431,7 @@ func TestAskDelegate(t *testing.T) {
 
 func TestAskAcceptSendBack(t *testing.T) {
 	setup(t)
-	p, err := New(Options{Name: "Review"})
+	p, err := New(Options{Slug: "review"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -439,7 +477,7 @@ func TestAskAcceptSendBack(t *testing.T) {
 // the given age, journaled as the caller's.
 func TestUpkeep(t *testing.T) {
 	setup(t)
-	p, _ := New(Options{Name: "demo app"})
+	p, _ := New(Options{Slug: "demo-app"})
 	render := func() string {
 		secs, err := p.Context(Ticked{})
 		if err != nil {
@@ -494,7 +532,7 @@ func TestUpkeep(t *testing.T) {
 // sorted; other files in memory/ are left out.
 func TestReadMemory(t *testing.T) {
 	setup(t)
-	p, err := New(Options{Name: "Demo App"})
+	p, err := New(Options{Slug: "demo-app"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -549,7 +587,7 @@ func TestInboxRows(t *testing.T) {
 
 func TestDoneItems(t *testing.T) {
 	t.Setenv("TERMINATR_HOME", t.TempDir())
-	p, err := New(Options{Name: "Demo"})
+	p, err := New(Options{Slug: "demo"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -574,7 +612,7 @@ func TestDoneItems(t *testing.T) {
 // user's own is kept (T109).
 func TestRefreshRoleFile(t *testing.T) {
 	setup(t)
-	p, _ := New(Options{Name: "demo app"})
+	p, _ := New(Options{Slug: "demo-app"})
 	path := p.Path("AGENTS.md")
 	os.WriteFile(path, []byte("# Coordinator of project Old\n\n"+roleFileMarker+" -->\nRun tm context.\n"), 0o644)
 	if err := p.RefreshRoleFile(); err != nil {
@@ -602,7 +640,7 @@ func TestCountsBacklog(t *testing.T) {
 // code host pick; a new project writes neither.
 func TestCodeHostOverride(t *testing.T) {
 	setup(t)
-	p, err := New(Options{Name: "Demo App"})
+	p, err := New(Options{Slug: "demo-app"})
 	if err != nil {
 		t.Fatal(err)
 	}

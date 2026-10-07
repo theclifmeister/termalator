@@ -45,7 +45,6 @@ type Data struct {
 // ProjectData is one project's rows.
 type ProjectData struct {
 	Slug   string
-	Name   string
 	Goal   string
 	Repos  []string
 	Counts map[string]int
@@ -93,7 +92,7 @@ type Source interface {
 	Board(slug string) (*tasks.Board, error)
 	// StartShell starts a shell of cols×rows in cwd.
 	StartShell(cwd string, cols, rows int) (string, error)
-	NewProject(name string) (string, error)
+	NewProject(slug string) (string, error)
 	// OpenProject returns the project's coordinator session, started
 	// first if none runs.
 	OpenProject(slug string, cols, rows int) (string, error)
@@ -218,7 +217,7 @@ func (s *ServerSource) Load() Data {
 		if sum.Safety != nil && sum.Safety.Archived {
 			continue // hidden: tm project unarchive brings it back
 		}
-		pd := ProjectData{Slug: sum.Slug, Name: sum.Name, Goal: sum.Goal, Repos: sum.Repos,
+		pd := ProjectData{Slug: sum.Slug, Goal: sum.Goal, Repos: sum.Repos,
 			Counts: sum.Counts, Safety: sum.Safety, Own: sum.Own, Err: sum.Error,
 			Checkouts: ticker.Checkouts(ticker.StatePath(s.Paths.Sessions), sum.Slug)}
 		if p, err := project.Open(sum.Slug); err == nil {
@@ -283,11 +282,11 @@ func (s *ServerSource) StartShell(cwd string, cols, rows int) (string, error) {
 	return s.start(proto.SessionStartParams{Cwd: cwd, Cols: uint16(cols), Rows: uint16(rows)})
 }
 
-func (s *ServerSource) NewProject(name string) (string, error) {
+func (s *ServerSource) NewProject(slug string) (string, error) {
 	if s.Caller.IsAgent() {
 		return "", errors.New("human-only: only the human creates projects")
 	}
-	p, err := project.New(project.Options{Name: name})
+	p, err := project.New(project.Options{Slug: slug})
 	if err != nil {
 		return "", err
 	}

@@ -322,7 +322,7 @@ func TestLeftovers(t *testing.T) {
 	os.MkdirAll(repo, 0o755)
 	git(t, repo, "init", "-q")
 	git(t, repo, "commit", "-q", "--allow-empty", "-m", "init")
-	p, err := project.New(project.Options{Name: "Demo", Repos: []string{repo}})
+	p, err := project.New(project.Options{Slug: "demo", Repos: []string{repo}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -519,7 +519,7 @@ func TestUpkeep(t *testing.T) {
 	if got := Upkeep(d); len(got) != 0 {
 		t.Fatalf("no projects: %+v", got)
 	}
-	p, err := project.New(project.Options{Name: "demo"})
+	p, err := project.New(project.Options{Slug: "demo"})
 	if err != nil {
 		t.Fatal(err)
 	}

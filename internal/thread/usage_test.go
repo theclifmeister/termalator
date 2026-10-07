@@ -8,7 +8,7 @@ import (
 
 func TestUsageTotals(t *testing.T) {
 	t.Setenv("TERMINATR_HOME", t.TempDir())
-	p, err := project.New(project.Options{Name: "demo"})
+	p, err := project.New(project.Options{Slug: "demo"})
 	if err != nil {
 		t.Fatal(err)
 	}

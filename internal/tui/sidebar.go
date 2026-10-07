@@ -597,7 +597,7 @@ func loadSideProjects() []ProjectData {
 		if sum.Safety != nil && sum.Safety.Archived {
 			continue
 		}
-		pd := ProjectData{Slug: sum.Slug, Name: sum.Name, Safety: sum.Safety}
+		pd := ProjectData{Slug: sum.Slug, Safety: sum.Safety}
 		if p, err := project.Open(sum.Slug); err == nil {
 			recs, _ := thread.List(p)
 			for _, r := range recs {

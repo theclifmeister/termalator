@@ -54,8 +54,8 @@ func TestProjectRename(t *testing.T) {
 	h := newHarness(t)
 	claudeDir := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", claudeDir)
-	h.ok(human, "project", "new", "Demo")
-	h.ok(human, "project", "new", "Other")
+	h.ok(human, "project", "new", "demo")
+	h.ok(human, "project", "new", "other")
 	repo, rec := threadWithWorktree(t, h, "demo")
 	cfg := filepath.Join(h.root, "config.toml")
 	os.WriteFile(cfg, []byte("# mine\n[projects.demo] # the demo\n# keep me\nauto_close = \"merged\"\n\n[projects.other]\nyolo = true\n"), 0o600)
@@ -77,7 +77,7 @@ func TestProjectRename(t *testing.T) {
 	os.MkdirAll(filepath.Join(h.root, "worktrees", "taken"), 0o755)
 	h.expect(1, "project-exists", human, "project", "rename", "demo", "taken")
 
-	out := h.ok(human, "project", "rename", "demo", "demo2", "--name", "Demo Two")
+	out := h.ok(human, "project", "rename", "demo", "demo2")
 	if !strings.Contains(out, "renamed demo to demo2") || !strings.Contains(out, "1 thread records updated") || strings.Contains(out, "note:") {
 		t.Fatalf("rename: %q", out)
 	}
@@ -85,11 +85,11 @@ func TestProjectRename(t *testing.T) {
 		t.Fatalf("old folder: %v", err)
 	}
 	p, err := project.Open("demo2")
-	if err != nil || p.Meta.Name != "Demo Two" {
+	if err != nil {
 		t.Fatalf("open: %v %+v", err, p)
 	}
 	j, _ := os.ReadFile(p.Path("JOURNAL.md"))
-	if !strings.Contains(string(j), "project.new demo") || !strings.Contains(string(j), `project.rename demo2 demo → demo2, name "Demo" → "Demo Two"`) {
+	if !strings.Contains(string(j), "project.new demo") || !strings.Contains(string(j), "project.rename demo2 demo → demo2\n") {
 		t.Fatalf("journal:\n%s", j)
 	}
 
@@ -123,13 +123,11 @@ func TestProjectRename(t *testing.T) {
 		t.Fatalf(".claude.json:\n%s", b)
 	}
 
-	// A new thread's branch takes the new slug; --name alone renames.
+	// A new thread's branch takes the new slug; --name is gone.
 	if b := thread.BranchName("demo2", "t-0002", "More"); b != "tm/demo2/t-0002-more" {
 		t.Fatalf("branch %q", b)
 	}
-	if out := h.ok(human, "project", "rename", "demo2", "demo2", "--name", "Demo 2"); !strings.Contains(out, `renamed demo2 to "Demo 2"`) {
-		t.Fatalf("name only: %q", out)
-	}
+	h.expect(2, "unknown flag --name", human, "project", "rename", "demo2", "demo3", "--name", "Demo 3")
 }
 
 func keyRune(r rune) rune {
@@ -143,7 +141,7 @@ func keyRune(r rune) rune {
 // whose repo moved to another of the project's repos follows it there.
 func TestResolveMissingOrMovedRepo(t *testing.T) {
 	h := newHarness(t)
-	h.ok(human, "project", "new", "Demo")
+	h.ok(human, "project", "new", "demo")
 	repo, rec := threadWithWorktree(t, h, "demo")
 
 	moved := filepath.Join(filepath.Dir(repo), "moved")
@@ -162,7 +160,7 @@ func TestResolveMissingOrMovedRepo(t *testing.T) {
 
 	// Gone for good: nothing for git to do, and no git error.
 	h2 := newHarness(t)
-	h2.ok(human, "project", "new", "Demo")
+	h2.ok(human, "project", "new", "demo")
 	repo, rec = threadWithWorktree(t, h2, "demo")
 	os.RemoveAll(repo)
 	out = h2.ok(coord, "thread", "resolve", rec.ID, "--project", "demo")
@@ -175,7 +173,7 @@ func TestResolveMissingOrMovedRepo(t *testing.T) {
 // its branch; a branch with commits that are nowhere else is refused.
 func TestResolveDiscard(t *testing.T) {
 	h := newHarness(t)
-	h.ok(human, "project", "new", "Demo")
+	h.ok(human, "project", "new", "demo")
 	repo, rec := threadWithWorktree(t, h, "demo")
 	os.WriteFile(filepath.Join(rec.Worktree, "report.md"), []byte("notes"), 0o644)
 
@@ -210,7 +208,7 @@ func TestResolveDiscard(t *testing.T) {
 // leftover worktree and branch; without --discard it stays a no-op.
 func TestResolveDiscardAlreadyResolved(t *testing.T) {
 	h := newHarness(t)
-	h.ok(human, "project", "new", "Demo")
+	h.ok(human, "project", "new", "demo")
 	repo, rec := threadWithWorktree(t, h, "demo")
 	os.WriteFile(filepath.Join(rec.Worktree, "REPORT.md"), []byte("notes"), 0o644)
 

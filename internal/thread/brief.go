@@ -83,8 +83,8 @@ func AppendFollowUp(p *project.Project, id, text string, at time.Time) error {
 func WriteBrief(p *project.Project, r *Record, restart bool) (string, error) {
 	path := Path(p, r.ID, "brief.md")
 	var b strings.Builder
-	fmt.Fprintf(&b, "# Thread %s of project %s\n\n", r.ID, p.Meta.Name)
-	fmt.Fprintf(&b, "You are thread %s of the terminatr project %q (slug %s)", r.ID, p.Meta.Name, p.Slug)
+	fmt.Fprintf(&b, "# Thread %s of project %s\n\n", r.ID, p.Slug)
+	fmt.Fprintf(&b, "You are thread %s of the terminatr project %s", r.ID, p.Slug)
 	if r.Task != "" {
 		fmt.Fprintf(&b, ", working on task %s", r.Task)
 	}

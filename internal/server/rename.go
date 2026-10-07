@@ -23,7 +23,7 @@ func (s *Server) renameProject(p proto.ProjectRenameParams, c caller.Caller) (an
 	if c.IsAgent() {
 		return nil, proto.Errorf("human-only", "the user renames projects")
 	}
-	o := rename.Options{From: p.From, To: p.To, Name: p.Name, Caller: c, MoveAgentDir: s.moveAgentDir}
+	o := rename.Options{From: p.From, To: p.To, Caller: c, MoveAgentDir: s.moveAgentDir}
 	if err := rename.Check(o); err != nil {
 		return nil, codeErr(err)
 	}

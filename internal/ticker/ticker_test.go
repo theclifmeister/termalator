@@ -122,7 +122,7 @@ func newRigIn(t *testing.T, repo string, repos []string) *rig {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("TERMINATR_HOME", home)
-	p, err := project.New(project.Options{Name: "Demo", Repos: repos})
+	p, err := project.New(project.Options{Slug: "demo", Repos: repos})
 	if err != nil {
 		t.Fatal(err)
 	}

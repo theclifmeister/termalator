@@ -77,11 +77,12 @@ func TestNotHandled(t *testing.T) {
 
 func TestProjectNewList(t *testing.T) {
 	h := newHarness(t)
-	out := h.ok(human, "project", "new", "Demo", "--goal", "Try tm", "--repo", h.cwd)
+	out := h.ok(human, "project", "new", "demo", "--goal", "Try tm", "--repo", h.cwd)
 	if !strings.Contains(out, "created project demo at "+filepath.Join(h.root, "projects", "demo")) {
 		t.Fatalf("out %q", out)
 	}
 	h.expect(1, "project-exists", human, "project", "new", "demo")
+	h.expect(1, "try my-app", human, "project", "new", "My App")
 	h.expect(1, "human-only", coord, "project", "new", "other")
 	h.expect(2, "usage", human, "project", "new")
 	h.expect(2, "unknown flag", human, "project", "list", "--bogus")
@@ -90,7 +91,7 @@ func TestProjectNewList(t *testing.T) {
 	}
 	var list []map[string]any
 	json.Unmarshal([]byte(h.ok(human, "project", "list", "--json")), &list)
-	if len(list) != 1 || list[0]["slug"] != "demo" {
+	if len(list) != 1 || list[0]["slug"] != "demo" || list[0]["name"] != nil {
 		t.Fatalf("json %v", list)
 	}
 }
@@ -229,7 +230,7 @@ func TestContextAndCwdResolution(t *testing.T) {
 	h.cwd = filepath.Join(h.root, "projects", "demo")
 	h.ok(human, "task", "add", "First")
 	out := h.ok(human, "context")
-	for _, w := range []string{"## Project\nProject: demo (demo)", "Goal: Ship v1", "## Tasks\nBacklog (1)\n  T1   open     First", "## Threads\n(no open threads)", "## Inbox\n(empty)", "human task.add T1 First"} {
+	for _, w := range []string{"## Project\nProject: demo\n", "Goal: Ship v1", "## Tasks\nBacklog (1)\n  T1   open     First", "## Threads\n(no open threads)", "## Inbox\n(empty)", "human task.add T1 First"} {
 		if !strings.Contains(out, w) {
 			t.Errorf("context lacks %q:\n%s", w, out)
 		}
@@ -326,7 +327,7 @@ func TestWarnSSH(t *testing.T) {
 
 func TestProjectLifecycle(t *testing.T) {
 	h := newHarness(t)
-	h.ok(human, "project", "new", "Demo")
+	h.ok(human, "project", "new", "demo")
 	for _, args := range [][]string{{"pause", "demo"}, {"archive", "demo"}, {"delete", "demo", "--yes"}} {
 		h.expect(1, "human-only", coord, append([]string{"project"}, args...)...)
 	}
@@ -338,7 +339,7 @@ func TestProjectLifecycle(t *testing.T) {
 	if out := h.ok(human, "project", "pause", "demo"); !strings.Contains(out, "already paused") {
 		t.Fatalf("pause again: %q", out)
 	}
-	if out := h.ok(human, "project", "list"); !strings.Contains(out, "Demo (paused)") {
+	if out := h.ok(human, "project", "list"); !strings.Contains(out, "demo (paused)") {
 		t.Fatalf("list: %q", out)
 	}
 	h.expect(1, "project-paused", coord, "thread", "start", "Fix it", "--project", "demo")
@@ -351,7 +352,7 @@ func TestProjectLifecycle(t *testing.T) {
 
 	// Archive: hidden, marked in the list, back with unarchive.
 	h.ok(human, "project", "archive", "demo")
-	if out := h.ok(human, "project", "list"); !strings.Contains(out, "Demo (archived)") {
+	if out := h.ok(human, "project", "list"); !strings.Contains(out, "demo (archived)") {
 		t.Fatalf("list: %q", out)
 	}
 	var list []struct {
@@ -382,7 +383,7 @@ func TestProjectLifecycle(t *testing.T) {
 		t.Fatalf("trash %v", trash)
 	}
 	h.expect(1, "unknown-project", human, "project", "archive", "demo")
-	h.ok(human, "project", "new", "Demo")
+	h.ok(human, "project", "new", "demo")
 	if out := h.ok(human, "project", "list"); strings.Contains(out, "paused") {
 		t.Fatalf("new project inherited pause: %q", out)
 	}
@@ -390,7 +391,7 @@ func TestProjectLifecycle(t *testing.T) {
 
 func TestThreadModel(t *testing.T) {
 	h := newHarness(t)
-	h.ok(human, "project", "new", "Demo")
+	h.ok(human, "project", "new", "demo")
 	h.expect(1, "unknown-model", coord, "thread", "start", "Fix it", "--model", "gpt-9", "--project", "demo")
 	h.expect(1, "opus, sonnet, haiku", coord, "thread", "start", "Fix it", "--model", "gpt-9", "--project", "demo")
 	h.expect(1, "unknown-agent", coord, "thread", "start", "Fix it", "--agent", "nope", "--model", "opus", "--project", "demo")
@@ -423,7 +424,7 @@ func TestThreadModel(t *testing.T) {
 // thread may be started with and what tm context lists.
 func TestThreadModelAllowList(t *testing.T) {
 	h := newHarness(t)
-	h.ok(human, "project", "new", "Demo")
+	h.ok(human, "project", "new", "demo")
 	h.ok(human, "task", "add", "Fix it", "--project", "demo")
 	cfg := filepath.Join(h.root, "config.toml")
 	if err := os.WriteFile(cfg, []byte("[projects.demo]\nmodels = [\"opus\", \"sonnet\"]\n"), 0o600); err != nil {
@@ -454,7 +455,7 @@ func agentBuiltin(name string) (string, bool) {
 // tarball, its report marked as the thread's data.
 func TestArchivedShow(t *testing.T) {
 	h := newHarness(t)
-	h.ok(human, "project", "new", "Demo")
+	h.ok(human, "project", "new", "demo")
 	p, err := project.Open("demo")
 	if err != nil {
 		t.Fatal(err)

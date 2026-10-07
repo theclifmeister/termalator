@@ -171,7 +171,7 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nFixed the login r
 	p("task", "steps", "T1", "check", "2")
 	p("task", "steps", "T5", "add", "Find stale entries")
 	// A second project, and a shell of the user's own.
-	newProject(env, "Website")
+	newProject(env, "website")
 	sh := env.Start("shell")
 	env.WaitFor(sh, "$", wait)
 	own := env.Workdir()

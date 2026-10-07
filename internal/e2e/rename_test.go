@@ -38,7 +38,7 @@ func TestProjectRenameLive(t *testing.T) {
 	}
 	env.MustCLI("thread", "stop", "t-0001", "--project", "demo")
 
-	out := env.MustCLI("project", "rename", "demo", "demo2", "--name", "Demo Two")
+	out := env.MustCLI("project", "rename", "demo", "demo2")
 	if !strings.Contains(out, "renamed demo to demo2") || !strings.Contains(out, "coordinator started again") || strings.Contains(out, "note:") {
 		t.Fatalf("rename: %q", out)
 	}
@@ -64,7 +64,7 @@ func TestProjectRenameLive(t *testing.T) {
 	if b, err := exec.Command("git", "-C", rec.Repo, "worktree", "list", "--porcelain").Output(); err != nil || strings.Contains(string(b), "prunable") || !strings.Contains(string(b), filepath.Base(wt)) {
 		t.Fatalf("git worktree list (%v):\n%s", err, b)
 	}
-	if b, _ := os.ReadFile(filepath.Join(newDir, "JOURNAL.md")); !strings.Contains(string(b), `human project.rename demo2 demo → demo2, name "Demo" → "Demo Two"`) {
+	if b, _ := os.ReadFile(filepath.Join(newDir, "JOURNAL.md")); !strings.Contains(string(b), "human project.rename demo2 demo → demo2\n") {
 		t.Fatalf("journal:\n%s", b)
 	}
 

@@ -17,8 +17,8 @@ import (
 func TestSmokeViewsShared(t *testing.T) {
 	env := New(t)
 	env.FakeClaude()
-	alpha, alphaDir := newProject(env, "Alpha")
-	beta, betaDir := newProject(env, "Beta")
+	alpha, alphaDir := newProject(env, "alpha")
+	beta, betaDir := newProject(env, "beta")
 	env.Trust(alphaDir, betaDir)
 
 	w1 := env.Window(120, 30)
@@ -104,7 +104,7 @@ func TestSmokeViewsShared(t *testing.T) {
 func TestSmokeViewSurvivesRestart(t *testing.T) {
 	env := New(t)
 	env.FakeClaude()
-	alpha, alphaDir := newProject(env, "Alpha")
+	alpha, alphaDir := newProject(env, "alpha")
 	env.Trust(alphaDir)
 
 	w := env.Window(120, 30)
@@ -146,7 +146,7 @@ func TestSmokeViewSurvivesRestart(t *testing.T) {
 func TestSmokeFirstViewFills(t *testing.T) {
 	env := New(t)
 	env.FakeClaude()
-	alpha, alphaDir := newProject(env, "Alpha")
+	alpha, alphaDir := newProject(env, "alpha")
 	env.Trust(alphaDir)
 
 	// Both start at 100×30 from the CLI, sized by no console.

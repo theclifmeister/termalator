@@ -19,7 +19,7 @@ var human = caller.Caller{Kind: caller.Human}
 
 func newWatchProject(t *testing.T) *project.Project {
 	t.Helper()
-	p, err := project.New(project.Options{Name: "Demo"})
+	p, err := project.New(project.Options{Slug: "demo"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -49,7 +49,7 @@ func TestDialogAnatomy(t *testing.T) {
 		{"menu", "Menu", "enter pick · esc close", func(m *dash) { m.openMenu("", m.dashItems(), 2, 2) }},
 		{"settings", "Settings", "esc close", func(m *dash) { keyPress(m, ",") }},
 		{"new project", "New project", "enter ok · ctrl+u clear · esc cancel", func(m *dash) { keyPress(m, "n") }},
-		{"inbox", "Alpha", "esc close", func(m *dash) { keyPress(m, "i") }},
+		{"inbox", "alpha", "esc close", func(m *dash) { keyPress(m, "i") }},
 		{"switcher", "Project switcher", "enter open its coordinator · esc close", func(m *dash) { keyPress(m, "p") }},
 		{"confirm", "Sure", "y yes · n no · esc cancel", func(m *dash) { m.confirm("Sure", "Really?", func() tea.Cmd { return nil }) }},
 	} {

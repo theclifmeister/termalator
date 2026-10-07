@@ -24,7 +24,7 @@ import (
 	"github.com/theclifmeister/terminatr/internal/version"
 )
 
-const projectUsage = `usage: tm project new <name> [--goal "…"] [--repo PATH]... [--json]
+const projectUsage = `usage: tm project new <slug> [--goal "…"] [--repo PATH]... [--json]
        tm project list [--json]
        tm project repo add|remove PATH [--project <slug>]
        tm project open <slug> [--agent NAME]   (start or attach its coordinator)
@@ -32,7 +32,7 @@ const projectUsage = `usage: tm project new <name> [--goal "…"] [--repo PATH].
        tm project pause|resume [<slug>]    (no nudges, PR follow-up or new threads while paused)
        tm project archive|unarchive <slug> (hidden from the sidebar; the ticker leaves it alone)
        tm project delete <slug> [--yes]    (moves it to the trash; asks first)
-       tm project rename <slug> <new-slug> [--name "…"] [--json]   (no thread may run; restarts its coordinator)`
+       tm project rename <slug> <new-slug> [--json]   (no thread may run; restarts its coordinator)`
 
 func runProject(e *Env, args []string) error {
 	if len(args) == 0 {
@@ -85,12 +85,12 @@ func projectNew(e *Env, args []string) error {
 	if e.Caller.IsAgent() {
 		return &project.Error{Code: "human-only", Msg: "only the human creates projects"}
 	}
-	p, err := project.New(project.Options{Name: pos[0], Goal: *goal, Repos: *repos})
+	p, err := project.New(project.Options{Slug: pos[0], Goal: *goal, Repos: *repos})
 	if err != nil {
 		return err
 	}
 	if *asJSON {
-		return e.printJSON(map[string]any{"slug": p.Slug, "name": p.Meta.Name, "dir": p.Dir, "goal": p.Meta.Goal, "repos": p.Meta.Repos})
+		return e.printJSON(map[string]any{"slug": p.Slug, "dir": p.Dir, "goal": p.Meta.Goal, "repos": p.Meta.Repos})
 	}
 	fmt.Fprintf(e.Stdout, "created project %s at %s\n", p.Slug, p.Dir)
 	return nil
@@ -158,7 +158,7 @@ func projectLifecycle(e *Env, verb string, args []string) error {
 // carries the ticker's memos over; else here.
 func projectRename(e *Env, args []string) error {
 	f := newFlags()
-	name, asJSON := f.String("name"), f.Bool("json")
+	asJSON := f.Bool("json")
 	pos, err := f.Parse(args)
 	if err != nil {
 		return err
@@ -169,7 +169,7 @@ func projectRename(e *Env, args []string) error {
 	if e.Caller.IsAgent() {
 		return &project.Error{Code: "human-only", Msg: "the user renames projects"}
 	}
-	params := proto.ProjectRenameParams{From: pos[0], To: pos[1], Name: *name}
+	params := proto.ProjectRenameParams{From: pos[0], To: pos[1]}
 	var res proto.ProjectRenameResult
 	c, _, err := connect(false)
 	switch {
@@ -192,11 +192,7 @@ func projectRename(e *Env, args []string) error {
 	if *asJSON {
 		return e.printJSON(res)
 	}
-	if params.To == params.From {
-		fmt.Fprintf(e.Stdout, "renamed %s to %q\n", params.From, *name)
-	} else {
-		fmt.Fprintf(e.Stdout, "renamed %s to %s: %s\n", params.From, params.To, res.Dir)
-	}
+	fmt.Fprintf(e.Stdout, "renamed %s to %s: %s\n", params.From, params.To, res.Dir)
 	if res.Worktrees != "" {
 		fmt.Fprintf(e.Stdout, "  worktrees in %s (%d thread records updated); branches keep their names\n", res.Worktrees, res.Threads)
 	}
@@ -217,7 +213,7 @@ func renameOffline(e *Env, p proto.ProjectRenameParams) (proto.ProjectRenameResu
 	if err != nil {
 		return out, err
 	}
-	o := rename.Options{From: p.From, To: p.To, Name: p.Name, Caller: e.Caller}
+	o := rename.Options{From: p.From, To: p.To, Caller: e.Caller}
 	if hd, err := os.UserHomeDir(); err == nil {
 		if reg, _ := agent.Load(paths.AgentsDir()); reg != nil {
 			o.MoveAgentDir = func(from, to string) error { return server.MoveAgentDirs(reg, hd, from, to) }
@@ -231,10 +227,8 @@ func renameOffline(e *Env, p proto.ProjectRenameParams) (proto.ProjectRenameResu
 	if err != nil {
 		out.Notes = append(out.Notes, err.Error())
 	}
-	if p.To != p.From {
-		if err := ticker.RenameProjectState(ticker.StatePath(paths.Sessions), p.From, p.To); err != nil {
-			out.Notes = append(out.Notes, "ticker memos not carried over: "+err.Error())
-		}
+	if err := ticker.RenameProjectState(ticker.StatePath(paths.Sessions), p.From, p.To); err != nil {
+		out.Notes = append(out.Notes, "ticker memos not carried over: "+err.Error())
 	}
 	return out, nil
 }
@@ -287,7 +281,7 @@ func projectList(e *Env, args []string) error {
 		return e.printJSON(rows)
 	}
 	if len(list) == 0 {
-		fmt.Fprintln(e.Stdout, "no projects; create one with tm project new <name>")
+		fmt.Fprintln(e.Stdout, "no projects; create one with tm project new <slug>")
 		return nil
 	}
 	w := tabwriter.NewWriter(e.Stdout, 0, 4, 2, ' ', 0)
@@ -297,7 +291,7 @@ func projectList(e *Env, args []string) error {
 			continue
 		}
 		c := s.Counts
-		name := s.Name
+		name := s.Slug
 		if s.Safety != nil && s.Safety.Archived {
 			name += " (archived)"
 		} else if s.Safety != nil && s.Safety.Paused {
@@ -307,8 +301,8 @@ func projectList(e *Env, args []string) error {
 		if u := usage[s.Slug]; !u.Zero() {
 			used = " · " + u.String()
 		}
-		fmt.Fprintf(w, "%s\t%s\t%d needs you · %d in motion · %d on deck%s\t%s\n",
-			s.Slug, name, c["needs_you"], c["in_motion"], c["on_deck"], used, strings.TrimSpace(s.Goal))
+		fmt.Fprintf(w, "%s\t%d needs you · %d in motion · %d on deck%s\t%s\n",
+			name, c["needs_you"], c["in_motion"], c["on_deck"], used, strings.TrimSpace(s.Goal))
 	}
 	return w.Flush()
 }

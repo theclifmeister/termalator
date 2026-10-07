@@ -17,7 +17,7 @@ import (
 func TestSmokePrefixQuit(t *testing.T) {
 	env := New(t)
 	env.FakeClaude()
-	alpha, dir := newProject(env, "Alpha")
+	alpha, dir := newProject(env, "alpha")
 	env.Trust(dir)
 	id := strings.TrimSpace(env.MustCLI("project", "open", alpha))
 	coord := coordinatorOf(t, env, alpha)

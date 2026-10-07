@@ -80,7 +80,7 @@ func saved(w *Window, desc string, cond func(screen string) bool) string {
 // session, on this console only; no screen names the settings file.
 func TestSmokeProjectPopup(t *testing.T) {
 	env := New(t)
-	slug, _ := newProject(env, "Demo")
+	slug, _ := newProject(env, "demo")
 	repo := env.Workdir()
 	env.MustCLI("project", "repo", "add", repo, "--project", slug)
 	env.MustCLI("task", "add", "Write the README", "--project", slug, "--step", "Draft", "--step", "Review")

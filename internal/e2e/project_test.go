@@ -21,8 +21,8 @@ import (
 func TestSmokeProjectOpenAndSwitch(t *testing.T) {
 	env := New(t)
 	env.FakeClaude()
-	alpha, alphaDir := newProject(env, "Alpha")
-	beta, betaDir := newProject(env, "Beta")
+	alpha, alphaDir := newProject(env, "alpha")
+	beta, betaDir := newProject(env, "beta")
 	env.Trust(alphaDir, betaDir)
 
 	// Without a terminal it prints the session id; again, the same one.
@@ -104,7 +104,7 @@ func TestSmokeProjectOpenAndSwitch(t *testing.T) {
 func TestSmokeSidebar(t *testing.T) {
 	env, projDir, _ := threadEnv(t)
 	demo := "demo"
-	beta, betaDir := newProject(env, "Beta")
+	beta, betaDir := newProject(env, "beta")
 	env.Trust(betaDir)
 	th := startThread(t, env, projDir)
 
@@ -326,7 +326,7 @@ func TestSmokeServerCallerCheck(t *testing.T) {
 do = "run"
 cmd = 'env -u TERMINATR_SESSION -u TERMINATR_ROLE -u TERMINATR_PROJECT "$TERMINATR_BIN" task status T1 done --project demo 2>&1; echo "exit=$?"'
 `})
-	slug, dir := newProject(env, "Demo")
+	slug, dir := newProject(env, "demo")
 	env.Trust(dir)
 	env.MustCLI("task", "add", "Finish it", "--project", slug)
 	s := env.StartAgent("claude", dir, "--role", "coordinator", "--project", slug)
@@ -374,7 +374,7 @@ cmd = '` + tm + `task status T2 done --approved-by-user; ` + tm + `task status T
 do = "run"
 cmd = '` + tm + `inbox done "$(` + tm + `inbox list | grep t-0003 | cut -d" " -f1)" && echo WORK-DONE'
 `})
-	slug, dir := newProject(env, "Demo")
+	slug, dir := newProject(env, "demo")
 	env.Trust(dir)
 	// Two items from threads, as the ticker writes them.
 	for _, it := range []project.Item{

@@ -83,7 +83,7 @@ func (p *Project) Context(seen Ticked) ([]Section, error) {
 	var out []Section
 
 	head := []string{
-		"Project: " + p.Meta.Name + " (" + p.Slug + ")",
+		"Project: " + p.Slug,
 		"Folder: " + p.Dir,
 		"Goal: " + orNone(p.Meta.Goal),
 	}

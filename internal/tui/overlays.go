@@ -228,7 +228,7 @@ func (sw *switchView) render(m *dash) string {
 	var hits []int
 	for i, p := range m.data.Projects {
 		hits = append(hits, i)
-		r := row{key: "p:" + p.Slug, who: p.Slug, what: oneLine(p.Name), state: "—", rest: "no coordinator running", pct: -1}
+		r := row{key: "p:" + p.Slug, who: p.Slug, state: "—", rest: "no coordinator running", pct: -1}
 		for _, s := range m.data.Sessions {
 			if s.Role == proto.RoleCoordinator && s.Project == p.Slug {
 				r.state, r.rest, r.pct = stateWord(s), progress(s, nil), sessionPct(s)

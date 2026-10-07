@@ -432,12 +432,11 @@ const (
 // coordinator again under the new slug. The human's.
 const MethodProjectRename = "project.rename"
 
-// ProjectRenameParams are the params of project.rename; Name "" keeps
-// the display name.
+// ProjectRenameParams are the params of project.rename. The slug is a
+// project's only name.
 type ProjectRenameParams struct {
 	From string `json:"from"`
 	To   string `json:"to"`
-	Name string `json:"name,omitempty"`
 }
 
 // ProjectRenameResult is what the rename did: the project's folder and

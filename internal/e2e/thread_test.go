@@ -127,7 +127,7 @@ func threadEnv(t *testing.T) (env *Env, projDir, out string) {
 	git(repo, "remote", "set-head", "origin", "main")
 
 	var p struct{ Slug, Dir string }
-	if err := json.Unmarshal([]byte(env.MustCLI("project", "new", "Demo", "--repo", repo, "--json")), &p); err != nil {
+	if err := json.Unmarshal([]byte(env.MustCLI("project", "new", "demo", "--repo", repo, "--json")), &p); err != nil {
 		t.Fatal(err)
 	}
 	real, _ := filepath.EvalSymlinks(p.Dir)

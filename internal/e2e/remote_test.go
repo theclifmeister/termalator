@@ -81,7 +81,7 @@ func remoteMarked(sc, slug string) bool {
 // kickoff turn.
 func remoteProject(t *testing.T, env *Env) (slug string, coord *Session) {
 	t.Helper()
-	slug, dir := newProject(env, "Alpha")
+	slug, dir := newProject(env, "alpha")
 	env.Trust(dir)
 	os.MkdirAll(env.Home, 0o700)
 	if err := os.WriteFile(filepath.Join(env.Home, "config.toml"), []byte("[projects."+slug+"]\ncoordinator_remote_control = true\n"), 0o600); err != nil {
@@ -161,7 +161,7 @@ func TestSmokeCoordinatorRemoteControl(t *testing.T) {
 	a.WaitExit(wait)
 
 	// A project without a running coordinator: nothing to change.
-	beta, _ := newProject(env, "Beta")
+	beta, _ := newProject(env, "beta")
 	if r := env.CLI("project", "remote", "on", beta); r.Code != 1 || !strings.Contains(r.Stderr, "open the project first") {
 		t.Fatalf("remote on without a coordinator: %+v", r)
 	}
@@ -238,7 +238,7 @@ func TestSmokeTickerKeepsRemoteOn(t *testing.T) {
 	env.Setenv("TERMINATR_TICK_SWEEP", "300ms")
 	env.Setenv("TERMINATR_TICK_REMOTE", "1s")
 	env.Setenv("TERMINATR_TICK_REMOTE_GRACE", "1s")
-	slug, dir := newProject(env, "Alpha")
+	slug, dir := newProject(env, "alpha")
 	env.Trust(dir)
 	id := strings.TrimSpace(env.MustCLI("project", "open", slug))
 	coord := &Session{ID: id}
