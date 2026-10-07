@@ -164,7 +164,7 @@ func TestGroupOfBacklog(t *testing.T) {
 	}
 	b := &Board{NextID: 3, Tasks: []*Task{{ID: 1, Title: "a", Status: Open}, {ID: 2, Title: "b", Status: Ready}}}
 	out := string(b.Render())
-	if strings.Index(out, "## On deck") > strings.Index(out, "## Backlog") || strings.Index(out, "## Backlog") < 0 {
+	if !strings.Contains(out, "## Backlog") || strings.Index(out, "## On deck") > strings.Index(out, "## Backlog") {
 		t.Fatalf("render:\n%s", out)
 	}
 }

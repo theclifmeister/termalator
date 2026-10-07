@@ -74,7 +74,7 @@ func TestSmokeCoordinatorPanel(t *testing.T) {
 	// again to the session.
 	w.Click(4, treeRow(w.Screen(), "demo", "coordinator"))
 	w.WaitUntil("the coordinator's panel", wait, shown)
-	w.ClickText("T2 ○ open", 0)
+	w.ClickText("T2 ○ ready", 0)
 	w.WaitUntil("the task view", wait, func(sc string) bool {
 		return strings.Contains(sc, "tm "+coord.ID) && strings.Contains(sc, "╭─ Task · demo ")
 	})
