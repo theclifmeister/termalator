@@ -196,6 +196,8 @@ type boardView struct {
 	list    []*tasks.Task
 	sel     int
 	open    bool // showing the selected task
+	// backlog lists the open tasks, collapsed until b (T108).
+	backlog bool
 	// back: opened on one task from the project popup's Tasks tab, esc
 	// goes back there.
 	back bool
@@ -214,7 +216,7 @@ func (b *boardView) setBoard(t *tasks.Board) {
 	if b.sel < len(b.list) {
 		keep = b.list[b.sel].ID
 	}
-	b.board, b.list = t, listed(t)
+	b.board, b.list = t, listed(t, b.backlog)
 	b.selectID(keep)
 }
 
@@ -247,6 +249,11 @@ func (b *boardView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	case "enter":
 		if len(b.list) > 0 {
 			b.open = true
+		}
+	case "b":
+		if !b.open && b.board != nil && (b.backlog || backlogCount(b.board) > 0) {
+			b.backlog = !b.backlog
+			b.setBoard(b.board)
 		}
 	case "D", "A", "x", "c":
 		if b.board != nil && b.sel < len(b.list) {
@@ -281,8 +288,26 @@ func (b *boardView) render(m *dash) string {
 	var hits []int
 	sel := -1
 	var group tasks.Group
+	collapsed := !b.backlog && backlogCount(b.board) > 0
+	// note puts the collapsed backlog where its group would be.
+	note := func() {
+		if collapsed {
+			collapsed = false
+			if len(lines) > 0 {
+				lines = append(lines, "")
+				hits = append(hits, noHit)
+			}
+			for _, l := range backlogNote(backlogCount(b.board), w) {
+				lines = append(lines, l)
+				hits = append(hits, noHit)
+			}
+		}
+	}
 	for i, t := range b.list {
 		if g := tasks.GroupOf(t.Status); g != group {
+			if g == tasks.DoneG {
+				note()
+			}
 			if group != "" {
 				lines = append(lines, "")
 				hits = append(hits, noHit)
@@ -298,12 +323,19 @@ func (b *boardView) render(m *dash) string {
 		}
 		lines = append(lines, line(taskRow(t, m.asked(b.slug, t) != ""), w, i == b.sel))
 	}
-	if len(b.list) == 0 {
+	note()
+	if len(lines) == 0 {
 		lines = append(lines, styleFaint.Render("no tasks"))
 	}
 	keys := "esc close"
 	if b.sel < len(b.list) {
 		keys = joinKeys("enter show", taskKeys(b.list[b.sel]), keys)
+	}
+	switch {
+	case b.backlog:
+		keys = joinKeys("b hide backlog", keys)
+	case backlogCount(b.board) > 0:
+		keys = joinKeys("b backlog", keys)
 	}
 	return m.popup(box{title: title, body: lines, sel: sel, hits: hits, keys: keys, width: viewWidth})
 }

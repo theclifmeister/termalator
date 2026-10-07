@@ -229,7 +229,7 @@ func TestContextAndCwdResolution(t *testing.T) {
 	h.cwd = filepath.Join(h.root, "projects", "demo")
 	h.ok(human, "task", "add", "First")
 	out := h.ok(human, "context")
-	for _, w := range []string{"## Project\nProject: demo (demo)", "Goal: Ship v1", "## Tasks\nOn deck (1)\n  T1   open     First", "## Threads\n(no open threads)", "## Inbox\n(empty)", "human task.add T1 First"} {
+	for _, w := range []string{"## Project\nProject: demo (demo)", "Goal: Ship v1", "## Tasks\nBacklog (1)\n  T1   open     First", "## Threads\n(no open threads)", "## Inbox\n(empty)", "human task.add T1 First"} {
 		if !strings.Contains(out, w) {
 			t.Errorf("context lacks %q:\n%s", w, out)
 		}

@@ -17,7 +17,7 @@ func TestSmokeCoordinatorPanel(t *testing.T) {
 	env.MustCLI("task", "steps", "T1", "add", "Find the bug", "--project", "demo")
 	env.MustCLI("task", "steps", "T1", "add", "Fix it", "--project", "demo")
 	env.MustCLI("task", "steps", "T1", "check", "1", "--project", "demo")
-	env.MustCLI("task", "add", "Write the docs", "--project", "demo")
+	env.MustCLI("task", "add", "Write the docs", "--status", "ready", "--project", "demo")
 	env.MustCLI("task", "add", "Get the keys", "--status", "blocked", "--project", "demo")
 	env.MustCLI("thread", "start", "--task", "T1", "Fix the login", "--project", "demo")
 	th := threadSession(t, env, "demo", "t-0001")

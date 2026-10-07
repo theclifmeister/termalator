@@ -156,3 +156,15 @@ func TestCheckNotes(t *testing.T) {
 		t.Fatal("empty board render")
 	}
 }
+
+// TestGroupOfBacklog: open tasks are the backlog, after on deck (T108).
+func TestGroupOfBacklog(t *testing.T) {
+	if GroupOf(Open) != Backlog || GroupOf(Ready) != OnDeck || GroupOf(Done) != DoneG {
+		t.Fatalf("groups %v %v %v", GroupOf(Open), GroupOf(Ready), GroupOf(Done))
+	}
+	b := &Board{NextID: 3, Tasks: []*Task{{ID: 1, Title: "a", Status: Open}, {ID: 2, Title: "b", Status: Ready}}}
+	out := string(b.Render())
+	if strings.Index(out, "## On deck") > strings.Index(out, "## Backlog") || strings.Index(out, "## Backlog") < 0 {
+		t.Fatalf("render:\n%s", out)
+	}
+}
