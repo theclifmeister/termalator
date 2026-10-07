@@ -71,6 +71,10 @@ const usage = atom({ plugin: 'terminatr', key: 'usage' } as const, initialUsage)
 const delivering = atom({ plugin: 'terminatr', key: 'delivering' } as const, '')
 const deliverer = atom({ plugin: 'terminatr', key: 'deliverer' } as const, 0)
 
+// CI_TOAST_MS is how long the CI toast stays: a result is worth more than
+// the default 4 s, as the user is often reading elsewhere when it lands.
+const CI_TOAST_MS = 15_000
+
 // BEAT_MS is the heartbeat: the server's ModBeat (internal/agent).
 const BEAT_MS = 10_000
 
@@ -541,7 +545,7 @@ async function follow($: EngineInterface, bin: string, id: string, isBand: boole
       if (got.watches.length === 0) continue
       for (const w of got.watches) {
         const toast = isBand ? ciToast(last, w) : undefined
-        if (toast) $.ui.toast(toast)
+        if (toast) $.ui.toast(toast, { timeoutMs: CI_TOAST_MS })
         last = w
       }
       const w = last

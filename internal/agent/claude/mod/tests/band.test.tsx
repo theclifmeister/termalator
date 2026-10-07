@@ -48,6 +48,7 @@ async function start($: Engine, on: On, lines: TerminatrWatch[], env: Record<str
   mock.env(on, { TERMINATR_BIN: '/opt/tm', TERMINATR_SESSION: 's-7', ...env })
   const statuses: (string | undefined)[] = []
   const toasts: string[] = []
+  const toastMs: (number | undefined)[] = []
   let done = false
   on('process.spawn', async function* () {
     for (const l of lines) yield { stream: 'stdout' as const, text: JSON.stringify(l) + '\n' }
@@ -60,6 +61,7 @@ async function start($: Engine, on: On, lines: TerminatrWatch[], env: Record<str
   })
   on('ui.toast', async (_$, e) => {
     toasts.push(e.text)
+    toastMs.push(e.timeoutMs)
     return { value: undefined }
   })
   // The engine's own band: a plugin that passes leaves it.
@@ -71,7 +73,7 @@ async function start($: Engine, on: On, lines: TerminatrWatch[], env: Record<str
   await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
   for (let i = 0; i < 1000 && !done; i++) await Promise.resolve()
   for (let i = 0; i < 100; i++) await Promise.resolve()
-  return { statuses, toasts }
+  return { statuses, toasts, toastMs }
 }
 
 test('a thread band shows task, steps, current item and PR on every surface that has it', async ($, on) => {
@@ -137,7 +139,7 @@ test('a thread waiting on the user says so on a row of its own', async ($, on) =
 })
 
 test('a toast when the CI run finishes, once', async ($, on) => {
-  const { toasts } = await start($, on, [
+  const { toasts, toastMs } = await start($, on, [
     thread(),
     thread({ pr: '#12 open, checks pending', needs_you: 3 }),
     thread({ pr: '#12 open, 1 check failed' }),
@@ -146,6 +148,8 @@ test('a toast when the CI run finishes, once', async ($, on) => {
     thread({ pr: '#12 open, checks pass, approved' }),
   ])
   expect(toasts).toEqual(['T50 #12: 1 check failed', 'T50 #12: checks passed'])
+  // Longer than the default 4 s: the user may be reading elsewhere.
+  expect(toastMs).toEqual([15_000, 15_000])
   expect(ciToast(null, thread({ pr: '#12 open, checks pass' }))).toBeUndefined()
 })
 
