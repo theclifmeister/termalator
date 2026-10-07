@@ -160,8 +160,8 @@ func (s *Server) accessFor(role, slug, cwd string) (agent.Access, error) {
 }
 
 // contextFor renders the context a role gets back after a clear or a
-// compaction (docs/SPEC.md §7.8): the role's rules plus the essentials
-// of `tm context` for a coordinator, the rules plus the brief, task, PR
+// compaction (docs/SPEC.md §7.8): the role's rules plus `tm context`
+// for a coordinator, the rules plus the brief, task, PR
 // and latest follow-up for a thread, nothing for a session outside a
 // project. Each stays within its size budget, the rules aside.
 func contextFor(role, slug, threadID, brief, tickerState string) func() ([]byte, error) {
@@ -199,31 +199,16 @@ func contextFor(role, slug, threadID, brief, tickerState string) func() ([]byte,
 	}
 }
 
-// coordinatorBudget bounds the part of `tm context` a coordinator gets
-// back after a clear or a compaction, in bytes.
-const coordinatorBudget = 12 << 10
+// coordinatorBudget bounds the `tm context` a coordinator gets back
+// after a clear or a compaction, in bytes.
+const coordinatorBudget = 16 << 10
 
-// coordinatorEssentials is `tm context` less what the coordinator reads
-// again when it needs it (CONTEXT.md, the memory index, the journal),
-// named on a last line, within coordinatorBudget.
+// coordinatorEssentials is `tm context` within coordinatorBudget, with a
+// last line saying when to run it again. It is all a fresh coordinator
+// needs (T109): its rules say not to run `tm context` again at once.
 func coordinatorEssentials(secs []project.Section) string {
-	var keep []project.Section
-	var left []string
-	for _, s := range secs {
-		switch {
-		case strings.HasPrefix(s.Title, "Context ("), strings.HasPrefix(s.Title, "Memory index"), strings.HasPrefix(s.Title, "Journal"):
-			left = append(left, s.Title)
-		default:
-			keep = append(keep, s)
-		}
-	}
-	out := project.RenderContext(keep)
-	tail := "\nThe essentials of `tm context`; run it for everything"
-	if len(left) > 0 {
-		tail += " (also " + strings.Join(left, ", ") + ")"
-	}
-	tail += ".\n"
-	return thread.Clip(out, coordinatorBudget-len(tail)) + tail
+	tail := "\nThat is `tm context` as of this conversation's start; run it (or tm inbox list, tm thread list) again when you need the current state.\n"
+	return thread.Clip(project.RenderContext(secs), coordinatorBudget-len(tail)) + tail
 }
 
 // contextOf is contextFor the session's current record, so that a
@@ -287,6 +272,13 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 	access, err := s.accessFor(r.Role, r.Project, r.Cwd)
 	if err != nil {
 		return nil, proto.Errorf(proto.ErrBadParams, "%v", err)
+	}
+	if r.Role == proto.RoleCoordinator {
+		if p, err := project.Open(r.Project); err == nil {
+			if err := p.RefreshRoleFile(); err != nil {
+				s.log.Printf("session %s: role file: %v", r.ID, err)
+			}
+		}
 	}
 	rt := s.runtimeDir(r.ID)
 	s.closeModLocked(r.ID)

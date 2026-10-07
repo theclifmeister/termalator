@@ -73,34 +73,33 @@ func TestWriteLaunchFilesFails(t *testing.T) {
 	}
 }
 
-// TestCoordinatorEssentials: after a clear the coordinator gets `tm
-// context` less what it reads again when needed, named, within the
-// budget.
+// TestCoordinatorEssentials: after a clear the coordinator gets all of
+// `tm context` (T109), within the budget, with when to run it again.
 func TestCoordinatorEssentials(t *testing.T) {
-	long := make([]string, 2000)
-	for i := range long {
-		long[i] = "T1 a task with a long enough title to fill the budget"
-	}
 	secs := []project.Section{
 		{Title: "Project", Lines: []string{"Project: demo (demo)"}},
 		{Title: "Context (CONTEXT.md)", Lines: []string{"## Where things stand"}},
 		{Title: "Memory index (MEMORY.md)", Lines: []string{"- a memory"}},
-		{Title: "Tasks", Lines: long},
-		{Title: "Journal (last 20)", Lines: []string{"a journal line"}},
+		{Title: "Tasks", Lines: []string{"T1 a task"}},
+		{Title: "Journal (last 10)", Lines: []string{"a journal line"}},
 	}
 	got := coordinatorEssentials(secs)
-	if len(got) > coordinatorBudget {
-		t.Fatalf("%d bytes, over the budget", len(got))
-	}
-	for _, want := range []string{"## Project\n", "## Tasks\n", "[… cut at the size budget]",
-		"run it for everything (also Context (CONTEXT.md), Memory index (MEMORY.md), Journal (last 20))."} {
+	for _, want := range []string{"## Project\n", "Where things stand", "a memory", "## Tasks\n", "a journal line",
+		"That is `tm context` as of this conversation's start; run it"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing %q", want)
 		}
 	}
-	for _, gone := range []string{"Where things stand", "a memory", "a journal line"} {
-		if strings.Contains(got, gone) {
-			t.Fatalf("%q kept", gone)
-		}
+	long := make([]string, 2000)
+	for i := range long {
+		long[i] = "T1 a task with a long enough title to fill the budget"
+	}
+	secs[3].Lines = long
+	got = coordinatorEssentials(secs)
+	if len(got) > coordinatorBudget {
+		t.Fatalf("%d bytes, over the budget", len(got))
+	}
+	if !strings.Contains(got, "[… cut at the size budget]") || !strings.HasSuffix(got, "the current state.\n") {
+		t.Fatalf("no cut mark or no last line:\n%s", got[len(got)-300:])
 	}
 }

@@ -187,7 +187,7 @@ func TestSmokeThreadLifecycle(t *testing.T) {
 
 	// The brief has absolute paths, and reaches the thread at start.
 	brief, _ := os.ReadFile(filepath.Join(tdir, "brief.md"))
-	for _, w := range []string{filepath.Join(projDir, "TASKS.md"), rec.Worktree, "tm skill thread", "# T1 Fix the login"} {
+	for _, w := range []string{projDir + "/: PROJECT.md", "TASKS.md", rec.Worktree, "tm skill thread", "# T1 Fix the login"} {
 		if !strings.Contains(string(brief), w) {
 			t.Errorf("brief lacks %q:\n%s", w, brief)
 		}
