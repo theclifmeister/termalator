@@ -2,8 +2,8 @@
   "count": 1,
   "value": [
     {
-      "artifactId": "vstfs:///CodeReview/CodeReviewId/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c%2f2",
-      "completedDate": "2026-10-07T12:11:25.3598849Z",
+      "artifactId": "vstfs:///CodeReview/CodeReviewId/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c%2f1",
+      "completedDate": "2026-10-07T12:10:09.4979879Z",
       "configuration": {
         "_links": {
           "policyType": {
@@ -58,28 +58,19 @@
         "buildAfterMerge": false,
         "buildDefinitionId": 1,
         "buildDefinitionName": "todo-ci",
-        "buildId": 6,
-        "buildIsNotCurrent": false,
-        "buildOutputPreview": {
-          "errors": [
-            {
-              "lineNumber": 16,
-              "message": "Bash exited with code '1'."
-            }
-          ],
-          "jobName": "Build",
-          "taskName": "Check"
-        },
-        "buildStartedUtc": "2026-10-07T12:09:51.9563385Z",
-        "isExpired": false,
-        "lastMergeCommitId": "e13c2402625eff480530c0391499d52286c3b38f",
-        "lastMergeSourceCommitId": "b690915c44588901482bbea21bcab55a6a478b15",
+        "buildId": 5,
+        "buildIsNotCurrent": true,
+        "buildOutputPreview": null,
+        "buildStartedUtc": "2026-10-07T12:09:49.7656382Z",
+        "isExpired": true,
+        "lastMergeCommitId": "411cbd51bb6f4895d6bf02697c91f99c4311a42a",
+        "lastMergeSourceCommitId": "f487d85c7bc862efcca47c4eed97232849a86168",
         "lastMergeTargetCommitId": "ad27d4b2ae44cb985fba308444ce507f5b6969b2",
         "wasAutoRequeued": false
       },
-      "evaluationId": "c6f09eaa-bc57-4c90-a1ab-f99928f89e8c",
-      "startedDate": "2026-10-07T12:09:51.9628335Z",
-      "status": "rejected"
+      "evaluationId": "97b21c1e-d813-41a4-a1c5-e571ce1746ee",
+      "startedDate": "2026-10-07T12:09:49.7716631Z",
+      "status": "queued"
     }
   ]
 }

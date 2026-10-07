@@ -68,6 +68,9 @@ test('az: completing a PR, deleting branches and reading tokens are refused', ()
     'az rest -m PATCH -u https://dev.azure.com/o/p/_apis/git/repositories/r/pullRequests/7', 'az rest --method post --url https://dev.azure.com/o/p/_apis/git/repositories/r/merges',
     'az devops invoke --area git --resource pullRequests --http-method PATCH --route-parameters project=p repositoryId=r pullRequestId=7',
     'curl -X PATCH https://dev.azure.com/o/p/_apis/git/repositories/r/pullrequests/7 -d @b.json',
+    `az rest --method patch --resource 499b84ac-1321-427f-aa17-267ca6975798 --url 'https://dev.azure.com/o/p/_apis/git/repositories/r/pullrequests/7?api-version=7.1' --body '{"status":"completed"}'`,
+    'az rest --resource 499b84ac-1321-427f-aa17-267ca6975798 -m patch -u https://dev.azure.com/o/_apis/git/pullrequests/7?api-version=7.1 --body @b.json',
+    'az rest --url https://dev.azure.com/o/p/_apis/git/repositories/r/pullrequests/7 --headers Accept=application/json X-HTTP-Method-Override=PATCH --body @b.json',
   ]) {
     expect([c, bash(thread, c)]).toEqual([c, 'merge'])
   }
@@ -96,6 +99,11 @@ test('az: completing a PR, deleting branches and reading tokens are refused', ()
     'az devops invoke --area git --resource pullRequests --route-parameters project=p repositoryId=r pullRequestId=7',
     'az devops invoke --area git --resource pullRequestThreads --http-method POST --route-parameters pullRequestId=7',
     'curl https://dev.azure.com/o/p/_apis/git/repositories/r/pullrequests/7', 'printenv AZURE_CONFIG_DIR', 'echo $HOME',
+    // what tm asks and the hints it gives a thread (codehost.Azure)
+    'az rest --method get --resource 499b84ac-1321-427f-aa17-267ca6975798 --url https://dev.azure.com/o/p/_apis/git/repositories/r/pullrequests/7?api-version=7.1 --headers Accept=application/json',
+    `az rest --resource 499b84ac-1321-427f-aa17-267ca6975798 --url 'https://dev.azure.com/o/p/_apis/build/builds?branchName=refs/pull/7/merge&api-version=7.1' --query 'value[].{build:id,status:status,result:result}' -o table`,
+    `az rest --resource 499b84ac-1321-427f-aa17-267ca6975798 --url 'https://dev.azure.com/o/p/_apis/git/repositories/r/pullRequests/7/threads?api-version=7.1' --query "value[].comments[?commentType=='text'][].{author:author.displayName,text:content}" -o table`,
+    'az rest --method post --resource 499b84ac-1321-427f-aa17-267ca6975798 --url https://dev.azure.com/o/p/_apis/git/repositories/r/pullrequests?api-version=7.1 --body @pr.json',
   ]) {
     expect([c, bash(thread, c)]).toEqual([c, null])
   }

@@ -1,5 +1,5 @@
 {
-  "count": 7,
+  "count": 5,
   "value": [
     {
       "context": {
@@ -19,59 +19,11 @@
         "uniqueName": "ada@example.com",
         "url": "https://example.vssps.visualstudio.com/A22d0cc13-a0e9-4b4f-a9ea-c105d245c607/_apis/Identities/ca3d747d-7915-4524-a7d8-abe2264a9ada"
       },
-      "creationDate": "2026-10-07T11:56:13.3431769Z",
-      "description": "lint running",
+      "creationDate": "2026-10-07T11:56:24.2684541Z",
+      "description": "lint failed",
       "id": 1,
-      "state": "pending",
-      "updatedDate": "2026-10-07T11:56:13.3431769Z"
-    },
-    {
-      "context": {
-        "genre": "feature",
-        "name": "lint"
-      },
-      "createdBy": {
-        "_links": {
-          "avatar": {
-            "href": "https://dev.azure.com/acme/_apis/GraphProfile/MemberAvatars/aad.REDACTED"
-          }
-        },
-        "descriptor": "aad.REDACTED",
-        "displayName": "ada",
-        "id": "ca3d747d-7915-4524-a7d8-abe2264a9ada",
-        "imageUrl": "https://dev.azure.com/acme/_apis/GraphProfile/MemberAvatars/aad.REDACTED",
-        "uniqueName": "ada@example.com",
-        "url": "https://example.vssps.visualstudio.com/A22d0cc13-a0e9-4b4f-a9ea-c105d245c607/_apis/Identities/ca3d747d-7915-4524-a7d8-abe2264a9ada"
-      },
-      "creationDate": "2026-10-07T11:56:13.634653Z",
-      "description": "lint running",
-      "id": 2,
-      "state": "pending",
-      "updatedDate": "2026-10-07T11:56:13.634653Z"
-    },
-    {
-      "context": {
-        "genre": "feature",
-        "name": "lint"
-      },
-      "createdBy": {
-        "_links": {
-          "avatar": {
-            "href": "https://dev.azure.com/acme/_apis/GraphProfile/MemberAvatars/aad.REDACTED"
-          }
-        },
-        "descriptor": "aad.REDACTED",
-        "displayName": "ada",
-        "id": "ca3d747d-7915-4524-a7d8-abe2264a9ada",
-        "imageUrl": "https://dev.azure.com/acme/_apis/GraphProfile/MemberAvatars/aad.REDACTED",
-        "uniqueName": "ada@example.com",
-        "url": "https://example.vssps.visualstudio.com/A22d0cc13-a0e9-4b4f-a9ea-c105d245c607/_apis/Identities/ca3d747d-7915-4524-a7d8-abe2264a9ada"
-      },
-      "creationDate": "2026-10-07T11:56:24.030252Z",
-      "description": "lint ok",
-      "id": 3,
-      "state": "succeeded",
-      "updatedDate": "2026-10-07T11:56:24.030252Z"
+      "state": "failed",
+      "updatedDate": "2026-10-07T11:56:24.2684541Z"
     },
     {
       "context": {
@@ -91,12 +43,12 @@
         "uniqueName": "",
         "url": "https://example.vssps.visualstudio.com/A22d0cc13-a0e9-4b4f-a9ea-c105d245c607/_apis/Identities/12131810-dcf1-471e-a0c7-bf350ddd4637"
       },
-      "creationDate": "2026-10-07T12:09:49.8419249Z",
+      "creationDate": "2026-10-07T12:09:50.2703152Z",
       "description": "Coverage status check failed for todo-ci",
-      "id": 4,
+      "id": 2,
       "iterationId": 1,
       "state": "failed",
-      "updatedDate": "2026-10-07T12:09:49.8419249Z"
+      "updatedDate": "2026-10-07T12:09:50.2703152Z"
     },
     {
       "context": {
@@ -116,11 +68,11 @@
         "uniqueName": "",
         "url": "https://example.vssps.visualstudio.com/A22d0cc13-a0e9-4b4f-a9ea-c105d245c607/_apis/Identities/12131810-dcf1-471e-a0c7-bf350ddd4637"
       },
-      "creationDate": "2026-10-07T12:09:50.7099555Z",
+      "creationDate": "2026-10-07T12:09:57.5186969Z",
       "description": "Coverage status check queued for todo-ci",
-      "id": 5,
+      "id": 3,
       "iterationId": 2,
-      "updatedDate": "2026-10-07T12:09:50.7099555Z"
+      "updatedDate": "2026-10-07T12:09:57.5186969Z"
     },
     {
       "context": {
@@ -140,12 +92,12 @@
         "uniqueName": "",
         "url": "https://example.vssps.visualstudio.com/A22d0cc13-a0e9-4b4f-a9ea-c105d245c607/_apis/Identities/12131810-dcf1-471e-a0c7-bf350ddd4637"
       },
-      "creationDate": "2026-10-07T12:10:14.9343122Z",
+      "creationDate": "2026-10-07T12:11:31.7751303Z",
       "description": "Coverage status check in progress for todo-ci",
-      "id": 6,
+      "id": 4,
       "iterationId": 2,
       "state": "pending",
-      "updatedDate": "2026-10-07T12:10:14.9343122Z"
+      "updatedDate": "2026-10-07T12:11:31.7751303Z"
     },
     {
       "context": {
@@ -165,12 +117,12 @@
         "uniqueName": "",
         "url": "https://example.vssps.visualstudio.com/A22d0cc13-a0e9-4b4f-a9ea-c105d245c607/_apis/Identities/12131810-dcf1-471e-a0c7-bf350ddd4637"
       },
-      "creationDate": "2026-10-07T12:10:15.0749972Z",
+      "creationDate": "2026-10-07T12:11:31.867656Z",
       "description": "Coverage status check not applicable for todo-ci",
-      "id": 7,
+      "id": 5,
       "iterationId": 2,
       "state": "notApplicable",
-      "updatedDate": "2026-10-07T12:10:15.0749972Z"
+      "updatedDate": "2026-10-07T12:11:31.867656Z"
     }
   ]
 }

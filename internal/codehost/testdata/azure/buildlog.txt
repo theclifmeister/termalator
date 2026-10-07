@@ -1,10 +1,17 @@
-2026-10-07T10:00:00.1234567Z ##[section]Starting: Run tests
-2026-10-07T10:00:00.2345678Z ==============================================================================
-2026-10-07T10:00:00.3456789Z ##[group]Run go test
-2026-10-07T10:00:01.0000001Z === RUN   TestLogin
-2026-10-07T10:00:01.5000002Z [31m--- FAIL: TestLogin (0.01s)[0m
-2026-10-07T10:00:01.5000003Z     login_test.go:12: got 401 want 200
-2026-10-07T10:00:01.6000004Z FAIL
-2026-10-07T10:00:01.7000005Z ##[endgroup]
-2026-10-07T10:00:01.8000006Z ##[error]Bash exited with code '1'.
-2026-10-07T10:00:01.9000007Z ##[section]Finishing: Run tests
+2026-10-07T12:11:18.7524048Z ##[section]Starting: Check
+2026-10-07T12:11:18.7529879Z ==============================================================================
+2026-10-07T12:11:18.7529993Z Task         : Command line
+2026-10-07T12:11:18.7530048Z Description  : Run a command line script using Bash on Linux and macOS and cmd.exe on Windows
+2026-10-07T12:11:18.7530145Z Version      : 2.279.2
+2026-10-07T12:11:18.7530198Z Author       : Microsoft Corporation
+2026-10-07T12:11:18.7530266Z Help         : https://docs.microsoft.com/azure/devops/pipelines/tasks/utility/command-line
+2026-10-07T12:11:18.7530348Z ==============================================================================
+2026-10-07T12:11:18.8398163Z [Host] Selected Node version: Node24 (Strategy: Node24Strategy)
+2026-10-07T12:11:18.9008358Z Generating script.
+2026-10-07T12:11:18.9021821Z ========================== Starting Command Output ===========================
+2026-10-07T12:11:18.9033279Z [command]/usr/bin/bash --noprofile --norc /home/vsts/work/_temp/9970d5df-c156-4f29-aabd-a31bd544c88c.sh
+2026-10-07T12:11:18.9104545Z checking for FAIL
+2026-10-07T12:11:18.9112732Z ##[error]FAIL file present: deliberate failure
+2026-10-07T12:11:18.9127949Z 
+2026-10-07T12:11:18.9166488Z ##[error]Bash exited with code '1'.
+2026-10-07T12:11:18.9209342Z ##[section]Finishing: Check

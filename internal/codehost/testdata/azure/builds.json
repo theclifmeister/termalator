@@ -1,0 +1,150 @@
+{
+  "count": 1,
+  "value": [
+    {
+      "_links": {
+        "badge": {
+          "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/build/status/1"
+        },
+        "self": {
+          "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/build/Builds/6"
+        },
+        "sourceVersionDisplayUri": {
+          "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/build/builds/6/sources"
+        },
+        "timeline": {
+          "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/build/builds/6/Timeline"
+        },
+        "web": {
+          "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_build/results?buildId=6"
+        }
+      },
+      "appendCommitMessageToRunName": true,
+      "buildNumber": "20261007.6",
+      "buildNumberRevision": 6,
+      "definition": {
+        "drafts": [],
+        "id": 1,
+        "name": "todo-ci",
+        "path": "\\",
+        "project": {
+          "id": "6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c",
+          "lastUpdateTime": "2026-10-07T11:39:10.653Z",
+          "name": "Shop",
+          "revision": 11,
+          "state": "wellFormed",
+          "url": "https://dev.azure.com/acme/_apis/projects/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c",
+          "visibility": "private"
+        },
+        "queueStatus": "enabled",
+        "revision": 1,
+        "type": "build",
+        "uri": "vstfs:///Build/Definition/1",
+        "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/build/Definitions/1?revision=1"
+      },
+      "finishTime": "2026-10-07T12:11:25.0425661Z",
+      "id": 6,
+      "lastChangedBy": {
+        "_links": {
+          "avatar": {
+            "href": "https://dev.azure.com/acme/_apis/GraphProfile/MemberAvatars/s2s.REDACTED"
+          }
+        },
+        "descriptor": "s2s.REDACTED",
+        "displayName": "Microsoft.VisualStudio.Services.TFS",
+        "id": "323c5fc7-8252-41d8-afd7-805537ca5da5",
+        "imageUrl": "https://dev.azure.com/acme/_apis/GraphProfile/MemberAvatars/s2s.REDACTED",
+        "uniqueName": "323c5fc7-8252-41d8-afd7-805537ca5da5@3fbdd400-a1a3-4a47-a63e-21dcbf3ead97",
+        "url": "https://example.vssps.visualstudio.com/A22d0cc13-a0e9-4b4f-a9ea-c105d245c607/_apis/Identities/323c5fc7-8252-41d8-afd7-805537ca5da5"
+      },
+      "lastChangedDate": "2026-10-07T12:11:25.25Z",
+      "logs": {
+        "id": 0,
+        "type": "Container",
+        "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/build/builds/6/logs"
+      },
+      "orchestrationPlan": {
+        "planId": "2ad19314-ea84-4160-ad5d-33812a03254b"
+      },
+      "parameters": "{\"system.pullRequest.pullRequestId\":\"2\",\"system.pullRequest.sourceBranch\":\"refs/heads/feature/fail\",\"system.pullRequest.targetBranch\":\"refs/heads/main\",\"system.pullRequest.targetBranchName\":\"main\",\"system.pullRequest.sourceCommitId\":\"b690915c44588901482bbea21bcab55a6a478b15\",\"system.pullRequest.sourceRepositoryUri\":\"https://ada@example.com/acme/Shop/_git/web\",\"system.pullRequest.pullRequestIteration\":\"2\"}",
+      "plans": [
+        {
+          "planId": "2ad19314-ea84-4160-ad5d-33812a03254b"
+        }
+      ],
+      "priority": "normal",
+      "project": {
+        "id": "6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c",
+        "lastUpdateTime": "2026-10-07T11:39:10.653Z",
+        "name": "Shop",
+        "revision": 11,
+        "state": "wellFormed",
+        "url": "https://dev.azure.com/acme/_apis/projects/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c",
+        "visibility": "private"
+      },
+      "properties": {},
+      "queue": {
+        "id": 9,
+        "name": "Azure Pipelines",
+        "pool": {
+          "id": 9,
+          "isHosted": true,
+          "name": "Azure Pipelines"
+        }
+      },
+      "queueTime": "2026-10-07T12:09:50.3810446Z",
+      "reason": "pullRequest",
+      "repository": {
+        "checkoutSubmodules": false,
+        "clean": null,
+        "id": "3411ebc1-d5aa-464f-9615-0b527bc66719",
+        "name": "web",
+        "type": "TfsGit",
+        "url": "https://dev.azure.com/acme/Shop/_git/web"
+      },
+      "requestedBy": {
+        "_links": {
+          "avatar": {
+            "href": "https://dev.azure.com/acme/_apis/GraphProfile/MemberAvatars/aad.REDACTED"
+          }
+        },
+        "descriptor": "aad.REDACTED",
+        "displayName": "ada",
+        "id": "ca3d747d-7915-4524-a7d8-abe2264a9ada",
+        "imageUrl": "https://dev.azure.com/acme/_apis/GraphProfile/MemberAvatars/aad.REDACTED",
+        "uniqueName": "ada@example.com",
+        "url": "https://example.vssps.visualstudio.com/A22d0cc13-a0e9-4b4f-a9ea-c105d245c607/_apis/Identities/ca3d747d-7915-4524-a7d8-abe2264a9ada"
+      },
+      "requestedFor": {
+        "_links": {
+          "avatar": {
+            "href": "https://dev.azure.com/acme/_apis/GraphProfile/MemberAvatars/aad.REDACTED"
+          }
+        },
+        "descriptor": "aad.REDACTED",
+        "displayName": "ada",
+        "id": "ca3d747d-7915-4524-a7d8-abe2264a9ada",
+        "imageUrl": "https://dev.azure.com/acme/_apis/GraphProfile/MemberAvatars/aad.REDACTED",
+        "uniqueName": "ada@example.com",
+        "url": "https://example.vssps.visualstudio.com/A22d0cc13-a0e9-4b4f-a9ea-c105d245c607/_apis/Identities/ca3d747d-7915-4524-a7d8-abe2264a9ada"
+      },
+      "result": "failed",
+      "retainedByRelease": false,
+      "sourceBranch": "refs/pull/2/merge",
+      "sourceVersion": "e13c2402625eff480530c0391499d52286c3b38f",
+      "startTime": "2026-10-07T12:11:12.9618092Z",
+      "status": "completed",
+      "tags": [],
+      "triggerInfo": {
+        "pr.isFork": "False",
+        "pr.number": "2",
+        "pr.triggerRepository": "3411ebc1-d5aa-464f-9615-0b527bc66719",
+        "pr.triggerRepository.Type": "TfsGit"
+      },
+      "triggeredByBuild": null,
+      "uri": "vstfs:///Build/Build/6",
+      "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/build/Builds/6",
+      "validationResults": []
+    }
+  ]
+}

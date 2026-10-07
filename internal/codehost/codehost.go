@@ -54,11 +54,13 @@ type Check struct {
 }
 
 // DoctorDeps is what Doctor may touch: doctor.Deps' LookPath and Run,
-// and the environment (nil reads none).
+// the environment (nil reads none) and Azure DevOps with a PAT (nil is
+// PATGet).
 type DoctorDeps struct {
 	LookPath func(string) (string, error)
 	Run      func(dir, name string, args ...string) (string, error)
 	Getenv   func(string) string
+	PATGet   func(url, pat string) ([]byte, error)
 }
 
 // Host is one pull-request provider. Every method takes the repo (a
@@ -194,7 +196,7 @@ func Advice(err error) (cli, problem, advice string) {
 	if advice == "" {
 		advice = "the user checks " + cli + " auth status in a terminal (tm doctor)"
 		if cli == "az" {
-			advice = "the user checks az login and az repos pr list in a terminal (tm doctor)"
+			advice = "the user checks az login in a terminal (tm doctor)"
 		}
 	}
 	return cli, problem, advice

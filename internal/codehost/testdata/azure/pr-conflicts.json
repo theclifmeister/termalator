@@ -1,0 +1,90 @@
+{
+  "_links": {
+    "createdBy": {
+      "href": "https://example.vssps.visualstudio.com/A22d0cc13-a0e9-4b4f-a9ea-c105d245c607/_apis/Identities/ca3d747d-7915-4524-a7d8-abe2264a9ada"
+    },
+    "iterations": {
+      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/6/iterations"
+    },
+    "repository": {
+      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719"
+    },
+    "self": {
+      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/6"
+    },
+    "sourceBranch": {
+      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/refs/heads/feature/conflict"
+    },
+    "sourceCommit": {
+      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/74013a6fddf1ae08004511adfc0dfc107ce2c6e3"
+    },
+    "statuses": {
+      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/6/statuses"
+    },
+    "targetBranch": {
+      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/refs/heads/feature/base"
+    },
+    "targetCommit": {
+      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/e520a561e054e032341f97fc0e2285dbad813898"
+    },
+    "workItems": {
+      "href": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/6/workitems"
+    }
+  },
+  "artifactId": "vstfs:///Git/PullRequestId/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c%2f3411ebc1-d5aa-464f-9615-0b527bc66719%2f6",
+  "codeReviewId": 6,
+  "createdBy": {
+    "_links": {
+      "avatar": {
+        "href": "https://dev.azure.com/acme/_apis/GraphProfile/MemberAvatars/aad.REDACTED"
+      }
+    },
+    "descriptor": "aad.REDACTED",
+    "displayName": "ada",
+    "id": "ca3d747d-7915-4524-a7d8-abe2264a9ada",
+    "imageUrl": "https://dev.azure.com/acme/_api/_common/identityImage?id=ca3d747d-7915-4524-a7d8-abe2264a9ada",
+    "uniqueName": "ada@example.com",
+    "url": "https://example.vssps.visualstudio.com/A22d0cc13-a0e9-4b4f-a9ea-c105d245c607/_apis/Identities/ca3d747d-7915-4524-a7d8-abe2264a9ada"
+  },
+  "creationDate": "2026-10-07T11:56:01.9029614Z",
+  "description": "A test PR",
+  "isDraft": false,
+  "lastMergeSourceCommit": {
+    "commitId": "74013a6fddf1ae08004511adfc0dfc107ce2c6e3",
+    "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/74013a6fddf1ae08004511adfc0dfc107ce2c6e3"
+  },
+  "lastMergeTargetCommit": {
+    "commitId": "e520a561e054e032341f97fc0e2285dbad813898",
+    "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/commits/e520a561e054e032341f97fc0e2285dbad813898"
+  },
+  "mergeId": "4e3bf57f-995f-450e-aa44-c79405960800",
+  "mergeStatus": "conflicts",
+  "pullRequestId": 6,
+  "repository": {
+    "id": "3411ebc1-d5aa-464f-9615-0b527bc66719",
+    "isDisabled": false,
+    "isInMaintenance": false,
+    "name": "web",
+    "project": {
+      "id": "6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c",
+      "lastUpdateTime": "2026-10-07T11:39:10.653Z",
+      "name": "Shop",
+      "revision": 11,
+      "state": "wellFormed",
+      "url": "https://dev.azure.com/acme/_apis/projects/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c",
+      "visibility": "private"
+    },
+    "remoteUrl": "https://ada@example.com/acme/Shop/_git/web",
+    "size": 718,
+    "sshUrl": "ada@example.com:v3/acme/Shop/web",
+    "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719",
+    "webUrl": "https://dev.azure.com/acme/Shop/_git/web"
+  },
+  "reviewers": [],
+  "sourceRefName": "refs/heads/feature/conflict",
+  "status": "active",
+  "supportsIterations": true,
+  "targetRefName": "refs/heads/feature/base",
+  "title": "conflict scenario",
+  "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/git/repositories/3411ebc1-d5aa-464f-9615-0b527bc66719/pullRequests/6"
+}

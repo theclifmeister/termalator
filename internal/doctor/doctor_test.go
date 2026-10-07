@@ -187,6 +187,11 @@ func TestCodeHosts(t *testing.T) {
 	d.Hosts = func() []RepoHost { return []RepoHost{{Repo: "/r/web", Target: shop}, {Repo: "/r/web2", Target: shop}} }
 	var env map[string]string
 	d.Getenv = func(k string) string { return env[k] }
+	var patAsked []string
+	d.PATGet = func(u, pat string) ([]byte, error) {
+		patAsked = append(patAsked, u)
+		return nil, &codehost.CLIError{CLI: "az", Problem: "Azure DevOps refused AZURE_DEVOPS_EXT_PAT (401/403)", Err: errors.New("HTTP 401")}
+	}
 
 	cs := Toolchain(d)
 	if len(find(cs, "gh")) != 0 || len(find(cs, "gh auth")) != 0 {
@@ -198,7 +203,7 @@ func TestCodeHosts(t *testing.T) {
 		}
 	}
 	got := strings.Join(ran, "\n")
-	for _, want := range []string{"/bin/az repos show --repository web --organization https://dev.azure.com/acme --project Shop", "/r/web|git ls-remote origin HEAD"} {
+	for _, want := range []string{"/bin/az rest --method get --resource 499b84ac-1321-427f-aa17-267ca6975798 --url https://dev.azure.com/acme/Shop/_apis/git/repositories/web?api-version=7.1 ", "/r/web|git ls-remote origin HEAD"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("didn't run %q:\n%s", want, got)
 		}
@@ -213,7 +218,7 @@ func TestCodeHosts(t *testing.T) {
 	if c[0].Status != OK || strings.Contains(c[0].Detail, "s3cret") || !strings.Contains(c[0].Detail, "AZURE_DEVOPS_EXT_PAT") {
 		t.Errorf("PAT: %+v", c)
 	}
-	fail = "repos show"
+	fail = "rest --method get"
 	if c := find(Toolchain(d), "az repo Shop/web"); c[0].Status != Warn || !strings.Contains(c[0].Detail, "https://dev.azure.com/acme") {
 		t.Errorf("no access: %+v", c)
 	}
@@ -222,7 +227,13 @@ func TestCodeHosts(t *testing.T) {
 		t.Errorf("git credentials: %+v", c)
 	}
 	d.LookPath = func(n string) (string, error) { return "", exec.ErrNotFound }
-	if cs := Toolchain(d); len(find(cs, "az")) != 1 || find(cs, "az")[0].Status != Warn || len(find(cs, "az repo Shop/web")) != 0 {
+	// no az, the PAT set: tm asks with it
+	if cs := Toolchain(d); len(find(cs, "az")) != 1 || find(cs, "az")[0].Status != OK || len(find(cs, "az repo Shop/web")) != 1 ||
+		find(cs, "az repo Shop/web")[0].Status != Warn || len(patAsked) == 0 || patAsked[0] != "https://dev.azure.com/acme/Shop/_apis/git/repositories/web?api-version=7.1" {
+		t.Errorf("no az, PAT: %+v %q", cs, patAsked)
+	}
+	env = nil
+	if cs := Toolchain(d); len(find(cs, "az")) != 1 || find(cs, "az")[0].Status != Warn || find(cs, "az repo Shop/web")[0].Status != Warn {
 		t.Errorf("no az: %+v", cs)
 	}
 

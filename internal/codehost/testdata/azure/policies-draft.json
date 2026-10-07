@@ -2,8 +2,7 @@
   "count": 1,
   "value": [
     {
-      "artifactId": "vstfs:///CodeReview/CodeReviewId/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c%2f2",
-      "completedDate": "2026-10-07T12:11:25.3598849Z",
+      "artifactId": "vstfs:///CodeReview/CodeReviewId/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c%2f3",
       "configuration": {
         "_links": {
           "policyType": {
@@ -54,32 +53,9 @@
         },
         "url": "https://dev.azure.com/acme/6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c/_apis/policy/configurations/1"
       },
-      "context": {
-        "buildAfterMerge": false,
-        "buildDefinitionId": 1,
-        "buildDefinitionName": "todo-ci",
-        "buildId": 6,
-        "buildIsNotCurrent": false,
-        "buildOutputPreview": {
-          "errors": [
-            {
-              "lineNumber": 16,
-              "message": "Bash exited with code '1'."
-            }
-          ],
-          "jobName": "Build",
-          "taskName": "Check"
-        },
-        "buildStartedUtc": "2026-10-07T12:09:51.9563385Z",
-        "isExpired": false,
-        "lastMergeCommitId": "e13c2402625eff480530c0391499d52286c3b38f",
-        "lastMergeSourceCommitId": "b690915c44588901482bbea21bcab55a6a478b15",
-        "lastMergeTargetCommitId": "ad27d4b2ae44cb985fba308444ce507f5b6969b2",
-        "wasAutoRequeued": false
-      },
-      "evaluationId": "c6f09eaa-bc57-4c90-a1ab-f99928f89e8c",
-      "startedDate": "2026-10-07T12:09:51.9628335Z",
-      "status": "rejected"
+      "evaluationId": "9addd23e-ed29-4d94-a54e-c6ea04c47a16",
+      "startedDate": "2026-10-07T11:56:00.4874458Z",
+      "status": "queued"
     }
   ]
 }

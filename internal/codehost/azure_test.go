@@ -7,11 +7,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 )
+
+// No test asks the network for an organization's tenant; the one that
+// tests the retry sets its own.
+func init() { orgTenant = func(string) string { return "" } }
 
 // shop is the repo the Azure fixtures are of.
 var shop = Target{Kind: AzureKind, OrgURL: "https://dev.azure.com/acme", Project: "Shop", Repo: "web"}
@@ -25,40 +30,58 @@ func fixture(t testing.TB, name string) []byte {
 	return b
 }
 
-// TestAzurePRFixtures: az's answers as printed, onto the fixed fields.
+// TestAzurePRFixtures: Azure DevOps' answers as tm asks them (az rest,
+// captured from a live organization, testdata/azure/README.md), onto
+// the fixed fields.
 func TestAzurePRFixtures(t *testing.T) {
-	pr, err := azurePR(shop, fixture(t, "pr-active.json"), fixture(t, "policies.json"), fixture(t, "statuses.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := PR{
-		Number: 12, URL: "https://dev.azure.com/acme/Shop/_git/web/pullrequest/12", State: "OPEN",
-		// the blocking build rejected; lint's later status succeeded,
-		// scan's failure is the approved status policy's, e2e pending;
-		// the optional build's queue and the comment policy don't count
-		Checks: "fail", Failed: 1,
-		Review: "REVIEW_REQUIRED",
-		Head:   "0123456789abcdef0123456789abcdef01234567", Base: "main", Mergeable: "MERGEABLE",
-	}
-	if pr != want {
-		t.Fatalf("active:\n got %+v\nwant %+v", pr, want)
-	}
-	if pr.Summary() != "#12 open, 1 check failed, review required" {
-		t.Fatalf("summary %q", pr.Summary())
-	}
-
-	pr, err = azurePR(shop, fixture(t, "pr-completed.json"), nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want = PR{
-		Number: 12, URL: "https://dev.azure.com/acme/Shop/_git/web/pullrequest/12", State: "MERGED", Review: "APPROVED",
-		MergedAt: time.Date(2026, 10, 7, 11, 40, 2, 716023000, time.UTC),
-		Head:     "0123456789abcdef0123456789abcdef01234567", Merge: "9a8b7c6d5e4f30211203f4e5d6c7b8a990a1b2c3",
-		Base: "main", Mergeable: "MERGEABLE",
-	}
-	if pr != want {
-		t.Fatalf("completed:\n got %+v\nwant %+v", pr, want)
+	for _, c := range []struct {
+		pr, policies, statuses string
+		want                   PR
+		summary                string
+	}{
+		// a required reviewer who hasn't voted; the build policy's build
+		// expired when main moved (not running, not pending); lint's
+		// latest status succeeded, the coverage service's is
+		// notApplicable
+		{"pr-active.json", "policies-approved.json", "statuses.json",
+			PR{Number: 1, State: "OPEN", Checks: "pass", Review: "REVIEW_REQUIRED", Head: "f487d85c7bc862efcca47c4eed97232849a86168", Base: "main", Mergeable: "MERGEABLE"},
+			"#1 open, checks pass, review required"},
+		// the build policy rejected, lint failed; a vote of -5
+		{"pr-failed.json", "policies.json", "statuses-failed.json",
+			PR{Number: 2, State: "OPEN", Checks: "fail", Failed: 2, Review: "CHANGES_REQUESTED", Head: "b690915c44588901482bbea21bcab55a6a478b15", Base: "main", Mergeable: "MERGEABLE"},
+			"#2 open, 2 checks failed, changes requested"},
+		// a draft: its build policy queued with no build
+		{"pr-draft.json", "policies-draft.json", "",
+			PR{Number: 3, State: "OPEN", Head: "4c2918eb25297e3d7172c1bd00c0a61feb69c28b", Base: "main", Mergeable: "MERGEABLE"}, "#3 open"},
+		// abandoned: no mergeStatus at all
+		{"pr-abandoned.json", "", "",
+			PR{Number: 4, State: "CLOSED", Head: "c002a528a7c4ce4eb756a2f81a941c00dc4ca725", Base: "main", Mergeable: "UNKNOWN"}, "#4 closed"},
+		// completed by hand, merge (no fast-forward), "Merged PR 5: …"
+		{"pr-completed.json", "", "",
+			PR{Number: 5, State: "MERGED", MergedAt: time.Date(2026, 10, 7, 12, 14, 12, 798581000, time.UTC), Head: "c5db4777afb846d0a8e258006b2778d7c4500d91",
+				Merge: "aa2ef614651f363bd8c383e119ff4fb884abf64a", Base: "main", Mergeable: "MERGEABLE"}, "#5 merged"},
+		// conflicts with its target, another branch
+		{"pr-conflicts.json", "", "",
+			PR{Number: 6, State: "OPEN", Head: "74013a6fddf1ae08004511adfc0dfc107ce2c6e3", Base: "feature/base", Mergeable: "CONFLICTING", MergeState: "DIRTY"}, "#6 open, conflicts"},
+	} {
+		var pol, st []byte
+		if c.policies != "" {
+			pol = fixture(t, c.policies)
+		}
+		if c.statuses != "" {
+			st = fixture(t, c.statuses)
+		}
+		pr, err := azurePR(shop, fixture(t, c.pr), pol, st)
+		if err != nil {
+			t.Fatalf("%s: %v", c.pr, err)
+		}
+		c.want.URL = AzurePRURL(shop, c.want.Number)
+		if pr != c.want {
+			t.Errorf("%s:\n got %+v\nwant %+v", c.pr, pr, c.want)
+		}
+		if pr.Summary() != c.summary {
+			t.Errorf("%s: summary %q", c.pr, pr.Summary())
+		}
 	}
 }
 
@@ -70,10 +93,14 @@ func azJSON(status, mergeStatus string, draft bool, votes ...string) string {
 }
 
 // policy is one evaluation record: kind build, status, minreviewers,
-// comments.
+// comments; a build's names its build.
 func policy(kind, status string, blocking bool) string {
 	ids := map[string]string{"build": policyBuild, "status": policyStatus, "minreviewers": policyMinReviewers, "reviewers": policyReviewers, "comments": "c6a1889d-b943-4856-b76f-9e46bb6b0df2"}
-	return fmt.Sprintf(`{"status":%q,"configuration":{"isBlocking":%v,"isEnabled":true,"type":{"id":%q}}}`, status, blocking, ids[kind])
+	ctx := "null"
+	if kind == "build" {
+		ctx = `{"buildId":42}`
+	}
+	return fmt.Sprintf(`{"status":%q,"configuration":{"isBlocking":%v,"isEnabled":true,"type":{"id":%q}},"context":%s}`, status, blocking, ids[kind], ctx)
 }
 
 func vote(v int, required bool) string {
@@ -102,6 +129,11 @@ func TestAzurePRMatrix(t *testing.T) {
 
 		{"build running", azJSON("active", "succeeded", false), list(policy("build", "running", true)), "", PR{State: "OPEN", Mergeable: "MERGEABLE", Checks: "pending"}},
 		{"build queued", azJSON("active", "succeeded", false), list(policy("build", "queued", true)), "", PR{State: "OPEN", Mergeable: "MERGEABLE", Checks: "pending"}},
+		{"build queued, no build yet", azJSON("active", "succeeded", true), `[{"status":"queued","configuration":{"isBlocking":true,"isEnabled":true,"type":{"id":"` + policyBuild + `"}},"context":null}]`, "",
+			PR{State: "OPEN", Mergeable: "MERGEABLE"}},
+		{"build queued, expired", azJSON("active", "succeeded", false), `[{"status":"queued","configuration":{"isBlocking":true,"isEnabled":true,"type":{"id":"` + policyBuild + `"}},"context":{"buildId":5,"isExpired":true}}]`, "",
+			PR{State: "OPEN", Mergeable: "MERGEABLE"}},
+		{"status policy queued", azJSON("active", "succeeded", false), list(policy("status", "queued", true)), "", PR{State: "OPEN", Mergeable: "MERGEABLE", Checks: "pending"}},
 		{"build approved", azJSON("active", "succeeded", false), list(policy("build", "approved", true)), "", PR{State: "OPEN", Mergeable: "MERGEABLE", Checks: "pass"}},
 		{"build broken", azJSON("active", "succeeded", false), list(policy("build", "broken", true)), "", PR{State: "OPEN", Mergeable: "MERGEABLE", Checks: "fail", Failed: 1}},
 		{"build not applicable", azJSON("active", "succeeded", false), list(policy("build", "notApplicable", true)), "", PR{State: "OPEN", Mergeable: "MERGEABLE"}},
@@ -207,7 +239,8 @@ func TestPickAzurePR(t *testing.T) {
 		return fmt.Sprint(p.ID)
 	}
 	for _, c := range [][2]string{
-		{string(fixture(t, "pr-list.json")), "12"},
+		{string(fixture(t, "pr-list.json")), "6"}, // PRs 1-6, 1, 2, 3 and 6 active
+		{string(fixture(t, "pr-list-branch.json")), "1"},
 		{`[{"pullRequestId":3,"status":"completed"},{"pullRequestId":9,"status":"abandoned"}]`, "9"},
 		{`[{"pullRequestId":4,"status":"active"},{"pullRequestId":8,"status":"active"},{"pullRequestId":20,"status":"abandoned"}]`, "8"},
 		{`[]`, "none"}, {`{}`, "none"}, {`[{"pullRequestId":0}]`, "none"}, {``, "none"},
@@ -218,93 +251,145 @@ func TestPickAzurePR(t *testing.T) {
 	}
 }
 
-// azFake is an Azure host whose az answers from a table by the
-// command's first words, and records what it was asked.
+// azRoute names the REST route of an az rest command's URL, for the
+// fakes: "pr" (one PR), "prs" (the list), "policies", "statuses",
+// "builds", "timeline", "logs" (their list), "log" (one log's lines).
+func azRoute(args []string) (route, u string) {
+	if len(args) == 0 || args[0] != "rest" {
+		return strings.Join(args, " "), ""
+	}
+	for i, a := range args {
+		if a == "--url" && i+1 < len(args) {
+			u = args[i+1]
+		}
+	}
+	path, _, _ := strings.Cut(u, "?")
+	switch {
+	case strings.Contains(path, "/policy/evaluations"):
+		return "policies", u
+	case strings.HasSuffix(path, "/statuses"):
+		return "statuses", u
+	case strings.HasSuffix(path, "/pullrequests"):
+		return "prs", u
+	case strings.Contains(path, "/pullrequests/"):
+		return "pr", u
+	case strings.HasSuffix(path, "/timeline"):
+		return "timeline", u
+	case strings.HasSuffix(path, "/logs"):
+		return "logs", u
+	case strings.Contains(path, "/logs/"):
+		return "log", u
+	case strings.HasSuffix(path, "/_apis/build/builds"):
+		return "builds", u
+	}
+	return "rest " + path, u
+}
+
+// azFake is an Azure host whose az answers from a table by REST route
+// (azRoute), and records the URLs it was asked.
 type azFake struct {
-	answers map[string]string // "repos pr show" => JSON; "!" prefix => error text
-	mu      sync.Mutex        // az's calls for one PR run at once
+	answers map[string]string // "pr" => JSON; "!" prefix => error text
+	mu      sync.Mutex        // the calls for one PR run at once
 	asked   []string
 }
 
 func (f *azFake) host() Azure {
-	return Azure{Target: shop, Run: func(dir string, args ...string) ([]byte, error) {
-		cmd := strings.Join(args, " ")
+	return Azure{Target: shop, Getenv: func(string) string { return "" }, Run: func(dir string, args ...string) ([]byte, error) {
+		route, u := azRoute(args)
 		f.mu.Lock()
 		defer f.mu.Unlock()
-		f.asked = append(f.asked, cmd)
-		for _, words := range []int{4, 3} {
-			if len(args) < words {
-				continue
+		f.asked = append(f.asked, u)
+		if a, ok := f.answers[route]; ok {
+			if e, bad := strings.CutPrefix(a, "!"); bad {
+				return nil, azError(errors.New("az " + strings.Join(args, " ") + ": exit status 1 " + e))
 			}
-			if a, ok := f.answers[strings.Join(args[:words], " ")]; ok {
-				if e, bad := strings.CutPrefix(a, "!"); bad {
-					return nil, azError(errors.New("az " + cmd + ": exit status 1 " + e))
-				}
-				return []byte(a), nil
-			}
+			return []byte(a), nil
 		}
-		return nil, azError(fmt.Errorf("az %s: exit status 2 unexpected", cmd))
+		return nil, azError(fmt.Errorf("az %s: exit status 2 unexpected", strings.Join(args, " ")))
 	}}
 }
 
+const (
+	shopRepo = "https://dev.azure.com/acme/Shop/_apis/git/repositories/web"
+	shopPID  = "6ce954b1-ce1f-45d1-b94d-e6bf2464ba2c"
+)
+
 // TestAzurePRLookup: by number, by URL of this repo only, by branch;
-// every call names the organization, list names the project and repo.
+// every URL is built from the Target, through az rest with az login's
+// token for Azure DevOps.
 func TestAzurePRLookup(t *testing.T) {
 	f := &azFake{answers: map[string]string{
-		"repos pr show":        string(fixture(t, "pr-active.json")),
-		"repos pr list":        string(fixture(t, "pr-list.json")),
-		"repos pr policy list": string(fixture(t, "policies.json")),
-		"devops invoke":        string(fixture(t, "statuses.json")),
+		"pr":       string(fixture(t, "pr-active.json")),
+		"prs":      string(fixture(t, "pr-list-branch.json")),
+		"policies": string(fixture(t, "policies.json")),
+		"statuses": string(fixture(t, "statuses.json")),
 	}}
+	var args []string
 	a := f.host()
-	pr, err := a.PR("/r", Ref{Branch: "feature/login"})
-	if err != nil || pr.Number != 12 || pr.Checks != "fail" {
+	run := a.Run
+	a.Run = func(dir string, as ...string) ([]byte, error) {
+		f.mu.Lock()
+		args = as
+		f.mu.Unlock()
+		return run(dir, as...)
+	}
+	pr, err := a.PR("/r", Ref{Branch: "feature/pass"})
+	if err != nil || pr.Number != 1 || pr.Checks != "fail" {
 		t.Fatalf("by branch: %+v %v", pr, err)
 	}
-	if len(f.asked) != 3 || f.asked[0] != "repos pr list --project Shop --repository web --source-branch refs/heads/feature/login --status all --top 20 --organization https://dev.azure.com/acme" {
+	if len(f.asked) != 3 || f.asked[0] != shopRepo+"/pullrequests?searchCriteria.sourceRefName=refs%2Fheads%2Ffeature%2Fpass&searchCriteria.status=all&$top=20&api-version=7.1" {
 		t.Fatalf("asked %q", f.asked)
 	}
 	for _, c := range f.asked[1:] {
-		switch {
-		case c == "repos pr policy list --id 12 --organization https://dev.azure.com/acme":
-		case c == "devops invoke --area git --resource pullRequestStatuses --route-parameters project=Shop repositoryId=web pullRequestId=12 --api-version 7.1-preview.1 --http-method GET --organization https://dev.azure.com/acme":
+		switch c {
+		case "https://dev.azure.com/acme/Shop/_apis/policy/evaluations?artifactId=vstfs%3A%2F%2F%2FCodeReview%2FCodeReviewId%2F" + shopPID + "%2F1&api-version=7.1-preview.1":
+		case shopRepo + "/pullRequests/1/statuses?api-version=7.1-preview.1":
 		default:
 			t.Fatalf("asked %q", c)
 		}
 	}
+	if strings.Join(args[:5], " ") != "rest --method get --resource "+azResource || !slices.Contains(args, "Accept=application/json") {
+		t.Fatalf("args %q", args)
+	}
 
 	f.asked = nil
-	if pr, err := a.PR("/r", Ref{URL: "https://dev.azure.com/acme/Shop/_git/web/pullrequest/12", Branch: "other"}); err != nil || pr.Number != 12 {
+	if pr, err := a.PR("/r", Ref{URL: "https://dev.azure.com/acme/Shop/_git/web/pullrequest/1", Branch: "other"}); err != nil || pr.Number != 1 {
 		t.Fatalf("by URL: %+v %v", pr, err)
 	}
-	if f.asked[0] != "repos pr show --id 12 --organization https://dev.azure.com/acme" {
+	if f.asked[0] != shopRepo+"/pullrequests/1?api-version=7.1" {
 		t.Fatalf("by URL asked %q", f.asked)
 	}
 	// Another repo's PR URL isn't followed: the branch is.
 	f.asked = nil
-	a.PR("/r", Ref{URL: "https://dev.azure.com/evil/Shop/_git/web/pullrequest/12", Branch: "feature/login"})
-	if !strings.HasPrefix(f.asked[0], "repos pr list ") {
+	a.PR("/r", Ref{URL: "https://dev.azure.com/evil/Shop/_git/web/pullrequest/1", Branch: "feature/pass"})
+	if !strings.HasPrefix(f.asked[0], shopRepo+"/pullrequests?") {
 		t.Fatalf("other org's URL followed: %q", f.asked)
 	}
 	// A number of another repo of the organization is no PR of ours.
-	f.answers["repos pr show"] = strings.Replace(string(fixture(t, "pr-active.json")), `"name": "web"`, `"name": "api"`, 1)
-	if _, err := a.PR("/r", Ref{Number: 12}); !errors.Is(err, ErrNoPR) {
+	f.answers["pr"] = strings.Replace(string(fixture(t, "pr-active.json")), `"name": "web"`, `"name": "api"`, 1)
+	if _, err := a.PR("/r", Ref{Number: 1}); !errors.Is(err, ErrNoPR) {
 		t.Fatalf("other repo's PR: %v", err)
+	}
+	// A PR without its project's id asks no policies.
+	f.answers["pr"] = strings.ReplaceAll(string(fixture(t, "pr-active.json")), shopPID, "not-a-guid")
+	f.asked = nil
+	if _, err := a.PR("/r", Ref{Number: 1}); err != nil || len(f.asked) != 2 {
+		t.Fatalf("no project id: %v %q", err, f.asked)
 	}
 
 	// A merged PR asks no policies.
-	f.answers["repos pr show"] = string(fixture(t, "pr-completed.json"))
+	f.answers["pr"] = string(fixture(t, "pr-completed.json"))
 	f.asked = nil
-	if pr, err := a.PR("/r", Ref{Number: 12}); err != nil || pr.State != "MERGED" || len(f.asked) != 1 {
+	if pr, err := a.PR("/r", Ref{Number: 5}); err != nil || pr.State != "MERGED" || len(f.asked) != 1 {
 		t.Fatalf("merged: %+v %v %q", pr, err, f.asked)
 	}
-	if st, n, head := a.PRHead("/r", "https://dev.azure.com/acme/Shop/_git/web/pullrequest/12"); st != "MERGED" || n != 12 || head != "feature/login" {
+	if st, n, head := a.PRHead("/r", "https://dev.azure.com/acme/Shop/_git/web/pullrequest/5"); st != "MERGED" || n != 5 || head != "feature/merge" {
 		t.Fatalf("PRHead: %s %d %s", st, n, head)
 	}
-	if st, _, _ := a.PRHead("/r", "https://dev.azure.com/acme/Shop/_git/api/pullrequest/12"); st != "" {
+	if st, _, _ := a.PRHead("/r", "https://dev.azure.com/acme/Shop/_git/api/pullrequest/5"); st != "" {
 		t.Fatal("PRHead of another repo")
 	}
-	if st := a.PRState("/r", "feature/login"); st != "OPEN" {
+	if st := a.PRState("/r", "feature/pass"); st != "OPEN" {
 		t.Fatalf("PRState %q", st)
 	}
 }
@@ -312,7 +397,7 @@ func TestAzurePRLookup(t *testing.T) {
 // TestAzurePRErrors: the error contract the ticker's host-failing count
 // rests on, as for GitHub.
 func TestAzurePRErrors(t *testing.T) {
-	f := &azFake{answers: map[string]string{"repos pr list": "[]"}}
+	f := &azFake{answers: map[string]string{"prs": `{"count":0,"value":[]}`}}
 	a := f.host()
 	for _, ref := range []Ref{{}, {Branch: "-x"}, {Branch: "a b"}, {URL: "https://github.com/o/r/pull/1"}} {
 		if _, err := a.PR("/r", ref); !errors.Is(err, ErrNoRef) {
@@ -325,26 +410,26 @@ func TestAzurePRErrors(t *testing.T) {
 	if _, err := a.PR("/r", Ref{Branch: "b"}); !errors.Is(err, ErrNoPR) {
 		t.Fatalf("empty list: %v", err)
 	}
-	f.answers["repos pr show"] = "!ERROR: TF401180: The requested pull request was not found."
+	f.answers["pr"] = `!ERROR: Not Found({"$id":"1","innerException":null,"message":"TF401180: The requested pull request was not found.","typeName":"Microsoft.TeamFoundation.Git.Server.GitPullRequestNotFoundException, Microsoft.TeamFoundation.Git.Server"})`
 	if _, err := a.PR("/r", Ref{Number: 4}); !errors.Is(err, ErrNoPR) {
 		t.Fatalf("not found: %v", err)
 	}
-	f.answers["repos pr list"] = "!ERROR: Please run 'az login' to setup account."
+	f.answers["prs"] = "!ERROR: Please run 'az login' to setup account."
 	_, err := a.PR("/r", Ref{Branch: "b"})
 	var ce *CLIError
 	if errors.Is(err, ErrNoPR) || !errors.As(err, &ce) || ce.Problem != "az is not logged in" || ce.CLI != "az" {
 		t.Fatalf("logged out: %v", err)
 	}
 	// policies failing fails the poll; statuses failing doesn't
-	f.answers["repos pr list"] = string(fixture(t, "pr-list.json"))
-	f.answers["repos pr policy list"] = "!ERROR: TF400813: The user 'x' is not authorized to access this resource."
-	f.answers["devops invoke"] = "[]"
+	f.answers["prs"] = string(fixture(t, "pr-list-branch.json"))
+	f.answers["policies"] = `!ERROR: Forbidden({"message":"TF400409: You do not have permissions."})`
+	f.answers["statuses"] = "[]"
 	if _, err := a.PR("/r", Ref{Branch: "b"}); !errors.As(err, &ce) || !strings.Contains(ce.Problem, "401/403") {
 		t.Fatalf("policies: %v", err)
 	}
-	f.answers["repos pr policy list"] = "[]"
-	f.answers["devops invoke"] = "!boom"
-	if pr, err := a.PR("/r", Ref{Branch: "b"}); err != nil || pr.Number != 12 {
+	f.answers["policies"] = "[]"
+	f.answers["statuses"] = "!boom"
+	if pr, err := a.PR("/r", Ref{Branch: "b"}); err != nil || pr.Number != 1 {
 		t.Fatalf("statuses: %+v %v", pr, err)
 	}
 	if _, err := (Azure{Target: Target{Kind: AzureKind}}).PR("/r", Ref{Branch: "b"}); err == nil || errors.Is(err, ErrNoPR) {
@@ -357,10 +442,9 @@ func TestAzError(t *testing.T) {
 		"ERROR: Please run 'az login' to setup account.":                        "az is not logged in",
 		"ERROR: AADSTS700082: The refresh token has expired due to inactivity.": "az is not logged in",
 		"ERROR: Before you can run Azure DevOps commands, you need to run the login command(az login if using AAD/MSA identity else az devops login if using PAT token) to setup credentials.": "az is not logged in",
-		"ERROR: 'repos' is misspelled or not recognized by the system.":           "az lacks the azure-devops extension",
-		"ERROR: TF400813: The user '' is not authorized to access this resource.": "Azure DevOps refused access (401/403)",
-		"ERROR: Operation returned a 403 status code.":                            "Azure DevOps refused access (401/403)",
-		"ERROR: TF200016: The following project does not exist: Shop.":            "Azure DevOps doesn't know this organization, project or repo",
+		"ERROR: TF400813: The user '' is not authorized to access this resource.":                                                                                                              "Azure DevOps doesn't know the user az signs in as (TF400813)",
+		"ERROR: Operation returned a 403 status code.":                                                                                                                                         "Azure DevOps refused access (401/403)",
+		"ERROR: TF200016: The following project does not exist: Shop.":                                                                                                                         "Azure DevOps doesn't know this organization, project or repo",
 		"ERROR: something else": "",
 	} {
 		var ce *CLIError
@@ -404,39 +488,155 @@ func TestAzureParsePRURL(t *testing.T) {
 
 func TestAzureHints(t *testing.T) {
 	h := Azure{Target: Target{OrgURL: "https://dev.azure.com/acme", Project: "My Project", Repo: "web"}}.Hints(4)
-	if h.Checks != "az repos pr policy list --id 4 --organization https://dev.azure.com/acme -o table" ||
-		h.Review != "az devops invoke --area git --resource pullRequestThreads --route-parameters project='My Project' repositoryId=web pullRequestId=4 --organization https://dev.azure.com/acme" {
+	if h.Checks != "az rest --resource "+azResource+" --url 'https://dev.azure.com/acme/My%20Project/_apis/build/builds?branchName=refs/pull/4/merge&api-version=7.1' --query 'value[].{build:id,status:status,result:result}' -o table" ||
+		h.Review != "az rest --resource "+azResource+" --url 'https://dev.azure.com/acme/My%20Project/_apis/git/repositories/web/pullRequests/4/threads?api-version=7.1' --query \"value[].comments[?commentType=='text'][].{author:author.displayName,text:content}\" -o table" {
 		t.Fatalf("%+v", h)
 	}
 	h = Azure{Target: Target{OrgURL: "https://dev.azure.com/acme", Project: "Shop; rm -rf ~", Repo: "web"}}.Hints(4)
-	if strings.Contains(h.Checks+h.Review, "rm") || !strings.HasPrefix(h.Checks, "az repos pr policy list --id 4") {
-		t.Fatalf("odd name in a hint: %+v", h)
+	if strings.Contains(h.Checks+h.Review, "rm") || h.Checks != "the checks on PR 4's page" {
+		t.Fatalf("%+v", h)
 	}
 }
 
 func TestAzureDoctor(t *testing.T) {
-	var ran []string
-	deps := func(fail string) DoctorDeps {
+	deps := func(fail string, pat bool) DoctorDeps {
 		return DoctorDeps{
 			LookPath: func(string) (string, error) { return "/bin/az", nil },
 			Run: func(dir, name string, args ...string) (string, error) {
-				ran = append(ran, args[0])
 				if args[0] == fail {
 					return "", errors.New("exit 1")
 				}
 				return "", nil
 			},
+			Getenv: func(k string) string {
+				if pat && k == patEnv {
+					return "s3cret"
+				}
+				return ""
+			},
 		}
 	}
-	checks := Azure{Target: shop}.Doctor(deps(""))
-	if len(checks) != 3 || !checks[0].OK || !checks[1].OK || !checks[2].OK {
+	checks := Azure{Target: shop}.Doctor(deps("", false))
+	if len(checks) != 3 || !checks[0].OK || !checks[1].OK || !checks[2].OK || checks[1].Name != "az login" {
 		t.Fatalf("%+v", checks)
 	}
-	if checks := (Azure{}).Doctor(deps("account")); checks[2].OK || !strings.Contains(checks[2].Detail, "az login") {
+	// the extension is optional
+	if checks := (Azure{}).Doctor(deps("extension", false)); !checks[2].OK || !strings.Contains(checks[2].Detail, "optional") {
 		t.Fatalf("%+v", checks)
 	}
-	if checks := (Azure{}).Doctor(DoctorDeps{LookPath: func(string) (string, error) { return "", exec.ErrNotFound }}); len(checks) != 1 || checks[0].OK {
+	if checks := (Azure{}).Doctor(deps("account", false)); checks[1].OK || !strings.Contains(checks[1].Detail, "az login") {
 		t.Fatalf("%+v", checks)
+	}
+	if checks := (Azure{}).Doctor(deps("account", true)); !checks[1].OK || checks[1].Detail != patEnv+" is set" {
+		t.Fatalf("%+v", checks)
+	}
+	noAZ := func(pat bool) DoctorDeps {
+		d := deps("", pat)
+		d.LookPath = func(string) (string, error) { return "", exec.ErrNotFound }
+		return d
+	}
+	if checks := (Azure{}).Doctor(noAZ(false)); len(checks) != 1 || checks[0].OK {
+		t.Fatalf("%+v", checks)
+	}
+	if checks := (Azure{}).Doctor(noAZ(true)); len(checks) != 1 || !checks[0].OK || strings.Contains(checks[0].Detail, "s3cret") {
+		t.Fatalf("%+v", checks)
+	}
+}
+
+// TestAzureAccess: a readable repo; az login's twin under the
+// extension (the TF400813 of az rest with X-VSS-ForceMsaPassThrough,
+// captured from a live organization); refusals with the tenant to log
+// in to; the PAT; a wrong name.
+func TestAzureAccess(t *testing.T) {
+	const tf400813 = `ERROR: Unauthorized({"$id":"1","innerException":null,"message":"TF400813: The user '39b70f09-0000-0000-0000-000000000000' is not authorized to access this resource.","typeName":"Microsoft.TeamFoundation.Framework.Server.UnauthorizedRequestException"})`
+	type answer struct {
+		out string
+		err string
+	}
+	deps := func(answers map[string]answer, ran *[]string) DoctorDeps {
+		return DoctorDeps{
+			LookPath: func(string) (string, error) { return "/bin/az", nil },
+			Getenv:   func(string) string { return "" },
+			Run: func(dir, name string, args ...string) (string, error) {
+				cmd := strings.Join(args, " ")
+				*ran = append(*ran, cmd)
+				key := args[0]
+				switch {
+				case args[0] == "rest" && strings.Contains(cmd, "X-VSS-ForceMsaPassThrough=true"):
+					key = "msa"
+				case args[0] == "rest" && strings.Contains(cmd, "--subscription"):
+					key = "rest-sub"
+				}
+				a := answers[key]
+				if a.err != "" {
+					return a.err, errors.New("/bin/az " + cmd + ": " + a.err)
+				}
+				return a.out, nil
+			},
+		}
+	}
+	var ran []string
+	ok := map[string]answer{"rest": {out: `{"id":"x","name":"web"}`}, "extension": {}, "msa": {}}
+	if c := (Azure{Target: shop}).Access(deps(ok, &ran)); len(c) != 1 || !c[0].OK || c[0].Name != "az repo Shop/web" {
+		t.Fatalf("%+v", c)
+	}
+	if !strings.HasPrefix(ran[0], "rest --method get --resource "+azResource+" --url "+shopRepo+"?api-version=7.1 ") {
+		t.Fatalf("ran %q", ran)
+	}
+	// the extension's twin
+	ok["msa"] = answer{err: tf400813}
+	if c := (Azure{Target: shop}).Access(deps(ok, &ran)); len(c) != 2 || !c[0].OK || c[1].OK || !strings.Contains(c[1].Detail, "personal Microsoft account") ||
+		!strings.Contains(c[1].Detail, "az devops login --organization "+shop.OrgURL) {
+		t.Fatalf("%+v", c)
+	}
+	// no extension: no probe
+	ok["extension"] = answer{err: "ERROR: extension not installed"}
+	if c := (Azure{Target: shop}).Access(deps(ok, &ran)); len(c) != 1 || !c[0].OK {
+		t.Fatalf("%+v", c)
+	}
+
+	// refused, the organization in a tenant az has no account in
+	defer func(f func(string) string) { orgTenant = f }(orgTenant)
+	orgTenant = func(string) string { return "47388324-0000-0000-0000-000000000000" }
+	azSubs.Delete(shop.OrgURL)
+	refused := map[string]answer{"rest": {err: tf400813}, "account": {out: `[{"id":"11111111-0000-0000-0000-000000000000","tenantId":"99999999-0000-0000-0000-000000000000","isDefault":true}]`}}
+	if c := (Azure{Target: shop}).Access(deps(refused, &ran)); len(c) != 1 || c[0].OK || !strings.Contains(c[0].Detail, "TF400813") ||
+		!strings.Contains(c[0].Detail, "az login --tenant 47388324-0000-0000-0000-000000000000") {
+		t.Fatalf("%+v", c)
+	}
+	// az has a subscription in it, not the default: retried with it
+	azSubs.Delete(shop.OrgURL)
+	refused["account"] = answer{out: `[{"id":"11111111-0000-0000-0000-000000000000","tenantId":"99999999-0000-0000-0000-000000000000","isDefault":true},` +
+		`{"id":"22222222-0000-0000-0000-000000000000","tenantId":"47388324-0000-0000-0000-000000000000","isDefault":false}]`}
+	refused["rest-sub"] = answer{out: `{"id":"x"}`}
+	ran = nil
+	if c := (Azure{Target: shop}).Access(deps(refused, &ran)); len(c) != 1 || !c[0].OK || !strings.Contains(strings.Join(ran, "\n"), "--subscription 22222222-0000-0000-0000-000000000000") {
+		t.Fatalf("%+v %q", c, ran)
+	}
+	azSubs.Delete(shop.OrgURL)
+
+	// not logged in, a PAT set: asked with it
+	d := deps(map[string]answer{"rest": {err: "ERROR: Please run 'az login' to setup account."}}, &ran)
+	d.Getenv = func(k string) string { return map[string]string{patEnv: "s3cret"}[k] }
+	var patURL string
+	a := Azure{Target: shop, PATGet: func(u, pat string) ([]byte, error) { patURL = u; return []byte(`{}`), nil }}
+	if c := a.Access(d); len(c) != 1 || !c[0].OK || patURL != shopRepo+"?api-version=7.1" {
+		t.Fatalf("%+v %q", c, patURL)
+	}
+	a.PATGet = func(u, pat string) ([]byte, error) {
+		return nil, &CLIError{CLI: "az", Problem: "Azure DevOps refused " + patEnv + " (401/403)", Err: errors.New("401"), auth: true}
+	}
+	if c := a.Access(d); len(c) != 1 || c[0].OK || !strings.Contains(c[0].Detail, "hasn't expired") || strings.Contains(c[0].Detail, "s3cret") {
+		t.Fatalf("%+v", c)
+	}
+	// not logged in, no PAT
+	if c := (Azure{Target: shop}).Access(deps(map[string]answer{"rest": {err: "ERROR: Please run 'az login' to setup account."}}, &ran)); c[0].OK || !strings.Contains(c[0].Detail, "run az login") {
+		t.Fatalf("%+v", c)
+	}
+	// a repo Azure DevOps doesn't know
+	nf := `ERROR: Not Found({"message":"TF401019: The Git repository with name or identifier web does not exist or you do not have permissions for the operation you are attempting."})`
+	if c := (Azure{Target: shop}).Access(deps(map[string]answer{"rest": {err: nf}}, &ran)); c[0].OK || !strings.Contains(c[0].Detail, "origin URL") {
+		t.Fatalf("%+v", c)
 	}
 }
 
@@ -450,7 +650,7 @@ func TestAdvice(t *testing.T) {
 		{errors.New("gh pr view: exit status 1"), "gh", "", "the user checks gh auth status in a terminal (tm doctor)"},
 		{nil, "gh", "", "the user checks gh auth status in a terminal (tm doctor)"},
 		{azError(errors.New("az: Please run 'az login'")), "az", "az is not logged in", "the user runs az login in a terminal"},
-		{fmt.Errorf("poll: %w", azError(errors.New("az: boom"))), "az", "", "the user checks az login and az repos pr list in a terminal (tm doctor)"},
+		{fmt.Errorf("poll: %w", azError(errors.New("az: boom"))), "az", "", "the user checks az login in a terminal (tm doctor)"},
 		{&CLIError{CLI: "x; rm", Problem: "p", Advice: "a", Err: errors.New("e")}, "the code host CLI", "", "the user checks the code host CLI auth status in a terminal (tm doctor)"},
 	} {
 		if cli, problem, advice := Advice(c.err); cli != c.cli || problem != c.problem || advice != c.advice {
@@ -459,37 +659,35 @@ func TestAdvice(t *testing.T) {
 	}
 }
 
-// buildLogHost answers az for T115's FailedLog: policies, runs, the
-// timeline, the log list and the log lines, by command.
-func buildLogHost(t *testing.T, policies, runs string, asked *[]string) Azure {
-	return Azure{Target: shop, Run: func(dir string, args ...string) ([]byte, error) {
-		cmd := strings.Join(args, " ")
-		*asked = append(*asked, cmd)
-		switch {
-		case strings.HasPrefix(cmd, "repos pr policy list"):
-			return []byte(policies), nil
-		case strings.HasPrefix(cmd, "pipelines runs list"):
-			if runs == "" {
+// buildLogHost answers az rest for FailedLog: the merge ref's failed
+// builds, the timeline, the log list and the log lines, by route.
+func buildLogHost(t *testing.T, builds string, asked *[]string) Azure {
+	return Azure{Target: shop, Getenv: func(string) string { return "" }, Run: func(dir string, args ...string) ([]byte, error) {
+		route, u := azRoute(args)
+		*asked = append(*asked, u)
+		switch route {
+		case "builds":
+			if builds == "" {
 				return nil, azError(errors.New("az: exit status 1 boom"))
 			}
-			return []byte(runs), nil
-		case strings.Contains(cmd, "--resource timeline"):
+			return []byte(builds), nil
+		case "timeline":
 			return fixture(t, "timeline.json"), nil
-		case strings.Contains(cmd, "--resource logs") && !strings.Contains(cmd, "logId="):
+		case "logs":
 			return []byte(`{"count":2,"value":[{"id":7,"lineCount":5000},{"id":8,"lineCount":3}]}`), nil
-		case strings.Contains(cmd, "--resource logs"):
+		case "log":
 			b, _ := json.Marshal(strings.Split(strings.TrimRight(string(fixture(t, "buildlog.txt")), "\n"), "\n"))
 			return []byte(`{"count":10,"value":` + string(b) + `}`), nil
 		}
-		return nil, errors.New("unexpected " + cmd)
+		return nil, errors.New("unexpected " + strings.Join(args, " "))
 	}}
 }
 
 func TestAzureFailedLog(t *testing.T) {
 	var asked []string
-	a := buildLogHost(t, string(fixture(t, "policies.json")), "", &asked)
+	a := buildLogHost(t, string(fixture(t, "builds.json")), &asked)
 	job, text := a.FailedLog("/repo", PR{Number: 12})
-	if job != "Linux / Run tests" {
+	if job != "Build / Check" {
 		t.Fatalf("job %q", job)
 	}
 	for _, bad := range []string{"##[section]", "##[group]", "2026-10-07", "\x1b"} {
@@ -497,38 +695,32 @@ func TestAzureFailedLog(t *testing.T) {
 			t.Errorf("%q left in %q", bad, text)
 		}
 	}
-	if !strings.HasPrefix(text, "==========") || !strings.Contains(text, "--- FAIL: TestLogin") || !strings.HasSuffix(text, "##[error]Bash exited with code '1'.") {
+	if !strings.Contains(text, "checking for FAIL") || !strings.Contains(text, "##[error]FAIL file present: deliberate failure") || !strings.HasSuffix(text, "##[error]Bash exited with code '1'.") {
 		t.Errorf("excerpt %q", text)
 	}
-	// the build came from the policy's context; the log's last 2000 lines
-	joined := strings.Join(asked, "\n")
-	if strings.Contains(joined, "pipelines runs") || !strings.Contains(joined, "buildId=4711") ||
-		!strings.Contains(joined, "logId=7 --query-parameters startLine=3001 endLine=5000") {
-		t.Errorf("asked:\n%s", joined)
+	// the merge ref's failed builds; the log's last 2000 lines
+	b := "https://dev.azure.com/acme/Shop/_apis/build/builds"
+	want := []string{
+		b + "?branchName=refs/pull/12/merge&resultFilter=failed&queryOrder=queueTimeDescending&$top=" + fmt.Sprint(logRuns) + "&api-version=7.1",
+		b + "/6/timeline?api-version=7.1",
+		b + "/6/logs?api-version=7.1",
+		b + "/6/logs/7?startLine=3001&endLine=5000&api-version=7.1",
 	}
-
-	// no policy context: the runs of the merge ref
-	asked = nil
-	a = buildLogHost(t, `[]`, `[{"id": 4800}]`, &asked)
-	if job, _ = a.FailedLog("/repo", PR{Number: 12}); job != "Linux / Run tests" {
-		t.Fatalf("by runs: job %q", job)
-	}
-	if j := strings.Join(asked, "\n"); !strings.Contains(j, "--branch refs/pull/12/merge --reason pullRequest --result failed") || !strings.Contains(j, "buildId=4800") {
-		t.Errorf("asked:\n%s", j)
+	if !slices.Equal(asked, want) {
+		t.Errorf("asked:\n%s", strings.Join(asked, "\n"))
 	}
 
 	// nothing to find, or az failing: the fixed prompt stays
-	asked = nil
-	a = buildLogHost(t, `[]`, "", &asked)
+	a = buildLogHost(t, "", &asked)
 	if job, text = a.FailedLog("/repo", PR{Number: 12}); job != "" || text != "" {
 		t.Errorf("failure gave %q %q", job, text)
 	}
 	if job, text = a.FailedLog("/repo", PR{}); job != "" || text != "" {
 		t.Errorf("no PR gave %q %q", job, text)
 	}
-	a = buildLogHost(t, `[]`, `[]`, &asked)
+	a = buildLogHost(t, `{"count":0,"value":[]}`, &asked)
 	if job, text = a.FailedLog("/repo", PR{Number: 12}); job != "" || text != "" {
-		t.Errorf("no runs gave %q %q", job, text)
+		t.Errorf("no builds gave %q %q", job, text)
 	}
 }
 

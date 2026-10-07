@@ -94,6 +94,8 @@ type Deps struct {
 	Hosts func() []RepoHost
 	// Getenv reads the environment (AZURE_DEVOPS_EXT_PAT); nil reads none.
 	Getenv func(string) string
+	// PATGet asks Azure DevOps a URL with a PAT; nil is codehost.PATGet.
+	PATGet func(url, pat string) ([]byte, error)
 }
 
 // RepoHost is one repo in use and where its PRs live.
@@ -216,7 +218,7 @@ func codeHosts(d Deps) []Check {
 			github = true
 		}
 	}
-	dd := codehost.DoctorDeps{LookPath: d.LookPath, Run: d.Run, Getenv: d.Getenv}
+	dd := codehost.DoctorDeps{LookPath: d.LookPath, Run: d.Run, Getenv: d.Getenv, PATGet: d.PATGet}
 	var out []Check
 	add := func(cs []codehost.Check) {
 		for _, c := range cs {

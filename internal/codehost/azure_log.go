@@ -2,7 +2,7 @@ package codehost
 
 import (
 	"encoding/json"
-	"slices"
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -13,19 +13,14 @@ const azLogLines = 2000
 
 // FailedLog is the first failing task of a failed build of the PR's
 // validation and an excerpt of its log (azureExcerpt), "" when there is
-// none or az can't give it: no PR build, no failed task, az failed.
-// Builds are the rejected build policies' (their context names the
-// build), else the PR's failed runs by its merge ref, newest first, at
-// most logRuns of them.
+// none or Azure DevOps can't give it: no PR build, no failed task, the
+// call failed. Builds are the PR's failed builds of its merge ref,
+// newest first, at most logRuns of them.
 func (a Azure) FailedLog(repo string, pr PR) (job, text string) {
 	if pr.Number <= 0 || a.Target.OrgURL == "" || a.Target.Project == "" {
 		return "", ""
 	}
-	n := 0
 	for _, id := range a.failedBuilds(repo, pr.Number) {
-		if n++; n > logRuns {
-			break
-		}
 		if job, ex := a.buildLog(repo, id); ex != "" {
 			return job, ex
 		}
@@ -33,42 +28,22 @@ func (a Azure) FailedLog(repo string, pr PR) (job, text string) {
 	return "", ""
 }
 
-// failedBuilds are the ids of the PR's failed builds: the context's
-// buildId of each rejected or broken build policy, else (a policy
-// without one, or no policy) the failed pull request runs of
-// refs/pull/<n>/merge.
+// failedBuilds are the ids of the PR's failed builds: those of
+// refs/pull/<n>/merge, where Azure DevOps builds a PR (a build
+// validation policy's and any other), newest first, at most logRuns.
 func (a Azure) failedBuilds(repo string, n int) []int {
-	var ids []int
-	if out, err := a.az(repo, append([]string{"repos", "pr", "policy", "list", "--id", strconv.Itoa(n)}, a.org()...)...); err == nil {
-		var pols []struct {
-			Status  string `json:"status"`
-			Context *struct {
-				BuildID int `json:"buildId"`
-			} `json:"context"`
-		}
-		json.Unmarshal(out, &pols)
-		for _, p := range pols {
-			if (p.Status == "rejected" || p.Status == "broken") && p.Context != nil && p.Context.BuildID > 0 &&
-				!slices.Contains(ids, p.Context.BuildID) {
-				ids = append(ids, p.Context.BuildID)
-			}
-		}
-	}
-	if len(ids) > 0 {
-		return ids
-	}
-	out, err := a.az(repo, append([]string{"pipelines", "runs", "list", "--project", a.Target.Project,
-		"--branch", "refs/pull/" + strconv.Itoa(n) + "/merge", "--reason", "pullRequest", "--result", "failed", "--top", strconv.Itoa(logRuns)}, a.org()...)...)
+	out, err := a.get(repo, fmt.Sprintf("%s/_apis/build/builds?branchName=refs/pull/%d/merge&resultFilter=failed&queryOrder=queueTimeDescending&$top=%d&api-version=7.1",
+		a.projectURL(), n, logRuns))
 	if err != nil {
 		return nil
 	}
-	var runs []struct {
-		ID int `json:"id"`
-	}
-	json.Unmarshal(out, &runs)
-	for _, r := range runs {
-		if r.ID > 0 {
-			ids = append(ids, r.ID)
+	var ids []int
+	for _, raw := range azValues(out) {
+		var b struct {
+			ID int `json:"id"`
+		}
+		if json.Unmarshal(raw, &b) == nil && b.ID > 0 && len(ids) < logRuns {
+			ids = append(ids, b.ID)
 		}
 	}
 	return ids
@@ -124,25 +99,15 @@ func firstFailedTask(timeline []byte) (name string, logID int) {
 	return name, best.Log.ID
 }
 
-// invoke runs az devops invoke on the build area for one resource.
-func (a Azure) invoke(repo, resource string, route map[string]string, query ...string) ([]byte, error) {
-	args := []string{"devops", "invoke", "--area", "build", "--resource", resource, "--api-version", "7.1", "--http-method", "GET", "--route-parameters", "project=" + a.Target.Project}
-	for _, k := range []string{"buildId", "logId"} {
-		if v, ok := route[k]; ok {
-			args = append(args, k+"="+v)
-		}
-	}
-	if len(query) > 0 {
-		args = append(args, "--query-parameters")
-		args = append(args, query...)
-	}
-	return a.az(repo, append(args, a.org()...)...)
+// buildURL is the REST URL of build id's resource ("timeline", "logs",
+// "logs/7").
+func (a Azure) buildURL(id int, resource string) string {
+	return fmt.Sprintf("%s/_apis/build/builds/%d/%s", a.projectURL(), id, resource)
 }
 
 // buildLog is the excerpt of the first failed task of build id.
 func (a Azure) buildLog(repo string, id int) (job, text string) {
-	b := strconv.Itoa(id)
-	tl, err := a.invoke(repo, "timeline", map[string]string{"buildId": b})
+	tl, err := a.get(repo, a.buildURL(id, "timeline")+"?api-version=7.1")
 	if err != nil {
 		return "", ""
 	}
@@ -150,10 +115,9 @@ func (a Azure) buildLog(repo string, id int) (job, text string) {
 	if logID <= 0 {
 		return "", ""
 	}
-	l := strconv.Itoa(logID)
 	// the last azLogLines lines: the log's line count is on its entry
 	start := 1
-	if out, err := a.invoke(repo, "logs", map[string]string{"buildId": b}); err == nil {
+	if out, err := a.get(repo, a.buildURL(id, "logs")+"?api-version=7.1"); err == nil {
 		var logs struct {
 			Value []struct {
 				ID        int `json:"id"`
@@ -167,16 +131,16 @@ func (a Azure) buildLog(repo string, id int) (job, text string) {
 			}
 		}
 	}
-	out, err := a.invoke(repo, "logs", map[string]string{"buildId": b, "logId": l},
-		"startLine="+strconv.Itoa(start), "endLine="+strconv.Itoa(start+azLogLines-1))
+	out, err := a.get(repo, fmt.Sprintf("%s?startLine=%d&endLine=%d&api-version=7.1", a.buildURL(id, "logs/"+strconv.Itoa(logID)), start, start+azLogLines-1))
 	if err != nil {
 		return "", ""
 	}
 	return azureExcerpt(name, azLogText(out))
 }
 
-// azLogText is the log text of az devops invoke's answer: a JSON
-// {"count":n,"value":[lines]}, a JSON string, or the raw text.
+// azLogText is the log text of a log's answer: JSON
+// {"count":n,"value":[lines]} as asked for, a JSON string, or the raw
+// text.
 func azLogText(out []byte) string {
 	var obj struct {
 		Value []string `json:"value"`
