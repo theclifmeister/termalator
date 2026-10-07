@@ -458,3 +458,99 @@ func TestAdvice(t *testing.T) {
 		}
 	}
 }
+
+// buildLogHost answers az for T115's FailedLog: policies, runs, the
+// timeline, the log list and the log lines, by command.
+func buildLogHost(t *testing.T, policies, runs string, asked *[]string) Azure {
+	return Azure{Target: shop, Run: func(dir string, args ...string) ([]byte, error) {
+		cmd := strings.Join(args, " ")
+		*asked = append(*asked, cmd)
+		switch {
+		case strings.HasPrefix(cmd, "repos pr policy list"):
+			return []byte(policies), nil
+		case strings.HasPrefix(cmd, "pipelines runs list"):
+			if runs == "" {
+				return nil, azError(errors.New("az: exit status 1 boom"))
+			}
+			return []byte(runs), nil
+		case strings.Contains(cmd, "--resource timeline"):
+			return fixture(t, "timeline.json"), nil
+		case strings.Contains(cmd, "--resource logs") && !strings.Contains(cmd, "logId="):
+			return []byte(`{"count":2,"value":[{"id":7,"lineCount":5000},{"id":8,"lineCount":3}]}`), nil
+		case strings.Contains(cmd, "--resource logs"):
+			b, _ := json.Marshal(strings.Split(strings.TrimRight(string(fixture(t, "buildlog.txt")), "\n"), "\n"))
+			return []byte(`{"count":10,"value":` + string(b) + `}`), nil
+		}
+		return nil, errors.New("unexpected " + cmd)
+	}}
+}
+
+func TestAzureFailedLog(t *testing.T) {
+	var asked []string
+	a := buildLogHost(t, string(fixture(t, "policies.json")), "", &asked)
+	job, text := a.FailedLog("/repo", PR{Number: 12})
+	if job != "Linux / Run tests" {
+		t.Fatalf("job %q", job)
+	}
+	for _, bad := range []string{"##[section]", "##[group]", "2026-10-07", "\x1b"} {
+		if strings.Contains(text, bad) {
+			t.Errorf("%q left in %q", bad, text)
+		}
+	}
+	if !strings.HasPrefix(text, "==========") || !strings.Contains(text, "--- FAIL: TestLogin") || !strings.HasSuffix(text, "##[error]Bash exited with code '1'.") {
+		t.Errorf("excerpt %q", text)
+	}
+	// the build came from the policy's context; the log's last 2000 lines
+	joined := strings.Join(asked, "\n")
+	if strings.Contains(joined, "pipelines runs") || !strings.Contains(joined, "buildId=4711") ||
+		!strings.Contains(joined, "logId=7 --query-parameters startLine=3001 endLine=5000") {
+		t.Errorf("asked:\n%s", joined)
+	}
+
+	// no policy context: the runs of the merge ref
+	asked = nil
+	a = buildLogHost(t, `[]`, `[{"id": 4800}]`, &asked)
+	if job, _ = a.FailedLog("/repo", PR{Number: 12}); job != "Linux / Run tests" {
+		t.Fatalf("by runs: job %q", job)
+	}
+	if j := strings.Join(asked, "\n"); !strings.Contains(j, "--branch refs/pull/12/merge --reason pullRequest --result failed") || !strings.Contains(j, "buildId=4800") {
+		t.Errorf("asked:\n%s", j)
+	}
+
+	// nothing to find, or az failing: the fixed prompt stays
+	asked = nil
+	a = buildLogHost(t, `[]`, "", &asked)
+	if job, text = a.FailedLog("/repo", PR{Number: 12}); job != "" || text != "" {
+		t.Errorf("failure gave %q %q", job, text)
+	}
+	if job, text = a.FailedLog("/repo", PR{}); job != "" || text != "" {
+		t.Errorf("no PR gave %q %q", job, text)
+	}
+	a = buildLogHost(t, `[]`, `[]`, &asked)
+	if job, text = a.FailedLog("/repo", PR{Number: 12}); job != "" || text != "" {
+		t.Errorf("no runs gave %q %q", job, text)
+	}
+}
+
+func TestAzureLogShapes(t *testing.T) {
+	for in, want := range map[string]string{
+		`{"count":2,"value":["a","b"]}`: "a\nb",
+		`"a\nb"`:                        "a\nb",
+		"a\nb\n":                        "a\nb\n",
+	} {
+		if got := azLogText([]byte(in)); got != want {
+			t.Errorf("%s: %q", in, got)
+		}
+	}
+	if n, id := firstFailedTask([]byte(`{"records":[{"type":"Job","result":"failed","log":{"id":2}}]}`)); n != "" || id != 0 {
+		t.Errorf("job rollup picked: %q %d", n, id)
+	}
+	if n, id := firstFailedTask([]byte(`nope`)); n != "" || id != 0 {
+		t.Errorf("garbage picked: %q %d", n, id)
+	}
+	// a long log keeps from the lead before the first error, capped and fenced
+	long := "2026-10-07T10:00:00.1234567Z error: ```x\n" + strings.Repeat("2026-10-07T10:00:00.1234567Z line\n", 600)
+	if _, text := azureExcerpt("Run", long); len(text) > logBytes+20 || strings.Contains(text, "```") || !strings.HasSuffix(text, "[... cut]") {
+		t.Errorf("cap: %d %q", len(text), text[:40])
+	}
+}
