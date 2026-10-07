@@ -37,7 +37,7 @@ const (
 	tabCount
 )
 
-var tabNames = [tabCount]string{"Overview", "Inbox", "Tasks", "Settings", "Keys", "Memory"}
+var tabNames = [tabCount]string{"overview", "inbox", "tasks", "settings", "keys", "memory"}
 
 type projectView struct {
 	slug string
@@ -60,16 +60,10 @@ type projectView struct {
 	memErr error
 	// pick is the task to select once the board loads, 0 for none.
 	pick int
-	// doneAll lists every done task on the Tasks tab, not the newest
-	// doneShown (m).
+	// doneAll lists the done tasks on the Tasks tab; they are collapsed
+	// until b (the backlog, open tasks, is always listed; T135).
 	doneAll bool
-	// backlogAll lists the backlog (open tasks) on the Tasks tab; it is
-	// collapsed until b (T108).
-	backlogAll bool
 }
-
-// doneShown is how many done tasks the Tasks tab lists until m shows all.
-const doneShown = 10
 
 func (m *dash) projectPopup(string) tea.Cmd {
 	slug := m.needProject()
@@ -81,11 +75,18 @@ func (m *dash) projectPopup(string) tea.Cmd {
 	return m.loadPopup(slug)
 }
 
-// showTask opens slug's project popup on the Tasks tab with task id
-// selected: enter on a NEEDS YOU task. It only shows the task; the
-// coordinator acts on it.
+// showTask opens slug's project popup on the Tasks tab, task id
+// selected when it isn't 0: t, and enter on a NEEDS YOU task. It only
+// shows the task; the coordinator acts on it.
 func (m *dash) showTask(slug string, id int) tea.Cmd {
-	pv := &projectView{slug: slug, tab: tabTasks, pick: id, settings: settingsList{rows: projectSettings(slug)}}
+	return m.openTab(slug, tabTasks, id)
+}
+
+// showTab opens slug's project popup on tab: i opens the Inbox tab.
+func (m *dash) showTab(slug string, tab int) tea.Cmd { return m.openTab(slug, tab, 0) }
+
+func (m *dash) openTab(slug string, tab, pick int) tea.Cmd {
+	pv := &projectView{slug: slug, tab: tab, pick: pick, settings: settingsList{rows: projectSettings(slug)}}
 	m.push(pv)
 	return m.loadPopup(slug)
 }
@@ -95,6 +96,15 @@ func (pv *projectView) setBoard(b *tasks.Board) {
 	pv.board = b
 	if pv.pick == 0 {
 		return
+	}
+	if b != nil && !pv.doneAll {
+		// A done task is in no list while the done tasks are collapsed:
+		// show them rather than another task.
+		for _, t := range b.Tasks {
+			if t.ID == pv.pick && tasks.GroupOf(t.Status) == tasks.DoneG {
+				pv.doneAll = true
+			}
+		}
 	}
 	for i, t := range pv.tasks() {
 		if t.ID == pv.pick {
@@ -132,12 +142,7 @@ func (pv *projectView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 				return m.taskKey(pv.slug, t, k.String())
 			}
 		}
-		if k.String() == "b" && (pv.backlogAll || backlogCount(pv.board) > 0) {
-			pv.backlogAll = !pv.backlogAll
-			pv.sel[tabTasks] = min(pv.sel[tabTasks], max(len(pv.tasks())-1, 0))
-			return nil
-		}
-		if k.String() == "m" && (pv.doneAll || pv.hiddenDone() > 0) {
+		if k.String() == "b" && (pv.doneAll || doneCount(pv.board) > 0) {
 			pv.doneAll = !pv.doneAll
 			pv.sel[tabTasks] = min(pv.sel[tabTasks], max(len(pv.tasks())-1, 0))
 			return nil
@@ -191,14 +196,64 @@ func (pv *projectView) selTask() *tasks.Task {
 	return nil
 }
 
-// openTask shows task t of the popup's project over it, as the t list
-// shows one; esc comes back to the popup.
+// openTask shows task t of the popup's project over it; esc comes back
+// to the popup.
 func (m *dash) openTask(pv *projectView, t *tasks.Task) tea.Cmd {
-	b := &boardView{slug: pv.slug, reviews: pv.reviews, open: true, back: true}
-	b.setBoard(pv.board)
-	b.selectID(t.ID)
-	m.push(b)
+	m.push(&taskView{pv: pv, id: t.ID})
 	return nil
+}
+
+// taskView is one task of a project popup's Tasks tab, in full. It
+// follows the popup's board, which reloads while it is open.
+type taskView struct {
+	pv *projectView
+	id int
+}
+
+func (tv *taskView) task() *tasks.Task {
+	if tv.pv.board != nil {
+		for _, t := range tv.pv.board.Tasks {
+			if t.ID == tv.id {
+				return t
+			}
+		}
+	}
+	return nil
+}
+
+func (tv *taskView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
+	switch k.String() {
+	case "esc":
+		m.pop()
+	case "D", "A", "x", "c":
+		if t := tv.task(); t != nil {
+			return m.taskKey(tv.pv.slug, t, k.String())
+		}
+	}
+	return nil
+}
+
+func (tv *taskView) render(m *dash) string {
+	title := "Task · " + tv.pv.slug
+	t := tv.task()
+	if t == nil {
+		body := styleFaint.Render("loading…")
+		if tv.pv.board != nil {
+			body = styleFaint.Render("this task is gone")
+		}
+		return m.popup(box{title: title, body: []string{body}, sel: -1, keys: "esc back"})
+	}
+	d := &panel{w: m.inner(viewWidth) + 2} // panel lines start with a space, and keep one at the end
+	var rv *Review
+	if r, ok := tv.pv.reviews[t.ID]; ok {
+		rv = &r
+	}
+	taskPanelWith(d, t, rv, m.asked(tv.pv.slug, t), m.taskUsage(tv.pv.slug, t.ID))
+	for i, l := range d.lines {
+		// The box has its own gutters.
+		d.lines[i] = strings.TrimRight(strings.TrimSuffix(strings.TrimPrefix(l, " "), reset), " ") + reset
+	}
+	return m.popup(box{title: title, body: d.lines, sel: -1, keys: joinKeys(taskKeys(t), "esc back")})
 }
 
 // count is how many things the tab selects among.
@@ -263,55 +318,25 @@ func absPath(p, cwd string) string {
 	return filepath.Clean(p)
 }
 
-// tasks are the live tasks the Tasks tab lists, as the task board does.
+// tasks are the live tasks the Tasks tab lists.
 func (pv *projectView) tasks() []*tasks.Task {
 	if pv.board == nil {
 		return nil
 	}
-	return shown(pv.board, pv.backlogAll, pv.doneAll)
-}
-
-// hiddenDone is how many done tasks the Tasks tab leaves out.
-func (pv *projectView) hiddenDone() int {
-	if pv.board == nil {
-		return 0
-	}
-	return hiddenDone(pv.board, pv.backlogAll, pv.doneAll)
+	return shown(pv.board, pv.doneAll)
 }
 
 // shown are the tasks a task list shows, in board order: needs you, in
-// motion, on deck, the backlog (after b), then the newest done ones (all
-// of them after m). The task board and the project popup's Tasks tab
-// both list these.
-func shown(b *tasks.Board, backlog, doneAll bool) []*tasks.Task {
-	all := listed(b, backlog)
-	if doneAll {
-		return all
-	}
-	var out []*tasks.Task
-	done := 0
-	for _, t := range all {
-		if t.Status == tasks.Done {
-			if done++; done > doneShown {
-				continue
-			}
-		}
-		out = append(out, t)
-	}
-	return out
-}
+// motion, on deck, the backlog, then the done ones (newest first) after
+// b. The project popup's Tasks tab lists these.
+func shown(b *tasks.Board, doneAll bool) []*tasks.Task { return listed(b, doneAll) }
 
-// hiddenDone is how many done tasks shown leaves out.
-func hiddenDone(b *tasks.Board, backlog, doneAll bool) int {
-	return len(listed(b, backlog)) - len(shown(b, backlog, doneAll))
-}
-
-// backlogCount is how many open tasks (the backlog) a board has.
-func backlogCount(b *tasks.Board) int {
+// doneCount is how many done tasks a board has.
+func doneCount(b *tasks.Board) int {
 	n := 0
 	if b != nil {
 		for _, t := range b.Tasks {
-			if tasks.GroupOf(t.Status) == tasks.Backlog {
+			if tasks.GroupOf(t.Status) == tasks.DoneG {
 				n++
 			}
 		}
@@ -319,21 +344,21 @@ func backlogCount(b *tasks.Board) int {
 	return n
 }
 
-// backlogNote is the collapsed BACKLOG group's one line, with its rule.
-func backlogNote(n, w int) []string {
+// doneNote is the collapsed DONE group's one line, with its rule.
+func doneNote(n, w int) []string {
 	return []string{
-		sectionRule("BACKLOG", sectionStyle("BACKLOG"), w),
-		styleFaint.Render(fmt.Sprintf("… %d for later (b shows them)", n)),
+		sectionRule("DONE", sectionStyle("DONE"), w),
+		styleFaint.Render(fmt.Sprintf("… %d done (b shows them)", n)),
 	}
 }
 
 // listed are a board's tasks as the task lists show them, by group:
 // done ones last, newest first (by updated date, then id), so x can
-// still send one back. The backlog is left out unless backlog.
-func listed(b *tasks.Board, backlog bool) []*tasks.Task {
+// still send one back. The done ones are left out unless done.
+func listed(b *tasks.Board, done bool) []*tasks.Task {
 	var out []*tasks.Task
 	for _, g := range tasks.Groups {
-		if g == tasks.Backlog && !backlog {
+		if g == tasks.DoneG && !done {
 			continue
 		}
 		start := len(out)
@@ -366,10 +391,13 @@ func (pv *projectView) box(m *dash) box {
 		keys = "+ add repository · x remove it · " + keys
 	case tabInbox:
 		body, sel, hits = inboxLines(p.Items, pv.sel[tabInbox], w)
-		body = append(body, "", styleFaint.Render("Read-only: the coordinator handles these."))
+		body = append(body, "", styleFaint.Render("The coordinator handles these (tm inbox done)."))
 	case tabTasks:
 		body, sel, hits = pv.taskLines(m, w)
-		keys = taskListKeys(pv.selTask(), pv.board, pv.backlogAll, pv.doneAll, "enter show · esc close")
+		keys = taskListKeys(pv.selTask(), pv.board, pv.doneAll, "esc close")
+		if pv.selTask() != nil {
+			keys = joinKeys("enter show", keys)
+		}
 	case tabSettings:
 		body, sel, hits = pv.settings.lines(m, w)
 		keys = "enter change · + - number · ↑ ↓ move · " + keys
@@ -421,7 +449,7 @@ const tabHit = -2
 
 // click picks a tab on the tab bar, else the clicked line's repository,
 // inbox item, task or setting (which it changes, as enter does).
-func (pv *projectView) click(m *dash, item, col int, _ bool) tea.Cmd {
+func (pv *projectView) click(m *dash, item, col int, double bool) tea.Cmd {
 	if item == tabHit {
 		if t := pv.tabAt(pv.data(m), col); t >= 0 {
 			pv.tab = t
@@ -432,6 +460,11 @@ func (pv *projectView) click(m *dash, item, col int, _ bool) tea.Cmd {
 		return pv.settings.click(m, item, col)
 	}
 	pv.sel[pv.tab] = item
+	if double && pv.tab == tabTasks {
+		if t := pv.selTask(); t != nil {
+			return m.openTask(pv, t)
+		}
+	}
 	return nil
 }
 
@@ -595,20 +628,20 @@ func (pv *projectView) coordinatorLine(m *dash, p ProjectData) string {
 	return config.DefaultAgent(DefaultAgent) + styleFaint.Render(" · not running; enter on the project starts it")
 }
 
-// taskLines are the Tasks tab's lines: the task board's list.
+// taskLines are the Tasks tab's lines.
 func (pv *projectView) taskLines(m *dash, w int) ([]string, int, []int) {
 	if pv.board == nil {
 		return []string{styleFaint.Render("loading…")}, -1, nil
 	}
-	return taskList(m, pv.slug, pv.board, pv.tasks(), pv.sel[tabTasks], pv.backlogAll, pv.doneAll, w)
+	return taskList(m, pv.slug, pv.board, pv.tasks(), pv.sel[tabTasks], pv.doneAll, w)
 }
 
-// taskList is how every task list draws a project's tasks (the task
-// board, the project popup's Tasks tab): grouped, only the selected task
+// taskList is how the project popup's Tasks tab draws a project's tasks:
+// grouped, only the selected task
 // that isn't done listing its steps (the others show n/n), the collapsed
 // backlog and the older done tasks left out each in a line. It returns the
 // lines, the selected task's line and each line's task (noHit for none).
-func taskList(m *dash, slug string, b *tasks.Board, list []*tasks.Task, selected int, backlog, doneAll bool, w int) ([]string, int, []int) {
+func taskList(m *dash, slug string, b *tasks.Board, list []*tasks.Task, selected int, doneAll bool, w int) ([]string, int, []int) {
 	var out []string
 	var hits []int
 	add := func(hit int, l ...string) {
@@ -619,23 +652,11 @@ func taskList(m *dash, slug string, b *tasks.Board, list []*tasks.Task, selected
 	}
 	sel := -1
 	var group tasks.Group
-	collapsed := !backlog && backlogCount(b) > 0
-	// note puts the collapsed backlog where its group would be.
-	note := func() {
-		if collapsed {
-			collapsed = false
-			if len(out) > 0 {
-				add(noHit, "")
-			}
-			add(noHit, backlogNote(backlogCount(b), w)...)
-		}
-	}
+	// The collapsed done tasks are one line at the end.
+	collapsed := !doneAll && doneCount(b) > 0
 	for i, t := range list {
 		if g := tasks.GroupOf(t.Status); g != group {
 			group = g
-			if g == tasks.DoneG {
-				note()
-			}
 			if len(out) > 0 {
 				add(noHit, "")
 			}
@@ -655,9 +676,11 @@ func taskList(m *dash, slug string, b *tasks.Board, list []*tasks.Task, selected
 			add(i, fit(strings.Repeat(" ", taskTitleCol)+todoGlyph(map[bool]string{true: "done"}[s.Done])+" "+oneLine(s.Text), w))
 		}
 	}
-	note()
-	if n := hiddenDone(b, backlog, doneAll); n > 0 {
-		add(noHit, styleFaint.Render(fmt.Sprintf("… %d more done (m shows them)", n)))
+	if collapsed {
+		if len(out) > 0 {
+			add(noHit, "")
+		}
+		add(noHit, doneNote(doneCount(b), w)...)
 	}
 	if len(out) == 0 {
 		add(noHit, styleFaint.Render("no tasks"))
@@ -665,23 +688,17 @@ func taskList(m *dash, slug string, b *tasks.Board, list []*tasks.Task, selected
 	return out, sel, hits
 }
 
-// taskListKeys are a task list's keys: the selected task's, then m and b
-// for the older done tasks and the backlog, then close.
-func taskListKeys(t *tasks.Task, b *tasks.Board, backlog, doneAll bool, close string) string {
-	more, later := "", ""
+// taskListKeys are a task list's keys: the selected task's, then b for
+// the done tasks, then close.
+func taskListKeys(t *tasks.Task, b *tasks.Board, doneAll bool, close string) string {
+	done := ""
 	switch {
 	case doneAll:
-		more = "m fewer"
-	case b != nil && hiddenDone(b, backlog, doneAll) > 0:
-		more = "m more"
+		done = "b hide done"
+	case doneCount(b) > 0:
+		done = "b done"
 	}
-	switch {
-	case backlog:
-		later = "b hide backlog"
-	case backlogCount(b) > 0:
-		later = "b backlog"
-	}
-	return joinKeys(taskKeys(t), more, later, close)
+	return joinKeys(taskKeys(t), done, close)
 }
 
 // kindStyle is the style of an inbox item's kind: red for what went

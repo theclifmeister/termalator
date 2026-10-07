@@ -95,7 +95,7 @@ func TestProjectPopup(t *testing.T) {
 	}
 	m.Update(cmd()) // the board
 	out := screen(m)
-	for _, want := range []string{"─ Alpha ─", "1 Overview", "2 Inbox 1", "5 Keys",
+	for _, want := range []string{"─ Alpha ─", "1 overview", "2 inbox 1", "5 keys",
 		"Project", "Alpha", "Goal", "Ship the alpha", "Repositories", "/src/alpha", "local main is 3 behind origin (uncommitted changes)", "Machines", "this one",
 		"Coordinator", "claude · s-1 blocked", "1 needs you (Tasks tab) · 1 in motion"} {
 		if !strings.Contains(out, want) {
@@ -104,7 +104,7 @@ func TestProjectPopup(t *testing.T) {
 	}
 
 	keyPress(m, "right")
-	if out := screen(m); pv.tab != tabInbox || !strings.Contains(out, "t-0002 handed in report 1") || !strings.Contains(out, "Read-only") {
+	if out := screen(m); pv.tab != tabInbox || !strings.Contains(out, "t-0002 handed in report 1") || !strings.Contains(out, "The coordinator handles these") {
 		t.Fatalf("inbox tab:\n%s", out)
 	}
 	keyPress(m, "right")
@@ -423,7 +423,7 @@ func TestDelegateFromBoard(t *testing.T) {
 	m.Update(keyPress(m, "t")())
 	// Needs you first: T3 (review).
 	keyPress(m, "D")
-	if _, ok := m.top().(*boardView); !ok || !strings.Contains(m.msg, "T3 is in review") {
+	if _, ok := m.top().(*projectView); !ok || !strings.Contains(m.msg, "T3 is in review") {
 		t.Fatalf("d on review: %T, %q", m.top(), m.msg)
 	}
 	keyPress(m, "down")
@@ -609,7 +609,7 @@ func TestProjectPopupFixed(t *testing.T) {
 	}
 	out := screen(m)
 	sel := pv.tasks()[pv.sel[tabTasks]].Title
-	if pv.sel[tabTasks] != 30 || !strings.Contains(out, sel) || !strings.Contains(out, "1 Overview") || !strings.Contains(out, "more ↑ ↓") {
+	if pv.sel[tabTasks] != 30 || !strings.Contains(out, sel) || !strings.Contains(out, "1 overview") || !strings.Contains(out, "more ↑ ↓") {
 		t.Fatalf("down 30 times: sel %d (%s), tab bar and both arrows wanted:\n%s", pv.sel[tabTasks], sel, out)
 	}
 	if strings.Contains(out, "IN MOTION") {
@@ -622,7 +622,7 @@ func TestProjectPopupFixed(t *testing.T) {
 		mouseAt(m, tea.MouseWheelDown, x, y)
 	}
 	out = screen(m)
-	if sel = pv.tasks()[pv.sel[tabTasks]].Title; pv.sel[tabTasks] != 41 || !strings.Contains(out, sel) || !strings.Contains(out, "1 Overview") {
+	if sel = pv.tasks()[pv.sel[tabTasks]].Title; pv.sel[tabTasks] != 41 || !strings.Contains(out, sel) || !strings.Contains(out, "1 overview") {
 		t.Fatalf("wheel: sel %d (%s):\n%s", pv.sel[tabTasks], sel, out)
 	}
 	// Past the last task the arrows scroll on to the content's end.
@@ -641,14 +641,14 @@ func TestProjectPopupFixed(t *testing.T) {
 		t.Fatalf("back up: sel %d:\n%s", pv.sel[tabTasks], out)
 	}
 	// A click on a tab still picks it, wherever the content is scrolled.
-	clickOn(t, m, "5 Keys")
+	clickOn(t, m, "5 keys")
 	if pv.tab != tabKeys {
-		t.Fatalf("click on 5 Keys: tab %d", pv.tab)
+		t.Fatalf("click on 5 keys: tab %d", pv.tab)
 	}
 	for range 3 {
 		mouseAt(m, tea.MouseWheelDown, x, y)
 	}
-	if out = screen(m); pv.top[tabKeys] != 9 || !strings.Contains(out, "1 Overview") {
+	if out = screen(m); pv.top[tabKeys] != 9 || !strings.Contains(out, "1 overview") {
 		t.Fatalf("wheel on the keys: top %d:\n%s", pv.top[tabKeys], out)
 	}
 }
@@ -675,7 +675,7 @@ func TestAcceptTask(t *testing.T) {
 	src, m := needsYouData(t, 86+sideDefault)
 	m.Update(keyPress(m, "a")())
 	keyPress(m, "3")
-	if out := screen(m); !strings.Contains(out, "A accept · x send back · enter show · esc close") {
+	if out := screen(m); !strings.Contains(out, "enter show · A accept · x send back · esc close") {
 		t.Fatalf("review keys:\n%s", out)
 	}
 	keyPress(m, "A")
@@ -727,7 +727,7 @@ func TestSendBack(t *testing.T) {
 		t.Fatalf("x opened %T", m.top())
 	}
 	keyPress(m, "esc")
-	if _, ok := m.top().(*boardView); !ok || m.msg != "T3 not sent back" {
+	if _, ok := m.top().(*projectView); !ok || m.msg != "T3 not sent back" {
 		t.Fatalf("esc: %T, %q", m.top(), m.msg)
 	}
 	keyPress(m, "x")
@@ -753,18 +753,19 @@ func TestSendBack(t *testing.T) {
 	// x on a task not in review or done only says why.
 	keyPress(m, "down")
 	keyPress(m, "x")
-	if _, ok := m.top().(*boardView); !ok || m.msg != "T4 is blocked, not in review or done; x sends back tasks in review or done" {
+	if _, ok := m.top().(*projectView); !ok || m.msg != "T4 is blocked, not in review or done; x sends back tasks in review or done" {
 		t.Fatalf("x on blocked: %T, %q", m.top(), m.msg)
 	}
 }
 
-// TestSendBackDone: the t list shows done tasks last; x sends one back
+// TestSendBackDone: the Tasks tab shows done tasks last (after b); x sends one back
 // (the coordinator reopens it), A only says it isn't in review.
 func TestSendBackDone(t *testing.T) {
 	src, m := needsYouData(t, 86+sideDefault)
 	src.board.Tasks = append(src.board.Tasks, &tasks.Task{ID: 5, Title: "Shipped", Status: tasks.Done, Thread: "t-0009",
 		Notes: "done (2026-10-05): merged (PR #70), by the project's setting"})
 	m.Update(keyPress(m, "t")())
+	keyPress(m, "b") // the done tasks are collapsed until b
 	out := screen(m)
 	if !strings.Contains(out, "DONE") || !strings.Contains(out, "T5     Shipped") {
 		t.Fatalf("no done task:\n%s", out)
@@ -772,7 +773,7 @@ func TestSendBackDone(t *testing.T) {
 	for range 10 {
 		keyPress(m, "down")
 	}
-	if out := screen(m); !strings.Contains(out, "enter show · x send back · esc close") {
+	if out := screen(m); !strings.Contains(out, "enter show · x send back · b hide done · esc close") {
 		t.Fatalf("done keys:\n%s", out)
 	}
 	keyPress(m, "A")
@@ -827,8 +828,8 @@ func TestReviewDetail(t *testing.T) {
 	m.Update(keyPress(m, "a")())
 	keyPress(m, "3")
 	keyPress(m, "enter")
-	b, ok := m.top().(*boardView)
-	if !ok || !b.open || !strings.Contains(screen(m), "PR #61 merged") {
+	_, ok := m.top().(*taskView)
+	if !ok || !strings.Contains(screen(m), "PR #61 merged") {
 		t.Fatalf("enter in the Tasks tab: %T\n%s", m.top(), screen(m))
 	}
 	keyPress(m, "down") // stays on the task
@@ -897,7 +898,7 @@ func TestNeedsYouNarrow(t *testing.T) {
 	keyPress(m, "esc")
 	m.Update(keyPress(m, "a")())
 	keyPress(m, "3")
-	if f := foot(); !strings.Contains(f, "A accept · x send back · enter show · esc close") {
+	if f := foot(); !strings.Contains(f, "enter show · A accept · x send back · esc close") {
 		t.Fatalf("Tasks tab keys:\n%s", f)
 	}
 	if out := screen(m); !strings.Contains(out, "◆ review    asked the coordinator") {
@@ -1027,7 +1028,7 @@ func TestMemoryTab(t *testing.T) {
 	if !regexp.MustCompile(`│   (a )?(long )?item`).MatchString(out) {
 		t.Errorf("memory tab: a wrapped item doesn't hang:\n%s", out)
 	}
-	for _, want := range []string{"6 Memory", "CONTEXT", "The plan, see the doc.", "Where things stand", "- a long item",
+	for _, want := range []string{"6 memory", "CONTEXT", "The plan, see the doc.", "Where things stand", "- a long item",
 		"MEMORY", "- Decisions: host choices", "NOTES", "- Design decisions", "Read-only", "↑ ↓ scroll"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("memory tab lacks %q:\n%s", want, out)
@@ -1087,14 +1088,14 @@ func TestListsPage(t *testing.T) {
 	}
 	m.setData(src.Load())
 	keyPress(m, "i")
-	in := m.top().(*inboxView)
+	in := m.top().(*projectView)
 	keyPress(m, "pgdown")
-	if in.sel != 10 {
-		t.Errorf("inbox pgdown: %d", in.sel)
+	if in.sel[tabInbox] != 10 {
+		t.Errorf("inbox pgdown: %d", in.sel[tabInbox])
 	}
 	keyPress(m, "pgup")
-	if in.sel != 0 {
-		t.Errorf("inbox pgup: %d", in.sel)
+	if in.sel[tabInbox] != 0 {
+		t.Errorf("inbox pgup: %d", in.sel[tabInbox])
 	}
 	keyPress(m, "esc")
 	keyPress(m, "p")
@@ -1105,10 +1106,10 @@ func TestListsPage(t *testing.T) {
 	}
 	keyPress(m, "esc")
 	m.Update(keyPress(m, "t")())
-	b := m.top().(*boardView)
+	pv := m.top().(*projectView)
 	keyPress(m, "pgdown")
-	if b.sel != len(b.list)-1 {
-		t.Errorf("task view pgdown: %d of %d", b.sel, len(b.list))
+	if pv.sel[tabTasks] != len(pv.tasks())-1 {
+		t.Errorf("Tasks tab pgdown: %d of %d", pv.sel[tabTasks], len(pv.tasks()))
 	}
 	keyPress(m, "esc")
 	keyPress(m, ",")
@@ -1269,7 +1270,7 @@ func TestHistorySetting(t *testing.T) {
 
 // TestTasksTabCompact: the Tasks tab lists steps only under the selected
 // active task (the others show n/n), none under done tasks, the done
-// group newest first and capped at the newest ten, with m to list all.
+// group collapsed to a line until b lists them, newest first.
 func TestTasksTabCompact(t *testing.T) {
 	src, m := popupData(t)
 	src.board.Tasks[1].Steps = []tasks.Step{{N: 1, Text: "Other step"}}
@@ -1285,26 +1286,30 @@ func TestTasksTabCompact(t *testing.T) {
 	if !strings.Contains(out, "✓ Draft") || strings.Contains(out, "Other step") || strings.Contains(out, "Finished step") {
 		t.Fatalf("steps only under the selected active task:\n%s", out)
 	}
-	if !strings.Contains(out, "○ ready     ▱▱▱▱▱  0/1") || !strings.Contains(out, "✓ done      ▰▰▰▰▰  1/1") {
+	if !strings.Contains(out, "○ ready     ▱▱▱▱▱  0/1") {
 		t.Fatalf("rows keep n/n:\n%s", out)
 	}
-	if !strings.Contains(out, "… 2 more done") || strings.Contains(out, "Old job 20 ") || !strings.Contains(out, "Old job 31") {
-		t.Fatalf("done capped at the newest ten:\n%s", out)
-	}
-	if strings.Index(out, "Old job 31") > strings.Index(out, "Old job 30") {
-		t.Fatalf("done not newest first:\n%s", out)
+	if !strings.Contains(out, "… 12 done (b shows them)") || strings.Contains(out, "Old job") {
+		t.Fatalf("done collapsed:\n%s", out)
 	}
 	keyPress(m, "down")
 	if out = screen(m); !strings.Contains(out, "Other step") || strings.Contains(out, "Draft") {
 		t.Fatalf("steps follow the selection:\n%s", out)
 	}
-	keyPress(m, "m")
-	if !pv.doneAll || len(pv.tasks()) != 14 {
-		t.Fatalf("m: doneAll %v, %d tasks", pv.doneAll, len(pv.tasks()))
+	keyPress(m, "b")
+	out = screen(m)
+	if !pv.doneAll || len(pv.tasks()) != 14 || !strings.Contains(out, "b hide done") {
+		t.Fatalf("b: doneAll %v, %d tasks", pv.doneAll, len(pv.tasks()))
 	}
-	keyPress(m, "m")
-	if pv.doneAll || len(pv.tasks()) != 12 {
-		t.Fatalf("m again: doneAll %v, %d tasks", pv.doneAll, len(pv.tasks()))
+	if strings.Index(out, "Old job 31") > strings.Index(out, "Old job 30") {
+		t.Fatalf("done not newest first:\n%s", out)
+	}
+	if !strings.Contains(out, "✓ done      ▰▰▰▰▰  1/1") || strings.Contains(out, "Finished step") {
+		t.Fatalf("done rows keep n/n, no steps:\n%s", out)
+	}
+	keyPress(m, "b")
+	if pv.doneAll || len(pv.tasks()) != 2 {
+		t.Fatalf("b again: doneAll %v, %d tasks", pv.doneAll, len(pv.tasks()))
 	}
 }
 
@@ -1319,7 +1324,8 @@ func lineWith(out, s string) string {
 }
 
 // TestTasksTabBacklog: open tasks are their own BACKLOG group after ON
-// DECK, collapsed to a line until b lists them (T108).
+// DECK, listed by default; the DONE group after it is collapsed to a
+// line until b lists it (T135).
 func TestTasksTabBacklog(t *testing.T) {
 	src, m := popupData(t)
 	src.board.Tasks = append(src.board.Tasks,
@@ -1330,29 +1336,30 @@ func TestTasksTabBacklog(t *testing.T) {
 	keyPress(m, "right")
 	keyPress(m, "right")
 	out := screen(m)
-	if !strings.Contains(out, "BACKLOG") || !strings.Contains(out, "1 for later (b shows them)") || strings.Contains(out, "Someday idea") {
-		t.Fatalf("collapsed backlog:\n%s", out)
+	if !strings.Contains(out, "BACKLOG") || !strings.Contains(out, "Someday idea") || strings.Contains(out, "Done thing") ||
+		!strings.Contains(out, "1 done (b shows them)") {
+		t.Fatalf("backlog listed, done collapsed:\n%s", out)
 	}
 	if strings.Index(out, "ON DECK") > strings.Index(out, "BACKLOG") || strings.Index(out, "BACKLOG") > strings.Index(out, "DONE") {
 		t.Fatalf("backlog sits between on deck and done:\n%s", out)
 	}
-	if !strings.Contains(out, "b backlog") {
+	if !strings.Contains(out, "b done") {
 		t.Fatalf("keys lack b:\n%s", out)
 	}
 	keyPress(m, "b")
 	out = screen(m)
-	if !pv.backlogAll || !strings.Contains(out, "Someday idea") || strings.Contains(out, "for later") || !strings.Contains(out, "b hide backlog") {
-		t.Fatalf("b shows the backlog:\n%s", out)
+	if !pv.doneAll || !strings.Contains(out, "Done thing") || strings.Contains(out, "b shows them") || !strings.Contains(out, "b hide done") {
+		t.Fatalf("b shows the done tasks:\n%s", out)
 	}
 	keyPress(m, "b")
-	if pv.backlogAll || strings.Contains(screen(m), "Someday idea") {
-		t.Fatalf("b again collapses it")
+	if pv.doneAll || strings.Contains(screen(m), "Done thing") {
+		t.Fatalf("b again collapses them")
 	}
 }
 
 // TestTasksTabBacklogEnter: enter on a backlog task opens that task, not
-// another one, with the backlog expanded, and openBoard on a backlog task
-// shows it with the backlog collapsed (T133).
+// another one (T133), and showTask on a done task selects it with the
+// done tasks expanded.
 func TestTasksTabBacklogEnter(t *testing.T) {
 	src, m := popupData(t)
 	src.board.Tasks = append(src.board.Tasks,
@@ -1362,7 +1369,6 @@ func TestTasksTabBacklogEnter(t *testing.T) {
 	pv := m.top().(*projectView)
 	keyPress(m, "right")
 	keyPress(m, "right")
-	keyPress(m, "b")
 	for i, tk := range pv.tasks() {
 		if tk.ID != 7 {
 			continue
@@ -1370,37 +1376,31 @@ func TestTasksTabBacklogEnter(t *testing.T) {
 		pv.sel[tabTasks] = i
 	}
 	keyPress(m, "enter")
-	b, ok := m.top().(*boardView)
-	if !ok || !b.open || b.list[b.sel].ID != 7 {
+	tv, ok := m.top().(*taskView)
+	if !ok || tv.id != 7 {
 		t.Fatalf("enter on the backlog task: %#v", m.top())
 	}
 	if out := screen(m); !strings.Contains(out, "Later idea") {
 		t.Fatalf("task panel:\n%s", out)
 	}
 	m.pop()
-	m.openBoard(pv.slug, 5)
-	b = m.top().(*boardView)
-	if b.board == nil {
-		b.setBoard(src.board)
-	}
-	if b.list[b.sel].ID != 5 {
-		t.Fatalf("openBoard on a backlog task selects %d", b.list[b.sel].ID)
+	m.pop()
+	src.board.Tasks = append(src.board.Tasks, &tasks.Task{ID: 9, Title: "Old job", Status: tasks.Done})
+	m.showTask(pv.slug, 9)
+	pv = m.top().(*projectView)
+	pv.setBoard(src.board)
+	if !pv.doneAll || pv.selTask() == nil || pv.selTask().ID != 9 || pv.tab != tabTasks {
+		t.Fatalf("showTask on a done task selects %v (done %v)", pv.selTask(), pv.doneAll)
 	}
 }
 
-// TestTaskListsAlike: the Tasks tab and the task board draw the same list
-// (T134).
-func TestTaskListsAlike(t *testing.T) {
-	src, m := popupData(t)
-	src.board.Tasks = append(src.board.Tasks, &tasks.Task{ID: 5, Title: "Someday idea", Status: tasks.Open})
-	m.Update(keyPress(m, "a")())
-	keyPress(m, "3")
-	pv := m.top().(*projectView)
-	tab, _, _ := pv.taskLines(m, 80)
-	b := &boardView{slug: pv.slug}
-	b.setBoard(src.board)
-	lines, _, _ := taskList(m, b.slug, b.board, b.list, b.sel, b.backlog, b.doneAll, 80)
-	if strings.Join(tab, "\n") != strings.Join(lines, "\n") {
-		t.Fatalf("tab:\n%s\nboard:\n%s", strings.Join(tab, "\n"), strings.Join(lines, "\n"))
+// TestTaskKeyOpensTasksTab: t opens the project popup on its Tasks tab,
+// whose keys are the old task board's.
+func TestTaskKeyOpensTasksTab(t *testing.T) {
+	_, m := popupData(t)
+	m.Update(keyPress(m, "t")())
+	pv, ok := m.top().(*projectView)
+	if !ok || pv.tab != tabTasks {
+		t.Fatalf("t opened %T", m.top())
 	}
 }

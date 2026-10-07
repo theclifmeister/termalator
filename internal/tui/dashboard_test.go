@@ -389,7 +389,7 @@ func TestDashboardThreadRow(t *testing.T) {
 		}
 	}
 	press(m, "i")
-	if _, ok := m.top().(*inboxView); !ok || !strings.Contains(screen(m), "t-0005 handed in report 1") {
+	if pv, ok := m.top().(*projectView); !ok || pv.tab != tabInbox || !strings.Contains(screen(m), "t-0005 handed in report 1") {
 		t.Fatalf("inbox view:\n%s", screen(m))
 	}
 }
@@ -443,26 +443,27 @@ func TestDashboardOverlays(t *testing.T) {
 	m.Update(boardMsg{}) // no board open: ignored
 	m.Update(boardMsg{slug: "alpha", board: &tasks.Board{}})
 	press(m, "t")
-	b, ok := m.top().(*boardView)
-	if !ok || b.slug != "alpha" {
+	pv, ok := m.top().(*projectView)
+	if !ok || pv.slug != "alpha" || pv.tab != tabTasks {
 		t.Fatalf("t: overlay %T", m.top())
 	}
 	m.Update(boardMsg{slug: "alpha", board: &tasks.Board{Tasks: []*tasks.Task{{ID: 1, Title: "One", Status: tasks.Review}}}})
 	press(m, "enter")
-	if !b.open || !strings.Contains(screen(m), "Task · alpha") {
+	tv, ok := m.top().(*taskView)
+	if !ok || !strings.Contains(screen(m), "Task · alpha") {
 		t.Fatalf("enter on the board:\n%s", screen(m))
 	}
-	press(m, "?") // the board takes its own keys; ? isn't one
-	if m.top() != b {
-		t.Fatalf("? on the board opened %T", m.top())
+	press(m, "?") // the task takes its own keys; ? isn't one
+	if m.top() != tv {
+		t.Fatalf("? on a task opened %T", m.top())
 	}
 	m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-	if b.open || m.top() != b {
-		t.Fatal("esc on a task returns to the board")
+	if m.top() != pv {
+		t.Fatal("esc on a task returns to the popup")
 	}
 	m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if m.top() != nil {
-		t.Fatalf("esc on the board returns to the list, have %T", m.top())
+		t.Fatalf("esc on the popup returns to the list, have %T", m.top())
 	}
 
 	press(m, "?")
@@ -483,13 +484,6 @@ func TestDashboardOverlays(t *testing.T) {
 	keyPress(m, "esc")
 	if m.top() != nil {
 		t.Fatal("esc didn't close the help")
-	}
-
-	// A failed board load closes the board and says why.
-	press(m, "t")
-	m.Update(boardMsg{slug: "alpha", err: fmt.Errorf("no TASKS.md")})
-	if m.top() != nil || m.msg != "no TASKS.md" {
-		t.Fatalf("board error: overlay %T msg %q", m.top(), m.msg)
 	}
 }
 
@@ -589,7 +583,7 @@ func TestDashboardPrefix(t *testing.T) {
 		t.Fatalf("prefix not shown:\n%s", screen(m))
 	}
 	press(m, "t")
-	if _, ok := m.top().(*boardView); !ok || m.prefixed {
+	if _, ok := m.top().(*projectView); !ok || m.prefixed {
 		t.Fatalf("prefix t: overlay %T", m.top())
 	}
 	m.pop()
@@ -622,11 +616,11 @@ func TestDashboardOver(t *testing.T) {
 	m := newDash(DashOptions{Source: src, Width: 100, Height: 30, State: DashState{Current: "beta"},
 		Over: &Over{Key: "i", Project: "alpha", Session: "s-5", Title: "s-5 · beta t-0005", Screen: scr}})
 	m.setData(src.data)
-	if in, ok := m.top().(*inboxView); !ok || in.slug != "alpha" {
+	if pv, ok := m.top().(*projectView); !ok || pv.slug != "alpha" || pv.tab != tabInbox {
 		t.Fatalf("over: overlay %T %+v", m.top(), m.top())
 	}
 	out := screen(m)
-	for _, want := range []string{"tm s-5 · beta t-0005", "the session's second row", "Inbox · alpha"} {
+	for _, want := range []string{"tm s-5 · beta t-0005", "the session's second row", "2 inbox"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("over lacks %q:\n%s", want, out)
 		}
@@ -693,7 +687,7 @@ func TestDashboardPopups(t *testing.T) {
 
 	press(m, "i")
 	out := screen(m)
-	for _, want := range []string{"╭─ Inbox · alpha ─", "│ ", "t-0002 handed in report 1", "╰─", "esc close",
+	for _, want := range []string{"╭─ alpha ─", "2 inbox", "│ ", "t-0002 handed in report 1", "╰─", "esc close",
 		"NEEDS YOU 2"} { // the list stays in view behind the box
 		if !strings.Contains(out, want) {
 			t.Errorf("inbox popup lacks %q:\n%s", want, out)

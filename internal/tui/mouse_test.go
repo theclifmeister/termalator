@@ -290,7 +290,7 @@ func TestDashboardMenus(t *testing.T) {
 		t.Fatalf("the coordinator's menu: %s", got)
 	}
 	clickItem(t, m, "tasks")
-	if b, ok := m.top().(*boardView); !ok || b.slug != "alpha" {
+	if pv, ok := m.top().(*projectView); !ok || pv.slug != "alpha" || pv.tab != tabTasks {
 		t.Fatalf("the menu's tasks opened %T", m.top())
 	}
 	keyPress(m, "esc")
@@ -328,16 +328,16 @@ func TestDashboardMenus(t *testing.T) {
 func TestPopupClicks(t *testing.T) {
 	src, m := popupData(t)
 	m.Update(keyPress(m, "a")()) // the board
-	clickOn(t, m, "3 Tasks")
+	clickOn(t, m, "3 tasks")
 	pv := m.top().(*projectView)
 	if pv.tab != tabTasks {
-		t.Fatalf("click on 3 Tasks: tab %d", pv.tab)
+		t.Fatalf("click on 3 tasks: tab %d", pv.tab)
 	}
 	clickOn(t, m, "Ship it")
 	if pv.sel[tabTasks] != 1 {
 		t.Fatalf("click on a task selected %d", pv.sel[tabTasks])
 	}
-	clickOn(t, m, "4 Settings")
+	clickOn(t, m, "4 settings")
 	// A click selects a setting; a second click changes it.
 	clickOn(t, m, "Coordinator approves")
 	if pv.settings.sel != 2 || len(src.settings) != 0 {
@@ -347,7 +347,7 @@ func TestPopupClicks(t *testing.T) {
 	if pv.settings.sel != 2 || len(src.settings) != 1 || !strings.HasPrefix(src.settings[0], "projects.alpha.coordinator_approves=") {
 		t.Fatalf("click on a setting: sel %d, settings %v", pv.settings.sel, src.settings)
 	}
-	clickOn(t, m, "5 Keys")
+	clickOn(t, m, "5 keys")
 	mouseAt(m, tea.MouseWheelDown, m.sideW()+10, 10)
 	m.render()
 	if pv.top[tabKeys] == 0 {

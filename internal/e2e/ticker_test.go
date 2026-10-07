@@ -273,7 +273,7 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 
 	// a opens the project popup and acks nothing; the coordinator acks.
 	w.Type("a")
-	w.WaitFor("1 Overview", wait)
+	w.WaitFor("1 overview", wait)
 	if r := env.MustCLI("thread", "show", "t-0001", "--project", "demo"); !strings.Contains(r, "report: new") {
 		t.Fatalf("a acked:\n%s", r)
 	}
@@ -281,7 +281,7 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	env.MustCLI("thread", "ack", "t-0001", "--project", "demo")
 	w.WaitFor("report read", wait)
 	w.Type("i")
-	w.WaitFor("Inbox · demo", wait)
+	w.WaitFor("The coordinator handles these", wait)
 	w.WaitFor("T1 handed in report 1 Fix the login", wait)
 	w.Golden("dashboard-inbox.txt", dashMasks...)
 	w.Key(keyEsc)
@@ -342,7 +342,7 @@ func TestSmokeDelegateFromList(t *testing.T) {
 	w := env.Window(110, 30)
 	w.WaitFor("1 in motion · 1 on deck", wait)
 	w.Type("t")
-	w.WaitFor("Tasks · demo", wait)
+	w.WaitFor("3 tasks", wait)
 	// T2 (in motion) first: its footer offers no D, and D only says why.
 	w.WaitFor("enter show · esc close", wait)
 	w.Type("D")
@@ -396,7 +396,7 @@ func TestSmokeAcceptSendBack(t *testing.T) {
 	w := env.Window(110, 30)
 	w.WaitFor("3 need you", wait)
 	w.Type("t")
-	w.WaitFor("Tasks · demo", wait)
+	w.WaitFor("3 tasks", wait)
 	w.WaitFor("A accept · x send back", wait)
 	w.Key(keyEnter)
 	w.WaitFor("• run tm and press t", wait)

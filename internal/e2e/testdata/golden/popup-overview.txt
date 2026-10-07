@@ -3,7 +3,7 @@
  └─ coordinator              · │  coordinator                        —           not running; enter starts it
                                │  tasks: 0 need you · 1 in motion · 1 on deck
             ╭─ Demo ───────────────────────────────────────────────────────────────────────────────────────╮────────────
-            │  1 Overview   2 Inbox   3 Tasks   4 Settings   5 Keys   6 Memory                             │
+            │  1 overview   2 inbox   3 tasks   4 settings   5 keys   6 memory                             │
             │                                                                                              │
             │ Project       Demo  demo                                                                     │
             │ Goal          none set; ask the coordinator to set one                                       │

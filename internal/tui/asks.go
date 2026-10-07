@@ -13,7 +13,7 @@ import (
 )
 
 // Asking the coordinator (docs/SPEC.md §4): keys on a task in the Tasks
-// tab or the t list ask the project's coordinator to act on it. The
+// tab ask the project's coordinator to act on it. The
 // dashboard still changes no task: it drops an inbox item, which the
 // coordinator takes as the user's word. D delegates an open, ready or
 // blocked task, A accepts a task in review, x sends one back with a
@@ -190,7 +190,7 @@ func (m *dash) taskKey(slug string, t *tasks.Task, key string) tea.Cmd {
 
 // taskKeys is the footer's key list for task t, before the view's own
 // keys: the one table of which task keys work in which status, for the
-// Tasks tab, the t list and a shown task alike (each key only where it
+// Tasks tab and a shown task alike (each key only where it
 // works, as notAskable says). Each list, with the view's keys, fits the
 // 60 columns a full sidebar leaves at the least (view.SideRoom).
 func taskKeys(t *tasks.Task) string {

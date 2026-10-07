@@ -233,7 +233,7 @@ func shootSize(t *testing.T, env *Env, dir string, sz shotSize) {
 	s.home()
 	// The project popup, every tab.
 	w.Type("a")
-	s.soft("1 Overview")
+	s.soft("1 overview")
 	s.shot("popup-overview")
 	for i, tab := range []string{"inbox", "tasks", "settings", "keys", "memory"} {
 		w.Type(fmt.Sprint(i + 2))
@@ -267,7 +267,7 @@ func shootSize(t *testing.T, env *Env, dir string, sz shotSize) {
 	// Tasks tab: T3 (blocked) first, then T4 (review), T1, T5, T2.
 	s.home()
 	w.Type("a")
-	s.soft("1 Overview")
+	s.soft("1 overview")
 	w.Type("3")
 	s.soft("T4")
 	w.Key(keyDown)
@@ -304,9 +304,9 @@ func shootSize(t *testing.T, env *Env, dir string, sz shotSize) {
 	s.esc()
 
 	s.home()
-	// Task list, inbox, switcher, new project.
+	// t: the project popup on its Tasks tab; inbox, switcher, new project.
 	w.Type("t")
-	s.soft("Tasks · demo")
+	s.soft("3 tasks")
 	s.shot("tasks")
 	w.Key(Enter)
 	time.Sleep(300 * time.Millisecond)
@@ -314,7 +314,7 @@ func shootSize(t *testing.T, env *Env, dir string, sz shotSize) {
 	s.esc()
 	s.esc()
 	w.Type("i")
-	s.soft("Inbox · demo")
+	s.soft("The coordinator handles these")
 	s.shot("inbox")
 	s.esc()
 	w.Type("p")

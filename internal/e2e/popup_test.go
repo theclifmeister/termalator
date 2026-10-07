@@ -93,7 +93,7 @@ func TestSmokeProjectPopup(t *testing.T) {
 	w.WaitFor("SESSIONS", wait)
 	var screens []string
 	w.Type("a")
-	w.WaitFor("1 Overview", wait)
+	w.WaitFor("1 overview", wait)
 	w.WaitFor("Repositories", wait)
 	screens = append(screens, w.Screen())
 	w.Golden("popup-overview.txt", popupMasks...)
@@ -187,7 +187,7 @@ func TestSmokeProjectPopup(t *testing.T) {
 	}
 	screens = append(screens, w.Screen())
 	w.Key(keyEsc)
-	w.WaitUntil("popup closed", wait, func(sc string) bool { return !strings.Contains(sc, "1 Overview") })
+	w.WaitUntil("popup closed", wait, func(sc string) bool { return !strings.Contains(sc, "1 overview") })
 	w.Type("?")
 	w.WaitFor("↑ ↓ scroll · esc close", wait)
 	help := popupBody(w.Screen(), cols)
@@ -224,12 +224,12 @@ func TestSmokeProjectPopup(t *testing.T) {
 	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, "prefix+d dashboard") })
 	w2.WaitUntil("w2 attached", wait, func(sc string) bool { return lastLine(sc, "prefix+d dashboard") })
 	w.Prefix("a")
-	w.WaitFor("1 Overview", wait)
+	w.WaitFor("1 overview", wait)
 	if sc := w.Screen(); strings.Contains(sc, "SESSIONS") || !strings.Contains(sc, "tm s-") {
 		t.Fatalf("the popup isn't over the session:\n%s", sc)
 	}
 	w2.Quiet(300 * time.Millisecond)
-	if sc := w2.Screen(); strings.Contains(sc, "1 Overview") || !lastLine(sc, "prefix+d dashboard") {
+	if sc := w2.Screen(); strings.Contains(sc, "1 overview") || !lastLine(sc, "prefix+d dashboard") {
 		t.Fatalf("the other console left the session:\n%s", sc)
 	}
 	screens = append(screens, w.Screen())
@@ -241,11 +241,11 @@ func TestSmokeProjectPopup(t *testing.T) {
 	// below the box (4 rows, and 2 over the status bar) are all output.
 	w2.Type("for i in $(seq 100); do echo live-$i; done\r")
 	w.WaitUntil("output under the popup", wait, func(string) bool {
-		return liveRows(t, w.PaneScreen(), "live-") >= 3 && strings.Contains(w.Screen(), "1 Overview")
+		return liveRows(t, w.PaneScreen(), "live-") >= 3 && strings.Contains(w.Screen(), "1 overview")
 	})
 	w.Key(keyEsc)
 	w.WaitUntil("back on the session", wait, func(sc string) bool {
-		return lastLine(sc, "prefix+d dashboard") && !strings.Contains(sc, "1 Overview")
+		return lastLine(sc, "prefix+d dashboard") && !strings.Contains(sc, "1 overview")
 	})
 	// prefix+? the same; prefix+d from the popup goes to the dashboard.
 	w.Prefix("?")
