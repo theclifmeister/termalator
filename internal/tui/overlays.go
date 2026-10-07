@@ -198,6 +198,8 @@ type boardView struct {
 	open    bool // showing the selected task
 	// backlog lists the open tasks, collapsed until b (T108).
 	backlog bool
+	// doneAll lists every done task, not the newest doneShown (m).
+	doneAll bool
 	// back: opened on one task from the project popup's Tasks tab, esc
 	// goes back there.
 	back bool
@@ -216,7 +218,7 @@ func (b *boardView) setBoard(t *tasks.Board) {
 	if b.sel < len(b.list) {
 		keep = b.list[b.sel].ID
 	}
-	b.board, b.list = t, listed(t, b.backlog)
+	b.board, b.list = t, shown(t, b.backlog, b.doneAll)
 	b.selectID(keep)
 }
 
@@ -225,6 +227,18 @@ func (b *boardView) selectID(id int) {
 		if t.ID == id {
 			b.sel = i
 			return
+		}
+	}
+	if b.board != nil && !b.backlog && id != 0 {
+		// A backlog task is in no list while the backlog is collapsed:
+		// show the backlog rather than another task.
+		for _, t := range b.board.Tasks {
+			if t.ID == id && tasks.GroupOf(t.Status) == tasks.Backlog {
+				b.backlog = true
+				b.list = shown(b.board, true, b.doneAll)
+				b.selectID(id)
+				return
+			}
 		}
 	}
 	b.sel = min(b.sel, max(len(b.list)-1, 0))
@@ -255,6 +269,11 @@ func (b *boardView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 			b.backlog = !b.backlog
 			b.setBoard(b.board)
 		}
+	case "m":
+		if !b.open && b.board != nil && (b.doneAll || hiddenDone(b.board, b.backlog, b.doneAll) > 0) {
+			b.doneAll = !b.doneAll
+			b.setBoard(b.board)
+		}
 	case "D", "A", "x", "c":
 		if b.board != nil && b.sel < len(b.list) {
 			return m.taskKey(b.slug, b.list[b.sel], k.String())
@@ -283,59 +302,14 @@ func (b *boardView) render(m *dash) string {
 		keys := joinKeys(taskKeys(t), "esc back")
 		return m.popup(box{title: "Task · " + b.slug, body: d.lines, sel: -1, keys: keys})
 	}
-	w := m.inner(viewWidth)
-	var lines []string
-	var hits []int
-	sel := -1
-	var group tasks.Group
-	collapsed := !b.backlog && backlogCount(b.board) > 0
-	// note puts the collapsed backlog where its group would be.
-	note := func() {
-		if collapsed {
-			collapsed = false
-			if len(lines) > 0 {
-				lines = append(lines, "")
-				hits = append(hits, noHit)
-			}
-			for _, l := range backlogNote(backlogCount(b.board), w) {
-				lines = append(lines, l)
-				hits = append(hits, noHit)
-			}
-		}
-	}
-	for i, t := range b.list {
-		if g := tasks.GroupOf(t.Status); g != group {
-			if g == tasks.DoneG {
-				note()
-			}
-			if group != "" {
-				lines = append(lines, "")
-				hits = append(hits, noHit)
-			}
-			group = g
-			title := strings.ToUpper(string(g))
-			lines = append(lines, sectionRule(title, sectionStyle(title), w))
-			hits = append(hits, noHit)
-		}
-		hits = append(hits, i)
-		if i == b.sel {
-			sel = len(lines)
-		}
-		lines = append(lines, line(taskRow(t, m.asked(b.slug, t) != ""), w, i == b.sel))
-	}
-	note()
-	if len(lines) == 0 {
-		lines = append(lines, styleFaint.Render("no tasks"))
-	}
-	keys := "esc close"
+	lines, sel, hits := taskList(m, b.slug, b.board, b.list, b.sel, b.backlog, b.doneAll, m.inner(viewWidth))
+	var cur *tasks.Task
 	if b.sel < len(b.list) {
-		keys = joinKeys("enter show", taskKeys(b.list[b.sel]), keys)
+		cur = b.list[b.sel]
 	}
-	switch {
-	case b.backlog:
-		keys = joinKeys("b hide backlog", keys)
-	case backlogCount(b.board) > 0:
-		keys = joinKeys("b backlog", keys)
+	keys := taskListKeys(cur, b.board, b.backlog, b.doneAll, "esc close")
+	if cur != nil {
+		keys = joinKeys("enter show", keys)
 	}
 	return m.popup(box{title: title, body: lines, sel: sel, hits: hits, keys: keys})
 }

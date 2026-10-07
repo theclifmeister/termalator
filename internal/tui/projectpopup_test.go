@@ -109,7 +109,7 @@ func TestProjectPopup(t *testing.T) {
 	}
 	keyPress(m, "right")
 	out = screen(m)
-	for _, want := range []string{"IN MOTION", "T1     Write the README", "● started   ▰▰▰▱▱  1/2  t-0002", "✓ Draft", "Review", "ON DECK", "T2     Ship it", "the coordinator changes tasks", "enter show · esc close"} {
+	for _, want := range []string{"IN MOTION", "T1     Write the README", "● started   ▰▰▰▱▱  1/2  t-0002", "✓ Draft", "Review", "ON DECK", "T2     Ship it", "enter show · esc close"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("tasks tab lacks %q:\n%s", want, out)
 		}
@@ -630,7 +630,7 @@ func TestProjectPopupFixed(t *testing.T) {
 		keyPress(m, "down")
 		m.render()
 	}
-	if out = screen(m); !strings.Contains(out, "the coordinator changes tasks") || strings.Contains(out, "more ↓") {
+	if out = screen(m); !strings.Contains(out, "Task number 44") || strings.Contains(out, "more ↓") {
 		t.Fatalf("the end of the tasks:\n%s", out)
 	}
 	// Back up to the top: the first group shows again.
@@ -1347,5 +1347,60 @@ func TestTasksTabBacklog(t *testing.T) {
 	keyPress(m, "b")
 	if pv.backlogAll || strings.Contains(screen(m), "Someday idea") {
 		t.Fatalf("b again collapses it")
+	}
+}
+
+// TestTasksTabBacklogEnter: enter on a backlog task opens that task, not
+// another one, with the backlog expanded, and openBoard on a backlog task
+// shows it with the backlog collapsed (T133).
+func TestTasksTabBacklogEnter(t *testing.T) {
+	src, m := popupData(t)
+	src.board.Tasks = append(src.board.Tasks,
+		&tasks.Task{ID: 5, Title: "Someday idea", Status: tasks.Open},
+		&tasks.Task{ID: 7, Title: "Later idea", Status: tasks.Open})
+	m.Update(keyPress(m, "a")())
+	pv := m.top().(*projectView)
+	keyPress(m, "right")
+	keyPress(m, "right")
+	keyPress(m, "b")
+	for i, tk := range pv.tasks() {
+		if tk.ID != 7 {
+			continue
+		}
+		pv.sel[tabTasks] = i
+	}
+	keyPress(m, "enter")
+	b, ok := m.top().(*boardView)
+	if !ok || !b.open || b.list[b.sel].ID != 7 {
+		t.Fatalf("enter on the backlog task: %#v", m.top())
+	}
+	if out := screen(m); !strings.Contains(out, "Later idea") {
+		t.Fatalf("task panel:\n%s", out)
+	}
+	m.pop()
+	m.openBoard(pv.slug, 5)
+	b = m.top().(*boardView)
+	if b.board == nil {
+		b.setBoard(src.board)
+	}
+	if b.list[b.sel].ID != 5 {
+		t.Fatalf("openBoard on a backlog task selects %d", b.list[b.sel].ID)
+	}
+}
+
+// TestTaskListsAlike: the Tasks tab and the task board draw the same list
+// (T134).
+func TestTaskListsAlike(t *testing.T) {
+	src, m := popupData(t)
+	src.board.Tasks = append(src.board.Tasks, &tasks.Task{ID: 5, Title: "Someday idea", Status: tasks.Open})
+	m.Update(keyPress(m, "a")())
+	keyPress(m, "3")
+	pv := m.top().(*projectView)
+	tab, _, _ := pv.taskLines(m, 80)
+	b := &boardView{slug: pv.slug}
+	b.setBoard(src.board)
+	lines, _, _ := taskList(m, b.slug, b.board, b.list, b.sel, b.backlog, b.doneAll, 80)
+	if strings.Join(tab, "\n") != strings.Join(lines, "\n") {
+		t.Fatalf("tab:\n%s\nboard:\n%s", strings.Join(tab, "\n"), strings.Join(lines, "\n"))
 	}
 }

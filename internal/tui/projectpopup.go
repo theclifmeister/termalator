@@ -263,15 +263,29 @@ func absPath(p, cwd string) string {
 	return filepath.Clean(p)
 }
 
-// tasks are the live tasks the Tasks tab lists, in board order: needs
-// you, in motion, on deck, the backlog (after b), then the newest done ones
-// (all of them after m).
+// tasks are the live tasks the Tasks tab lists, as the task board does.
 func (pv *projectView) tasks() []*tasks.Task {
 	if pv.board == nil {
 		return nil
 	}
-	all := listed(pv.board, pv.backlogAll)
-	if pv.doneAll {
+	return shown(pv.board, pv.backlogAll, pv.doneAll)
+}
+
+// hiddenDone is how many done tasks the Tasks tab leaves out.
+func (pv *projectView) hiddenDone() int {
+	if pv.board == nil {
+		return 0
+	}
+	return hiddenDone(pv.board, pv.backlogAll, pv.doneAll)
+}
+
+// shown are the tasks a task list shows, in board order: needs you, in
+// motion, on deck, the backlog (after b), then the newest done ones (all
+// of them after m). The task board and the project popup's Tasks tab
+// both list these.
+func shown(b *tasks.Board, backlog, doneAll bool) []*tasks.Task {
+	all := listed(b, backlog)
+	if doneAll {
 		return all
 	}
 	var out []*tasks.Task
@@ -287,12 +301,9 @@ func (pv *projectView) tasks() []*tasks.Task {
 	return out
 }
 
-// hiddenDone is how many done tasks the Tasks tab leaves out.
-func (pv *projectView) hiddenDone() int {
-	if pv.board == nil || pv.doneAll {
-		return 0
-	}
-	return len(listed(pv.board, pv.backlogAll)) - len(pv.tasks())
+// hiddenDone is how many done tasks shown leaves out.
+func hiddenDone(b *tasks.Board, backlog, doneAll bool) int {
+	return len(listed(b, backlog)) - len(shown(b, backlog, doneAll))
 }
 
 // backlogCount is how many open tasks (the backlog) a board has.
@@ -358,21 +369,7 @@ func (pv *projectView) box(m *dash) box {
 		body = append(body, "", styleFaint.Render("Read-only: the coordinator handles these."))
 	case tabTasks:
 		body, sel, hits = pv.taskLines(m, w)
-		// Short, so the task's keys fit beside a 32-column sidebar.
-		more, later := "", ""
-		switch {
-		case pv.doneAll:
-			more = "m fewer"
-		case pv.hiddenDone() > 0:
-			more = "m more"
-		}
-		switch {
-		case pv.backlogAll:
-			later = "b hide backlog"
-		case backlogCount(pv.board) > 0:
-			later = "b backlog"
-		}
-		keys = joinKeys(taskKeys(pv.selTask()), more, later, "enter show · esc close")
+		keys = taskListKeys(pv.selTask(), pv.board, pv.backlogAll, pv.doneAll, "enter show · esc close")
 	case tabSettings:
 		body, sel, hits = pv.settings.lines(m, w)
 		keys = "enter change · + - number · ↑ ↓ move · " + keys
@@ -598,65 +595,93 @@ func (pv *projectView) coordinatorLine(m *dash, p ProjectData) string {
 	return config.DefaultAgent(DefaultAgent) + styleFaint.Render(" · not running; enter on the project starts it")
 }
 
-// taskLines are the live tasks, grouped; only the selected task that
-// isn't done lists its steps (the others show n/n), and the done group
-// ends in how many older ones are left out.
+// taskLines are the Tasks tab's lines: the task board's list.
 func (pv *projectView) taskLines(m *dash, w int) ([]string, int, []int) {
 	if pv.board == nil {
 		return []string{styleFaint.Render("loading…")}, -1, nil
 	}
+	return taskList(m, pv.slug, pv.board, pv.tasks(), pv.sel[tabTasks], pv.backlogAll, pv.doneAll, w)
+}
+
+// taskList is how every task list draws a project's tasks (the task
+// board, the project popup's Tasks tab): grouped, only the selected task
+// that isn't done listing its steps (the others show n/n), the collapsed
+// backlog and the older done tasks left out each in a line. It returns the
+// lines, the selected task's line and each line's task (noHit for none).
+func taskList(m *dash, slug string, b *tasks.Board, list []*tasks.Task, selected int, backlog, doneAll bool, w int) ([]string, int, []int) {
 	var out []string
-	taskAt := map[int]int{} // a task's lines, its steps' too: its index
+	var hits []int
+	add := func(hit int, l ...string) {
+		for _, s := range l {
+			out = append(out, s)
+			hits = append(hits, hit)
+		}
+	}
 	sel := -1
 	var group tasks.Group
-	collapsed := !pv.backlogAll && backlogCount(pv.board) > 0
+	collapsed := !backlog && backlogCount(b) > 0
 	// note puts the collapsed backlog where its group would be.
 	note := func() {
 		if collapsed {
 			collapsed = false
 			if len(out) > 0 {
-				out = append(out, "")
+				add(noHit, "")
 			}
-			out = append(out, backlogNote(backlogCount(pv.board), w)...)
+			add(noHit, backlogNote(backlogCount(b), w)...)
 		}
 	}
-	for i, t := range pv.tasks() {
+	for i, t := range list {
 		if g := tasks.GroupOf(t.Status); g != group {
 			group = g
 			if g == tasks.DoneG {
 				note()
 			}
 			if len(out) > 0 {
-				out = append(out, "")
+				add(noHit, "")
 			}
 			title := strings.ToUpper(string(g))
-			out = append(out, sectionRule(title, sectionStyle(title), w))
+			add(noHit, sectionRule(title, sectionStyle(title), w))
 		}
 		steps := t.Steps
-		if i != pv.sel[tabTasks] || t.Status == tasks.Done {
+		if i != selected || t.Status == tasks.Done {
 			steps = nil
 		}
-		for j := range 1 + len(steps) {
-			taskAt[len(out)+j] = i
-		}
-		if i == pv.sel[tabTasks] {
+		if i == selected {
 			sel = len(out)
 		}
-		out = append(out, line(taskRow(t, m.asked(pv.slug, t) != ""), w, i == pv.sel[tabTasks]))
+		add(i, line(taskRow(t, m.asked(slug, t) != ""), w, i == selected))
 		// The selected task's steps, under its title.
 		for _, s := range steps {
-			out = append(out, fit(strings.Repeat(" ", taskTitleCol)+todoGlyph(map[bool]string{true: "done"}[s.Done])+" "+oneLine(s.Text), w))
+			add(i, fit(strings.Repeat(" ", taskTitleCol)+todoGlyph(map[bool]string{true: "done"}[s.Done])+" "+oneLine(s.Text), w))
 		}
 	}
 	note()
-	if n := pv.hiddenDone(); n > 0 {
-		out = append(out, styleFaint.Render(fmt.Sprintf("… %d more done (m shows them)", n)))
+	if n := hiddenDone(b, backlog, doneAll); n > 0 {
+		add(noHit, styleFaint.Render(fmt.Sprintf("… %d more done (m shows them)", n)))
 	}
 	if len(out) == 0 {
-		out = append(out, styleFaint.Render("no tasks"))
+		add(noHit, styleFaint.Render("no tasks"))
 	}
-	out = append(out, "", styleFaint.Render("the coordinator changes tasks"))
-	return out, sel, lineHits(len(out), taskAt)
+	return out, sel, hits
+}
+
+// taskListKeys are a task list's keys: the selected task's, then m and b
+// for the older done tasks and the backlog, then close.
+func taskListKeys(t *tasks.Task, b *tasks.Board, backlog, doneAll bool, close string) string {
+	more, later := "", ""
+	switch {
+	case doneAll:
+		more = "m fewer"
+	case b != nil && hiddenDone(b, backlog, doneAll) > 0:
+		more = "m more"
+	}
+	switch {
+	case backlog:
+		later = "b hide backlog"
+	case backlogCount(b) > 0:
+		later = "b backlog"
+	}
+	return joinKeys(taskKeys(t), more, later, close)
 }
 
 // kindStyle is the style of an inbox item's kind: red for what went
