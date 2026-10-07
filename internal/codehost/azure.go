@@ -479,10 +479,6 @@ func (a Azure) ParsePRURL(s string) (int, bool) {
 	return l.Number, true
 }
 
-// FailedLog is a stub until T115 (the failing build's timeline and log
-// through az devops invoke): no log.
-func (Azure) FailedLog(repo string, pr PR) (job, log string) { return "", "" }
-
 // PRState is the state of the PR whose head is branch (PR by branch).
 func (a Azure) PRState(repo, branch string) string {
 	pr, err := a.PR(repo, Ref{Branch: branch})

@@ -42,11 +42,43 @@ func excerpt(log string) (job, text string) {
 		if clean(parts[0]) != job {
 			break // only the first failing job
 		}
-		lines = append(lines, clean(stampRE.ReplaceAllString(ansiRE.ReplaceAllString(parts[2], ""), "")))
+		lines = append(lines, parts[2])
+	}
+	return excerptLines(job, lines)
+}
+
+// azureMarkerRE matches the Azure Pipelines log lines that only
+// structure the log; they are dropped.
+var azureMarkerRE = regexp.MustCompile(`^##\[(section|group|endgroup|debug)\]`)
+
+// azureExcerpt is excerpt for one Azure Pipelines task log: lines of
+// "<7-digit-fraction timestamp>Z text", no job or step columns, with
+// ##[section], ##[group] and the like dropped. job is the task's name.
+func azureExcerpt(job, log string) (string, string) {
+	var lines []string
+	for _, l := range strings.Split(log, "\n") {
+		if l = strings.TrimSpace(stampRE.ReplaceAllString(strings.TrimSpace(l), "")); !azureMarkerRE.MatchString(l) {
+			lines = append(lines, l)
+		}
+	}
+	return excerptLines(clean(job), lines)
+}
+
+// excerptLines is what both hosts share: the lines of one failing job
+// (timestamps and colours still allowed) from logLead before the first
+// error on, at most logBytes, the tail when none looks like an error;
+// "", "" when there is no job or no line.
+func excerptLines(job string, lines []string) (string, string) {
+	if job == "" {
+		return "", ""
+	}
+	for i, l := range lines {
+		lines[i] = clean(stampRE.ReplaceAllString(ansiRE.ReplaceAllString(l, ""), ""))
 	}
 	if len(lines) == 0 {
 		return "", ""
 	}
+	var text string
 	first := -1
 	for i, l := range lines {
 		if errRE.MatchString(l) {

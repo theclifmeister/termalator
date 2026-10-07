@@ -1,0 +1,14 @@
+{
+  "id": "b1c2d3e4-0000-0000-0000-000000000001",
+  "changeId": 41,
+  "records": [
+    {"id": "s1", "parentId": null, "type": "Stage", "name": "Build", "order": 1, "result": "failed", "log": null},
+    {"id": "p1", "parentId": "s1", "type": "Phase", "name": "Linux", "order": 1, "result": "failed", "log": null},
+    {"id": "j1", "parentId": "p1", "type": "Job", "name": "Linux", "order": 1, "result": "failed", "log": {"id": 2, "type": "Container", "url": "https://dev.azure.com/acme/x/_apis/build/builds/4711/logs/2"}},
+    {"id": "t1", "parentId": "j1", "type": "Task", "name": "Initialize job", "order": 1, "result": "succeeded", "log": {"id": 3, "type": "Container", "url": "u"}},
+    {"id": "t2", "parentId": "j1", "type": "Task", "name": "Run tests", "order": 3, "result": "failed", "log": {"id": 7, "type": "Container", "url": "u"}},
+    {"id": "t3", "parentId": "j1", "type": "Task", "name": "Publish results", "order": 4, "result": "failed", "log": {"id": 8, "type": "Container", "url": "u"}},
+    {"id": "t4", "parentId": "j1", "type": "Task", "name": "Post-job", "order": 5, "result": "skipped", "log": null}
+  ],
+  "lastChangedBy": "00000000-0000-0000-0000-000000000000"
+}
