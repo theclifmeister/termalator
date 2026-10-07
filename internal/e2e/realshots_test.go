@@ -142,10 +142,27 @@ func TestRealModShots(t *testing.T) {
 		s.shot("mod-thread-band")
 	}
 	setPR(t, state, `{"number":7,"url":"https://github.com/o/r/pull/7","state":"OPEN","title":"Say hello","statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS"}]}`)
+	// The toast is on screen for a few seconds only: look at every window
+	// together and shoot each the moment it shows, not one after the
+	// other, or the first's wait outlasts the others' toast. Both windows
+	// view the one session, and Claude draws the toast in the corner of
+	// the last-attached window's size, so a smaller window may show none.
+	seen := map[string]bool{}
+	for deadline := time.Now().Add(30 * time.Second); len(seen) == 0 && time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		for _, sz := range sizes {
+			if s := shots[sz.name]; strings.Contains(s.w.Screen(), "checks passed") {
+				seen[sz.name] = true
+				s.shot("mod-thread-toast")
+			}
+		}
+	}
+	if len(seen) == 0 {
+		t.Errorf("no \"checks passed\" toast in any window after 30 s")
+	}
 	for _, sz := range sizes {
-		s := shots[sz.name]
-		Poll(30*time.Second, func() bool { return strings.Contains(s.w.Screen(), "checks passed") })
-		s.shot("mod-thread-toast")
+		if !seen[sz.name] {
+			shots[sz.name].shot("mod-thread-toast")
+		}
 	}
 	env.MustCLI("session", "stop", th.ID)
 	env.MustCLI("session", "stop", coord.ID)

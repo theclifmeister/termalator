@@ -127,7 +127,7 @@ func TestHookDeadlines(t *testing.T) {
 		}, "Stop", hookAck + 150*time.Millisecond},
 		{"wedged, response expected", func(t *testing.T, sock string) {
 			fakeServer(t, sock, 5*time.Second, "late", nil)
-		}, "SessionStart", hookResponse + 150*time.Millisecond},
+		}, "SessionStart", hookContext + 150*time.Millisecond},
 		{"never says hello", func(t *testing.T, sock string) {
 			ln, err := net.Listen("unix", sock)
 			if err != nil {
@@ -143,7 +143,7 @@ func TestHookDeadlines(t *testing.T) {
 					defer c.Close()
 				}
 			}()
-		}, "SessionStart", hookResponse + 150*time.Millisecond},
+		}, "SessionStart", hookContext + 150*time.Millisecond},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -193,4 +193,18 @@ func FuzzHookInput(f *testing.F) {
 			t.Fatalf("exit %d stderr %q", code, errb.String())
 		}
 	})
+}
+
+// SessionStart's context outlasts the 500 ms of other responses: a slow
+// server inside hookContext still delivers it, and one past it does not.
+func TestHookSessionStartLimit(t *testing.T) {
+	if hookContext < 2*time.Second || hookContext <= hookResponse {
+		t.Fatalf("hookContext %v, hookResponse %v", hookContext, hookResponse)
+	}
+	e, out, _, sock := hookEnv(t, `{"hook_event_name":"SessionStart","source":"clear"}`)
+	fakeServer(t, sock, hookResponse+500*time.Millisecond, `{"ctx":1}`, nil)
+	runHookTimed(t, e, "--agent", "claude")
+	if out.String() != `{"ctx":1}` {
+		t.Errorf("slow SessionStart context lost: %q", out)
+	}
 }

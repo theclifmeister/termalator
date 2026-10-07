@@ -195,7 +195,15 @@ func TestSmokeAgentTodosAndClear(t *testing.T) {
 		t.Errorf("session list: %s", env.MustCLI("session", "list"))
 	}
 
+	// The SessionStart after /clear is the one hook whose response the
+	// session needs; tm hook waits up to hookContext for it, so on a
+	// loaded machine the wait here is the agentWait, not 500 ms. The
+	// hook record comes first: a missing context then says whether the
+	// hook never fired or fired and got no answer.
 	env.Keys(s, "/clear\r")
+	if !Poll(agentWait, func() bool { return strings.Count(strings.Join(env.HookEvents(), " "), "SessionStart") >= 2 }) {
+		t.Fatalf("no SessionStart hook after /clear; hooks %v", env.HookEvents())
+	}
 	env.WaitFake("context", agentWait, func(r FakeRecord) bool { return r.Str("source") == "clear" })
 	var after string
 	if !Poll(agentWait, func() bool { i, _ := env.Info(s); after = i.AgentSID; return after != first && i.TodosTotal == 0 }) {
