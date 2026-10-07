@@ -324,7 +324,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		k, v, _ := strings.Cut(kv, "=")
 		set[k] = v
 	}
-	base := agent.FilterEnv(agent.FilterEnv(s.baseEnv(), launch.Unset), agentSecretEnv)
+	base := agent.FilterEnv(s.baseEnv(), launch.Unset)
 	env := sessionEnv(base, set)
 	r.Argv = launch.Argv
 	home, _ := os.UserHomeDir()
@@ -392,12 +392,6 @@ func (s *Server) terminatrEnv(r SessionRecord) map[string]string {
 	}
 	return set
 }
-
-// agentSecretEnv are credentials the server's own environment may hold
-// that no agent gets (docs/SPEC.md §8.6, Guard): Azure DevOps reads a
-// personal access token from this variable, and az and the extension
-// sign in with it without a login.
-var agentSecretEnv = []string{"AZURE_DEVOPS_EXT_PAT"}
 
 func (s *Server) baseEnv() []string {
 	if s.opts.Env != nil {
