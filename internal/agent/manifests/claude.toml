@@ -102,7 +102,7 @@ path = "claude-settings.json"
 template = '''
 {
   "permissions": {
-    "allow": {{json (concat (rules "Read(/%s/**)" .Access.Read) (rules "Edit(/%s/**)" .Access.Write))}},
+    "allow": {{json (concat (rules "Read(/%s/**)" .Access.Read) (rules "Edit(/%s/**)" .Access.Write) (rules "Bash(%s:*)" .Access.Commands))}},
     "deny": {{json (concat (rules "Edit(/%s/**)" .Access.NoWrite) (rules "Edit(/%s)" .Access.NoWriteFiles))}}
   },
   "sandbox": {

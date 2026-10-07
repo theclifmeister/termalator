@@ -704,6 +704,10 @@ func safetySettings(slug string) []setting {
 			value: func(m *dash) string { return onOff(safety(m).AutoClear) },
 			change: toggle("auto_clear", func(s config.Safety) bool { return s.AutoClear },
 				func(s *config.Safety, on bool) { s.AutoClear = on }, "auto-clear for coordinators")},
+		{label: "Coordinator may merge", help: "Let the coordinator run the pull request merge command (gh pr merge, or the Azure DevOps equivalent) without the agent's auto mode refusing it: tm adds a permission allow rule to the coordinator only. Threads never get it, and the guard still refuses their merges. Only has an effect while merge is coordinator (the default). Off by default.",
+			value: func(m *dash) string { return onOff(safety(m).CoordinatorMerges) },
+			change: toggle("coordinator_merges", func(s config.Safety) bool { return s.CoordinatorMerges },
+				func(s *config.Safety, on bool) { s.CoordinatorMerges = on }, "the coordinator merging")},
 		{label: "Keep my checkout current", help: "Fast-forward your own checkout of each repository when its default branch is checked out, clean and only behind origin; else the overview says how far behind.",
 			value: func(m *dash) string { return onOff(safety(m).FastForwardCheckout) },
 			change: toggle("fast_forward_checkout", func(s config.Safety) bool { return s.FastForwardCheckout },
@@ -759,7 +763,7 @@ func safetySettings(slug string) []setting {
 		}})
 	rows = scope(rows,
 		[][]string{{"start_threads"}, {"yolo"}, {"coordinator_approves"}, {"parallel_threads"}, {"auto_close", "auto_close_days"},
-			{"complete_tasks"}, {"pr_followup"}, {"coordinator_remote_control"}, {"auto_clear"}, {"fast_forward_checkout"}, {"models"}, config.ArchiveKeys},
+			{"complete_tasks"}, {"pr_followup"}, {"coordinator_remote_control"}, {"auto_clear"}, {"coordinator_merges"}, {"fast_forward_checkout"}, {"models"}, config.ArchiveKeys},
 		[]func(config.Safety) string{startWords, onOffOf(func(s config.Safety) bool { return s.Yolo }),
 			onOffOf(func(s config.Safety) bool { return s.CoordinatorApproves }),
 			func(s config.Safety) string { return fmt.Sprint(s.ParallelThreads) }, closeWords,
@@ -767,6 +771,7 @@ func safetySettings(slug string) []setting {
 			onOffOf(func(s config.Safety) bool { return s.PRFollowup }),
 			onOffOf(func(s config.Safety) bool { return s.CoordinatorRemoteControl }),
 			onOffOf(func(s config.Safety) bool { return s.AutoClear }),
+			onOffOf(func(s config.Safety) bool { return s.CoordinatorMerges }),
 			onOffOf(func(s config.Safety) bool { return s.FastForwardCheckout }),
 			func(s config.Safety) string { return modelWords(s.Models) }, historyWords})
 	if all {
