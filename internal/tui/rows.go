@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/theclifmeister/terminatr/internal/codehost"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/tasks"
 )
@@ -415,8 +417,8 @@ func threadGroup(t ThreadRow, byID map[string]proto.SessionInfo) int {
 
 // prRef shortens a PR URL to "#12"; anything else is shown cut short.
 func prRef(url string) string {
-	if i := strings.LastIndex(url, "/pull/"); i >= 0 {
-		return "#" + oneLine(url[i+len("/pull/"):])
+	if n, _, ok := codehost.ParsePRURL(url); ok {
+		return "#" + strconv.Itoa(n)
 	}
 	return fit(oneLine(url), 30)
 }
