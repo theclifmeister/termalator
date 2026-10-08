@@ -169,6 +169,12 @@ type agentRT struct {
 	lastTodos  []agent.Todo
 	emptyBox   bool // the empty-box rule matched at the last evaluation
 	blocker    bool // a blocked rule matched at the last evaluation
+
+	keys        map[string]string // rule id -> the keys that answer its dialog (agent.Rule.Keys)
+	answerRule  string            // the keyed rule that is the screen's match
+	answerSince time.Time         // since when
+	answerAt    time.Time         // when its keys were last typed
+	answerTries int
 }
 
 func newAgentRT(cfg AgentConfig, pid int, observed bool) (*agentRT, error) {
@@ -180,6 +186,14 @@ func newAgentRT(cfg AgentConfig, pid int, observed bool) (*agentRT, error) {
 		a: cfg.Agent, src: cfg.Agent.Sources(), man: agent.ManifestOf(cfg.Agent),
 		eng: eng, tr: agent.NewTracker(nil), cfg: cfg, pid: pid, observed: observed,
 		stop: make(chan struct{}), promptGen: strconv.FormatInt(time.Now().UnixNano(), 36),
+	}
+	for _, r := range cfg.Agent.Rules() {
+		if r.Keys != "" {
+			if rt.keys == nil {
+				rt.keys = map[string]string{}
+			}
+			rt.keys[r.ID] = r.Keys
+		}
 	}
 	if cfg.AgentSID != "" {
 		rt.tr.SetAgentSID(cfg.AgentSID)
@@ -599,6 +613,45 @@ func (s *Session) evalScreen(rt *agentRT) {
 		sig = agent.ScreenSignal{Rule: best.Rule, State: best.State, Reason: best.Reason}
 	}
 	rt.tr.Screen(sig, names)
+	if keys := rt.answer(sig.Rule, time.Now()); keys != "" && !rt.observed {
+		s.cfg.Logf("session %s: answering %s", s.cfg.ID, sig.Rule)
+		if err := s.Input([]byte(keys)); err != nil {
+			s.cfg.Logf("session %s: answering %s: %v", s.cfg.ID, sig.Rule, err)
+		}
+	}
+}
+
+// Timing of answer: keys typed right after a dialog paints can be
+// dropped, and a dialog that stays may not have taken them.
+const (
+	answerSettle = 700 * time.Millisecond
+	answerRetry  = 3 * time.Second
+	answerTries  = 3
+)
+
+// answer returns the keys to type now for rule, the screen's match: the
+// keys of a rule that answers its dialog, once it has been the match for
+// answerSettle, then again every answerRetry while it stays, at most
+// answerTries times in a row.
+func (rt *agentRT) answer(rule string, now time.Time) string {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	keys := rt.keys[rule]
+	if keys == "" {
+		rt.answerRule = ""
+		return ""
+	}
+	if rule != rt.answerRule {
+		rt.answerRule, rt.answerSince, rt.answerAt, rt.answerTries = rule, now, time.Time{}, 0
+		return ""
+	}
+	if now.Sub(rt.answerSince) < answerSettle || rt.answerTries >= answerTries ||
+		(!rt.answerAt.IsZero() && now.Sub(rt.answerAt) < answerRetry) {
+		return ""
+	}
+	rt.answerAt = now
+	rt.answerTries++
+	return keys
 }
 
 // agentChanged notifies the owner when the state, the agent's session

@@ -297,4 +297,8 @@ type Rule struct {
 	// SkipDim ignores dim/faint cells when matching, so ghost text such as
 	// Claude's prompt suggestion isn't read as typed input.
 	SkipDim bool `toml:"skip_dim"`
+	// Keys answer the dialog a blocked rule matches: tm types them once
+	// the rule has been the screen's match for a moment, for a dialog
+	// the user decided tm answers (e.g. Codex's hooks review).
+	Keys string `toml:"keys"`
 }

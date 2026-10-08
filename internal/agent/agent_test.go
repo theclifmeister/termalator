@@ -683,3 +683,14 @@ func TestManifestModels(t *testing.T) {
 		t.Fatalf("launch with a model: %v %q", err, l.Argv)
 	}
 }
+
+// TestRuleKeys: only a blocked rule may answer its dialog with keys.
+func TestRuleKeys(t *testing.T) {
+	const base = "manifest_version = 1\nname = \"a\"\n[launch]\ncommand = \"a\"\n[[rules]]\nid = \"r\"\nregion = \"screen\"\ncontains = [\"x\"]\nkeys = \"3\"\n"
+	if _, err := ParseManifest([]byte(base + "state = \"blocked\"\n")); err != nil {
+		t.Errorf("blocked rule with keys: %v", err)
+	}
+	if _, err := ParseManifest([]byte(base + "state = \"idle\"\n")); err == nil {
+		t.Error("an idle rule with keys passed")
+	}
+}

@@ -1,0 +1,256 @@
+# OpenAI Codex CLI (docs/SPEC.md §8.6, Codex).
+#
+# Verified against codex-cli 0.160.0 on macOS by the T91 research
+# (threads/t-0083/library) and T98. Codex keeps no status file: state
+# comes from hooks, the rollout and the screen. The Go agent
+# (internal/agent/codex) adds the hooks themselves, with their trust
+# hashes, to every launch.
+
+manifest_version = 1
+name = "codex"
+display = "Codex"
+tested_versions = ["0.160."]
+
+# Read from every hook event, latest wins. Codex's id can't be chosen
+# ahead: it is learnt from the first hook, which fires at the first
+# prompt (for a thread, the kickoff in argv).
+session_field = "session_id"
+
+[identify]
+argv0 = ["codex"]
+version_args = ["--version"]
+
+[launch]
+command = "codex"
+# `resume <id>` is a subcommand, so it goes first. The flags:
+# - no update screen before the prompt;
+# - the folder trusted for this run only. Codex keys trust by the main
+#   repo's root, even in a linked worktree, and only the inline-table form
+#   is honoured (a dotted projects."<dir>".trust_level is not);
+# - the brief as developer instructions, which Codex sends again after
+#   /clear and /compact (a value, not a file: read here);
+# - tm mcp as an MCP server for the thread tools. Codex runs it outside
+#   its sandbox with a cleared environment (tm mcp finds the session by
+#   its parents), so only TERMINATR_HOME is passed on; its calls must not
+#   wait on approvals.
+# The coordinator runs with Codex's auto-review (user, 2026-10-07).
+args = [
+  "{{if .Resume}}resume{{end}}", "{{if .Resume}}{{.AgentSID}}{{end}}",
+  "-c", "check_for_update_on_startup=false",
+  "-c", 'projects={ {{- toml (or .RepoRoot .Cwd)}}={trust_level="trusted"}}',
+  "{{if .BriefPath}}-c{{end}}", "{{if .BriefPath}}developer_instructions={{toml (file .BriefPath)}}{{end}}",
+  "-c", "mcp_servers.terminatr.command={{toml .TMBin}}",
+  "-c", 'mcp_servers.terminatr.args=["mcp"]',
+  "-c", 'mcp_servers.terminatr.env_vars=["TERMINATR_HOME"]',
+  "-c", 'mcp_servers.terminatr.default_tools_approval_mode="approve"',
+  "{{if and (eq .Role \"coordinator\") (not .Yolo)}}--approve-for-me{{end}}",
+]
+yolo_args = ["--dangerously-bypass-approvals-and-sandbox"]
+model_args = ["-m", "{{.Model}}"]
+kickoff_args = ["--", "{{.Kickoff}}"]
+# What Codex gives the commands it runs: a Codex started from one of them
+# must not inherit its thread id or sandbox flags. CODEX_HOME is the
+# user's own configuration and stays.
+unset_env = ["CODEX_THREAD_ID", "CODEX_SANDBOX", "CODEX_SANDBOX_NETWORK_DISABLED"]
+
+[launch.env]
+TERMINATR_SESSION = "{{.SessionID}}"
+TERMINATR_SOCKET = "{{.Socket}}"
+TERMINATR_BIN = "{{.TMBin}}"
+
+[[models]]
+name = "gpt-6-luna"
+about = "Codex's default: fast and affordable, everyday coding tasks"
+
+[[models]]
+name = "gpt-5.6-terra"
+about = "older balanced model for straightforward work"
+
+[inject]
+prompt = "paste"
+empty_rule = "idle-empty-box"
+# /clear starts over in place; /new first asks where to run.
+clear = "/clear"
+
+# Hook payloads are trimmed before they leave the hook process.
+[hook]
+keep = [
+  "session_id", "transcript_path", "cwd", "permission_mode", "source", "reason",
+  "tool_name", "tool_use_id", "agent_id", "agent_type", "trigger",
+  "prompt", "last_assistant_message",
+]
+truncate = { prompt = 500, last_assistant_message = 500 }
+
+# The rollout (~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl): every turn
+# starts with task_started and ends with task_complete.
+[jsonl_tail]
+path_field = "transcript_path"
+
+[[jsonl_tail.rules]]
+match = { type = "event_msg", "payload.type" = "task_started" }
+state = "working"
+
+[[jsonl_tail.rules]]
+match = { type = "event_msg", "payload.type" = "task_complete" }
+state = "idle"
+
+[[jsonl_tail.rules]]
+match = { type = "event_msg", "payload.type" = "turn_aborted" }
+state = "idle"
+reason = "interrupted"
+
+# Hook → state. Every event named here is registered with Codex (the Go
+# agent writes the hooks); Codex 0.160 knows PreToolUse,
+# PermissionRequest, PostToolUse, PreCompact, PostCompact, SessionStart,
+# SessionEnd, UserPromptSubmit, SubagentStart, SubagentStop, Stop and
+# Interrupt.
+[[hooks]]
+event = "SessionStart"
+state = "idle"
+# Fires for startup and resume (at the first prompt), and again for
+# clear and compact: the context goes back in every time.
+respond = '''{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":{{json .Context}}}}'''
+
+[[hooks]]
+event = "UserPromptSubmit"
+state = "working"
+
+[[hooks]]
+event = "PreToolUse"
+state = "working"
+transient = true
+
+[[hooks]]
+event = "PostToolUse"
+state = "working"
+transient = true
+
+[[hooks]]
+event = "PreCompact"
+state = "working"
+transient = true
+
+# Approvals. A question menu (plan mode) fires no hook: screen only.
+[[hooks]]
+event = "PermissionRequest"
+state = "blocked"
+reason = "permission"
+
+[[hooks]]
+event = "Stop"
+state = "idle"
+
+# Esc on a running turn, or on an approval: the blocked state can't go
+# stale.
+[[hooks]]
+event = "Interrupt"
+state = "idle"
+reason = "interrupted"
+
+[[hooks]]
+event = "SubagentStart"
+counter = "+bg"
+counter_key = "agent_id"
+
+[[hooks]]
+event = "SubagentStop"
+counter = "-bg"
+counter_key = "agent_id"
+
+[[hooks]]
+event = "SessionEnd"
+match = { reason = "!clear" }
+state = "exited"
+
+# Screen rules (0.160, threads/t-0083/library/T91-codex-screens.md):
+# blockers and the screens before the first hook. Highest priority wins.
+
+# Shown when the projects flag didn't cover the folder.
+[[rules]]
+id = "trust-folder"
+state = "blocked"
+reason = "trust"
+priority = 50
+region = "screen"
+contains = ["Trust this folder?", "Trust and continue"]
+
+# Shown while any of the user's own hooks is untrusted; tm's hooks are
+# trusted for the session. tm answers "Continue without trusting" itself,
+# so the user's untrusted hooks don't run in tm sessions (user,
+# 2026-10-07).
+[[rules]]
+id = "hooks-review"
+state = "blocked"
+reason = "trust"
+priority = 50
+region = "screen"
+contains = ["Hooks need review", "Continue without trusting"]
+keys = "3"
+
+# check_for_update_on_startup=false keeps it away; skipped if it shows.
+[[rules]]
+id = "update-available"
+state = "blocked"
+reason = "update"
+priority = 50
+region = "screen"
+contains = ["Update available", "Skip until next version"]
+keys = "2"
+
+[[rules]]
+id = "blocked-permission-dialog"
+state = "blocked"
+reason = "permission"
+priority = 40
+region = "bottom:16"
+contains = ["Would you like to", "Press enter to confirm or esc to cancel"]
+
+# request_user_input (plan mode): "Question 1/2 (2 unanswered)".
+[[rules]]
+id = "blocked-question"
+state = "blocked"
+reason = "question"
+priority = 40
+region = "bottom:16"
+regex = '(?m)^\s*Question \d+/\d+'
+contains = ["enter to submit answer"]
+
+# /new: "Where should the new conversation run?"
+[[rules]]
+id = "blocked-new-dialog"
+state = "blocked"
+reason = "question"
+priority = 40
+region = "bottom:8"
+contains = ["Where should the new conversation run?", "enter select"]
+
+# "• Working (3s • esc to interrupt) · 1 background terminal running …"
+[[rules]]
+id = "working-status"
+state = "working"
+priority = 20
+region = "bottom:12"
+regex = '(?m)^• Working \('
+contains = ["esc to interrupt"]
+
+# The composer shows "›" with a placeholder or typed text, which may wrap;
+# below it a blank row, the model line and "? for shortcuts". It stays
+# while a turn runs, and a dialog's selected option also starts with
+# "›": the working line and every dialog outrank it.
+[[rules]]
+id = "idle-composer"
+state = "idle"
+priority = 0
+region = "bottom:8"
+regex = '(?m)^› '
+
+# Not a state of its own: the paste injector checks it so it never
+# appends to text left in the composer. The placeholder ("Ask Codex to
+# do anything") is dim, so the box counts as empty when only it is there.
+[[rules]]
+id = "idle-empty-box"
+state = "idle"
+priority = 0
+region = "bottom:8"
+regex = '(?m)^›\s*$'
+skip_dim = true
