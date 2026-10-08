@@ -2,6 +2,8 @@ package cli
 
 import (
 	"encoding/json"
+	"os"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -66,5 +68,38 @@ func TestMCPServes(t *testing.T) {
 	}
 	if !strings.Contains(lines[5], "-32700") {
 		t.Errorf("bad json: %s", lines[5])
+	}
+}
+
+// TestMCPToolsMatchMod keeps the tools' names, descriptions' first
+// words and fields in step with the mod's (mod/hooks/tools.ts).
+func TestMCPToolsMatchMod(t *testing.T) {
+	b, err := os.ReadFile("../agent/claude/mod/hooks/tools.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(b)
+	for _, tl := range mcpTools {
+		i := strings.Index(src, "name: '"+tl.Name+"'")
+		if i < 0 {
+			t.Errorf("tool %s is not in tools.ts", tl.Name)
+			continue
+		}
+		block := src[i:]
+		if j := strings.Index(block[1:], "name: '"); j >= 0 {
+			block = block[:j+1]
+		}
+		props := tl.InputSchema["properties"].(map[string]any)
+		for k := range props {
+			if !regexp.MustCompile(`\b` + k + `: `).MatchString(block) {
+				t.Errorf("tool %s: field %s is not in tools.ts", tl.Name, k)
+			}
+		}
+		ts := regexp.MustCompile(`(?m)^        (\w+): `).FindAllStringSubmatch(block, -1)
+		for _, m := range ts {
+			if _, ok := props[m[1]]; !ok {
+				t.Errorf("tool %s: tools.ts has field %s the Go schema lacks", tl.Name, m[1])
+			}
+		}
 	}
 }
