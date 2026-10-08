@@ -372,6 +372,9 @@ func (m *Manifest) validate() error {
 		if r.ID == "" || r.State == "" || !(valid[r.State] || r.State == StateUnknown) {
 			errs = append(errs, fmt.Errorf("rules[%d]: needs an id and a valid state", i))
 		}
+		if r.Keys != "" && r.State != StateBlocked {
+			errs = append(errs, fmt.Errorf("rules[%d] %s: keys answer a dialog: the rule must be blocked", i, r.ID))
+		}
 		if r.Regex != "" {
 			if _, err := regexp.Compile(r.Regex); err != nil {
 				errs = append(errs, fmt.Errorf("rules[%d] %s: %w", i, r.ID, err))
