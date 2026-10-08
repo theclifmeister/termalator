@@ -252,6 +252,9 @@ func ClearTextOf(a Agent) string {
 type Model struct {
 	Name  string `toml:"name"`
 	About string `toml:"about"`
+	// Default marks the model a launch passes when none is chosen (at
+	// most one); without one the agent runs the user's own default.
+	Default bool `toml:"default"`
 }
 
 var modelNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/@\[\]-]{0,63}$`)
@@ -264,6 +267,16 @@ func (m *Manifest) FindModel(name string) (Model, bool) {
 		}
 	}
 	return Model{}, false
+}
+
+// DefaultModel returns the name of the model marked default, "" for none.
+func (m *Manifest) DefaultModel() string {
+	for _, x := range m.Models {
+		if x.Default {
+			return x.Name
+		}
+	}
+	return ""
 }
 
 // ModelsOf returns a's allowed models, nil for none.
@@ -370,6 +383,15 @@ func (m *Manifest) validate() error {
 		if strings.TrimSpace(x.About) == "" || strings.ContainsAny(x.About, "\r\n") || len([]rune(x.About)) > 120 {
 			errs = append(errs, fmt.Errorf("models[%d]: about must be one line of 1 to 120 characters", i))
 		}
+	}
+	defaults := 0
+	for _, x := range m.Models {
+		if x.Default {
+			defaults++
+		}
+	}
+	if defaults > 1 {
+		errs = append(errs, errors.New("models: at most one may be default"))
 	}
 	if len(m.Models) > 0 && len(m.Launch.ModelArgs) == 0 {
 		errs = append(errs, errors.New("models need launch.model_args"))
@@ -537,6 +559,9 @@ func (a *manifestAgent) Launch(spec LaunchSpec) (Launch, error) {
 	if spec.Resume && spec.AgentSID == "" {
 		// Some CLIs open an interactive picker for an empty id.
 		return out, fmt.Errorf("agent %s: resume needs the agent's session id", a.m.Name)
+	}
+	if spec.Model == "" {
+		spec.Model = a.m.DefaultModel() // none chosen: the manifest's default
 	}
 	argv := []string{l.Command}
 	add := func(tmpls []string) error {

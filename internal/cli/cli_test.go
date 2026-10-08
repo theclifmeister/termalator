@@ -419,6 +419,9 @@ func TestThreadModel(t *testing.T) {
 	if !strings.Contains(out, "Models of claude") || !strings.Contains(out, "  tiny: fastest, cheapest") {
 		t.Fatalf("context:\n%s", out)
 	}
+	if !strings.Contains(out, "gpt-6-luna: fast and affordable, everyday coding tasks (default)") {
+		t.Fatalf("context lacks codex's default:\n%s", out)
+	}
 }
 
 // TestThreadModelAllowList: the user's models setting narrows what a
