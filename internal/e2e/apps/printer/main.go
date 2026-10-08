@@ -11,6 +11,11 @@
 // then N lines "line 1" … "line N" (D apart), then "ready". Every
 // SIGWINCH prints "resized to CxR", so a scenario can tell whether the
 // pane was resized.
+//
+// It turns its terminal's echo off: it never reads, and on Linux the echo
+// of a key typed while it prints can land between a line's "\r" and
+// "\n" (n_tty writes them separately), overwriting the line's first
+// character.
 package main
 
 import (
@@ -18,6 +23,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"sync"
 	"syscall"
@@ -32,6 +38,9 @@ func main() {
 	flag.Parse()
 
 	signal.Ignore(syscall.SIGINT)
+	noEcho := exec.Command("stty", "-echo")
+	noEcho.Stdin = os.Stdin
+	noEcho.Run()
 	var mu sync.Mutex // one writer at a time
 	winch := make(chan os.Signal, 1)
 	signal.Notify(winch, syscall.SIGWINCH)
