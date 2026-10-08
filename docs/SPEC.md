@@ -1760,7 +1760,7 @@ Built in M3 (`internal/e2e/fakeagent`, a small Go TUI). It behaves like Claude C
   - the access policy: a thread can't write the project folder, interactively and under yolo.
 - A failure files an inbox item in the `terminatr` project, or prints a summary when run by hand, naming the manifest lines involved.
 
-**Real Codex** (T105). Build tag `realcodex`; `make test-codex` runs it against the `codex` on `PATH` with gpt-6-luna and the user's ChatGPT login (`~/.codex`). On demand only, not in the weekly job (user, 2026-10-08). The regular e2e runs the same cases against the fake agent as Codex (`FakeCodex`: the fake called `codex`, under the real `codex.toml` and its Go agent). It checks:
+**Real Codex** (T105). Build tag `realcodex`; `make test-codex` runs it against the `codex` on `PATH` with gpt-6-luna and a ChatGPT login: `~/.codex`, or a dedicated `CODEX_HOME` logged in once (a fresh one has no login, and `auth.json` isn't copied). It skips when codex isn't logged in. A run takes about 3 minutes and 310k input tokens, mostly cached. On demand only, not in the weekly job (user, 2026-10-08). The regular e2e runs the same cases against the fake agent as Codex (`FakeCodex`: the fake called `codex`, under the real `codex.toml` and its Go agent). It checks:
 
 - `codex --version` is within `tested_versions`;
 - a first prompt (pasted: Codex reports its thread id only with its first hook), then prompts through `codex queue`;

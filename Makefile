@@ -146,7 +146,8 @@ test-claude: $(READY)
 
 # The real-Codex suite (T105): build tag realcodex, the codex on PATH
 # logged in with ChatGPT, gpt-6-luna. On demand only, never in CI or the
-# weekly job (user, 2026-10-08).
+# weekly job (user, 2026-10-08). CODEX_HOME=<dir> keeps its threads out
+# of ~/.codex; that dir needs its own `codex login` once.
 test-codex: $(READY)
 	E2E=1 $(GO) test -tags realcodex -count=1 -timeout 30m -run '^TestRealCodex' -v ./internal/e2e $(E2E_FLAGS)
 

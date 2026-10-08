@@ -5,10 +5,17 @@ package e2e
 // The real-Codex suite (T105): the cases TestSmokeCodex* run against
 // the fake, against the installed codex with gpt-6-luna, to catch Codex
 // releases that change hooks, screens, the rollout or `codex queue`. It
-// needs codex logged in with ChatGPT (~/.codex), so it runs on demand
-// only (`make test-codex`; user, 2026-10-08: not in the weekly job). A
-// run uses a little of the plan's limit, and leaves its threads in
-// ~/.codex/sessions.
+// needs codex logged in with ChatGPT, so it runs on demand only (`make
+// test-codex`; user, 2026-10-08: not in the weekly job). A run uses a
+// little of the plan's limit (T105: about 310k input tokens, 87% of
+// them cached, and 1k output; 5-hour window +1%).
+//
+// Codex keeps its login, threads and settings in CODEX_HOME (default
+// ~/.codex). A fresh CODEX_HOME has no login, and auth.json isn't
+// copied: log a dedicated one in once (CODEX_HOME=~/.codex-tm-test
+// codex login) and run with it set, to keep the suite's threads out of
+// ~/.codex. tm's own launch writes nothing there (trust and hooks are -c
+// flags for the run).
 //
 // Drift detection: each step checks the hooks Codex sent against the
 // ones the fake sends for the same case (internal/e2e/fakeagent,
@@ -35,6 +42,10 @@ func codexRealEnv(t *testing.T) *Env {
 	bin, err := exec.LookPath("codex")
 	if err != nil {
 		t.Skip("codex is not on PATH")
+	}
+	out, _ := exec.Command(bin, "login", "status").CombinedOutput()
+	if !strings.Contains(string(out), "Logged in") {
+		t.Skipf("codex is not logged in (CODEX_HOME=%q): log in once with `codex login`", os.Getenv("CODEX_HOME"))
 	}
 	env := New(t)
 	env.Setenv("HOME", os.Getenv("HOME"))
