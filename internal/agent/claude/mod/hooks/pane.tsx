@@ -25,7 +25,7 @@ import type { TerminatrItem, TerminatrNeed, TerminatrProject, TerminatrThread } 
 import {
   BUTTON_LABELS, MAX_READY, askLine, asked, contextLine, contextToast, isNarrow, itemParts, itemTone, kindWord, needButtons, needDetail, needHead, needKey, oneLine, projectFeed,
   reportTextOf,
-  sentWords, summary, threadLine, tickerLine, todoLine,
+  sentWords, summary, threadLine, tickerRows, todoLine,
 } from './dashboard'
 import type { AskKind } from './dashboard'
 
@@ -219,7 +219,6 @@ function drawPane($: EngineInterface, els: Elements[RenderSurface], hasInput: bo
   return (
     <Box flexDirection="column">
       <Text bold wrap="truncate-end">{p.project + ' · ' + summary(p)}</Text>
-      {p.ticker ? drawTicker(els, tickerLine(p.ticker)) : null}
       {p.context ? drawContext(els, contextLine(p.context)) : null}
       {/* A blank row before each section (docs/STYLE.md, spacing). */}
       <Box marginTop={1}>
@@ -245,14 +244,27 @@ function drawPane($: EngineInterface, els: Elements[RenderSurface], hasInput: bo
         )
       })}
       {p.ready.length > MAX_READY ? <Text dimColor>{`  and ${p.ready.length - MAX_READY} more`}</Text> : null}
+      {p.ticker ? drawTicker(els, tickerRows(p.ticker)) : null}
     </Box>
   )
 }
 
-// drawTicker draws the ticker's timers, red while the PR host fails.
-function drawTicker(els: Elements[RenderSurface], t: ReturnType<typeof tickerLine>) {
-  const { Text } = els
-  return <Text wrap="truncate-end" color={t.tone === 'error' ? 'error' : undefined} dimColor={t.tone === 'ok'}>{t.text}</Text>
+// drawTicker draws the ticker's timers as a section of label/value rows,
+// labels in a column, the PR host red on its own row while it fails.
+function drawTicker(els: Elements[RenderSurface], rows: ReturnType<typeof tickerRows>) {
+  const { Box, Text } = els
+  if (rows.length === 0) return null
+  const lw = Math.max(...rows.map(r => r.label.length))
+  return (
+    <Box flexDirection="column">
+      <Box marginTop={1}><Text bold>Ticker</Text></Box>
+      {rows.map(r => (
+        <Text key={'ticker-' + r.label} wrap="truncate-end" dimColor={!r.bad}>
+          {r.label.padEnd(lw + 2)}<Text color={r.bad ? 'error' : undefined}>{r.value}</Text>
+        </Text>
+      ))}
+    </Box>
+  )
 }
 
 // drawContext draws the coordinator's context use, coloured, and the
