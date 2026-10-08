@@ -21,6 +21,10 @@ func TestParseCodexArgs(t *testing.T) {
 		o.model != "gpt-6-luna" || !o.approveForMe || o.yolo || o.prompt != "hi -c" {
 		t.Fatalf("%+v", o)
 	}
+	o = parseCodexArgs([]string{"-c", "a=1", "-a", "on-request", "--", "hi"})
+	if o.approval != "on-request" || o.prompt != "hi" {
+		t.Fatalf("-a: %+v", o)
+	}
 	o = parseCodexArgs([]string{"queue", "--thread=t1", "--message=-x"})
 	if !o.queue || o.thread != "t1" || o.message != "-x" {
 		t.Fatalf("queue: %+v", o)

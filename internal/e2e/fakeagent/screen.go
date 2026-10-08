@@ -296,7 +296,15 @@ func (d *dialog) lines() []string {
 			}
 			out = append(out, fmt.Sprintf("  %s%d. %s", mark, i+1, o))
 		}
-		out = append(out, "  tab to add notes | enter to submit answer | esc to interrupt")
+		// The last of several questions submits them all (T155).
+		switch {
+		case d.of == 1:
+			out = append(out, "  tab to add notes | enter to submit answer | esc to interrupt")
+		case d.at < d.of:
+			out = append(out, "  tab to add notes | enter to submit answer | ←/→ to navigate questions | esc to interrupt")
+		default:
+			out = append(out, "  tab to add notes | enter to submit all | ←/→ to navigate questions | esc to interrupt")
+		}
 	case "question":
 		out = append(out, " ☐ "+d.header, " "+d.question)
 		opts()

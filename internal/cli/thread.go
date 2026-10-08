@@ -1282,7 +1282,8 @@ func (e *Env) answerByKeys(p *project.Project, id string, r *thread.Record, info
 		return err
 	}
 	var ans *agent.Answer
-	if reg, _ := agent.Load(paths.AgentsDir()); reg != nil {
+	reg, _ := agent.Load(paths.AgentsDir())
+	if reg != nil {
 		if a, ok := reg.Get(info.Agent); ok {
 			ans = agent.AnswerOf(a)
 		}
@@ -1299,7 +1300,7 @@ func (e *Env) answerByKeys(p *project.Project, id string, r *thread.Record, info
 	if err := e.call(proto.MethodAgentExplain, proto.SessionIDParams{ID: r.Session}, &x); err != nil {
 		return err
 	}
-	if x.Screen == nil || x.Screen.Rule != ans.Rule {
+	if x.Screen == nil || !menuRule(reg, info.Agent, ans, x.Screen.Rule) {
 		return &tasks.Error{Code: "no-menu", Msg: fmt.Sprintf("no question menu on thread %s's screen; look with tm thread read %s", id, id)}
 	}
 	var screen proto.SessionReadResult
@@ -1332,7 +1333,8 @@ func (e *Env) answerByKeys(p *project.Project, id string, r *thread.Record, info
 	} else if err := keys(strconv.Itoa(choice)); err != nil {
 		return err
 	}
-	answer := option
+	// Codex draws each option's description in a column after it.
+	answer, _, _ := strings.Cut(option, "  ")
 	if isText {
 		if ans.TextKey != "" {
 			time.Sleep(answerPause)
@@ -1379,6 +1381,30 @@ var optionRE = regexp.MustCompile(`^[^0-9A-Za-z]*([0-9])\.\s+(.+)$`)
 
 // dialogLines finds option n of a numbered dialog on screen, and the
 // question above the options.
+// menuRule says whether the screen rule id matched a menu tm answers by
+// keys: the [answer] rule's question menu, or another blocked rule whose
+// reason is question (Codex's "Implement this plan?" and /new's dialog),
+// where a number picks an option too.
+func menuRule(reg *agent.Registry, name string, ans *agent.Answer, id string) bool {
+	if id == ans.Rule {
+		return true
+	}
+	if reg == nil {
+		return false
+	}
+	a, ok := reg.Get(name)
+	m := agent.ManifestOf(a)
+	if !ok || m == nil {
+		return false
+	}
+	for _, r := range m.Rules {
+		if r.ID == id {
+			return r.State == agent.StateBlocked && r.Reason == "question"
+		}
+	}
+	return false
+}
+
 func dialogLines(screen string, n int) (option, question string) {
 	lines := strings.Split(screen, "\n")
 	first := -1

@@ -1,0 +1,17 @@
+# source: T155, codex-cli 0.160.0, tm pane 120x40, blank rows kept; plan mode, the last of two questions ("enter to submit all")
+# want: blocked-question
+---
+› Plan a tiny change: a mul(a, b) function in calc.py. Before planning, ask me two questions with the
+  request_user_input tool (the blocking one), each with two or three options: 1) should mul accept floats, 2) where
+  should its test go.
+
+
+
+  Question 2/2 (1 unanswered)
+  Where should the multiplication test go?
+
+  › 1. Existing test_calc.py (Recommended)  Add a plain assertion alongside the current add/sub checks.
+    2. Separate test file                   Create a dedicated multiplication test file.
+    3. None of the above                    Optionally, add details in notes (tab)
+
+  tab to add notes | enter to submit all | ←/→ to navigate questions | esc to interrupt

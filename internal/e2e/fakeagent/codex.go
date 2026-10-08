@@ -71,6 +71,7 @@ type codexOpts struct {
 	model        string
 	yolo         bool
 	approveForMe bool
+	approval     string // -a: the fake asks in every policy but yolo and --approve-for-me
 	prompt       string
 }
 
@@ -108,6 +109,14 @@ func parseCodexArgs(args []string) codexOpts {
 		}
 		if v, ok := value(&i, arg, "--config"); ok {
 			o.config = append(o.config, v)
+			continue
+		}
+		if v, ok := value(&i, arg, "-a"); ok {
+			o.approval = v
+			continue
+		}
+		if v, ok := value(&i, arg, "--ask-for-approval"); ok {
+			o.approval = v
 			continue
 		}
 		if v, ok := value(&i, arg, "-m"); ok {

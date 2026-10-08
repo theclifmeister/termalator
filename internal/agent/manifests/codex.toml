@@ -38,7 +38,10 @@ command = "codex"
 #   its sandbox with a cleared environment (tm mcp finds the session by
 #   its parents), so only TERMINATR_HOME is passed on; its calls must not
 #   wait on approvals.
-# The coordinator runs with Codex's auto-review (user, 2026-10-07).
+# The coordinator runs with Codex's auto-review (user, 2026-10-07); any
+# other session asks: -a on-request (user, 2026-10-08). Codex 0.160's
+# default for a session started this way refuses an escalation without
+# a dialog (T105), so there was nothing to approve.
 args = [
   "{{if .Resume}}resume{{end}}", "{{if .Resume}}{{.AgentSID}}{{end}}",
   "-c", "check_for_update_on_startup=false",
@@ -49,6 +52,7 @@ args = [
   "-c", 'mcp_servers.terminatr.env_vars=["TERMINATR_HOME"]',
   "-c", 'mcp_servers.terminatr.default_tools_approval_mode="approve"',
   "{{if and (eq .Role \"coordinator\") (not .Yolo)}}--approve-for-me{{end}}",
+  "{{if and (ne .Role \"coordinator\") (not .Yolo)}}-a{{end}}", "{{if and (ne .Role \"coordinator\") (not .Yolo)}}on-request{{end}}",
   # Thread sandbox (T99).
   # A thread runs in permission profile "tm", the access policy
   # (docs/SPEC.md §5.2) on top of Codex's workspace-write: Read is read,
@@ -278,7 +282,9 @@ priority = 40
 region = "bottom:4"
 contains = ["Press enter to confirm or esc to cancel"]
 
-# request_user_input (plan mode): "Question 1/2 (2 unanswered)".
+# request_user_input (plan mode): "Question 1/2 (2 unanswered)". The
+# footer says "enter to submit answer", but "enter to submit all" on the
+# last of several questions (seen live, T155).
 [[rules]]
 id = "blocked-question"
 state = "blocked"
@@ -286,7 +292,7 @@ reason = "question"
 priority = 40
 region = "bottom:16"
 regex = '(?m)^\s*Question \d+/\d+'
-contains = ["enter to submit answer"]
+contains = ["enter to submit"]
 
 # Free text is the last option, "None of the above" (checked live, 0.160):
 # a number submits its option at once, even this one, without notes. So

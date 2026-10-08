@@ -56,28 +56,6 @@ func codexRealEnv(t *testing.T) *Env {
 	return env
 }
 
-// codexOnRequest installs the built-in codex manifest with one argument
-// more, -a on-request. Codex 0.160's default approval policy for a
-// session started this way is granular with sandbox approvals off: an
-// escalation is rejected without a dialog (seen live, T105), so there is
-// no approval to test without it.
-func codexOnRequest(t *testing.T, env *Env) {
-	t.Helper()
-	b, _ := agent.Builtin("codex")
-	const after = `"{{if .Resume}}{{.AgentSID}}{{end}}",` // the resume subcommand comes first
-	m := strings.Replace(string(b), after, after+` "-a", "on-request",`, 1)
-	if m == string(b) {
-		t.Fatal("codex.toml: no resume arguments to put -a after")
-	}
-	dir := filepath.Join(env.Home, "agents")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "codex.toml"), []byte(m), 0o600); err != nil {
-		t.Fatal(err)
-	}
-}
-
 // codexRealStart starts codex in a fresh folder and waits for its
 // composer. tm trusts the folder for the run (-c projects) and answers
 // "Hooks need review" itself; a dialog left on screen fails here.
@@ -176,7 +154,6 @@ func TestRealCodexVersion(t *testing.T) {
 // thread /clear left, which must change nothing.
 func TestRealCodexSession(t *testing.T) {
 	env := codexRealEnv(t)
-	codexOnRequest(t, env)
 	s, dir := codexRealStart(t, env)
 	if i, _ := env.Info(s); i.AgentSID != "" {
 		t.Errorf("a thread id before the first hook: %q", i.AgentSID)
