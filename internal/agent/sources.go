@@ -184,12 +184,15 @@ func (f *StatusFile) Read(data []byte, s *Sources) (StatusReading, error) {
 }
 
 // JSONLTail follows a JSONL file the agent appends to (a transcript or
-// rollout) and turns matching lines into signals.
+// rollout) and turns matching lines into signals, and into usage.
 type JSONLTail struct {
 	// PathField is the hook payload field that names the file, e.g.
 	// Claude's transcript_path.
 	PathField string     `toml:"path_field"`
 	Rules     []TailRule `toml:"rules"`
+	// Usage reads what the agent used from the lines that report it,
+	// for an agent without a mod to report it (POST /v1/usage).
+	Usage *TailUsage `toml:"usage"`
 }
 
 // TailRule matches one line.
@@ -201,12 +204,75 @@ type TailRule struct {
 	Reason     string            `toml:"reason"`
 }
 
-// Line interprets one line. The first matching rule wins.
-func (t *JSONLTail) Line(line []byte) (Signal, bool) {
+// TailUsage is a manifest's [jsonl_tail.usage]: which lines report usage,
+// and the dotted paths of their numbers. A path left empty reads as 0.
+type TailUsage struct {
+	Match         map[string]string `toml:"match"`
+	Input         string            `toml:"input"`
+	Output        string            `toml:"output"`
+	CacheRead     string            `toml:"cache_read"`
+	CacheCreation string            `toml:"cache_creation"`
+	CostUSD       string            `toml:"cost_usd"`
+	// Context is what the request read as context, ContextWindow the
+	// model's window and Model its id, for the context use (§8.6).
+	Context       string `toml:"context"`
+	ContextWindow string `toml:"context_window"`
+	Model         string `toml:"model"`
+	// InputIncludesCache says input counts the cache reads too (OpenAI's
+	// convention); they are taken out, so input is the uncached part.
+	InputIncludesCache bool `toml:"input_includes_cache"`
+	// Key is a path whose value tells one report from a repeat of it
+	// (e.g. a running total): a line with the previous counted line's
+	// key is not counted again.
+	Key string `toml:"key"`
+	// Turn matches the lines that end a turn, each counting one turn;
+	// without it every usage line counts one.
+	Turn map[string]string `toml:"turn"`
+}
+
+func (u *TailUsage) validate() error {
+	if len(u.Match) == 0 {
+		return errors.New("needs match")
+	}
+	if u.Input == "" && u.Output == "" && u.CacheRead == "" && u.CacheCreation == "" && u.CostUSD == "" && u.Context == "" {
+		return errors.New("needs a path for input, output, cache_read, cache_creation, cost_usd or context")
+	}
+	if u.InputIncludesCache && (u.Input == "" || u.CacheRead == "") {
+		return errors.New("input_includes_cache needs input and cache_read")
+	}
+	return nil
+}
+
+// Usage is what one line says the agent used: the same numbers as the
+// mod's POST /v1/usage.
+type Usage struct {
+	Turns         int
+	Input         int64
+	Output        int64
+	CacheRead     int64
+	CacheCreation int64
+	CostUSD       float64
+	Context       int64
+	ContextWindow int64
+	Model         string
+	Key           string // see TailUsage.Key
+}
+
+// TailLine is what one line of the file says: a signal, when a rule
+// matched, and usage, when the line reports some.
+type TailLine struct {
+	Signal    Signal
+	HasSignal bool
+	Usage     *Usage
+}
+
+// Parse interprets one line. The first matching rule wins.
+func (t *JSONLTail) Parse(line []byte) TailLine {
 	var obj map[string]any
 	if json.Unmarshal(line, &obj) != nil {
-		return Signal{}, false
+		return TailLine{}
 	}
+	var out TailLine
 	for _, r := range t.Rules {
 		if !matches(r.Match, obj) {
 			continue
@@ -214,9 +280,70 @@ func (t *JSONLTail) Line(line []byte) (Signal, bool) {
 		if r.TextPrefix != "" && !strings.HasPrefix(textOf(obj, r.TextField), r.TextPrefix) {
 			continue
 		}
-		return Signal{Source: "jsonl_tail", State: r.State, Reason: r.Reason}, true
+		out.Signal, out.HasSignal = Signal{Source: "jsonl_tail", State: r.State, Reason: r.Reason}, true
+		break
 	}
-	return Signal{}, false
+	if t.Usage != nil {
+		out.Usage = t.Usage.read(obj)
+	}
+	return out
+}
+
+// Line interprets one line's signal. The first matching rule wins.
+func (t *JSONLTail) Line(line []byte) (Signal, bool) {
+	l := t.Parse(line)
+	return l.Signal, l.HasSignal
+}
+
+// read is the usage obj reports, or nil: a line that matches but has
+// none of the numbers (Codex's first token_count has no info yet)
+// reports none.
+func (u *TailUsage) read(obj map[string]any) *Usage {
+	turn := len(u.Turn) > 0 && matches(u.Turn, obj)
+	if !matches(u.Match, obj) {
+		if turn {
+			return &Usage{Turns: 1}
+		}
+		return nil
+	}
+	var r Usage
+	found := false
+	num := func(path string) float64 {
+		if path == "" {
+			return 0
+		}
+		v, ok := lookup(obj, path)
+		f, isNum := v.(float64)
+		if !ok || !isNum || f < 0 || f != f || f > 1<<50 {
+			return 0
+		}
+		found = true
+		return f
+	}
+	r.Input, r.Output = int64(num(u.Input)), int64(num(u.Output))
+	r.CacheRead, r.CacheCreation = int64(num(u.CacheRead)), int64(num(u.CacheCreation))
+	r.CostUSD = num(u.CostUSD)
+	r.Context = int64(num(u.Context))
+	if !found {
+		if turn {
+			return &Usage{Turns: 1}
+		}
+		return nil
+	}
+	r.ContextWindow = int64(num(u.ContextWindow))
+	if u.InputIncludesCache {
+		r.Input = max(0, r.Input-r.CacheRead)
+	}
+	if u.Model != "" {
+		r.Model, _ = lookupString(obj, u.Model)
+	}
+	if u.Key != "" {
+		r.Key, _ = lookupString(obj, u.Key)
+	}
+	if turn || len(u.Turn) == 0 {
+		r.Turns = 1
+	}
+	return &r
 }
 
 // textOf returns the text at path: a string, or the first text block of a

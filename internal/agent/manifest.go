@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -343,8 +345,13 @@ func (m *Manifest) validate() error {
 		}
 	}
 	if t := m.JSONLTail; t != nil {
-		if t.PathField == "" || len(t.Rules) == 0 {
-			errs = append(errs, errors.New("jsonl_tail: needs path_field and rules"))
+		if t.PathField == "" || (len(t.Rules) == 0 && t.Usage == nil) {
+			errs = append(errs, errors.New("jsonl_tail: needs path_field, and rules or usage"))
+		}
+		if t.Usage != nil {
+			if err := t.Usage.validate(); err != nil {
+				errs = append(errs, fmt.Errorf("jsonl_tail.usage: %w", err))
+			}
 		}
 		for i, r := range t.Rules {
 			if !valid[r.State] || r.State == "" {
@@ -598,6 +605,12 @@ var funcs = template.FuncMap{
 		}
 		return out
 	},
+	// file is a file's text, e.g. the brief for an agent that takes it
+	// as a value rather than a path: toml (file .BriefPath).
+	"file": readText,
+	// toml quotes a string as a TOML basic string, for a CLI that parses
+	// a -c key=value as TOML (Codex's developer_instructions).
+	"toml": tomlString,
 	// concat joins lists, for building one JSON array from several grants.
 	"concat": func(lists ...[]string) []string {
 		out := []string{}
@@ -606,6 +619,62 @@ var funcs = template.FuncMap{
 		}
 		return out
 	},
+}
+
+// maxFileText bounds what the file template func reads: it ends up in
+// an argv or a generated file.
+const maxFileText = 256 << 10
+
+func readText(path string) (string, error) {
+	if !filepath.IsAbs(path) {
+		return "", fmt.Errorf("file %q: not an absolute path", path)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, maxFileText+1))
+	if err != nil {
+		return "", err
+	}
+	if len(b) > maxFileText {
+		return "", fmt.Errorf("file %s: larger than %d bytes", path, maxFileText)
+	}
+	return string(b), nil
+}
+
+// tomlString is s as a TOML basic string: quotes, backslashes and
+// control characters escaped, invalid UTF-8 replaced.
+func tomlString(s string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range s {
+		switch r {
+		case '"':
+			b.WriteString(`\"`)
+		case '\\':
+			b.WriteString(`\\`)
+		case '\b':
+			b.WriteString(`\b`)
+		case '\t':
+			b.WriteString(`\t`)
+		case '\n':
+			b.WriteString(`\n`)
+		case '\f':
+			b.WriteString(`\f`)
+		case '\r':
+			b.WriteString(`\r`)
+		default:
+			if r < 0x20 || r == 0x7f {
+				fmt.Fprintf(&b, `\u%04X`, r)
+			} else {
+				b.WriteRune(r)
+			}
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
 }
 
 func render(tmpl string, data any) (string, error) {

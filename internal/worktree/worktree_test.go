@@ -36,8 +36,12 @@ func TestCreateRemove(t *testing.T) {
 	if !BranchExists(repo, "tm/demo/t-0001-x") {
 		t.Fatal("no branch")
 	}
-	if cd, err := CommonDir(dir); err != nil || filepath.Base(cd) != ".git" {
-		t.Fatalf("common dir %q %v", cd, err)
+	if d, err := GitDirs(dir); err != nil || filepath.Base(d.CommonDir) != ".git" ||
+		d.GitDir != filepath.Join(d.CommonDir, "worktrees", filepath.Base(dir)) || d.RepoRoot != filepath.Dir(d.CommonDir) {
+		t.Fatalf("git dirs %+v %v", d, err)
+	}
+	if d, err := GitDirs(repo); err != nil || d.GitDir != d.CommonDir {
+		t.Fatalf("main checkout git dirs %+v %v", d, err)
 	}
 	os.WriteFile(filepath.Join(dir, "dirty"), []byte("x"), 0o644)
 	if err := Remove(repo, dir); !errors.Is(err, ErrDirty) {

@@ -477,3 +477,23 @@ type CallerInfo struct {
 	Project string `json:"project,omitempty"`
 	Thread  string `json:"thread,omitempty"`
 }
+
+// MethodToolRun runs one of a thread's tools (report, status, steps,
+// done; docs/SPEC.md §8.6) for `tm mcp`, which serves them to agents
+// that speak MCP. The server tells the thread from the peer pid, as for
+// cli.run, and answers like POST /v1/tools/{name} on the mod socket.
+const MethodToolRun = "tool.run"
+
+// ToolRunParams are the params of tool.run: the tool and its input as
+// the model gave it (a JSON object).
+type ToolRunParams struct {
+	Name  string          `json:"name"`
+	Input json.RawMessage `json:"input,omitempty"`
+}
+
+// ToolRunResult is the answer of tool.run: the tool's text, or with
+// IsError why it was refused, for the model to read.
+type ToolRunResult struct {
+	Text    string `json:"text"`
+	IsError bool   `json:"is_error,omitempty"`
+}

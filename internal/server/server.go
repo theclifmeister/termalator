@@ -513,6 +513,12 @@ func (s *Server) dispatch(req proto.Request, peerPID int) (any, *proto.Error) {
 		res, perr := s.cliRun(p, peerPID)
 		s.kick()
 		return res, perr
+	case proto.MethodToolRun:
+		var p proto.ToolRunParams
+		if err := decodeParams(req.Params, &p); err != nil {
+			return nil, err
+		}
+		return s.toolRunRPC(p, peerPID)
 	case proto.MethodProjectRename:
 		var p proto.ProjectRenameParams
 		if err := decodeParams(req.Params, &p); err != nil {
@@ -816,7 +822,7 @@ func (s *Server) startSession(p proto.SessionStartParams) (any, *proto.Error) {
 		OnExit:    s.sessionExited,
 		// A shell gets agent state while an agent the user started by
 		// hand runs in its foreground (docs/SPEC.md §8.1 Identify).
-		ObservedAgent: session.AgentConfig{Home: home, OnChange: s.agentChanged,
+		ObservedAgent: session.AgentConfig{Home: home, OnChange: s.agentChanged, OnUsage: s.tailUsage,
 			PromptHold: envDuration(envPromptHold), OnPromptResolved: s.promptResolved},
 	}
 	if reg != nil {
