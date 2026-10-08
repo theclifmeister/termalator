@@ -81,6 +81,19 @@ func Slugify(name string) string {
 	return s
 }
 
+// SlugFor turns what the user typed as a project name into its slug
+// (Demo App → demo-app). It refuses text with no letter or digit.
+func SlugFor(input string) (string, error) {
+	s := strings.TrimSpace(input)
+	if ValidSlug(s) {
+		return s, nil
+	}
+	if s = Slugify(s); s == "" {
+		return "", refuse("invalid-project", "%q gives no project slug (it needs a letter or digit)", input)
+	}
+	return s, nil
+}
+
 // invalidSlug refuses s as a slug, suggesting one when s has letters or
 // digits (an upper-case "Demo App" suggests demo-app).
 func invalidSlug(s string) error {
@@ -142,9 +155,9 @@ type Options struct {
 // New creates a project folder with the layout of §5.1. It refuses with
 // project-exists if the slug is taken.
 func New(o Options) (*Project, error) {
-	slug := strings.TrimSpace(o.Slug)
-	if !ValidSlug(slug) {
-		return nil, invalidSlug(slug)
+	slug, err := SlugFor(o.Slug)
+	if err != nil {
+		return nil, err
 	}
 	if strings.ContainsAny(o.Goal, "\r\n") {
 		return nil, refuse("invalid-goal", "the goal must be one line")

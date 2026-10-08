@@ -208,7 +208,7 @@ func statusBar(s proto.SessionInfo, ts *thread.Status, pending bool, cols int, w
 	}
 	left := " " + strings.Join(parts, " · ")
 	if pending {
-		left = pendingHead + `d dashboard · q quit · a project · p ] [ projects · i t , ? · { } b sidebar · | info · tab sidebar keys · r remote control`
+		left = pendingHead + `d dashboard · q quit · a project · n new · p ] [ projects · i t , ? · { } b sidebar · | info · tab sidebar keys · r remote control`
 	}
 	right, rh := statusRight(pending)
 	w := cols - ansi.StringWidth(right) - 1

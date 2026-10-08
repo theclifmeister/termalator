@@ -85,13 +85,17 @@ func TestNewLayout(t *testing.T) {
 	if _, err := New(Options{Slug: "demo-app"}); err == nil || !strings.Contains(err.Error(), "project-exists") {
 		t.Fatalf("second new: %v", err)
 	}
-	for _, bad := range []string{"Demo App", "Demo", "-x", ""} {
+	// typed names become slugs; text with no letter or digit, or a taken slug, is refused
+	if _, err := New(Options{Slug: "Demo App"}); err == nil || !strings.Contains(err.Error(), "project-exists") {
+		t.Fatalf("typed name not slugified: %v", err)
+	}
+	if q, err := New(Options{Slug: "  My Other, App! "}); err != nil || q.Slug != "my-other-app" {
+		t.Fatalf("slugified new: %v %v", q, err)
+	}
+	for _, bad := range []string{"-", "", "!!"} {
 		if _, err := New(Options{Slug: bad}); err == nil || !strings.Contains(err.Error(), "invalid-project") {
 			t.Fatalf("new %q: %v", bad, err)
 		}
-	}
-	if _, err := New(Options{Slug: "Demo App"}); err == nil || !strings.Contains(err.Error(), "try demo-app") {
-		t.Fatalf("no suggestion: %v", err)
 	}
 	if _, err := New(Options{Slug: "x", Repos: []string{filepath.Join(repo, "nope")}}); err == nil || !strings.Contains(err.Error(), "invalid-repo") {
 		t.Fatalf("bad repo: %v", err)

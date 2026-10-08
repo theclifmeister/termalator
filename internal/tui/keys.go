@@ -68,8 +68,8 @@ func ConfigPrefix() string {
 
 // prefixCommands are the dashboard's keys that work after the prefix in a
 // session, as on the dashboard. Those of popupCommands open their popup
-// over the session (Over); p ] [ return to the dashboard and run there.
-var prefixCommands = map[string]bool{"a": true, "p": true, "]": true, "[": true, "i": true, "t": true, ",": true, "?": true}
+// over the session (Over); p ] [ n return to the dashboard and run there.
+var prefixCommands = map[string]bool{"a": true, "p": true, "]": true, "[": true, "i": true, "t": true, ",": true, "?": true, "n": true}
 
 // popupCommands are the prefix commands that open a popup over the
 // session: the project popup, the inbox, the tasks, the settings and the

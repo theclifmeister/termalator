@@ -71,7 +71,7 @@ func TestProjectRename(t *testing.T) {
 	h.expect(1, "human-only", coord, "project", "rename", "demo", "demo2")
 	h.expect(2, "usage", human, "project", "rename", "demo")
 	h.expect(1, "unknown-project", human, "project", "rename", "nope", "demo2")
-	h.expect(1, "invalid-project", human, "project", "rename", "demo", "Demo 2")
+	h.expect(1, "invalid-project", human, "project", "rename", "demo", "!!")
 	h.expect(1, "project-exists", human, "project", "rename", "demo", "other")
 	h.expect(1, "unchanged", human, "project", "rename", "demo", "demo")
 	os.MkdirAll(filepath.Join(h.root, "worktrees", "taken"), 0o755)

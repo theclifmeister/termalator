@@ -427,7 +427,7 @@ func TestStatusLine(t *testing.T) {
 	}
 	// After the prefix: the commands.
 	got = statusLine(info, nil, true, 160, "")
-	if !strings.Contains(got, `d dashboard · q quit · a project · p ] [ projects · i t , ? · { } b sidebar · | info · tab sidebar keys`) || !strings.Contains(got, `prefix again sends it`) {
+	if !strings.Contains(got, `d dashboard · q quit · a project · n new · p ] [ projects · i t , ? · { } b sidebar · | info · tab sidebar keys`) || !strings.Contains(got, `prefix again sends it`) {
 		t.Fatalf("pending status line %q", got)
 	}
 }

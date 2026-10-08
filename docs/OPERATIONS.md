@@ -57,7 +57,7 @@ Agents keep their own files too: Claude Code stores conversations under `~/.clau
 
 ### Renaming a project
 
-`tm project rename <slug> <new-slug>` renames a project's slug, its only name and the name of its folder (lower case: `a-z`, `0-9` and `-`):
+`tm project rename <slug> <new-slug>` renames a project's slug, its only name and the name of its folder (lower case: `a-z`, `0-9` and `-`; a typed name like `My App` becomes `my-app`):
 
 ```sh
 tm thread stop t-0012 --project termilator        # every running thread first; tm says which
