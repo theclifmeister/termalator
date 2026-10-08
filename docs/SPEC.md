@@ -1134,7 +1134,7 @@ Claude Code is pure data (`manifests/claude.toml`), except for the optional sock
      | working | title spinner `◐◑◒◓` (or Braille), or the `✢ Churning… (` spinner line. `esc to interrupt` isn't used: a custom statusline hides it |
      | idle | a `✳` title (ranked below the blockers, because it also shows while blocked), or a `❯` prompt with dim ghost text skipped |
      | unknown | `showing detailed transcript` |
-- **Todo mirroring:** Claude 2.1 has **no `TodoWrite`**. Its list is managed with `TaskCreate`/`TaskUpdate`, which send **diffs**, one item per call:
+- **Todo mirroring:** Claude 2.1 has **no `TodoWrite`**, and enables `TaskCreate`/`TaskUpdate` only for legacy or unset models: the manifest launches every role with `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` (`[launch.env]`) so current models (sonnet/opus/haiku 5.5) report todos too. Its list is managed with `TaskCreate`/`TaskUpdate`, which send **diffs**, one item per call:
   - `PostToolUse(TaskCreate)` → upsert: id `tool_response.task.id`, text `tool_input.subject`, `activeForm`.
   - `PostToolUse(TaskUpdate)` → upsert: id `tool_input.taskId`, plus whichever of `status`, `subject` and `activeForm` changed.
   - `SessionStart(source=clear)` → reset (ids restart at 1); compaction keeps the list.
