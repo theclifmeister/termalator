@@ -106,6 +106,12 @@ input_includes_cache = true
 context = "payload.info.last_token_usage.input_tokens"
 context_window = "payload.info.model_context_window"
 key = "payload.info.total_token_usage.total_tokens"
+# A ChatGPT plan has no dollar cost: the plan limit's use (the primary
+# window, 0-100) is shown in its place (T101). The context is the whole
+# last request's input over the window; Codex's own "context left"
+# takes a 12000-token baseline off both, which isn't done here: the
+# hint and auto-/clear want the real fill.
+plan_percent = "payload.rate_limits.primary.used_percent"
 turn = { type = "event_msg", "payload.type" = "task_complete" }
 
 [[jsonl_tail.rules]]
