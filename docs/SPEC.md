@@ -277,6 +277,7 @@ Every hosted process gets these variables, which is how hooks and the CLI find t
 - `TERMINATR_SESSION=<id>`
 - `TERMINATR_SOCKET`
 - `TERMINATR_BIN` (absolute path of `tm`)
+- `PATH`, in an agent session (coordinator or thread, any agent): the directory holding `TERMINATR_BIN` (the pin, when the server runs from it) goes first, so the session's `tm` is the server's own and never an older one further down `PATH` (Homebrew). The rest of `PATH` stays as the server had it; the directory is not listed twice.
 - `TERMINATR_PROJECT=<slug>` and `TERMINATR_THREAD=<id>`, when they apply
 - `TERMINATR_BAND=off`, in a session with terminatr's mod when `[mods] band = false` (§8.6, **Mods**)
 - `TERMINATR_PANE=off`, in a coordinator session with terminatr's mod unless `[mods] pane = true` (§8.6, **Mods**)
