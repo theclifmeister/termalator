@@ -169,7 +169,11 @@ func projectRename(e *Env, args []string) error {
 	if e.Caller.IsAgent() {
 		return &project.Error{Code: "human-only", Msg: "the user renames projects"}
 	}
-	params := proto.ProjectRenameParams{From: pos[0], To: pos[1]}
+	to, err := project.SlugFor(pos[1])
+	if err != nil {
+		return err
+	}
+	params := proto.ProjectRenameParams{From: pos[0], To: to}
 	var res proto.ProjectRenameResult
 	c, _, err := connect(false)
 	switch {

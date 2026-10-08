@@ -27,6 +27,7 @@ var sessionMenu = []struct{ label, key string }{
 	{"dashboard", "d"},
 	{"quit this console", "q"},
 	{"project popup", "a"},
+	{"new project", "n"},
 	{"switch project", "p"},
 	{"next project", "]"},
 	{"previous project", "["},

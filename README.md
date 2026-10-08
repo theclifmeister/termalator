@@ -74,7 +74,7 @@ To park a project, `tm project pause <slug>` (or Paused in the popup's Settings 
 
 ```sh
 export TERMINATR_HOME=$(mktemp -d)        # leave ~/.terminatr alone while trying it
-./bin/tm project new demo --goal "Try tm"   # the slug is its only name: a-z, 0-9 and -
+./bin/tm project new demo --goal "Try tm"   # the slug is its only name; "Demo App" would become demo-app
 export TERMINATR_PROJECT=demo             # or cd into $TERMINATR_HOME/projects/demo
 ./bin/tm task add "Fix login redirect" --step "Reproduce" --step "Fix"
 ./bin/tm task status T1 started

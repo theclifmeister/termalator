@@ -82,7 +82,8 @@ func TestProjectNewList(t *testing.T) {
 		t.Fatalf("out %q", out)
 	}
 	h.expect(1, "project-exists", human, "project", "new", "demo")
-	h.expect(1, "try my-app", human, "project", "new", "My App")
+	h.expect(1, "project-exists", human, "project", "new", "Demo") // typed names become slugs: demo
+	h.expect(1, "invalid-project", human, "project", "new", "!!")
 	h.expect(1, "human-only", coord, "project", "new", "other")
 	h.expect(2, "usage", human, "project", "new")
 	h.expect(2, "unknown flag", human, "project", "list", "--bogus")
