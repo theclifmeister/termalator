@@ -587,6 +587,40 @@ func (a *manifestAgent) Identify(p ProcessInfo) bool {
 	return false
 }
 
+// launchData is what launch templates see: the LaunchSpec's fields and
+// the manifest's .HookEvents.
+type launchData struct {
+	LaunchSpec
+	HookEvents []string
+}
+
+// HookEvents are the hook events the manifest names, in manifest order,
+// each once: those of [[hooks]], [[todos]] and todos_snapshot.on. A
+// harness that registers hooks per event registers these, and an event
+// none of them names isn't worth a `tm hook` process.
+func (m *Manifest) HookEvents() []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(ev string) {
+		if ev != "" && !seen[ev] {
+			seen[ev] = true
+			out = append(out, ev)
+		}
+	}
+	for _, h := range m.Hooks {
+		add(h.Event)
+	}
+	for _, t := range m.Todos {
+		add(t.Event)
+	}
+	if m.TodoSnapshot != nil {
+		for _, ev := range m.TodoSnapshot.On {
+			add(ev)
+		}
+	}
+	return out
+}
+
 func (a *manifestAgent) Launch(spec LaunchSpec) (Launch, error) {
 	l := a.m.Launch
 	var out Launch
@@ -600,10 +634,11 @@ func (a *manifestAgent) Launch(spec LaunchSpec) (Launch, error) {
 	if spec.Model == "" {
 		spec.Model = a.m.DefaultModel() // none chosen: the manifest's default
 	}
+	data := launchData{spec, a.m.HookEvents()}
 	argv := []string{l.Command}
 	add := func(tmpls []string) error {
 		for _, t := range tmpls {
-			s, err := render(t, spec)
+			s, err := render(t, data)
 			if err != nil {
 				return err
 			}
@@ -635,7 +670,7 @@ func (a *manifestAgent) Launch(spec LaunchSpec) (Launch, error) {
 	out.Kickoff = spec.Kickoff != "" && !spec.Resume && len(l.KickoffArgs) > 0
 	out.Unset = append([]string{}, l.UnsetEnv...)
 	for k, v := range l.Env {
-		s, err := render(v, spec)
+		s, err := render(v, data)
 		if err != nil {
 			return out, err
 		}
@@ -643,7 +678,7 @@ func (a *manifestAgent) Launch(spec LaunchSpec) (Launch, error) {
 	}
 	out.Files = map[string][]byte{}
 	for _, f := range l.Files {
-		s, err := render(f.Template, spec)
+		s, err := render(f.Template, data)
 		if err != nil {
 			return out, fmt.Errorf("launch.files %s: %w", f.Path, err)
 		}
@@ -750,7 +785,7 @@ var funcs = template.FuncMap{
 	"file": readText,
 	// toml quotes a string as a TOML basic string, for a CLI that parses
 	// a -c key=value as TOML (Codex's developer_instructions).
-	"toml": tomlString,
+	"toml": TOMLString,
 	// pathmodes is the file grants of an access policy as a TOML inline
 	// table of path = "read" | "write", for a sandbox that takes one
 	// mode per path (Codex's permission profile filesystem).
@@ -789,7 +824,7 @@ func pathModes(a Access) string {
 	set(a.NoWriteFiles, "read", true)
 	parts := make([]string, len(order))
 	for i, p := range order {
-		parts[i] = tomlString(p) + "=" + tomlString(mode[p])
+		parts[i] = TOMLString(p) + "=" + TOMLString(mode[p])
 	}
 	return "{" + strings.Join(parts, ",") + "}"
 }
@@ -817,9 +852,9 @@ func readText(path string) (string, error) {
 	return string(b), nil
 }
 
-// tomlString is s as a TOML basic string: quotes, backslashes and
+// TOMLString is s as a TOML basic string: quotes, backslashes and
 // control characters escaped, invalid UTF-8 replaced.
-func tomlString(s string) string {
+func TOMLString(s string) string {
 	var b strings.Builder
 	b.WriteByte('"')
 	for _, r := range s {

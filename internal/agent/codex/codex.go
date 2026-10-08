@@ -74,18 +74,8 @@ func (a *Agent) Launch(spec agent.LaunchSpec) (agent.Launch, error) {
 	return l, nil
 }
 
-// Events are the hook events the manifest maps, in manifest order.
-func (a *Agent) Events() []string {
-	var out []string
-	seen := map[string]bool{}
-	for _, h := range a.m.Hooks {
-		if !seen[h.Event] {
-			seen[h.Event] = true
-			out = append(out, h.Event)
-		}
-	}
-	return out
-}
+// Events are the hook events the manifest names (Manifest.HookEvents).
+func (a *Agent) Events() []string { return a.m.HookEvents() }
 
 // HookArgs returns the values of the two -c flags for events:
 //
@@ -98,13 +88,13 @@ func HookArgs(events []string) (hooks, state string, err error) {
 			return "", "", fmt.Errorf("codex: hook event %q is not one word", ev)
 		}
 		t := hookTimeout(ev)
-		h = append(h, fmt.Sprintf(`%s=[{hooks=[{type="command",command=%s,timeout=%d}]}]`, ev, tomlString(HookCommand), t))
+		h = append(h, fmt.Sprintf(`%s=[{hooks=[{type="command",command=%s,timeout=%d}]}]`, ev, agent.TOMLString(HookCommand), t))
 		sum, err := TrustHash(snake(ev), HookCommand, t)
 		if err != nil {
 			return "", "", err
 		}
 		key := fmt.Sprintf("%s:%s:0:0", stateSource, snake(ev))
-		s = append(s, fmt.Sprintf(`%s={trusted_hash=%s}`, tomlString(key), tomlString(sum)))
+		s = append(s, fmt.Sprintf(`%s={trusted_hash=%s}`, agent.TOMLString(key), agent.TOMLString(sum)))
 	}
 	return "hooks={" + strings.Join(h, ",") + "}", "hooks.state={" + strings.Join(s, ",") + "}", nil
 }
@@ -160,10 +150,4 @@ func validEvent(ev string) bool {
 		}
 	}
 	return true
-}
-
-// tomlString quotes s as a TOML basic string; HookCommand and the keys
-// hold no control characters.
-func tomlString(s string) string {
-	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -33,6 +34,19 @@ func threadSpec() LaunchSpec {
 		Cwd: "/w", RuntimeDir: "/run/s1", BriefPath: "/h/.terminatr/projects/p/threads/t-0001/brief.md",
 		Kickoff: "Run tm skill thread.", TMBin: "/bin/tm", Socket: "/run/tm.sock",
 		Access: Access{Read: []string{"/h/.terminatr/projects/p"}, NoWrite: []string{"/h/.terminatr/projects/p"}},
+	}
+}
+
+// TestHookEvents: the events of [[hooks]], [[todos]] and
+// todos_snapshot.on, in that order, each once.
+func TestHookEvents(t *testing.T) {
+	m := &Manifest{
+		Hooks:   []HookMap{{Event: "A"}, {Event: "B"}, {Event: "A"}},
+		Todos:   []TodoMap{{Event: "C"}, {Event: "B"}},
+		Sources: Sources{TodoSnapshot: &TodoSnapshot{On: []string{"D", "A"}}},
+	}
+	if got, want := m.HookEvents(), []string{"A", "B", "C", "D"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("HookEvents = %q, want %q", got, want)
 	}
 }
 
@@ -76,11 +90,21 @@ func TestClaudeLaunch(t *testing.T) {
 	if err := json.Unmarshal(l.Files["claude-plugin/hooks/hooks.json"], &hooks); err != nil {
 		t.Fatalf("hooks.json is not JSON: %v\n%s", err, l.Files["claude-plugin/hooks/hooks.json"])
 	}
-	for _, ev := range []string{"SessionStart", "PermissionRequest", "SubagentStart", "TaskCreated", "SessionEnd"} {
+	for _, ev := range []string{"SessionStart", "PermissionRequest", "SubagentStart", "StopFailure", "SessionEnd"} {
 		h := hooks.Hooks[ev]
 		if len(h) != 1 || h[0].Hooks[0].Command != `"/bin/tm" hook --agent claude` || h[0].Hooks[0].Async || h[0].Hooks[0].Timeout != 5 {
 			t.Fatalf("hooks.json %s = %+v; want one sync command hook with timeout 5", ev, h)
 		}
+	}
+	// Exactly the events the manifest maps (.HookEvents): none that
+	// would spawn tm hook for nothing.
+	events := []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
+		"PreCompact", "PermissionRequest", "Notification", "Stop", "StopFailure", "SubagentStart", "SubagentStop", "SessionEnd"}
+	if got := ManifestOf(a).HookEvents(); !reflect.DeepEqual(got, events) {
+		t.Fatalf("HookEvents\n got %q\nwant %q", got, events)
+	}
+	if got := slices.Sorted(maps.Keys(hooks.Hooks)); !reflect.DeepEqual(got, slices.Sorted(slices.Values(events))) {
+		t.Fatalf("hooks.json registers %q, want %q", got, events)
 	}
 
 	settings := parseSettings(t, l.Files["claude-settings.json"])
