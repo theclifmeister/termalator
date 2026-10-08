@@ -86,6 +86,22 @@ truncate = { prompt = 500, last_assistant_message = 500 }
 [jsonl_tail]
 path_field = "transcript_path"
 
+# Usage (T97, checked on 0.160 rollouts): token_count after each model
+# request; last_token_usage.input_tokens counts the cached input too and
+# is the context. One turn per task_complete. A subagent writes its own
+# rollout, which isn't read. cache_write_input_tokens (0 so far) is left
+# out until it is seen whether input counts it.
+[jsonl_tail.usage]
+match = { type = "event_msg", "payload.type" = "token_count" }
+input = "payload.info.last_token_usage.input_tokens"
+cache_read = "payload.info.last_token_usage.cached_input_tokens"
+output = "payload.info.last_token_usage.output_tokens"
+input_includes_cache = true
+context = "payload.info.last_token_usage.input_tokens"
+context_window = "payload.info.model_context_window"
+key = "payload.info.total_token_usage.total_tokens"
+turn = { type = "event_msg", "payload.type" = "task_complete" }
+
 [[jsonl_tail.rules]]
 match = { type = "event_msg", "payload.type" = "task_started" }
 state = "working"
