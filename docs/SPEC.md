@@ -1191,12 +1191,12 @@ Claude Code is pure data (`manifests/claude.toml`), except for the optional sock
 
 `internal/agent/manifests/codex.toml` plus `internal/agent/codex`, verified against codex-cli 0.160.0 on macOS (T91 research, threads/t-0083/library; T98 live in a tm pane). Codex keeps no status file: state comes from hooks, the rollout and the screen.
 
-- **Launch:** `codex [resume <id>] -c check_for_update_on_startup=false -c 'projects={"<repo root>"={trust_level="trusted"}}' -c developer_instructions="<brief>" -c mcp_servers.terminatr.… [--approve-for-me | -c default_permissions="tm" -c permissions={tm={…}}] [-m <model>] -c hooks={…} -c hooks.state={…} -- <kickoff>`.
+- **Launch:** `codex [resume <id>] -c check_for_update_on_startup=false -c 'projects={"<repo root>"={trust_level="trusted"}}' -c developer_instructions="<brief>" -c mcp_servers.terminatr.… [--approve-for-me | -a on-request -c default_permissions="tm" -c permissions={tm={…}}] [-m <model>] -c hooks={…} -c hooks.state={…} -- <kickoff>`.
   - `resume <id>` is a subcommand, so it goes first. The id can't be chosen ahead: it is learnt from the hooks' `session_id`, and the first hook fires at the first prompt (for a thread, the kickoff in argv). `/clear` gives a new id, which the hooks report.
   - Folder trust is keyed by the **main repo's root**, a linked worktree's too (`.RepoRoot`, else `.Cwd`), and only the inline-table form is honoured: a dotted `projects."<dir>".trust_level` is not. Nothing is written to `~/.codex`.
   - The brief is a value (`toml (file .BriefPath)`); Codex sends it again as developer instructions after `/clear` and `/compact`.
   - `tm mcp` (T104) is the MCP server `terminatr`. Codex starts it outside its sandbox with a cleared environment; `env_vars=["TERMINATR_HOME"]` passes on the one variable it needs for a non-default home, and `default_tools_approval_mode="approve"` keeps its calls from waiting on approvals.
-  - A coordinator runs with `--approve-for-me` (Codex's auto-review); yolo is `--dangerously-bypass-approvals-and-sandbox`.
+  - A coordinator runs with `--approve-for-me` (Codex's auto-review); any other session (a thread, a plain session) with `-a on-request` (T155, user 2026-10-08), so an escalation asks and `tm thread approve` answers it: under 0.160's default policy for a session started this way an escalation is refused without a dialog (T105). Yolo is `--dangerously-bypass-approvals-and-sandbox`, with neither.
   - **A thread's sandbox** (T99) is permission profile `tm`, the access policy (§5.2) on top of Codex's workspace-write, rendered with `pathmodes .Access`:
 
     ```
@@ -1764,7 +1764,7 @@ Built in M3 (`internal/e2e/fakeagent`, a small Go TUI). It behaves like Claude C
 
 - `codex --version` is within `tested_versions`;
 - a first prompt (pasted: Codex reports its thread id only with its first hook), then prompts through `codex queue`;
-- an approval approved and one cancelled with Esc (`Interrupt`), with `-a on-request` added to the launch: under 0.160's default policy an escalation is refused without a dialog;
+- an approval approved and one cancelled with Esc (`Interrupt`), under the manifest's `-a on-request` (§8.6);
 - `/compact` (`PreCompact`; `SessionStart` with source `compact` at the next prompt) and `/clear` (a new thread, which reports itself at its first prompt; the thread left ends a minute later with a `SessionEnd` that must change nothing);
 - a question in plan mode (no hook; the screen rule), and the "Implement this plan?" menu after it;
 - a resume after a server restart (`codex resume <id>`);

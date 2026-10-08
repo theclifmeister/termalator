@@ -111,8 +111,8 @@ func TestHookArgs(t *testing.T) {
 	}
 }
 
-// TestLaunch: the argv of a fresh thread, a resumed one and a
-// coordinator, with the hooks before the kickoff.
+// TestLaunch: the argv of a fresh thread (asking for approvals), a
+// resumed one and a coordinator, with the hooks before the kickoff.
 func TestLaunch(t *testing.T) {
 	a := load(t)
 	dir := t.TempDir()
@@ -141,6 +141,7 @@ func TestLaunch(t *testing.T) {
 		"-c", `mcp_servers.terminatr.args=["mcp"]`,
 		"-c", `mcp_servers.terminatr.env_vars=["TERMINATR_HOME"]`,
 		"-c", `mcp_servers.terminatr.default_tools_approval_mode="approve"`,
+		"-a", "on-request",
 		"-c", `default_permissions="tm"`,
 		"-c", `permissions={tm={extends=":workspace",filesystem={"/h/projects/p"="read","/r/repo/.git"="write","/r/repo/.git/worktrees/wt"="write","/h/config.toml"="read"},network={enabled=true,unix_sockets={"/run/tm.sock"="allow"}}}}`,
 		"-m", "gpt-6-luna",
@@ -182,8 +183,8 @@ func TestLaunch(t *testing.T) {
 	if !slices.Contains(l.Argv, `projects={"/p"={trust_level="trusted"}}`) || !slices.Contains(l.Argv, "--approve-for-me") || l.Kickoff {
 		t.Errorf("coordinator argv %q", l.Argv)
 	}
-	if slices.Contains(l.Argv, `default_permissions="tm"`) {
-		t.Errorf("coordinator got the thread profile: %q", l.Argv)
+	if slices.Contains(l.Argv, `default_permissions="tm"`) || slices.Contains(l.Argv, "on-request") {
+		t.Errorf("coordinator got the thread profile or -a: %q", l.Argv)
 	}
 	spec.Yolo = true
 	l, _ = a.Launch(spec)
@@ -198,13 +199,13 @@ func TestLaunch(t *testing.T) {
 			Filesystem map[string]string
 		}
 	}
-	if _, err := toml.Decode(want[18], &v); err != nil || v.Permissions["tm"].Filesystem["/h/config.toml"] != "read" {
-		t.Errorf("profile %s: %v %+v", want[18], err, v)
+	if _, err := toml.Decode(want[20], &v); err != nil || v.Permissions["tm"].Filesystem["/h/config.toml"] != "read" {
+		t.Errorf("profile %s: %v %+v", want[20], err, v)
 	}
 	spec = agent.LaunchSpec{Role: agent.RoleThread, Cwd: "/r/wt", RuntimeDir: dir, TMBin: "/bin/tm", Socket: "/run/tm.sock", Yolo: true}
 	l, _ = a.Launch(spec)
-	if slices.Contains(l.Argv, `default_permissions="tm"`) {
-		t.Errorf("yolo thread got the profile: %q", l.Argv)
+	if slices.Contains(l.Argv, `default_permissions="tm"`) || slices.Contains(l.Argv, "on-request") {
+		t.Errorf("yolo thread got the profile or -a: %q", l.Argv)
 	}
 }
 
