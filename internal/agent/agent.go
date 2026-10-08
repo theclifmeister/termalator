@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/guard"
@@ -295,6 +296,47 @@ type Modder interface {
 	// ModsMinVersion is the oldest agent version the mod was tested on;
 	// the core leaves it out for an older one, or one it can't read.
 	ModsMinVersion() string
+	// ModRequired is true when the agent has no fallback without the
+	// mod (no command hooks): the core then loads it whatever [mods]
+	// enabled says, which gates only optional mods. The version check
+	// still applies.
+	ModRequired() bool
+}
+
+// DoctorCheck is one finding of a Doctor agent: Warn is false for ok.
+type DoctorCheck struct {
+	Name, Detail string
+	Warn         bool
+}
+
+// Doctor is an Agent with checks of its own beside the manifest's
+// (tm doctor, group "plugins"), e.g. Claude Code's unsafe plugins. look
+// finds a program on PATH and run runs one, as doctor's Deps do.
+type Doctor interface {
+	DoctorChecks(look func(string) (string, error), run func(dir, name string, args ...string) (string, error)) []DoctorCheck
+}
+
+// ModNote is the settings text on which agents the mods setting is for:
+// "Claude Code 2.1.289", for each optional Modder in reg, joined with
+// "; "; empty when there is none.
+func ModNote(reg *Registry) string {
+	if reg == nil {
+		return ""
+	}
+	var parts []string
+	for _, n := range reg.Names() {
+		a, _ := reg.Get(n)
+		m, ok := a.(Modder)
+		if !ok || m.ModRequired() {
+			continue
+		}
+		name := n
+		if mf := ManifestOf(a); mf != nil && mf.Display != "" {
+			name = mf.Display
+		}
+		parts = append(parts, name+" "+m.ModsMinVersion())
+	}
+	return strings.Join(parts, "; ")
 }
 
 // Rule is one screen rule. It is plain data, evaluated by package detect.

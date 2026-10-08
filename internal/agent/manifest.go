@@ -29,6 +29,10 @@ type Manifest struct {
 	ManifestVersion int    `toml:"manifest_version"`
 	Name            string `toml:"name"`
 	Display         string `toml:"display"`
+	// RoleFiles are the names, besides AGENTS.md, under which the
+	// coordinator's role file is linked in the project folder for this
+	// agent to read (Claude Code: "CLAUDE.md").
+	RoleFiles []string `toml:"role_files"`
 
 	Identify struct {
 		Argv0       []string `toml:"argv0"`        // basenames of argv[0] after unwrapping

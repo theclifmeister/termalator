@@ -9,6 +9,7 @@
 manifest_version = 1
 name = "claude"
 display = "Claude Code"
+role_files = ["CLAUDE.md"]
 tested_versions = ["2.1."]
 
 # Read from every hook event, latest wins: /clear rotates Claude's id.

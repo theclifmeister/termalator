@@ -17,6 +17,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	_ "github.com/theclifmeister/terminatr/internal/agent/claude" // registers the Go agent (Doctor)
 	"github.com/theclifmeister/terminatr/internal/codehost"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"

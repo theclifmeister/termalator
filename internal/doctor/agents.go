@@ -70,7 +70,7 @@ func agentCheck(d Deps, name, source string, m *agent.Manifest) Check {
 	return c
 }
 
-// Sandbox checks what Claude Code's sandbox needs, which holds a thread's
+// Sandbox checks what the agents' sandbox needs, which holds a thread's
 // read-only access to the project folder (docs/SPEC.md §5.2). Warnings
 // only: the permission rules still apply without it.
 func Sandbox(d Deps) []Check {
@@ -98,7 +98,7 @@ func Sandbox(d Deps) []Check {
 			hint = " (install socat)"
 		}
 		out = append(out, Check{Group: g, Name: n, Status: Warn,
-			Detail: "not found" + hint + "; Claude's sandbox can't run, so threads rely on permission rules alone"})
+			Detail: "not found" + hint + "; the agents' sandbox can't run, so threads rely on permission rules alone"})
 	}
 	return out
 }

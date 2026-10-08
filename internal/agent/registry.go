@@ -116,6 +116,30 @@ func Builtin(name string) ([]byte, bool) {
 	return b, err == nil
 }
 
+// RoleFiles is the union of the agents' role_files, sorted: the extra
+// names the coordinator's role file is linked under. reg nil means the
+// built-in manifests.
+func RoleFiles(reg *Registry) []string {
+	if reg == nil {
+		reg, _ = Load("")
+	}
+	var out []string
+	if reg == nil {
+		return nil
+	}
+	for _, n := range reg.Names() {
+		if m := ManifestOf(reg.agents[n]); m != nil {
+			for _, f := range m.RoleFiles {
+				if !slices.Contains(out, f) {
+					out = append(out, f)
+				}
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // GuardSecrets is every known agent's [guard] secrets, resolved: the
 // built-in manifests' and reg's (nil: the built-ins only), so a user
 // manifest replacing a built-in one doesn't drop what it protected.

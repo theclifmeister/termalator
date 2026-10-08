@@ -9,7 +9,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theclifmeister/terminatr/internal/agent/claude"
 	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/thread"
@@ -239,11 +238,11 @@ type settingsView struct {
 var settingsTabs = [2]string{"General", "All projects"}
 
 func (m *dash) openSettings() {
-	sv := &settingsView{tabs: [2]settingsList{{rows: globalSettings()}, {rows: allProjectsSettings()}}}
+	sv := &settingsView{tabs: [2]settingsList{{rows: globalSettings(m.src.ModsNote())}, {rows: allProjectsSettings()}}}
 	m.push(sv)
 }
 
-func globalSettings() []setting {
+func globalSettings(note string) []setting {
 	return []setting{
 		{label: "Prefix key", help: "Starts the session commands, written prefix+<key> in hints. Inside tmux, which takes ctrl+b, pick another. Enter, then press the new one.",
 			value:  func(m *dash) string { return m.prefix },
@@ -298,7 +297,7 @@ func globalSettings() []setting {
 				m.data.ContextHint = next
 				return m.setSetting("ui", "context_hint", next, "context hint "+contextHintWords(next))
 			}},
-		{label: "Mods", help: "Load terminatr's mod in Claude panes (early access). Needs Claude Code " + claude.ModsMinVersion + " or newer. Applies to sessions launched after the change.",
+		{label: "Mods", help: "Load terminatr's mod in agent panes (early access). Needs " + note + " or newer. Applies to sessions launched after the change.",
 			value: func(m *dash) string { return onOff(m.data.Mods) },
 			change: func(m *dash) tea.Cmd {
 				on := !m.data.Mods
