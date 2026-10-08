@@ -26,7 +26,7 @@ type keyGroup struct {
 var sessionKeys = []keyHelp{
 	{"prefix+d", "back to the dashboard, on every console of the view (the session keeps running); on the dashboard it closes the popups"},
 	{"prefix+q", "quit this console, from anywhere: a session, the dashboard, a popup, the sidebar, tm attach (the server, the sessions and other consoles keep running)"},
-	{"prefix+a i t , ?", "the project popup, settings or help, over the session or the dashboard; t and i are the project popup on its Tasks and Inbox tabs; esc closes it"},
+	{"prefix+a i t , ? n", "the project popup, settings, help or the new-project prompt, over the session or the dashboard; t and i are the project popup on its Tasks and Inbox tabs; esc closes it"},
 	{"prefix+p ] [", "the project switcher, the next / previous project's coordinator"},
 	{"prefix+{ } b", "narrow / widen the sidebar, or make it a slim strip"},
 	{"prefix+|", "show or hide the panel on the right: beside a thread's pane its info panel (task, steps, state, PR, last report; drag its border to resize it), on the dashboard the details panel"},

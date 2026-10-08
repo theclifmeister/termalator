@@ -427,7 +427,7 @@ func TestStatusLine(t *testing.T) {
 	}
 	// After the prefix: the commands.
 	got = statusLine(info, nil, true, 160, "")
-	if !strings.Contains(got, `d dashboard · q quit · a project · p ] [ projects · i t , ? · { } b sidebar · | info · tab sidebar keys`) || !strings.Contains(got, `prefix again sends it`) {
+	if !strings.Contains(got, `d dashboard · q quit · a project · n new · p ] [ projects · i t , ? · { } b sidebar · | info · tab sidebar keys`) || !strings.Contains(got, `prefix again sends it`) {
 		t.Fatalf("pending status line %q", got)
 	}
 }
@@ -736,7 +736,7 @@ func TestPromptWraps(t *testing.T) {
 	m.setData(src.data)
 	press(m, "n")
 	m.top().(*inputView).text = long
-	if out := screen(m); !strings.Contains(out, "Its slug (a-z, 0-9 and -):") || !strings.Contains(out, "│ /var/folders") {
+	if out := screen(m); !strings.Contains(out, "Its name (becomes a lower-case slug") || !strings.Contains(out, "│ /var/folders") {
 		t.Fatalf("prompt:\n%s", out)
 	}
 }
