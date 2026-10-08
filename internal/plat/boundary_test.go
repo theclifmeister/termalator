@@ -34,9 +34,6 @@ var allowed = map[string][]string{
 	"internal/cli/doctor.go":                  {goos},
 	"internal/cli/server.go":                  {"syscall", goos},
 	"internal/cli/servercli.go":               {goos},
-	"internal/cli/tty_bsd.go":                 {"golang.org/x/sys/unix"},
-	"internal/cli/tty_linux.go":               {"golang.org/x/sys/unix"},
-	"internal/cli/tty_unix.go":                {"golang.org/x/sys/unix"},
 	"internal/cli/update.go":                  {goos},
 	"internal/doctor/doctor.go":               {goos},
 	"internal/e2e/apps/fullscreen/main.go":    {"syscall", "golang.org/x/sys/unix"},
@@ -49,7 +46,6 @@ var allowed = map[string][]string{
 	"internal/e2e/fakeagent/script.go":        {"syscall"},
 	"internal/e2e/fakeagent/termios_bsd.go":   {"golang.org/x/sys/unix"},
 	"internal/e2e/fakeagent/termios_linux.go": {"golang.org/x/sys/unix"},
-	"internal/e2e/input.go":                   {"syscall"},
 	"internal/e2e/stale.go":                   {"syscall"},
 	"internal/e2e/window.go":                  {"syscall"},
 	"internal/pty/procargs_darwin.go":         {"golang.org/x/sys/unix"},
@@ -64,7 +60,6 @@ var allowed = map[string][]string{
 	"internal/service/launchd.go":             {goos},
 	"internal/session/proc_unix.go":           {"syscall"},
 	"internal/tui/infopanel.go":               {goos},
-	"internal/tui/signals_unix.go":            {"syscall"},
 	"internal/update/update.go":               {goos},
 }
 
