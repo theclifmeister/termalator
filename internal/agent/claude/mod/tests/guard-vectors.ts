@@ -223,7 +223,7 @@ export default {
  {"rules": "thread-casefold", "tool": "Read", "input": {"file_path": "/h/.SSH/id_rsa"}, "rule": "credentials", "summary": "Read of /h/.SSH/id_rsa"},
  {"rules": "thread-casefold", "tool": "Bash", "input": {"command": "cat ~/.Aws/credentials"}, "rule": "credentials", "summary": "cat of /h/.Aws/credentials"},
  {"rules": "thread-casefold", "tool": "Glob", "input": {"pattern": "/H/*"}, "rule": null},
- {"rules": "thread-casefold", "tool": "Glob", "input": {"pattern": "/h/.Config/*"}, "rule": "credentials", "summary": "Glob of /h/.Config/*"},
+ {"rules": "thread-casefold", "tool": "Glob", "input": {"pattern": "/h/.Config/*"}, "rule": "credentials", "summary": "Glob of /h/.Config/?"},
  {"rules": "thread", "tool": "Write", "input": {"file_path": "/h/.terminatr/worktrees/demo/T-0001-FIX/main.go"}, "rule": "worktree-only", "summary": "Write of /h/.terminatr/worktrees/demo/T-0001-FIX/main.go"},
  {"rules": "thread-casefold", "tool": "Write", "input": {"file_path": "/h/.terminatr/worktrees/demo/T-0001-FIX/main.go"}, "rule": null},
  {"rules": "thread-casefold", "tool": "Write", "input": {"file_path": "/h/.terminatr/worktrees/demo/t-0002-other/main.go"}, "rule": "worktree-only", "summary": "Write of /h/.terminatr/worktrees/demo/t-0002-other/main.go"}
