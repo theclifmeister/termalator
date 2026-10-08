@@ -81,6 +81,12 @@ keep = [
 ]
 truncate = { prompt = 500, last_assistant_message = 500 }
 
+# The guard judges each tool call from its input: Bash's command, or
+# apply_patch's patch text (tool_input.command).
+[[hook.keep_when]]
+match = { hook_event_name = "PreToolUse" }
+fields = ["tool_input"]
+
 # The rollout (~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl): every turn
 # starts with task_started and ends with task_complete.
 [jsonl_tail]
@@ -135,6 +141,10 @@ state = "working"
 event = "PreToolUse"
 state = "working"
 transient = true
+# The server's guard (internal/guard) judges each call, and a refusal is
+# the hook's answer, before any approval (Codex 0.160 honours Claude's
+# deny output). Allowed: no output, so Codex's own policy decides.
+respond = '''{{with .Guard}}{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":{{json .Message}}}}{{end}}'''
 
 [[hooks]]
 event = "PostToolUse"

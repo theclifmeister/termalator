@@ -12,6 +12,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/guard"
 )
 
 func load(t *testing.T) *Agent {
@@ -185,7 +186,7 @@ func TestLaunch(t *testing.T) {
 // TestHooks: hook events move the state as the manifest says.
 func TestHooks(t *testing.T) {
 	a := load(t)
-	ctx := func() ([]byte, error) { return []byte("ctx \"line\""), nil }
+	ctx := agent.HookEnv{Context: func() ([]byte, error) { return []byte("ctx \"line\""), nil }}
 	for _, c := range []struct {
 		event   string
 		payload map[string]any
@@ -230,5 +231,33 @@ func TestHooks(t *testing.T) {
 	sigs, _, _ := a.Hook(agent.HookEvent{Event: "SubagentStart", Payload: map[string]any{"agent_id": "a1"}}, ctx)
 	if len(sigs) != 1 || sigs[0].Counter != "+bg" || sigs[0].CounterKey != "a1" {
 		t.Errorf("SubagentStart: %+v", sigs)
+	}
+}
+
+// TestGuard: PreToolUse keeps the tool's input through the hook's trim,
+// and the guard's refusal is answered as a deny that Codex honours.
+func TestGuard(t *testing.T) {
+	a := load(t)
+	payload := a.Sources().Hook.Trim(map[string]any{
+		"hook_event_name": "PreToolUse", "session_id": "x", "tool_name": "apply_patch",
+		"tool_input": map[string]any{"command": "*** Begin Patch\n*** Add File: /etc/x\n"},
+	})
+	var judged string
+	env := agent.HookEnv{Guard: func(tool string, input map[string]any) *guard.Denial {
+		judged = tool + ": " + input["command"].(string)
+		return &guard.Denial{Rule: "worktree-only", Message: "terminatr guard (worktree-only): no", Summary: "apply_patch"}
+	}}
+	_, res, err := a.Hook(agent.HookEvent{Event: "PreToolUse", Payload: payload}, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(judged, "apply_patch: *** Begin Patch") {
+		t.Errorf("judged %q", judged)
+	}
+	if want := `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"terminatr guard (worktree-only): no"}}`; string(res.Stdout) != want {
+		t.Errorf("deny %s", res.Stdout)
+	}
+	if p := a.Sources().Hook.Trim(map[string]any{"hook_event_name": "PostToolUse", "tool_input": map[string]any{}}); p["tool_input"] != nil {
+		t.Error("tool_input kept beyond PreToolUse")
 	}
 }
