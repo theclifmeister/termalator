@@ -123,6 +123,10 @@ func TestLaunch(t *testing.T) {
 	spec := agent.LaunchSpec{
 		Role: agent.RoleThread, SessionID: "s-1", Cwd: "/r/wt", RepoRoot: "/r/repo", GitDir: "/r/repo/.git/worktrees/wt",
 		RuntimeDir: dir, BriefPath: brief, Kickoff: "Start.", TMBin: "/bin/tm", Socket: "/run/tm.sock", Model: "gpt-6-luna",
+		Access: agent.Access{
+			Read: []string{"/h/projects/p"}, NoWrite: []string{"/h/projects/p"}, NoWriteFiles: []string{"/h/config.toml"},
+			Write: []string{"/r/repo/.git", "/r/repo/.git/worktrees/wt"},
+		},
 	}
 	l, err := a.Launch(spec)
 	if err != nil {
@@ -137,6 +141,8 @@ func TestLaunch(t *testing.T) {
 		"-c", `mcp_servers.terminatr.args=["mcp"]`,
 		"-c", `mcp_servers.terminatr.env_vars=["TERMINATR_HOME"]`,
 		"-c", `mcp_servers.terminatr.default_tools_approval_mode="approve"`,
+		"-c", `default_permissions="tm"`,
+		"-c", `permissions={tm={extends=":workspace",filesystem={"/h/projects/p"="read","/r/repo/.git"="write","/r/repo/.git/worktrees/wt"="write","/h/config.toml"="read"},network={enabled=true,unix_sockets={"/run/tm.sock"="allow"}}}}`,
 		"-m", "gpt-6-luna",
 		"-c", hooks, "-c", state,
 		"--", "Start.",
@@ -176,10 +182,29 @@ func TestLaunch(t *testing.T) {
 	if !slices.Contains(l.Argv, `projects={"/p"={trust_level="trusted"}}`) || !slices.Contains(l.Argv, "--approve-for-me") || l.Kickoff {
 		t.Errorf("coordinator argv %q", l.Argv)
 	}
+	if slices.Contains(l.Argv, `default_permissions="tm"`) {
+		t.Errorf("coordinator got the thread profile: %q", l.Argv)
+	}
 	spec.Yolo = true
 	l, _ = a.Launch(spec)
 	if slices.Contains(l.Argv, "--approve-for-me") || !slices.Contains(l.Argv, "--dangerously-bypass-approvals-and-sandbox") {
 		t.Errorf("yolo coordinator argv %q", l.Argv)
+	}
+
+	// The profile parses as TOML; a yolo thread has no sandbox to shape.
+	var v struct {
+		Permissions map[string]struct {
+			Extends    string
+			Filesystem map[string]string
+		}
+	}
+	if _, err := toml.Decode(want[18], &v); err != nil || v.Permissions["tm"].Filesystem["/h/config.toml"] != "read" {
+		t.Errorf("profile %s: %v %+v", want[18], err, v)
+	}
+	spec = agent.LaunchSpec{Role: agent.RoleThread, Cwd: "/r/wt", RuntimeDir: dir, TMBin: "/bin/tm", Socket: "/run/tm.sock", Yolo: true}
+	l, _ = a.Launch(spec)
+	if slices.Contains(l.Argv, `default_permissions="tm"`) {
+		t.Errorf("yolo thread got the profile: %q", l.Argv)
 	}
 }
 

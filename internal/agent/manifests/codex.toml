@@ -44,6 +44,18 @@ args = [
   "-c", 'mcp_servers.terminatr.env_vars=["TERMINATR_HOME"]',
   "-c", 'mcp_servers.terminatr.default_tools_approval_mode="approve"',
   "{{if and (eq .Role \"coordinator\") (not .Yolo)}}--approve-for-me{{end}}",
+  # Thread sandbox (T99).
+  # A thread runs in permission profile "tm", the access policy
+  # (docs/SPEC.md §5.2) on top of Codex's workspace-write: Read is read,
+  # Write is write, NoWrite and NoWriteFiles are read ("deny" would block
+  # reading too). A linked worktree's git dirs need write by name: Codex
+  # carves git dirs out of every broader grant, and --add-dir and
+  # writable_roots don't reopen them. tm.sock needs the network on, which
+  # also opens HTTPS (user, 2026-10-07: open for now). Yolo has no
+  # sandbox to shape.
+  "{{if and (eq .Role \"thread\") (not .Yolo)}}-c{{end}}", "{{if and (eq .Role \"thread\") (not .Yolo)}}default_permissions=\"tm\"{{end}}",
+  "{{if and (eq .Role \"thread\") (not .Yolo)}}-c{{end}}",
+  '''{{if and (eq .Role "thread") (not .Yolo)}}permissions={tm={extends=":workspace",filesystem={{pathmodes .Access}},network={enabled=true,unix_sockets={ {{- toml .Socket}}="allow"}}}}{{end}}''',
 ]
 yolo_args = ["--dangerously-bypass-approvals-and-sandbox"]
 model_args = ["-m", "{{.Model}}"]

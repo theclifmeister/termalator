@@ -80,6 +80,22 @@ func TestTOMLString(t *testing.T) {
 	}
 }
 
+// TestPathModes: one mode per path; a NoWrite beats a Write, a Write
+// beats a Read.
+func TestPathModes(t *testing.T) {
+	a := Access{
+		Read: []string{"/p", "/g"}, Write: []string{"/g", "/w", "/n"},
+		NoWrite: []string{"/p", "/n"}, NoWriteFiles: []string{`/c "x".toml`},
+	}
+	want := `{"/p"="read","/g"="write","/w"="write","/n"="read","/c \"x\".toml"="read"}`
+	if got := pathModes(a); got != want {
+		t.Errorf("pathModes = %s, want %s", got, want)
+	}
+	if got := pathModes(Access{}); got != "{}" {
+		t.Errorf("empty policy = %s", got)
+	}
+}
+
 // codexUsage is the [jsonl_tail] a Codex manifest would carry: usage
 // from event_msg/token_count, one turn per task_complete.
 const codexUsage = `manifest_version = 1
