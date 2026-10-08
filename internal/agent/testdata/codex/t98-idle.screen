@@ -1,0 +1,20 @@
+# source: T98, codex-cli 0.160.0, tm pane 120x40, blank rows kept
+# want: idle-composer
+# also: idle-empty-box
+# dim: Ask Codex to do anything
+---
+  >_ OpenAI Codex (v0.160.0)
+     /private/tmp/claude-501/t134/wt
+
+  Hello again, carbon-based collaborator.
+
+› Reply with just READY.
+
+• READY
+
+  Worked for 2s • 17:04
+
+› Ask Codex to do anything
+
+  GPT-6-Luna medium · /private/tmp/claude-501/t134/wt
+  ? for shortcuts                                                                             ⚠ 2 warnings · f2 to view

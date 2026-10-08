@@ -1,0 +1,16 @@
+# source: T98, codex-cli 0.160.0, tm pane 120x40, blank rows kept; plan mode
+# want: blocked-question
+---
+• Exploring
+  └ List rg --files -g '!*node_modules*' -g '!*.lock'
+    + Show details
+
+  Question 1/1 (1 unanswered)
+  Which colour should the setting use?
+
+  › 1. Red                 Use red as the setting colour.
+    2. Green               Use green as the setting colour.
+    3. Blue (Recommended)  Use blue as the setting colour.
+    4. None of the above   Optionally, add details in notes (tab)
+
+  tab to add notes | enter to submit answer | esc to interrupt

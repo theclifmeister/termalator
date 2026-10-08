@@ -1,0 +1,27 @@
+# source: T91 (threads/t-0083/library/T91-codex-screens.md), codex-cli 0.160.0, tm pane 120x40, blank rows dropped; plan mode
+# want: blocked-question
+---
+• Pick a color
+  • Red
+  • Green
+  • Blue
+• MANGO
+  Worked for 5s • 22:31
+› Plan a tiny change: add a colour setting. Before planning, ask me with your question tool to pick red, green or blue.
+• I’ll first inspect the project to see where a colour setting would fit, then I’ll ask you to choose a colour before
+  drafting the plan. MANGO
+• Ran pwd && ls -la
+  └ -rw-------@  1 clifford  wheel    2 Oct  6 22:24 g.txt
+    -rw-------@  1 clifford  wheel    2 Oct  6 22:26 h.txt
+    -rw-------@  1 clifford  wheel    2 Oct  6 22:28 q.txt
+    + 7 lines (ctrl+t to expand)
+• Exploring
+  └ List rg --files -g '!*node_modules*' -g '!*.lock'
+    + Show details
+  Question 1/1 (1 unanswered)
+  Which colour should the setting use?
+  › 1. Red                 Use red as the setting colour.
+    2. Green               Use green as the setting colour.
+    3. Blue (Recommended)  Use blue as the setting colour.
+    4. None of the above   Optionally, add details in notes (tab)
+  tab to add notes | enter to submit answer | esc to interrupt

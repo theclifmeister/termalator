@@ -1,0 +1,23 @@
+# source: T91 (threads/t-0083/library/T91-codex-screens.md), codex-cli 0.160.0, tm pane 120x40, blank rows dropped; /hooks, opened by the user: no rule
+# want: none
+---
+  >_ OpenAI Codex (v0.160.0)
+     /private/tmp/claude-501/t83/wt
+  Welcome to the neighborhood. Lots of characters here.
+  Hooks
+  Lifecycle hooks from config and enabled plugins.
+  ⚠ 16 hooks need review before they can run.
+  Issues
+  ⚠ clamping SessionEnd hook timeout to 3s in /<session-flags>/config.toml
+  ⚠ clamping Interrupt hook timeout to 3s in /<session-flags>/config.toml
+  Event                 Installed   Active      Review      Description
+› PreToolUse            2           1           1           Before a tool executes
+  PermissionRequest     2           1           1           When permission is requested
+  PostToolUse           3           1           2           After a tool executes
+  PreCompact            1           0           1           Before context compaction
+  PostCompact           1           0           1           After context compaction
+  SessionStart          4           1           3           When a new session starts
+  SessionEnd            1           0           1           Right before a session ends
+  UserPromptSubmit      3           1           2           When the user submits a prompt
+↓
+  t trust all · enter review · esc close

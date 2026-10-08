@@ -208,24 +208,37 @@ func TestLaunch(t *testing.T) {
 	}
 }
 
-// TestHooks: hook events move the state as the manifest says.
+// TestHooks: every hook event the manifest maps moves the state as it
+// says.
 func TestHooks(t *testing.T) {
 	a := load(t)
 	ctx := agent.HookEnv{Context: func() ([]byte, error) { return []byte("ctx \"line\""), nil }}
-	for _, c := range []struct {
+	type hookCase struct {
 		event   string
 		payload map[string]any
 		state   agent.State
 		reason  string
-	}{
+	}
+	cases := []hookCase{
+		{"SessionStart", map[string]any{"source": "startup"}, agent.StateIdle, ""},
 		{"UserPromptSubmit", nil, agent.StateWorking, ""},
 		{"PreToolUse", map[string]any{"tool_name": "Bash"}, agent.StateWorking, ""},
+		{"PostToolUse", map[string]any{"tool_name": "Bash"}, agent.StateWorking, ""},
+		{"PreCompact", map[string]any{"trigger": "manual"}, agent.StateWorking, ""},
 		{"PermissionRequest", map[string]any{"tool_name": "Bash"}, agent.StateBlocked, "permission"},
 		{"Interrupt", nil, agent.StateIdle, "interrupted"},
 		{"Stop", nil, agent.StateIdle, ""},
+		{"SubagentStart", map[string]any{"agent_id": "a1"}, "", ""},
+		{"SubagentStop", map[string]any{"agent_id": "a1"}, "", ""},
 		{"SessionEnd", map[string]any{"reason": "exit"}, agent.StateExited, ""},
 		{"SessionEnd", map[string]any{"reason": "clear"}, "", ""},
-	} {
+	}
+	for _, ev := range a.Events() {
+		if !slices.ContainsFunc(cases, func(c hookCase) bool { return c.event == ev }) {
+			t.Errorf("the manifest maps %s, which this test doesn't send", ev)
+		}
+	}
+	for _, c := range cases {
 		p := map[string]any{"session_id": "sid-1"}
 		for k, v := range c.payload {
 			p[k] = v
@@ -253,9 +266,37 @@ func TestHooks(t *testing.T) {
 	if err != nil || string(res.Stdout) != `{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"ctx \"line\""}}` {
 		t.Errorf("SessionStart: %s %v", res.Stdout, err)
 	}
-	sigs, _, _ := a.Hook(agent.HookEvent{Event: "SubagentStart", Payload: map[string]any{"agent_id": "a1"}}, ctx)
-	if len(sigs) != 1 || sigs[0].Counter != "+bg" || sigs[0].CounterKey != "a1" {
-		t.Errorf("SubagentStart: %+v", sigs)
+	for ev, want := range map[string]string{"SubagentStart": "+bg", "SubagentStop": "-bg"} {
+		sigs, _, _ := a.Hook(agent.HookEvent{Event: ev, Payload: map[string]any{"agent_id": "a1"}}, ctx)
+		if !slices.ContainsFunc(sigs, func(s agent.Signal) bool { return s.Counter == want && s.CounterKey == "a1" }) {
+			t.Errorf("%s: %+v", ev, sigs)
+		}
+	}
+}
+
+// TestRollout: the rollout rules of the real manifest, on lines in the
+// shape of a 0.160 rollout: a turn starts, ends, or is aborted by Esc;
+// anything else is no signal.
+func TestRollout(t *testing.T) {
+	tail := load(t).Sources().JSONLTail
+	if tail == nil {
+		t.Fatal("no [jsonl_tail]")
+	}
+	for _, c := range []struct {
+		line   string
+		state  agent.State
+		reason string
+	}{
+		{`{"timestamp":"2026-10-06T20:18:01.002Z","type":"event_msg","payload":{"type":"task_started","model_context_window":258400}}`, agent.StateWorking, ""},
+		{`{"timestamp":"2026-10-06T20:18:09.300Z","type":"event_msg","payload":{"type":"task_complete","last_agent_message":"Done."}}`, agent.StateIdle, ""},
+		{`{"timestamp":"2026-10-06T20:18:09.300Z","type":"event_msg","payload":{"type":"turn_aborted","reason":"interrupted"}}`, agent.StateIdle, "interrupted"},
+		{`{"timestamp":"2026-10-06T20:18:09.301Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[]}}`, "", ""},
+		{`{"type":"event_msg","payload":{"type":"agent_message","message":"task_complete"}}`, "", ""},
+	} {
+		sig, ok := tail.Line([]byte(c.line))
+		if ok != (c.state != "") || sig.State != c.state || sig.Reason != c.reason {
+			t.Errorf("%s: %+v %v, want %q %q", c.line, sig, ok, c.state, c.reason)
+		}
 	}
 }
 
