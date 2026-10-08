@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"unicode"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
@@ -42,6 +43,9 @@ const stateSource = "/<session-flags>/config.toml"
 type Agent struct {
 	agent.Agent
 	m *agent.Manifest
+
+	mu   sync.Mutex
+	left map[string]string // tm session -> the thread a /clear left (Prompt)
 }
 
 // Manifest exposes the manifest (agent.ManifestOf).

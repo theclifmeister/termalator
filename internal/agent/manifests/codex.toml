@@ -73,7 +73,11 @@ about = "older balanced model for straightforward work"
 # within seconds when idle; mid-turn it is held, out of sight, and runs
 # as its own turn once the turn ends; a draft in the composer stays. A
 # queued slash command (/clear) reaches the model as text, so the Go
-# agent refuses those and they are pasted. The queue is durable: a
+# agent refuses those and they are pasted. After /clear (/new, /resume,
+# /fork) the TUI keeps the old thread loaded and a message queued for it
+# runs there, out of sight, while the new thread's id is reported only
+# at its first prompt (SessionStart source=clear): the agent pastes until
+# then. A /clear typed by hand isn't seen. The queue is durable: a
 # message for a thread with no TUI still exits 0 and runs on resume.
 [inject]
 prompt = "channel"

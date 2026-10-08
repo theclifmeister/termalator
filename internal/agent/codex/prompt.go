@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"slices"
 	"strings"
 	"time"
 
@@ -24,13 +25,23 @@ var ErrNoThread = errors.New("codex: no thread id yet")
 // queue` would hand the model as text: it goes by paste instead.
 var ErrSlashCommand = errors.New("codex: a slash command runs only when typed")
 
+// ErrThreadLeft means the session's thread id is the one a /clear left:
+// the new thread's id is reported only at its first prompt.
+var ErrThreadLeft = errors.New("codex: the thread was left; its successor has no id yet")
+
+// switchCommands start the TUI on another thread. The thread left stays
+// loaded: a message queued for it runs there, out of sight (0.160).
+var switchCommands = []string{"/clear", "/new", "/resume", "/fork"}
+
 // Prompt queues text for the session's thread with `codex queue --thread
 // <id> --message <text>`. The running TUI takes it as the user's own
 // prompt, at once when idle, after the current turn when one runs, and
 // leaves a draft in the composer alone (checked on 0.160; see the
 // manifest's [inject]). Exit status 0 means the message is in Codex's
 // durable queue, not that the TUI has it yet. A slash command is
-// refused so the core pastes it.
+// refused so the core pastes it, and after one that switches threads
+// (/clear) so is every prompt until the hooks report the new thread's
+// id, at its first prompt.
 //
 // A timeout that kills `codex queue` after it wrote the queue may get
 // the prompt delivered twice, once queued and once pasted.
@@ -38,7 +49,13 @@ func (a *Agent) Prompt(ctx context.Context, t agent.PromptTarget, text string) e
 	if t.AgentSID == "" {
 		return ErrNoThread
 	}
-	if strings.HasPrefix(strings.TrimSpace(text), "/") {
+	if a.leftThread(t.SessionID, t.AgentSID) {
+		return ErrThreadLeft
+	}
+	if cmd := strings.TrimSpace(text); strings.HasPrefix(cmd, "/") {
+		if slices.Contains(switchCommands, strings.Fields(cmd)[0]) {
+			a.leave(t.SessionID, t.AgentSID)
+		}
 		return ErrSlashCommand
 	}
 	ctx, cancel := context.WithTimeout(ctx, queueTimeout)
@@ -55,6 +72,29 @@ func (a *Agent) Prompt(ctx context.Context, t agent.PromptTarget, text string) e
 		return fmt.Errorf("codex queue: %w", err)
 	}
 	return nil
+}
+
+// leave notes that session is leaving thread: Prompt pastes until the
+// hooks report another.
+func (a *Agent) leave(session, thread string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.left == nil {
+		a.left = map[string]string{}
+	}
+	a.left[session] = thread
+}
+
+// leftThread reports whether thread is the one session left, and
+// forgets the note once the hooks have reported another.
+func (a *Agent) leftThread(session, thread string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	t, ok := a.left[session]
+	if ok && t != thread {
+		delete(a.left, session)
+	}
+	return ok && t == thread
 }
 
 // errorLine is the last line of out that isn't a warning: Codex prints

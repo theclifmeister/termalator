@@ -61,7 +61,7 @@ func TestPrompt(t *testing.T) {
 	if err := a.Prompt(ctx, agent.PromptTarget{SessionID: "s-1"}, "hi"); !errors.Is(err, ErrNoThread) {
 		t.Errorf("no thread id: %v", err)
 	}
-	for _, s := range []string{"/clear", "  /compact now"} {
+	for _, s := range []string{"  /compact now", "/clear"} {
 		if err := a.Prompt(ctx, target, s); !errors.Is(err, ErrSlashCommand) {
 			t.Errorf("%q: %v", s, err)
 		}
@@ -69,6 +69,33 @@ func TestPrompt(t *testing.T) {
 	if readArgs(t, args) != nil {
 		t.Error("codex ran")
 	}
+
+	// After /clear the thread is left: paste until the hooks report the
+	// new one, for that session only. /compact stays on the thread.
+	if err := a.Prompt(ctx, target, "hi"); !errors.Is(err, ErrThreadLeft) {
+		t.Errorf("left thread: %v", err)
+	}
+	other := agent.PromptTarget{SessionID: "s-2", AgentSID: target.AgentSID}
+	if err := a.Prompt(ctx, other, "hi"); err != nil {
+		t.Errorf("another session: %v", err)
+	}
+	next := target
+	next.AgentSID = "01a11c27-f755-7c21-93ae-493c148413d8"
+	if err := a.Prompt(ctx, next, "hi"); err != nil {
+		t.Errorf("new thread: %v", err)
+	}
+	if err := a.Prompt(ctx, target, "hi"); err != nil {
+		t.Errorf("the note outlived the new thread: %v", err)
+	}
+	a.Prompt(ctx, next, "/new")
+	if err := a.Prompt(ctx, next, "hi"); !errors.Is(err, ErrThreadLeft) {
+		t.Errorf("after /new: %v", err)
+	}
+	a.Prompt(ctx, target, "/compact")
+	if err := a.Prompt(ctx, target, "hi"); err != nil {
+		t.Errorf("after /compact: %v", err)
+	}
+	os.Remove(args)
 
 	// Codex fails: its error line, past the warnings, is in the error.
 	fakeCodex(t, `echo "WARNING: proceeding" >&2; echo "Error: failed to queue session message: no rollout found" >&2; exit 1`)
