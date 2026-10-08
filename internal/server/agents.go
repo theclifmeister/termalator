@@ -153,9 +153,14 @@ func (s *Server) accessFor(role, slug, cwd string) (agent.Access, error) {
 	case proto.RoleThread:
 		a := agent.Access{Read: []string{dir}, NoWrite: []string{dir}, NoWriteFiles: []string{cfg}}
 		// A worktree's commits go to the main repo's git dir, outside
-		// the cwd the sandbox allows.
-		if gd, err := worktree.CommonDir(cwd); err == nil {
-			a.Write = []string{realPath(gd)}
+		// the cwd the sandbox allows; its HEAD and index are in its own
+		// git dir below it, granted by name too, for sandboxes that carve
+		// git dirs out of any broader grant (Codex's).
+		if d, err := worktree.GitDirs(cwd); err == nil {
+			a.Write = []string{realPath(d.CommonDir)}
+			if gd := realPath(d.GitDir); gd != a.Write[0] {
+				a.Write = append(a.Write, gd)
+			}
 		}
 		return a, nil
 	}
@@ -298,6 +303,10 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 			}
 		}
 	}
+	var repo worktree.Dirs // empty outside a git repo
+	if d, err := worktree.GitDirs(r.Cwd); err == nil {
+		repo = worktree.Dirs{GitDir: realPath(d.GitDir), CommonDir: realPath(d.CommonDir), RepoRoot: realPath(d.RepoRoot)}
+	}
 	rt := s.runtimeDir(r.ID)
 	s.closeModLocked(r.ID)
 	os.RemoveAll(rt)
@@ -313,7 +322,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 	}
 	spec := agent.LaunchSpec{
 		Role: agent.Role(r.Role), SessionID: r.ID, AgentSID: r.AgentSessionID,
-		Cwd: r.Cwd, RuntimeDir: rt, BriefPath: r.Brief, Kickoff: l.kick, Resume: l.resume,
+		Cwd: r.Cwd, RepoRoot: repo.RepoRoot, GitDir: repo.GitDir, RuntimeDir: rt, BriefPath: r.Brief, Kickoff: l.kick, Resume: l.resume,
 		Yolo: r.Yolo, Model: r.Model, TMBin: s.opts.Bin, Socket: s.opts.Paths.Socket, Access: access,
 		RemoteControl: r.RemoteControl, RemoteName: remoteName(r),
 		Mods: modSock != "",
@@ -366,6 +375,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 			Agent: a, AgentSID: r.AgentSessionID, Kickoff: launch.Kickoff, Home: home,
 			Context:    s.hookContextOf(r.ID, modSock != ""),
 			OnChange:   s.agentChanged,
+			OnUsage:    s.tailUsage,
 			PromptHold: envDuration(envPromptHold), OnPromptResolved: s.promptResolved,
 			ModSocket: modSock,
 		},
