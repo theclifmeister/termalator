@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/guard"
 )
 
@@ -36,6 +38,19 @@ func threadSpec() LaunchSpec {
 	}
 }
 
+// TestHookEvents: the events of [[hooks]], [[todos]] and
+// todos_snapshot.on, in that order, each once.
+func TestHookEvents(t *testing.T) {
+	m := &Manifest{
+		Hooks:   []HookMap{{Event: "A"}, {Event: "B"}, {Event: "A"}},
+		Todos:   []TodoMap{{Event: "C"}, {Event: "B"}},
+		Sources: Sources{TodoSnapshot: &TodoSnapshot{On: []string{"D", "A"}}},
+	}
+	if got, want := m.HookEvents(), []string{"A", "B", "C", "D"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("HookEvents = %q, want %q", got, want)
+	}
+}
+
 func TestClaudeLaunch(t *testing.T) {
 	a := claude(t)
 	spec := threadSpec()
@@ -55,6 +70,9 @@ func TestClaudeLaunch(t *testing.T) {
 	if !l.Kickoff {
 		t.Fatal("Kickoff unset with the kickoff in argv")
 	}
+	if !contains(l.Env, "CLAUDE_CODE_ENABLE_TODO_TOOLS=1") {
+		t.Fatalf("env = %q: want CLAUDE_CODE_ENABLE_TODO_TOOLS=1 so current models get the todo tools", l.Env)
+	}
 	spec.Resume = true
 	if l, err := a.Launch(spec); err != nil || l.Kickoff {
 		t.Fatalf("resume: Kickoff %v, err %v", l.Kickoff, err)
@@ -68,6 +86,7 @@ func TestClaudeLaunch(t *testing.T) {
 		Hooks map[string][]struct {
 			Hooks []struct {
 				Type, Command string
+				Args          []string
 				Async         bool
 				Timeout       int
 			}
@@ -76,11 +95,21 @@ func TestClaudeLaunch(t *testing.T) {
 	if err := json.Unmarshal(l.Files["claude-plugin/hooks/hooks.json"], &hooks); err != nil {
 		t.Fatalf("hooks.json is not JSON: %v\n%s", err, l.Files["claude-plugin/hooks/hooks.json"])
 	}
-	for _, ev := range []string{"SessionStart", "PermissionRequest", "SubagentStart", "TaskCreated", "SessionEnd"} {
+	for _, ev := range []string{"SessionStart", "PermissionRequest", "SubagentStart", "StopFailure", "SessionEnd"} {
 		h := hooks.Hooks[ev]
-		if len(h) != 1 || h[0].Hooks[0].Command != `"/bin/tm" hook --agent claude` || h[0].Hooks[0].Async || h[0].Hooks[0].Timeout != 5 {
+		if len(h) != 1 || h[0].Hooks[0].Command != "/bin/tm" || !slices.Equal(h[0].Hooks[0].Args, []string{"hook", "--agent", "claude"}) || h[0].Hooks[0].Async || h[0].Hooks[0].Timeout != 5 {
 			t.Fatalf("hooks.json %s = %+v; want one sync command hook with timeout 5", ev, h)
 		}
+	}
+	// Exactly the events the manifest maps (.HookEvents): none that
+	// would spawn tm hook for nothing.
+	events := []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
+		"PreCompact", "PermissionRequest", "Notification", "Stop", "StopFailure", "SubagentStart", "SubagentStop", "SessionEnd"}
+	if got := ManifestOf(a).HookEvents(); !reflect.DeepEqual(got, events) {
+		t.Fatalf("HookEvents\n got %q\nwant %q", got, events)
+	}
+	if got := slices.Sorted(maps.Keys(hooks.Hooks)); !reflect.DeepEqual(got, slices.Sorted(slices.Values(events))) {
+		t.Fatalf("hooks.json registers %q, want %q", got, events)
 	}
 
 	settings := parseSettings(t, l.Files["claude-settings.json"])
@@ -815,6 +844,82 @@ func TestManifestModels(t *testing.T) {
 	spec.Model = "gpt-5.6-terra"
 	if l, err := codex.Launch(spec); err != nil || !strings.Contains(strings.Join(l.Argv, " "), "-m gpt-5.6-terra") || strings.Contains(strings.Join(l.Argv, " "), "gpt-6-luna") {
 		t.Fatalf("codex launch with a model: %v %q", err, l.Argv)
+	}
+}
+
+// TestMergeModels: the user's catalog replaces the manifest's list as a
+// whole and its default_model wins; unset, the manifest's apply, its
+// default only while the list still has it. With AgentDefault, Launch
+// passes no model.
+func TestMergeModels(t *testing.T) {
+	manifest := []Model{{Name: "a", About: "x", Default: true}, {Name: "b", About: "y"}}
+	names := func(ms []Model) string {
+		var out []string
+		for _, m := range ms {
+			n := m.Name + ":" + m.About
+			if m.Default {
+				n += "*"
+			}
+			out = append(out, n)
+		}
+		return strings.Join(out, " ")
+	}
+	for _, c := range []struct {
+		s    config.AgentSettings
+		want string
+	}{
+		{config.AgentSettings{}, "a:x* b:y"},
+		{config.AgentSettings{HasDefault: true, DefaultModel: "b"}, "a:x b:y*"},
+		{config.AgentSettings{HasDefault: true}, "a:x b:y"},
+		{config.AgentSettings{HasModels: true, Models: []config.AgentModel{{Name: "a", About: "new"}, {Name: "c", About: "z"}}}, "a:new* c:z"},
+		{config.AgentSettings{HasModels: true, Models: []config.AgentModel{{Name: "c", About: "z"}}}, "c:z"},
+		{config.AgentSettings{HasModels: true, Models: []config.AgentModel{{Name: "c", About: "z"}}, HasDefault: true, DefaultModel: "c"}, "c:z*"},
+		{config.AgentSettings{HasModels: true}, ""},
+		{config.AgentSettings{HasDefault: true, DefaultModel: "gone"}, "a:x b:y"},
+	} {
+		if got := names(MergeModels(manifest, c.s)); got != c.want {
+			t.Errorf("%+v: %q, want %q", c.s, got, c.want)
+		}
+	}
+	if got := MergeModels(manifest, config.AgentSettings{}); !got[0].Default || manifest[1].Default {
+		t.Fatal("the manifest's list changed")
+	}
+	reg, _ := Load("")
+	codex, _ := reg.Get("codex")
+	l, err := codex.Launch(LaunchSpec{Role: RoleThread, Cwd: "/w", RuntimeDir: "/r", AgentSID: "x", AgentDefault: true})
+	if err != nil || slices.Contains(l.Argv, "-m") {
+		t.Fatalf("codex with the agent's own default: %v %q", err, l.Argv)
+	}
+	if got := DefaultOf(Models(codex, nil)); got != "gpt-6-luna" {
+		t.Fatalf("codex default without settings: %q", got)
+	}
+	// The server's launch: config.toml's default, or none.
+	argv := func(body string) string {
+		t.Helper()
+		dir := t.TempDir()
+		t.Setenv("TERMINATR_HOME", dir)
+		os.WriteFile(filepath.Join(dir, "config.toml"), []byte(body), 0o600)
+		cfg, err := config.Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		l, err := codex.Launch(WithDefaultModel(codex, cfg, LaunchSpec{Role: RoleThread, Cwd: "/w", RuntimeDir: "/r", AgentSID: "x"}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.Join(l.Argv, " ")
+	}
+	if got := argv(""); !strings.Contains(got, "-m gpt-6-luna") {
+		t.Fatalf("no settings: %q", got)
+	}
+	if got := argv("[agents.codex]\ndefault_model = \"gpt-5.6-terra\"\n"); !strings.Contains(got, "-m gpt-5.6-terra") {
+		t.Fatalf("default_model: %q", got)
+	}
+	if got := argv("[agents.codex]\ndefault_model = \"\"\n"); strings.Contains(got, " -m ") {
+		t.Fatalf("no default: %q", got)
+	}
+	if got := argv("[agents.codex]\nmodels = [{ name = \"gpt-7\", about = \"new\" }]\n"); strings.Contains(got, " -m ") {
+		t.Fatalf("manifest default removed from the list: %q", got)
 	}
 }
 

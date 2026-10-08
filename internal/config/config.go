@@ -280,7 +280,7 @@ type Config struct {
 	// Prefix is [keys] prefix, or the older [keys] detach that named the
 	// same key; Icons is [ui] icons. "" when unset.
 	Prefix, Icons string
-	// Unknown are the keys under [keys], [ui] and [mods] that tm doesn't know
+	// Unknown are the keys under [keys], [ui], [mods] and [agents.<name>] that tm doesn't know
 	// (e.g. "ui.icon"), sorted. tm doctor reports them; unlike a
 	// project's, they don't fail Load, so a typo there never stops tm.
 	Unknown []string
@@ -305,6 +305,9 @@ type Config struct {
 	// defaults is the [defaults] table: the all-projects settings.
 	defaults rawSafety
 	agent    string
+	// agents are the [agents.<name>] tables: each agent's models
+	// catalog and default (agents.go).
+	agents map[string]rawAgent
 }
 
 // Path returns <home>/config.toml.
@@ -331,6 +334,7 @@ func Load() (*Config, error) {
 		DefaultAgent string               `toml:"default_agent"`
 		Projects     map[string]rawSafety `toml:"projects"`
 		Defaults     rawSafety            `toml:"defaults"`
+		Agents       map[string]rawAgent  `toml:"agents"`
 		Keys         struct {
 			Prefix string `toml:"prefix"`
 			Detach string `toml:"detach"`
@@ -352,7 +356,7 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
-	c := &Config{Path: path, projects: raw.Projects, defaults: raw.Defaults, agent: raw.DefaultAgent,
+	c := &Config{Path: path, projects: raw.Projects, defaults: raw.Defaults, agent: raw.DefaultAgent, agents: raw.Agents,
 		Prefix: cmp.Or(raw.Keys.Prefix, raw.Keys.Detach), Icons: raw.UI.Icons, Mods: raw.Mods.Enabled,
 		ModsBand: raw.Mods.Band == nil || *raw.Mods.Band, ModsPane: raw.Mods.Pane != nil && *raw.Mods.Pane,
 		ContextHint: DefaultContextHint}
@@ -366,7 +370,8 @@ func Load() (*Config, error) {
 		switch {
 		case len(k) >= 3 && k[0] == "projects", len(k) >= 2 && k[0] == "defaults":
 			return c, fmt.Errorf("%s: unknown setting %s", path, k.String())
-		case len(k) >= 2 && (k[0] == "keys" || k[0] == "ui" || k[0] == "mods"):
+		case len(k) >= 2 && (k[0] == "keys" || k[0] == "ui" || k[0] == "mods"),
+			len(k) >= 3 && k[0] == "agents":
 			c.Unknown = append(c.Unknown, k.String())
 		}
 	}
@@ -377,6 +382,11 @@ func Load() (*Config, error) {
 	for slug := range raw.Projects {
 		if _, err := c.Safety(slug); err != nil {
 			return c, err
+		}
+	}
+	for _, name := range c.AgentNames() {
+		if err := c.agents[name].settings().check(); err != nil {
+			return c, fmt.Errorf("%s: agents.%s.%w", path, name, err)
 		}
 	}
 	return c, nil
@@ -394,6 +404,19 @@ func (c *Config) Safety(slug string) (Safety, error) {
 		return s, nil
 	}
 	return s, r.apply(&s, c.Path, "projects."+slug)
+}
+
+// ProjectSlugs lists, sorted, the projects the file has a table for.
+func (c *Config) ProjectSlugs() []string {
+	if c == nil {
+		return nil
+	}
+	var out []string
+	for slug := range c.projects {
+		out = append(out, slug)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // AllProjects returns the all-projects settings ([defaults]), Defaults

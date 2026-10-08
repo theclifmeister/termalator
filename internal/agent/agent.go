@@ -43,7 +43,11 @@ type LaunchSpec struct {
 	Kickoff    string // the first user prompt, e.g. "Read your brief and do what it says."
 	Resume     bool   // resume AgentSID instead of starting fresh; AgentSID must be set
 	Yolo       bool   // skip the agent's own permission prompts (project setting)
-	Model      string // optional
+	Model      string // optional; "" is the manifest's default model
+	// AgentDefault passes no model when Model is "": the user's catalog
+	// (config.toml default_model = "") wants the agent's own default, not
+	// the manifest's.
+	AgentDefault bool
 	// RemoteControl starts the agent reachable from another device
 	// ([remote_control] args), listed there as RemoteName.
 	RemoteControl bool

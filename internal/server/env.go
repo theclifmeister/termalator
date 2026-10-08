@@ -1,6 +1,7 @@
 package server
 
 import (
+	"path/filepath"
 	"strings"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
@@ -32,6 +33,38 @@ func sessionEnv(base []string, set map[string]string) []string {
 	}
 	for k, v := range set {
 		out = append(out, k+"="+v)
+	}
+	return out
+}
+
+// withBinFirst returns base with the directory holding bin first on PATH,
+// so a session's `tm` is the server's own (docs/SPEC.md §3.4). The rest of
+// PATH stays as is; a later entry for the same directory is dropped, so a
+// resume never lists it twice. Without a bin or a PATH, base is unchanged.
+func withBinFirst(base []string, bin string) []string {
+	if bin == "" {
+		return base
+	}
+	dir := filepath.Dir(bin)
+	out := make([]string, 0, len(base)+1)
+	found := false
+	for _, kv := range base {
+		v, ok := strings.CutPrefix(kv, "PATH=")
+		if !ok {
+			out = append(out, kv)
+			continue
+		}
+		found = true
+		parts := []string{dir}
+		for _, p := range filepath.SplitList(v) {
+			if p != dir {
+				parts = append(parts, p)
+			}
+		}
+		out = append(out, "PATH="+strings.Join(parts, string(filepath.ListSeparator)))
+	}
+	if !found {
+		out = append(out, "PATH="+dir)
 	}
 	return out
 }

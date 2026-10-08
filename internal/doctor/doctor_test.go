@@ -787,3 +787,32 @@ func TestServerHangs(t *testing.T) {
 		t.Errorf("took %s", took)
 	}
 }
+
+// TestModels: the models line names each agent's catalog and where it
+// comes from; a stale default, models for an unknown agent and allowed
+// models no catalog lists are warnings.
+func TestModels(t *testing.T) {
+	d := testDeps(t)
+	cs := Models(d)
+	if len(cs) != 1 || cs[0].Status != OK || cs[0].Detail != "claude 3 (as released), codex 2 (as released)" {
+		t.Fatalf("no config: %+v", cs)
+	}
+	body := "[agents.claude]\nmodels = [{ name = \"opus-6\", about = \"newest\" }]\n\n[agents.codex]\ndefault_model = \"gpt-1\"\n\n[agents.nope]\ndefault_model = \"\"\n\n" +
+		"[defaults]\nmodels = [\"opus\", \"opus-6\"]\n\n[projects.demo]\nmodels = [\"opus\", \"haiku\"]\n"
+	os.WriteFile(filepath.Join(d.Paths.Home, "config.toml"), []byte(body), 0o600)
+	cs = Models(d)
+	var got []string
+	for _, c := range cs {
+		got = append(got, string(c.Status)+" "+c.Detail)
+	}
+	want := []string{
+		"ok claude 1 (your list), codex 2 (as released)",
+		"warn codex's default model gpt-1 is stale: its models don't list it, so threads run the agent's own default; pick another in Settings > Models",
+		"warn config.toml has models for agent nope, which tm doesn't know (tm agent list)",
+		"warn allowed model opus is stale: no agent lists it (all projects, demo); Settings > Thread models shows it, enter leaves it out",
+		"warn allowed model haiku is stale: no agent lists it (demo); Settings > Thread models shows it, enter leaves it out",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("got:\n%s", strings.Join(got, "\n"))
+	}
+}

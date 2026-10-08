@@ -70,12 +70,12 @@ args = ["-c", 'projects={ {{- toml .RepoRoot}}={trust_level="trusted"} }', "--wr
 func TestTOMLString(t *testing.T) {
 	for _, s := range []string{"", "plain", `a "b" \c`, "\b\t\n\f\r\x00\x1f\x7f", "ünï 🙂", "''' \"\"\" ${x} {{y}}"} {
 		var v struct{ K string }
-		if _, err := toml.Decode("K = "+tomlString(s), &v); err != nil || v.K != s {
-			t.Errorf("%q -> %s -> %q %v", s, tomlString(s), v.K, err)
+		if _, err := toml.Decode("K = "+TOMLString(s), &v); err != nil || v.K != s {
+			t.Errorf("%q -> %s -> %q %v", s, TOMLString(s), v.K, err)
 		}
 	}
 	var v struct{ K string }
-	if _, err := toml.Decode("K = "+tomlString("a\xffb"), &v); err != nil || v.K != "a�b" {
+	if _, err := toml.Decode("K = "+TOMLString("a\xffb"), &v); err != nil || v.K != "a�b" {
 		t.Errorf("invalid UTF-8 -> %q %v", v.K, err)
 	}
 }

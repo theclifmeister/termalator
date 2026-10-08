@@ -140,7 +140,7 @@ func (p *Project) Context(seen Ticked) ([]Section, error) {
 		}
 	}
 	head = append(head, agentLines(safety.ThreadAgent)...)
-	head = append(head, modelLines(safety.Models)...)
+	head = append(head, modelLines(cfg, safety.Models)...)
 	out = append(out, Section{Title: "Project", Lines: head})
 	out = append(out, capLines("Standing instructions (PROJECT.md)", splitLines(p.Instructions), capInstructions, "PROJECT.md"))
 
@@ -237,10 +237,11 @@ func agentLines(threadAgent string) []string {
 }
 
 // modelLines list each agent's models for tm thread start --model, from
-// the manifests' [[models]]: one line per model, the agent's default
-// first. A non-empty allow lists only those models (the user's
-// restriction, §11.2), and a name no agent lists is flagged.
-func modelLines(allow []string) []string {
+// its catalog (the manifest's [[models]], or the user's in config.toml):
+// one line per model, the default marked. A non-empty allow lists only
+// those models (the user's restriction, §11.2), and an allowed name no
+// catalog lists any more is flagged stale.
+func modelLines(cfg *config.Config, allow []string) []string {
 	dir, err := home.AgentsDir()
 	if err != nil {
 		return nil
@@ -253,11 +254,15 @@ func modelLines(allow []string) []string {
 	var known []agent.Model
 	for _, name := range reg.Names() {
 		a, _ := reg.Get(name)
-		models := agent.ModelsOf(a)
+		models := agent.Models(a, cfg)
 		if len(models) == 0 {
 			continue
 		}
-		out = append(out, fmt.Sprintf("Models of %s (tm thread start --model; without it, the agent's default):", name))
+		head := fmt.Sprintf("Models of %s (tm thread start --model; without it, the agent's default):", name)
+		if cfg.Agent(name).HasModels {
+			head = fmt.Sprintf("Models of %s (the user's list in config.toml; tm thread start --model; without it, the agent's default):", name)
+		}
+		out = append(out, head)
 		var shown int
 		for _, m := range models {
 			if len(allow) > 0 && !slices.Contains(allow, m.Name) {
@@ -279,7 +284,7 @@ func modelLines(allow []string) []string {
 		out = append(out, "The user limits the models to: "+strings.Join(allow, ", ")+" (config.toml; the human's). Any other --model is refused.")
 		for _, n := range allow {
 			if !slices.ContainsFunc(known, func(m agent.Model) bool { return m.Name == n }) {
-				out = append(out, "  note: no agent lists a model named "+n)
+				out = append(out, "  stale: "+n+" is allowed but no agent lists it any more; --model "+n+" is refused")
 			}
 		}
 	}

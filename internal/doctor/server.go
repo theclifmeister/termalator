@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/sys/unix"
+	"github.com/theclifmeister/terminatr/internal/plat/flock"
 
 	"github.com/theclifmeister/terminatr/internal/keychain"
 	"github.com/theclifmeister/terminatr/internal/proto"
@@ -40,36 +40,20 @@ var codeHostTimeout = 3 * time.Minute
 // lockHeld reports whether some process holds the server lock. It never
 // creates the lock file.
 func lockHeld(path string) (bool, error) {
-	f, err := os.OpenFile(path, os.O_RDWR, 0)
-	if errors.Is(err, fs.ErrNotExist) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	defer f.Close()
-	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		if errors.Is(err, unix.EWOULDBLOCK) {
-			return true, nil
-		}
-		return false, err
-	}
-	unix.Flock(int(f.Fd()), unix.LOCK_UN)
-	return false, nil
+	return flock.Held(path)
 }
 
 // removeIfNoServer removes path while holding the server lock, so it can
 // never remove a live server's socket or pid file.
 func removeIfNoServer(p server.Paths, path string) error {
-	f, err := os.OpenFile(p.Lock, os.O_RDWR|os.O_CREATE, 0o600)
+	lk, err := flock.TryLock(p.Lock)
+	if errors.Is(err, flock.ErrLocked) {
+		return fmt.Errorf("a server started meanwhile; kept %s", path)
+	}
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		return fmt.Errorf("a server started meanwhile; kept %s", path)
-	}
-	defer unix.Flock(int(f.Fd()), unix.LOCK_UN)
+	defer lk.Unlock()
 	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}

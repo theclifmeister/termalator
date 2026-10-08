@@ -328,6 +328,10 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		RemoteControl: r.RemoteControl, RemoteName: remoteName(r),
 		Mods: modSock != "",
 	}
+	if spec.Model == "" {
+		cfg, _ := config.Load()
+		spec = agent.WithDefaultModel(a, cfg, spec)
+	}
 	launch, err := a.Launch(spec)
 	if err != nil {
 		s.closeModLocked(r.ID)
@@ -352,7 +356,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		k, v, _ := strings.Cut(kv, "=")
 		set[k] = v
 	}
-	base := agent.FilterEnv(s.baseEnv(), launch.Unset)
+	base := agent.FilterEnv(withBinFirst(s.baseEnv(), s.opts.Bin), launch.Unset)
 	env := sessionEnv(base, set)
 	r.Argv = launch.Argv
 	// The agent's own id is known ahead only when the launch gives it

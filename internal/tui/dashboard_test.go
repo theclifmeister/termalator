@@ -166,11 +166,23 @@ func (f *fakeSource) Review(slug string, t *tasks.Task) Review { return f.review
 func (f *fakeSource) Memory(string) (project.Memory, error)    { return f.memory, nil }
 func (f *fakeSource) Agents() []string                         { return f.agents }
 func (f *fakeSource) ModsNote() string                         { return "Claude Code 2.1.289" }
-func (f *fakeSource) Models() []string                         { return []string{"opus", "sonnet", "haiku"} }
 func (f *fakeSource) NewProject(name string) (string, error)   { return name, nil }
 func (f *fakeSource) OpenProject(slug string, c, r int) (string, error) {
 	f.opened = append(f.opened, slug)
 	return "s-" + slug, nil
+}
+
+// Catalogs are the built-in manifests' models (claude only, as the
+// tests' agents) with the test's config.toml over them.
+func (f *fakeSource) Catalogs() []Catalog {
+	reg, _ := agent.Load("")
+	a, _ := reg.Get("claude")
+	cfg, _ := config.Load()
+	return []Catalog{{Agent: "claude", Manifest: agent.ModelsOf(a), Settings: cfg.Agent("claude")}}
+}
+func (f *fakeSource) SetModels(name string, s config.AgentSettings) error {
+	f.settings = append(f.settings, fmt.Sprintf("agents.%s=%v", name, s))
+	return config.SetAgentModels(name, s)
 }
 
 func testData() Data {

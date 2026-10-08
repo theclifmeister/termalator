@@ -17,6 +17,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/guard"
 )
 
@@ -267,8 +268,6 @@ type Model struct {
 	Default bool `toml:"default"`
 }
 
-var modelNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/@\[\]-]{0,63}$`)
-
 // FindModel returns the manifest's model named name.
 func (m *Manifest) FindModel(name string) (Model, bool) {
 	for _, x := range m.Models {
@@ -289,12 +288,77 @@ func (m *Manifest) DefaultModel() string {
 	return ""
 }
 
-// ModelsOf returns a's allowed models, nil for none.
+// ModelsOf returns the [[models]] of a's manifest, nil for none: the
+// catalog's fallback. What a thread may use is Models, which config.toml
+// can replace.
 func ModelsOf(a Agent) []Model {
 	if m := ManifestOf(a); m != nil {
 		return m.Models
 	}
 	return nil
+}
+
+// Models is agent a's models catalog (docs/SPEC.md §8.2, §11.2): the
+// user's [agents.<name>] models in config.toml when set, else the
+// manifest's [[models]]; Default marks the model a launch passes when
+// none is chosen. cfg nil is the manifest's alone.
+func Models(a Agent, cfg *config.Config) []Model {
+	if a == nil {
+		return nil
+	}
+	return MergeModels(ModelsOf(a), cfg.Agent(a.Name()))
+}
+
+// MergeModels lays the user's settings s over the manifest's models:
+// s's models, when set, replace the list as a whole (so one can be
+// removed); s's default_model, when set, is the default ("" none),
+// else the manifest's while the list still has it. A default the list
+// doesn't have is none (tm doctor reports it).
+func MergeModels(manifest []Model, s config.AgentSettings) []Model {
+	def := ""
+	for _, x := range manifest {
+		if x.Default {
+			def = x.Name
+		}
+	}
+	if s.HasDefault {
+		def = s.DefaultModel
+	}
+	var out []Model
+	if s.HasModels {
+		for _, x := range s.Models {
+			out = append(out, Model{Name: x.Name, About: x.About})
+		}
+	} else {
+		for _, x := range manifest {
+			out = append(out, Model{Name: x.Name, About: x.About})
+		}
+	}
+	for i := range out {
+		out[i].Default = out[i].Name == def
+	}
+	return out
+}
+
+// WithDefaultModel is spec with, when it chooses no model, the
+// catalog's default (Models): the one config.toml names, or the
+// manifest's; with none, AgentDefault, so the agent runs its own.
+func WithDefaultModel(a Agent, cfg *config.Config, spec LaunchSpec) LaunchSpec {
+	if spec.Model == "" {
+		spec.Model = DefaultOf(Models(a, cfg))
+		spec.AgentDefault = spec.Model == ""
+	}
+	return spec
+}
+
+// DefaultOf is the name of the model marked default, "" for none.
+func DefaultOf(models []Model) string {
+	for _, x := range models {
+		if x.Default {
+			return x.Name
+		}
+	}
+	return ""
 }
 
 // ManifestFile is a generated file written into the session's runtime dir
@@ -394,13 +458,13 @@ func (m *Manifest) validate() error {
 	seen := map[string]bool{}
 	for i, x := range m.Models {
 		switch {
-		case !modelNameRE.MatchString(x.Name):
+		case config.CheckModelName(x.Name) != nil:
 			errs = append(errs, fmt.Errorf("models[%d]: name %q is not one word of letters, digits and ._:/@[]-", i, x.Name))
 		case seen[x.Name]:
 			errs = append(errs, fmt.Errorf("models[%d]: %q is listed twice", i, x.Name))
 		}
 		seen[x.Name] = true
-		if strings.TrimSpace(x.About) == "" || strings.ContainsAny(x.About, "\r\n") || len([]rune(x.About)) > 120 {
+		if config.CheckModelAbout(x.About) != nil {
 			errs = append(errs, fmt.Errorf("models[%d]: about must be one line of 1 to 120 characters", i))
 		}
 	}
@@ -587,6 +651,40 @@ func (a *manifestAgent) Identify(p ProcessInfo) bool {
 	return false
 }
 
+// launchData is what launch templates see: the LaunchSpec's fields and
+// the manifest's .HookEvents.
+type launchData struct {
+	LaunchSpec
+	HookEvents []string
+}
+
+// HookEvents are the hook events the manifest names, in manifest order,
+// each once: those of [[hooks]], [[todos]] and todos_snapshot.on. A
+// harness that registers hooks per event registers these, and an event
+// none of them names isn't worth a `tm hook` process.
+func (m *Manifest) HookEvents() []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(ev string) {
+		if ev != "" && !seen[ev] {
+			seen[ev] = true
+			out = append(out, ev)
+		}
+	}
+	for _, h := range m.Hooks {
+		add(h.Event)
+	}
+	for _, t := range m.Todos {
+		add(t.Event)
+	}
+	if m.TodoSnapshot != nil {
+		for _, ev := range m.TodoSnapshot.On {
+			add(ev)
+		}
+	}
+	return out
+}
+
 func (a *manifestAgent) Launch(spec LaunchSpec) (Launch, error) {
 	l := a.m.Launch
 	var out Launch
@@ -597,13 +695,14 @@ func (a *manifestAgent) Launch(spec LaunchSpec) (Launch, error) {
 		// Some CLIs open an interactive picker for an empty id.
 		return out, fmt.Errorf("agent %s: resume needs the agent's session id", a.m.Name)
 	}
-	if spec.Model == "" {
+	if spec.Model == "" && !spec.AgentDefault {
 		spec.Model = a.m.DefaultModel() // none chosen: the manifest's default
 	}
+	data := launchData{spec, a.m.HookEvents()}
 	argv := []string{l.Command}
 	add := func(tmpls []string) error {
 		for _, t := range tmpls {
-			s, err := render(t, spec)
+			s, err := render(t, data)
 			if err != nil {
 				return err
 			}
@@ -635,7 +734,7 @@ func (a *manifestAgent) Launch(spec LaunchSpec) (Launch, error) {
 	out.Kickoff = spec.Kickoff != "" && !spec.Resume && len(l.KickoffArgs) > 0
 	out.Unset = append([]string{}, l.UnsetEnv...)
 	for k, v := range l.Env {
-		s, err := render(v, spec)
+		s, err := render(v, data)
 		if err != nil {
 			return out, err
 		}
@@ -643,7 +742,7 @@ func (a *manifestAgent) Launch(spec LaunchSpec) (Launch, error) {
 	}
 	out.Files = map[string][]byte{}
 	for _, f := range l.Files {
-		s, err := render(f.Template, spec)
+		s, err := render(f.Template, data)
 		if err != nil {
 			return out, fmt.Errorf("launch.files %s: %w", f.Path, err)
 		}
@@ -736,6 +835,21 @@ var funcs = template.FuncMap{
 		b, err := json.Marshal(v)
 		return string(b), err
 	},
+	// hookexec is the exec form of a command hook, no shell on any OS:
+	// the "command" and "args" members of the hook object, e.g.
+	// hookexec .TMBin "hook" "--agent" "claude" ->
+	// "command":"/bin/tm","args":["hook","--agent","claude"].
+	"hookexec": func(command string, args ...string) (string, error) {
+		if args == nil {
+			args = []string{}
+		}
+		c, err := json.Marshal(command)
+		if err != nil {
+			return "", err
+		}
+		a, err := json.Marshal(args)
+		return fmt.Sprintf(`"command":%s,"args":%s`, c, a), err
+	},
 	// rules formats one permission rule per directory, e.g.
 	// rules "Read(/%s/**)" .Access.Read -> ["Read(//home/u/p/**)"].
 	"rules": func(format string, dirs []string) []string {
@@ -750,7 +864,7 @@ var funcs = template.FuncMap{
 	"file": readText,
 	// toml quotes a string as a TOML basic string, for a CLI that parses
 	// a -c key=value as TOML (Codex's developer_instructions).
-	"toml": tomlString,
+	"toml": TOMLString,
 	// pathmodes is the file grants of an access policy as a TOML inline
 	// table of path = "read" | "write", for a sandbox that takes one
 	// mode per path (Codex's permission profile filesystem).
@@ -789,7 +903,7 @@ func pathModes(a Access) string {
 	set(a.NoWriteFiles, "read", true)
 	parts := make([]string, len(order))
 	for i, p := range order {
-		parts[i] = tomlString(p) + "=" + tomlString(mode[p])
+		parts[i] = TOMLString(p) + "=" + TOMLString(mode[p])
 	}
 	return "{" + strings.Join(parts, ",") + "}"
 }
@@ -817,9 +931,9 @@ func readText(path string) (string, error) {
 	return string(b), nil
 }
 
-// tomlString is s as a TOML basic string: quotes, backslashes and
+// TOMLString is s as a TOML basic string: quotes, backslashes and
 // control characters escaped, invalid UTF-8 replaced.
-func tomlString(s string) string {
+func TOMLString(s string) string {
 	var b strings.Builder
 	b.WriteByte('"')
 	for _, r := range s {

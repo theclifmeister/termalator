@@ -172,6 +172,7 @@ func Each(d Deps, emit func([]Check), waiting func(group string)) {
 	srv, live := Server(d)
 	emit(srv)
 	emit(Agents(d))
+	emit(Models(d))
 	emit(Plugins(d))
 	emit(Sandbox(d))
 	emit(Leftovers(d, live))

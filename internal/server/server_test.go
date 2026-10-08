@@ -259,7 +259,7 @@ func TestStartDuringLockProbe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	time.AfterFunc(200*time.Millisecond, lk.unlock)
+	time.AfterFunc(200*time.Millisecond, lk.Unlock)
 	startServer(t, p)
 }
 
@@ -272,7 +272,7 @@ func TestLockHeldWithoutServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lk.unlock()
+	defer lk.Unlock()
 	t0 := time.Now()
 	err = Run(context.Background(), Options{Paths: p, Log: log.New(io.Discard, "", 0)})
 	var running *AlreadyRunningError
@@ -344,7 +344,7 @@ func TestHungServerIsReported(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lk.unlock()
+	defer lk.Unlock()
 	os.WriteFile(p.PID, []byte("4242\n"), 0o600)
 	ln, err := net.Listen("unix", p.Socket)
 	if err != nil {
@@ -635,5 +635,19 @@ func TestSessionEnvStripsInheritedIdentity(t *testing.T) {
 		if !strings.Contains(got, good) {
 			t.Errorf("%s missing: %s", good, got)
 		}
+	}
+}
+
+func TestWithBinFirst(t *testing.T) {
+	got := withBinFirst([]string{"HOME=/h", "PATH=/opt/homebrew/bin:/run/bin:/usr/bin"}, "/run/bin/tm")
+	if want := "PATH=/run/bin:/opt/homebrew/bin:/usr/bin"; got[1] != want || got[0] != "HOME=/h" {
+		t.Errorf("got %v, want %s", got, want)
+	}
+	again := withBinFirst(got, "/run/bin/tm")
+	if again[1] != got[1] {
+		t.Errorf("resume duplicated the entry: %v", again)
+	}
+	if got := withBinFirst([]string{"HOME=/h"}, "/run/bin/tm"); got[1] != "PATH=/run/bin" {
+		t.Errorf("no PATH: %v", got)
 	}
 }

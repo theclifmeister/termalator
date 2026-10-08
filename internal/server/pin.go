@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/theclifmeister/terminatr/internal/plat/flock"
 	"github.com/theclifmeister/terminatr/internal/service"
-	"golang.org/x/sys/unix"
 )
 
 // pinDir holds the server's own copy of its binary, under the run dir.
@@ -195,8 +195,8 @@ const lockFDEnv = "TERMINATR_SERVER_LOCK_FD"
 // start in between. run is syscall.Exec (Options.Exec). It returns only
 // on failure, with the lock still held and closed on exec again.
 func execPinned(lock *lockFile, pin string, args []string, run func(string, []string, []string) error) error {
-	fd := int(lock.f.Fd())
-	if _, err := unix.FcntlInt(uintptr(fd), unix.F_SETFD, 0); err != nil {
+	fd, err := lock.Inheritable()
+	if err != nil {
 		return err
 	}
 	env := []string{lockFDEnv + "=" + strconv.Itoa(fd)}
@@ -205,8 +205,8 @@ func execPinned(lock *lockFile, pin string, args []string, run func(string, []st
 			env = append(env, kv)
 		}
 	}
-	err := run(pin, append([]string{pin}, args...), env)
-	unix.CloseOnExec(fd)
+	err = run(pin, append([]string{pin}, args...), env)
+	lock.Uninheritable()
 	return err
 }
 
@@ -223,15 +223,11 @@ func inheritedLock(path string) *lockFile {
 	if err != nil || fd < 3 {
 		return nil
 	}
-	var st, ps unix.Stat_t
-	if unix.Fstat(fd, &st) != nil || unix.Stat(path, &ps) != nil || st.Dev != ps.Dev || st.Ino != ps.Ino {
+	l := flock.Inherited(fd, path)
+	if l == nil {
 		return nil
 	}
-	if unix.Flock(fd, unix.LOCK_EX|unix.LOCK_NB) != nil {
-		return nil
-	}
-	unix.CloseOnExec(fd)
-	return &lockFile{f: os.NewFile(uintptr(fd), path), handedOver: true}
+	return &lockFile{Lock: l, handedOver: true}
 }
 
 // removeLegacyPins removes the home's old server-bin directory, which an

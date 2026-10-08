@@ -164,7 +164,7 @@ func Run(ctx context.Context, opts Options) error {
 	if err != nil {
 		return err
 	}
-	defer lock.unlock()
+	defer lock.Unlock()
 
 	// Run from the pin before anything else: macOS privacy settings know
 	// the server (the responsible process of everything it starts) by the

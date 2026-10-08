@@ -10,6 +10,7 @@ import (
 
 	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/caller"
+	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/home"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/thread"
@@ -398,10 +399,10 @@ func TestThreadModel(t *testing.T) {
 	h.expect(1, "unknown-agent", coord, "thread", "start", "Fix it", "--agent", "nope", "--model", "opus", "--project", "demo")
 	h.ok(human, "task", "add", "Fix it", "--project", "demo")
 	h.expect(1, "unknown-model", coord, "task", "delegate", "T1", "--model", "gpt-9", "--project", "demo")
-	if err := checkModel("claude", "haiku", nil); err != nil {
+	if err := checkModel(nil, "claude", "haiku", nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := checkModel("claude", "", nil); err != nil {
+	if err := checkModel(nil, "claude", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	// A user manifest can change the list.
@@ -409,10 +410,10 @@ func TestThreadModel(t *testing.T) {
 	b, _ := agentBuiltin("claude")
 	b = strings.Replace(b, "name = \"haiku\"", "name = \"tiny\"", 1)
 	os.WriteFile(filepath.Join(h.root, "agents", "claude.toml"), []byte(b), 0o600)
-	if err := checkModel("claude", "tiny", nil); err != nil {
+	if err := checkModel(nil, "claude", "tiny", nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := checkModel("claude", "haiku", nil); err == nil {
+	if err := checkModel(nil, "claude", "haiku", nil); err == nil {
 		t.Fatal("haiku still allowed")
 	}
 	out := h.ok(coord, "context", "--project", "demo")
@@ -442,11 +443,46 @@ func TestThreadModelAllowList(t *testing.T) {
 		!strings.Contains(out, "The user limits the models to: opus, sonnet") {
 		t.Fatalf("context:\n%s", out)
 	}
-	if err := checkModel("claude", "opus", []string{"opus"}); err != nil {
+	if err := checkModel(nil, "claude", "opus", []string{"opus"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := checkModel("claude", "", []string{"opus"}); err != nil {
+	if err := checkModel(nil, "claude", "", []string{"opus"}); err != nil {
 		t.Fatal("the default needs no --model")
+	}
+}
+
+// TestThreadModelCatalog: the user's catalog in config.toml replaces
+// the manifest's models for --model and tm context, its default is
+// marked, and an allowed model it no longer lists is shown stale.
+func TestThreadModelCatalog(t *testing.T) {
+	h := newHarness(t)
+	h.ok(human, "project", "new", "demo")
+	body := "[agents.claude]\nmodels = [{ name = \"opus-6\", about = \"newest\" }, { name = \"sonnet\", about = \"balanced\" }]\ndefault_model = \"opus-6\"\n\n[projects.demo]\nmodels = [\"opus-6\", \"haiku\"]\n"
+	if err := os.WriteFile(filepath.Join(h.root, "config.toml"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := checkModel(cfg, "claude", "opus-6", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkModel(cfg, "claude", "haiku", nil); err == nil || !strings.Contains(err.Error(), "opus-6, sonnet") {
+		t.Fatalf("haiku, removed: %v", err)
+	}
+	if err := checkModel(cfg, "claude", "sonnet", []string{"opus-6", "haiku"}); err == nil || !strings.Contains(err.Error(), "allowed: opus-6 (") {
+		t.Fatalf("sonnet, not allowed: %v", err)
+	}
+	h.expect(1, "unknown-model", coord, "thread", "start", "Fix it", "--model", "haiku", "--project", "demo")
+	out := h.ok(coord, "context", "--project", "demo")
+	for _, want := range []string{"Models of claude (the user's list in config.toml;", "  opus-6: newest (default)", "stale: haiku is allowed but no agent lists it"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("context lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "  haiku: ") || strings.Contains(out, "  sonnet: ") {
+		t.Fatalf("context:\n%s", out)
 	}
 }
 
