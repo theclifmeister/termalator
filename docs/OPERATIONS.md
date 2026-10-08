@@ -30,7 +30,51 @@ tm doctor
 - **Linux:** glibc 2.28 or later (Debian 10, Ubuntu 18.10, RHEL 8 and newer); musl is not supported.
 - **Runtime:** git, and the agents you use (Claude Code). For threads' sandbox Claude needs `bwrap` and `socat` on Linux. `tm doctor` checks all of these.
 
-To build from source instead, see the [README](../README.md#build). How releases are made: [Releasing](#releasing).
+To build from source instead, see the [Contributing](../CONTRIBUTING.md#build). How releases are made: [Releasing](#releasing).
+
+## Using tm
+
+Run `tm`. It starts the background server if needed and opens the dashboard. (From a source checkout, `make run` builds `bin/tm` and does the same.) Press `n` to create a project, then `enter` on it to start its coordinator (Claude Code), which attaches right away, with a status bar at the bottom. You talk to the coordinator; it runs the threads, whose panes you can open too (`enter` on a thread) to read along or answer a prompt; typing into one tells its coordinator that you stepped in. Ctrl+B is the prefix key, as in tmux (the UI writes it `prefix+<key>`, e.g. `prefix+d`): Ctrl+B then `d` brings you back to the dashboard (then `]` or `[` switches project, `i` opens the inbox), where a session that waits for you (a permission dialog, say) shows under NEEDS YOU; `enter` attaches again. `?` lists the keys, Ctrl+B then `q` quits (a prefix command means the same everywhere; popups close with `esc`). Sessions keep running after you quit, and after you close the terminal:
+
+```sh
+tm                                 # the dashboard again, or the session it showed
+tm --own                           # a console of its own, which no other follows
+tm attach s-1                      # attach again, from any terminal, at any size
+tm attach                          # the newest session
+tm session list                    # sessions in the server
+tm session keys s-1 --enter 'ls'   # type into one
+tm session read s-1                # print its screen
+tm session stop s-1
+tm server status | stop
+```
+
+`make run RUN_ARGS=top` also starts a session running `top`. Consoles of different sizes show the same screen: the one you type in, or resize, sizes the panes, and a larger one shows the frame padded, a smaller one cropped. A new pane fills the first console that shows it; after that, attaching and watching never resize anything. Shift+PgUp/PgDn scroll back through a shell's output; full-screen programs get the mouse wheel. The prefix key can be changed in the settings (`,` on the dashboard: `enter` on Prefix key, then press the new one, e.g. Ctrl+A); do that when you run `tm` inside tmux, which takes Ctrl+B itself. Ctrl+B twice sends Ctrl+B to the program (Claude Code uses it to background a running task). The projects sidebar is resizable: drag its border, or `{` `}` (Ctrl+B then `{` `}` in a session); `b` makes it a slim strip. It works from the keyboard too: `tab` on the dashboard (Ctrl+B then Tab in a session) moves the keyboard to it, the arrows move through the tree, `enter` opens the row and `esc` goes back. The Icons setting (`,`) picks the sidebar's and the lists' glyphs: Nerd Font icons, plain Unicode or ASCII; auto uses Nerd Font icons in Ghostty and Unicode elsewhere. Everything works with the mouse too: a click selects, a double-click opens, a right-click on a row or the sidebar opens a menu of its actions, the footer's hints and the status bar's buttons (`≡` menu, `prefix+d dashboard`) are buttons, popups take clicks (a click outside closes them, as `esc` does), the wheel scrolls, and the dividers drag; inside a pane, programs that use the mouse (Claude Code does) still get it; a drag over a shell selects text and copies it on release, and Claude Code's own copy is passed on, both to the clipboard of the terminal you sit at (OSC 52, so it works over SSH; tmux needs `set -g set-clipboard on`); Shift-drag (Option-drag in some macOS terminals) still selects natively. When the dashboard has 120 columns or more beside the sidebar the dashboard shows the selected row's details beside the list (`<` `>` resize it, `|` hides it). `a` (Ctrl+B then `a` in a session) opens the project popup: its overview with the repositories, its inbox (read-only), its tasks (the selected task's steps only, the newest ten done ones, `m` for all of them; `D`, `A` and `x` ask the coordinator to delegate, accept or send back the selected one; the coordinator changes tasks), its settings, changed in place with `enter` (and `+` / `-` for numbers, such as how many threads may work at once and after how many days a finished thread closes), every key, its memory, and its library (`7`: the files threads attached to reports; `enter` reads one, `d` deletes it, `D` deletes the thread's files, each after `y`; `tm library list` lists them); `,` has the settings of every project, and its All projects tab the project settings every project follows (a new one too) unless it sets its own: a project's Settings tab marks those `· all projects`, and `x` on one it set itself makes it follow All projects again. In `~/.terminatr/config.toml` they are the `[defaults]` table, with the same keys as `[projects.<slug>]`. The server keeps its state in `~/.terminatr`; set `TERMINATR_HOME` to use somewhere else.
+
+To pick up a coordinator from the Claude desktop or mobile app (Claude Code's Remote Control), turn on Remote control in the project popup's Settings tab (`a`, then `4`), or set `coordinator_remote_control = true` under `[projects.<slug>]` in `~/.terminatr/config.toml`: the coordinator then starts with remote control, listed under the project's slug. Ctrl+B then `r` on the coordinator's pane (or with its project selected on the dashboard), or `tm project remote on|off <slug>`, turns it on or off in the running session, and the conversation continues; that lasts until the coordinator is started anew. The sidebar shows `⌁` on the coordinator's row and the status bar says `remote control on` while it is.
+
+Long-running coordinators fill their context window. Turn on Auto-clear coordinator in the Settings tab (or `auto_clear = true` under `[projects.<slug>]`) and tm sends `/clear` to the coordinator once its context reaches the hint (`[ui] context_hint`, 40% by default). It only does so while the coordinator is idle and nothing waits on it: no inbox item, no queued prompt, no open question and no blocked thread. The project's state lives in files, and the coordinator keeps its open questions to you in CONTEXT.md under Needs you, so nothing is lost. Each clear is journaled. It is off by default.
+
+Auto mode can refuse the coordinator's PR merge even though your project says the coordinator merges, because its classifier doesn't see that rule. Turn on Coordinator may merge in the Settings tab (or `coordinator_merges = true` under `[projects.<slug>]` or `[defaults]`) and tm adds a permission allow rule for the merge command (`az repos pr update` for Azure DevOps) to the coordinator's launch settings, from its next launch. It only has an effect with `merge = "coordinator"`; threads never get it and the guard still refuses their merges. It is off by default.
+
+Pull requests can live on GitHub or Azure DevOps; the host is picked per repo from its `origin` remote. GitHub needs `gh auth login`; Azure DevOps needs the Azure CLI and `az login` (or `AZURE_DEVOPS_EXT_PAT`). To force a host (an Azure DevOps Server, say), put `code_host = "azure"` and `azure_url = "https://tfs.example.com/tfs/Coll"` in `PROJECT.md`'s front matter. `tm doctor` checks what your projects use; details in [Code hosts](#code-hosts-github-and-azure-devops).
+
+To park a project, `tm project pause <slug>` (or Paused in the popup's Settings tab): its coordinator gets no nudges, its threads no pull request follow-up, and no new thread starts until `tm project resume <slug>`; the sidebar shows `∥` after it. `tm project archive <slug>` hides a finished project from the sidebar and stops all background work for it (`tm project unarchive` brings it back), and `tm project delete <slug>` moves its folder to `~/.terminatr/.trash/`; both refuse while its coordinator or threads run. `tm project rename <slug> <new-slug>` renames a project's slug, its only name, and moves its folder and worktrees with it (no thread may run; its coordinator is restarted under the new slug; see [Renaming a project](#renaming-a-project)). The coordinator can give a thread a smaller or larger model with `--model` on `tm task delegate` / `tm thread start`, from the list `tm context` shows (the agent manifest's `[[models]]`, narrowed by the `models` setting if you limit them: Thread models in the popup, e.g. to leave out haiku, which has no auto mode). When `gh` keeps failing (logged out, keychain refused), the coordinator gets a `gh-failing` inbox item, and `tm doctor` checks `gh auth status`.
+
+### Trying projects and tasks
+
+```sh
+export TERMINATR_HOME=$(mktemp -d)        # leave ~/.terminatr alone while trying it
+tm project new demo --goal "Try tm"   # the slug is its only name; "Demo App" would become demo-app
+export TERMINATR_PROJECT=demo             # or cd into $TERMINATR_HOME/projects/demo
+tm task add "Fix login redirect" --step "Reproduce" --step "Fix"
+tm task status T1 started
+tm task steps T1 check 1
+tm task list                         # add --json for machine-readable output
+tm context                           # what the coordinator reads every turn
+tm skill coordinator                 # the coordinator's standing rules, versioned with tm
+```
+
+`tm task help` lists every task command. Exit codes: 0 done or already true, 1 refused (with a stable code such as `human-only`), 2 usage error, 3 I/O error.
 
 ## Where state lives
 

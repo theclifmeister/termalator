@@ -22,7 +22,7 @@
 #   make clean      remove bin/      make distclean   also remove .build/
 
 # Must match the commit go.mitchellh.com/libghostty is developed against
-# (its CMakeLists.txt GIT_TAG). Bump both together; see README.md.
+# (its CMakeLists.txt GIT_TAG). Bump both together; see CONTRIBUTING.md.
 GHOSTTY_REV  ?= 33da6848d63b3bba2b4f31ab1531d618f2795192
 GHOSTTY_REPO ?= https://github.com/ghostty-org/ghostty.git
 # Zig builds for the host CPU by default, which gives a library that can
@@ -186,7 +186,7 @@ $(ZIG_LOCAL):
 	@touch $@
 
 toolchain:
-	@command -v $(GO) >/dev/null || { echo "missing: go (see README.md)" >&2; exit 1; }
+	@command -v $(GO) >/dev/null || { echo "missing: go (see CONTRIBUTING.md)" >&2; exit 1; }
 	@command -v git >/dev/null || { echo "missing: git" >&2; exit 1; }
 	@command -v pkg-config >/dev/null || { echo "missing: pkg-config (brew install pkgconf / apt install pkg-config)" >&2; exit 1; }
 	@command -v cc >/dev/null || { echo "missing: a C compiler (xcode-select --install / apt install build-essential)" >&2; exit 1; }
