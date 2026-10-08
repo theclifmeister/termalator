@@ -3,7 +3,8 @@ name: ci
 # Lean by design (GitHub bills every job, rounded up to the minute):
 #   pull request  one Linux job (`test`: gofmt, build, vet, unit tests, selftest,
 #                 e2e smoke), plus claude-mod / release-snapshot when their
-#                 files change. No macOS, no -race. Docs-only changes skip it.
+#                 files change. No macOS, no -race. Docs-only and site-only changes
+#                 skip it.
 #   push to main  the same Linux job with unit tests under -race (the e2e
 #                 smoke stays race-free), and macOS (`macos`: build, unit
 #                 tests, e2e smoke). Release tags wait for this.
@@ -102,7 +103,7 @@ jobs:
   # its `if` counts as passed for required checks, unlike a workflow left
   # out by a paths filter, which would leave them pending.
   #   code     build and test: every push to main, and pull requests that
-  #            change anything but *.md and docs/
+  #            change anything but *.md, docs/ and site/ (the website)
   #   release  the release snapshot: pull requests that touch the release
   #            build. Not main: a release tag runs it (release.yml).
   #   mod      the Claude mod check: every push, and pull requests that
@@ -128,7 +129,7 @@ jobs:
             echo "code=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          hits=$(git diff --name-only HEAD^1 HEAD | grep -vE "(\.md$|^docs/)" || true)
+          hits=$(git diff --name-only HEAD^1 HEAD | grep -vE "(\.md$|^docs/|^site/)" || true)
           echo "non-docs: ${hits:-none}"
           echo "code=$([ -n "$hits" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
