@@ -21,6 +21,7 @@ type modder struct {
 }
 
 func (modder) ModsMinVersion() string      { return "2.1.289" }
+func (modder) ModRequired() bool           { return false }
 func (x modder) Manifest() *agent.Manifest { return x.m }
 
 func modsServer(t *testing.T, enabled bool, version string) (*Server, agent.Agent, *int, *bytes.Buffer) {
