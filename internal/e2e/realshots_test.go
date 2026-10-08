@@ -28,7 +28,7 @@ func TestRealModShots(t *testing.T) {
 		t.Skip("set TM_SHOTS to a folder to capture the mod's screens")
 	}
 	os.MkdirAll(dir, 0o755)
-	env := realEnv(t)
+	env := realAgentEnv(t, "claude", nil)
 	env.Setenv("ANTHROPIC_MODEL", "haiku") // the coordinator too
 	env.Setenv("TERMINATR_TICK_SWEEP", "1s")
 	env.Setenv("TERMINATR_TICK_PR", "1s")
