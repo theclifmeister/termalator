@@ -40,19 +40,23 @@ func TestSmokeCoordinatorPanel(t *testing.T) {
 	panelOnly := func() string {
 		clearInbox(env)
 		var out []string
-		// The ticker's timers (ages, so never the same twice) are left
-		// out, from their line to the one that ends them; the unit
-		// tests cover them.
+		// The ticker's section (ages, so never the same twice), the
+		// blank row before it included, is left out, from its heading to
+		// the blank row that ends it; the unit tests cover it.
 		skip, dropped := false, 0
 		for _, l := range strings.Split(w.Screen(), "\n") {
 			r := []rune(l)
 			cut := strings.TrimSpace(string(r[min(cols-panel, len(r)):]))
 			cut = strings.TrimPrefix(cut, "│ ")
-			if strings.HasPrefix(cut, "ticker ·") {
+			if strings.HasPrefix(cut, "TICKER") {
 				skip = true
+				if n := len(out); n > 0 && strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(out[n-1]), "│")) == "" {
+					out = out[:n-1]
+					dropped++
+				}
 			}
 			if skip {
-				skip = !strings.Contains(cut, "PR host ok") && !strings.Contains(cut, "PR host failing")
+				skip = cut != "" && cut != "│"
 				dropped++
 				continue
 			}

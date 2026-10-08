@@ -259,9 +259,10 @@ func TestCoordPanelMouse(t *testing.T) {
 	}
 }
 
-// TestCoordLinesTicker: the ticker's timers show as one line under the
-// summary (red while gh fails), and a thread's PR says when it was last
-// checked.
+// TestCoordLinesTicker: the ticker's timers show as a TICKER section of
+// aligned label/value rows (the PR host on its own row, red while it
+// fails; unknown timers have no row), and a thread's PR says when it
+// was last checked.
 func TestCoordLinesTicker(t *testing.T) {
 	now := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
 	w := sampleWatch()
@@ -269,14 +270,20 @@ func TestCoordLinesTicker(t *testing.T) {
 	w.Threads[0].PRChecked = now.Add(-30 * time.Second)
 	lines, _ := coordLines(w, 80, now)
 	text := ansi.Strip(strings.Join(lines, "\n"))
-	for _, want := range []string{"ticker · PRs checked 40s ago, next 1m20s · synced 1m ago · PR host ok", "#121 open, checks passed · checked 30s ago"} {
+	for _, want := range []string{"TICKER", "PRs      40s ago · next 1m20s", "synced   1m ago", "PR host  ok", "#121 open, checks passed · checked 30s ago"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("missing %q:\n%s", want, text)
 		}
 	}
 	w.Ticker.GHFailing = true
 	lines, _ = coordLines(w, 80, now)
-	if text = ansi.Strip(strings.Join(lines, "\n")); !strings.Contains(text, "PR host failing") || strings.Contains(text, "PR host ok") {
+	if text = ansi.Strip(strings.Join(lines, "\n")); !strings.Contains(text, "PR host  failing") || strings.Contains(text, "PR host  ok") {
 		t.Errorf("PR host failing:\n%s", text)
+	}
+	// Nothing known yet: no section.
+	w.Ticker = &proto.WatchTicker{}
+	lines, _ = coordLines(w, 80, now)
+	if text = ansi.Strip(strings.Join(lines, "\n")); strings.Contains(text, "TICKER") {
+		t.Errorf("empty ticker drew a section:\n%s", text)
 	}
 }
