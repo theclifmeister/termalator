@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -204,7 +205,7 @@ func TestCodeHosts(t *testing.T) {
 		t.Fatalf("gh checked with only an Azure repo: %+v", cs)
 	}
 	for _, n := range []string{"az", "az login", "az repo Shop/web", "git origin Shop/web"} {
-		if c := find(cs, n); len(c) != 1 || c[0].Status != OK || c[0].Group != "toolchain" {
+		if c := find(cs, n); len(c) != 1 || c[0].Status != OK || c[0].Group != "code host" {
 			t.Errorf("%s: %+v", n, c)
 		}
 	}
@@ -693,5 +694,39 @@ func TestCodeHostsServerContext(t *testing.T) {
 	authed = false
 	if c := find(codeHosts(d, Live{}), "gh auth"); len(c) != 1 || c[0].Status != Warn || c[0].Source != "local" {
 		t.Errorf("no server: %+v", c)
+	}
+}
+
+// TestEachStreams: the groups come out one by one in order while the
+// code hosts are still being checked; those come last, after waiting
+// names their group.
+func TestEachStreams(t *testing.T) {
+	d := testDeps(t)
+	d.LookPath = func(n string) (string, error) { return "/bin/" + n, nil }
+	release := make(chan struct{})
+	d.Run = func(dir, name string, args ...string) (string, error) {
+		if name == "/bin/gh" {
+			<-release // a slow gh
+		}
+		return "ok", nil
+	}
+	d.Hosts = func() []RepoHost { return nil }
+	var groups []string
+	waited := false
+	Each(d, func(cs []Check) {
+		for _, c := range cs {
+			if len(groups) == 0 || groups[len(groups)-1] != c.Group {
+				groups = append(groups, c.Group)
+			}
+		}
+	}, func(g string) {
+		if g != "code host" || slices.Contains(groups, "code host") {
+			t.Errorf("waiting %q after %q", g, groups)
+		}
+		waited = true
+		close(release)
+	})
+	if !waited || len(groups) < 3 || groups[0] != "toolchain" || groups[len(groups)-1] != "code host" || slices.Index(groups, "code host") != len(groups)-1 {
+		t.Fatalf("waited %v, groups %q", waited, groups)
 	}
 }

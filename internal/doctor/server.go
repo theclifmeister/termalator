@@ -21,8 +21,9 @@ type Live struct {
 	Running bool
 	// Sessions are the ids of the server's sessions; nil when unknown.
 	Sessions map[string]bool
-	// CodeHost is the server's answer to server.codehost; nil when it
-	// is not running or can't tell (an older server).
+	// CodeHost is the server's answer to server.codehost
+	// (serverCodeHost); nil when it is not running or can't tell (an
+	// older server).
 	CodeHost *proto.CodeHostStatus
 }
 
@@ -129,10 +130,6 @@ func Server(d Deps) ([]Check, Live) {
 		var ks proto.KeychainStatus
 		err := c.Call(proto.MethodServerKeychain, nil, &ks)
 		out = append(out, keychainCheck(d, ks, err)...)
-	}
-	var ch proto.CodeHostStatus
-	if err := c.Call(proto.MethodServerCodeHost, nil, &ch); err == nil {
-		live.CodeHost = &ch
 	}
 	if st.PreviousShutdown == "crash" {
 		detail := "the previous server crashed"
@@ -242,6 +239,25 @@ func runtimeDirs(p server.Paths, live Live) []Check {
 			Fix:    &Fix{Desc: "remove " + dir, Apply: apply}})
 	}
 	return out
+}
+
+// serverCodeHost asks a running server for its code-host checks
+// (server.codehost) on a connection of its own, so Each can run it
+// beside the other checks; nil when no server answers.
+func serverCodeHost(p server.Paths) *proto.CodeHostStatus {
+	if held, _ := lockHeld(p.Lock); !held {
+		return nil
+	}
+	c, err := server.Dial(p, proto.KindControl)
+	if err != nil {
+		return nil
+	}
+	defer c.Close()
+	var ch proto.CodeHostStatus
+	if err := c.Call(proto.MethodServerCodeHost, nil, &ch); err != nil {
+		return nil
+	}
+	return &ch
 }
 
 // sessionsNow asks the server for its sessions; nil if it can't.

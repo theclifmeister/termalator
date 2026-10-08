@@ -73,19 +73,30 @@ func doctorCmd(e *Env, args []string) int {
 			d.Strays, d.Bootout = c.Strays, c.Bootout
 		}
 	}
-	checks := doctor.Run(d)
-	fixes := doctor.Fixes(checks)
-	code := ExitOK
-	if doctor.Worst(checks) == doctor.Fail {
-		code = ExitRefused
-	}
 	if *asJSON && !*fix {
+		checks := doctor.Run(d)
+		code := ExitOK
+		if doctor.Worst(checks) == doctor.Fail {
+			code = ExitRefused
+		}
 		if e.srvJSON(map[string]any{"status": doctor.Worst(checks), "checks": checks}) != ExitOK {
 			return ExitIO
 		}
 		return code
 	}
-	printChecks(e, checks)
+	// Each group prints as soon as it is checked (doctor.Each).
+	var checks []doctor.Check
+	pr := &checkPrinter{e: e}
+	doctor.Each(d, func(cs []doctor.Check) {
+		checks = append(checks, cs...)
+		pr.print(cs)
+	}, pr.waiting)
+	pr.summary()
+	fixes := doctor.Fixes(checks)
+	code := ExitOK
+	if doctor.Worst(checks) == doctor.Fail {
+		code = ExitRefused
+	}
 	if len(fixes) == 0 {
 		return code
 	}
@@ -120,22 +131,40 @@ func doctorCmd(e *Env, args []string) int {
 	return code
 }
 
-func printChecks(e *Env, checks []doctor.Check) {
-	group := ""
-	counts := map[doctor.Status]int{}
+// checkPrinter prints doctor's checks group by group as they come.
+type checkPrinter struct {
+	e      *Env
+	group  string
+	counts map[doctor.Status]int
+}
+
+func (p *checkPrinter) print(checks []doctor.Check) {
+	if p.counts == nil {
+		p.counts = map[doctor.Status]int{}
+	}
 	for _, c := range checks {
-		if c.Group != group {
-			group = c.Group
-			fmt.Fprintln(e.Stdout, group)
+		if c.Group != p.group {
+			p.group = c.Group
+			fmt.Fprintln(p.e.Stdout, p.group)
 		}
-		counts[c.Status]++
+		p.counts[c.Status]++
 		detail := c.Detail
 		if c.Source != "" && c.Name != "local shell" {
 			detail += " [" + c.Source + "]"
 		}
-		fmt.Fprintf(e.Stdout, "  %-4s  %-14s %s\n", c.Status, c.Name, detail)
+		fmt.Fprintf(p.e.Stdout, "  %-4s  %-14s %s\n", c.Status, c.Name, detail)
 	}
-	fmt.Fprintf(e.Stdout, "\n%d ok, %s, %s\n", counts[doctor.OK], plural(counts[doctor.Warn], "warning"), plural(counts[doctor.Fail], "failure"))
+}
+
+// waiting heads a group doctor is still checking, so a slow one
+// (the code hosts) doesn't look frozen; its lines follow.
+func (p *checkPrinter) waiting(group string) {
+	p.group = group
+	fmt.Fprintln(p.e.Stdout, group+" (checking…)")
+}
+
+func (p *checkPrinter) summary() {
+	fmt.Fprintf(p.e.Stdout, "\n%d ok, %s, %s\n", p.counts[doctor.OK], plural(p.counts[doctor.Warn], "warning"), plural(p.counts[doctor.Fail], "failure"))
 }
 
 // libghosttySelftest feeds a line through the emulator, as tm selftest.
