@@ -593,17 +593,3 @@ func (c *Config) Removed() []string {
 
 // AllProjectsName is how the UI and tm doctor name [defaults].
 const AllProjectsName = "all projects"
-
-// Agents returns the agents slug's threads and coordinator run
-// (thread_agent, coordinator_agent): DefaultAgent where the file sets
-// none or can't be read, so a broken file never keeps an agent from
-// starting (tm doctor and the settings popup show it).
-func Agents(slug string) (thread, coordinator string) {
-	s := Defaults
-	if c, err := Load(); c != nil && err == nil {
-		if got, err := c.Safety(slug); err == nil {
-			s = got
-		}
-	}
-	return s.ThreadAgent, s.CoordinatorAgent
-}

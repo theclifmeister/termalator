@@ -1479,6 +1479,17 @@ func TestLibraryTab(t *testing.T) {
 	}
 }
 
+// agentsOf are slug's saved thread_agent and coordinator_agent.
+func agentsOf(t *testing.T, slug string) (thread, coordinator string) {
+	t.Helper()
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := must(cfg.Safety(slug))
+	return s.ThreadAgent, s.CoordinatorAgent
+}
+
 // TestAgentSettings: the thread and coordinator agent rows step through
 // the agents tm knows and save to the project's table, or all
 // projects'; the project's info names the coordinator agent a new one
@@ -1508,17 +1519,17 @@ func TestAgentSettings(t *testing.T) {
 		t.Fatalf("thread agent row:\n%s", out)
 	}
 	act(m, src, "enter")
-	if th, co := config.Agents("alpha"); th != "pi" || co != "claude" {
+	if th, co := agentsOf(t, "alpha"); th != "pi" || co != "claude" {
 		t.Fatalf("alpha's agents %q %q", th, co)
 	}
-	if th, _ := config.Agents("beta"); th != "claude" {
+	if th, _ := agentsOf(t, "beta"); th != "claude" {
 		t.Fatalf("beta's thread agent %q", th)
 	}
 	if !strings.Contains(m.msg, "new threads of alpha run pi") {
 		t.Fatalf("message %q", m.msg)
 	}
 	act(m, src, "enter") // and back round to claude
-	if th, _ := config.Agents("alpha"); th != "claude" {
+	if th, _ := agentsOf(t, "alpha"); th != "claude" {
 		t.Fatalf("alpha's thread agent after two presses %q", th)
 	}
 
@@ -1530,7 +1541,7 @@ func TestAgentSettings(t *testing.T) {
 		keyPress(m, "down")
 	}
 	act(m, src, "enter")
-	if _, co := config.Agents("beta"); co != "pi" {
+	if _, co := agentsOf(t, "beta"); co != "pi" {
 		t.Fatalf("beta's coordinator agent %q", co)
 	}
 	keyPress(m, "esc")
@@ -1549,7 +1560,7 @@ func TestAgentSettings(t *testing.T) {
 		t.Fatalf("unknown agent not flagged:\n%s", out)
 	}
 	act(m, src, "enter")
-	if _, co := config.Agents("alpha"); co != "claude" {
+	if _, co := agentsOf(t, "alpha"); co != "claude" {
 		t.Fatalf("enter didn't pick a known agent: %q", co)
 	}
 }

@@ -37,6 +37,24 @@ do = "stream"
 ms = 50
 text = "COORD-DONE"
 `,
+	"coord-agents": `
+[[step]]
+do = "run"
+cmd = '"$TERMINATR_BIN" context > "$OUT/context" 2>&1'
+
+[[step]]
+do = "run"
+cmd = '"$TERMINATR_BIN" task delegate T1 --approved-by-user > "$OUT/delegate" 2>&1; echo "exit $?" >> "$OUT/delegate"'
+
+[[step]]
+do = "run"
+cmd = '"$TERMINATR_BIN" thread start "By hand" --agent claude --approved-by-user > "$OUT/override" 2>&1; echo "exit $?" >> "$OUT/override"'
+
+[[step]]
+do = "stream"
+ms = 50
+text = "COORD-DONE"
+`,
 	"thread-work": `
 [[step]]
 do = "run"
@@ -135,6 +153,46 @@ func threadEnv(t *testing.T) (env *Env, projDir, out string) {
 	// Not the worktrees: the server trusts each thread's own (§8.6).
 	env.Trust(p.Dir)
 	return env, p.Dir, out
+}
+
+// TestAgentSettings: with a second agent installed, the settings pick
+// the agent a new coordinator and a new thread run (docs/SPEC.md §11.2):
+// the coordinator runs all projects' coordinator_agent, a delegated
+// thread the project's thread_agent, and --agent overrides it; tm
+// context names them.
+func TestAgentSettings(t *testing.T) {
+	env, _, out := threadEnv(t)
+	env.FakeAgent("other")
+	writeConfig(t, env, "[defaults]\ncoordinator_agent = \"other\"\n\n[projects.demo]\nthread_agent = \"other\"\n")
+	env.MustCLI("task", "add", "Fix the login", "--status", "ready", "--project", "demo")
+
+	coord := &Session{ID: strings.TrimSpace(env.MustCLI("project", "open", "demo"))}
+	info, _ := env.Info(coord)
+	coord.PID = info.PID
+	env.track(info.PID, "coordinator "+coord.ID)
+	if info.Agent != "other" {
+		t.Fatalf("coordinator runs %q", info.Agent)
+	}
+	env.WaitState(coord, "idle", agentWait)
+	env.Prompt(coord, "run coord-agents")
+	if got := readOut(t, out, "context"); !strings.Contains(got, "Thread agent: other (config.toml; the human's): tm thread start runs it; --agent may name another: claude") {
+		t.Errorf("context:\n%s", got)
+	}
+	if got := readOut(t, out, "delegate"); !strings.Contains(got, "exit 0") {
+		t.Fatalf("delegate: %q", got)
+	}
+	if got := readOut(t, out, "override"); !strings.Contains(got, "exit 0") {
+		t.Fatalf("thread start --agent claude: %q", got)
+	}
+	ran := map[string]string{}
+	for _, s := range env.Sessions() {
+		if s.Thread != "" {
+			ran[s.Thread] = s.Agent
+		}
+	}
+	if ran["t-0001"] != "other" || ran["t-0002"] != "claude" {
+		t.Fatalf("threads ran %v", ran)
+	}
 }
 
 func readTOML(t *testing.T, path string, v any) {

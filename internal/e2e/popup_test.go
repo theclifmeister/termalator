@@ -249,7 +249,7 @@ func TestSmokeProjectPopup(t *testing.T) {
 	// , has the settings of every project.
 	w.Type(",")
 	w.WaitFor("Prefix key", wait)
-	w.WaitFor("Default agent", wait)
+	w.WaitFor("Details panel", wait)
 	screens = append(screens, w.Screen())
 	w.Key(keyEsc)
 
