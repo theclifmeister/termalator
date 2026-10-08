@@ -165,6 +165,7 @@ func (f *fakeSource) LibraryRemove(_, id, name string) (int, error) {
 func (f *fakeSource) Review(slug string, t *tasks.Task) Review { return f.reviews[t.ID] }
 func (f *fakeSource) Memory(string) (project.Memory, error)    { return f.memory, nil }
 func (f *fakeSource) Agents() []string                         { return f.agents }
+func (f *fakeSource) ModsNote() string                         { return "Claude Code 2.1.289" }
 func (f *fakeSource) Models() []string                         { return []string{"opus", "sonnet", "haiku"} }
 func (f *fakeSource) NewProject(name string) (string, error)   { return name, nil }
 func (f *fakeSource) OpenProject(slug string, c, r int) (string, error) {

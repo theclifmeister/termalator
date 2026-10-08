@@ -57,7 +57,7 @@ func paneSetting() bool {
 // why not when the setting asks for it.
 func (s *Server) modsFor(a agent.Agent, id string) bool {
 	m, ok := a.(agent.Modder)
-	if !ok || !modsSetting() {
+	if !ok || (!m.ModRequired() && !modsSetting()) {
 		return false
 	}
 	v, err := s.versions.of(a, s.baseEnv())
