@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -174,10 +175,13 @@ func TestCodeHosts(t *testing.T) {
 	d := testDeps(t)
 	d.LookPath = func(n string) (string, error) { return "/bin/" + n, nil }
 	var ran []string
+	var mu sync.Mutex // the checks run at once
 	fail := ""
 	d.Run = func(dir, name string, args ...string) (string, error) {
 		line := name + " " + strings.Join(args, " ")
+		mu.Lock()
 		ran = append(ran, dir+"|"+line)
+		mu.Unlock()
 		if fail != "" && strings.Contains(line, fail) {
 			return "boom", errors.New("exit 1")
 		}
@@ -189,6 +193,8 @@ func TestCodeHosts(t *testing.T) {
 	d.Getenv = func(k string) string { return env[k] }
 	var patAsked []string
 	d.PATGet = func(u, pat string) ([]byte, error) {
+		mu.Lock()
+		defer mu.Unlock()
 		patAsked = append(patAsked, u)
 		return nil, &codehost.CLIError{CLI: "az", Problem: "Azure DevOps refused AZURE_DEVOPS_EXT_PAT (401/403)", Err: errors.New("HTTP 401")}
 	}
