@@ -27,6 +27,7 @@ type ViewConn struct {
 	up     bool // joined; false while the server is away
 	closed bool
 	watch  map[chan struct{}]bool // woken by a new version, or up changing
+	digest map[chan struct{}]bool // woken by a view.digest event
 
 	callMu sync.Mutex // one call at a time on ctl
 	ctl    *server.Client
@@ -38,11 +39,12 @@ var ErrViewDown = errors.New("not joined to a view (the server is away)")
 // JoinView joins a view. A failure to join the first time is returned;
 // later the connection rejoins on its own.
 func JoinView(p server.Paths, params proto.ViewSubscribeParams) (*ViewConn, error) {
-	vc := &ViewConn{paths: p, params: params, watch: map[chan struct{}]bool{}}
+	vc := &ViewConn{paths: p, params: params, watch: map[chan struct{}]bool{}, digest: map[chan struct{}]bool{}}
 	st, v, err := server.SubscribeView(p, params)
 	if err != nil {
 		return nil, err
 	}
+	st.Digest = vc.digested
 	vc.params.Session = "" // shown once; a rejoin keeps what the view shows
 	vc.stream, vc.client, vc.v, vc.up = st, st.Client, v, true
 	go vc.run(st)
@@ -86,6 +88,7 @@ func (vc *ViewConn) run(st *server.ViewStream) {
 			if err != nil {
 				continue
 			}
+			s.Digest = vc.digested
 			vc.mu.Lock()
 			if vc.closed {
 				vc.mu.Unlock()
@@ -163,6 +166,34 @@ func (vc *ViewConn) Watch() (ch <-chan struct{}, stop func()) {
 		vc.mu.Lock()
 		delete(vc.watch, c)
 		vc.mu.Unlock()
+	}
+}
+
+// Digests returns a channel that receives when the server asks for a
+// digest check (view.digest), until stop is called.
+func (vc *ViewConn) Digests() (ch <-chan struct{}, stop func()) {
+	c := make(chan struct{}, 1)
+	vc.mu.Lock()
+	if vc.digest == nil {
+		vc.digest = map[chan struct{}]bool{}
+	}
+	vc.digest[c] = true
+	vc.mu.Unlock()
+	return c, func() {
+		vc.mu.Lock()
+		delete(vc.digest, c)
+		vc.mu.Unlock()
+	}
+}
+
+func (vc *ViewConn) digested() {
+	vc.mu.Lock()
+	defer vc.mu.Unlock()
+	for ch := range vc.digest {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
 	}
 }
 

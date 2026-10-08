@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/emu"
+	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/server"
 )
 
 // Keys a scenario presses with Window.Key. They are encoded the way the
@@ -154,7 +155,7 @@ func (w *Window) AttachLog() []string {
 }
 
 // AssertMirrorsServer checks that the attach client in w mirrors the
-// server exactly: it asks the client (SIGUSR1) to request an in-stream
+// server exactly: it asks the client (view.digest) to request an in-stream
 // digest, and the client compares it with its mirror's at the same point
 // of the stream (modes, both screens, cursor, keyboard state).
 func (e *Env) AssertMirrorsServer(w *Window) {
@@ -168,8 +169,14 @@ func (e *Env) AssertMirrorsServer(w *Window) {
 		return n, last
 	}
 	before, _ := count()
-	if err := syscall.Kill(w.PID(), syscall.SIGUSR1); err != nil {
-		e.T.Fatalf("signal attach client: %v", err)
+	c, err := server.Dial(server.Paths{Socket: e.Socket}, proto.KindControl)
+	if err != nil {
+		e.T.Fatalf("dial server: %v", err)
+	}
+	err = c.Call(proto.MethodViewDigest, proto.ViewDigestParams{PID: w.PID()}, nil)
+	c.Close()
+	if err != nil {
+		e.T.Fatalf("ask attach client for a digest: %v", err)
 	}
 	var last string
 	if !Poll(DefaultTimeout, func() bool { var n int; n, last = count(); return n > before }) {

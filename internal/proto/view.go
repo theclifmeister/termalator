@@ -35,7 +35,23 @@ const (
 	// MethodViewInput says the user typed into Session in this console:
 	// the console you type in sizes the panes it shows.
 	MethodViewInput = "view.input"
+	// MethodViewDigest (ViewDigestParams) asks the consoles of process
+	// PID to check their mirror against the server's screen: each gets a
+	// view.digest event and asks its pane for an in-stream digest. The
+	// e2e tests use it; it answers ViewDigestResult.
+	MethodViewDigest = "view.digest"
 )
+
+// ViewDigestParams are the params of view.digest.
+type ViewDigestParams struct {
+	PID int `json:"pid"`
+}
+
+// ViewDigestResult is the answer to view.digest: how many consoles were
+// asked.
+type ViewDigestResult struct {
+	Consoles int `json:"consoles"`
+}
 
 // ViewSubscribeParams are the params of view.subscribe.
 type ViewSubscribeParams struct {
@@ -70,12 +86,17 @@ type ViewSubscribeResult struct {
 
 // ViewEvent is one line of a view subscription.
 type ViewEvent struct {
-	Event string    `json:"event"` // EventViewChanged
+	Event string    `json:"event"` // EventViewChanged, EventViewDigest
 	View  view.View `json:"view"`
 }
 
-// EventViewChanged carries a view's new version.
-const EventViewChanged = "view.changed"
+const (
+	// EventViewChanged carries a view's new version.
+	EventViewChanged = "view.changed"
+	// EventViewDigest (no view) asks the console for a digest check
+	// (view.digest).
+	EventViewDigest = "view.digest"
+)
 
 // ViewParams are the params of every view.* action. Client is the id
 // view.subscribe gave; the other fields are each action's own.
