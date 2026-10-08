@@ -352,7 +352,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		k, v, _ := strings.Cut(kv, "=")
 		set[k] = v
 	}
-	base := agent.FilterEnv(s.baseEnv(), launch.Unset)
+	base := agent.FilterEnv(withBinFirst(s.baseEnv(), s.opts.Bin), launch.Unset)
 	env := sessionEnv(base, set)
 	r.Argv = launch.Argv
 	// The agent's own id is known ahead only when the launch gives it

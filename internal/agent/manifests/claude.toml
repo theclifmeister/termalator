@@ -51,6 +51,10 @@ unset_env = [
 ]
 
 [launch.env]
+# Claude 2.1.295 enables TaskCreate/TaskUpdate (there is no TodoWrite) only
+# for legacy or unset models; current models get no todo tools without this,
+# so the [[todos]] mapping would never fire.
+CLAUDE_CODE_ENABLE_TODO_TOOLS = "1"
 TERMINATR_SESSION = "{{.SessionID}}"
 TERMINATR_SOCKET = "{{.Socket}}"
 TERMINATR_BIN = "{{.TMBin}}"

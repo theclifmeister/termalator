@@ -277,6 +277,7 @@ Every hosted process gets these variables, which is how hooks and the CLI find t
 - `TERMINATR_SESSION=<id>`
 - `TERMINATR_SOCKET`
 - `TERMINATR_BIN` (absolute path of `tm`)
+- `PATH`, in an agent session (coordinator or thread, any agent): the directory holding `TERMINATR_BIN` (the pin, when the server runs from it) goes first, so the session's `tm` is the server's own and never an older one further down `PATH` (Homebrew). The rest of `PATH` stays as the server had it; the directory is not listed twice.
 - `TERMINATR_PROJECT=<slug>` and `TERMINATR_THREAD=<id>`, when they apply
 - `TERMINATR_BAND=off`, in a session with terminatr's mod when `[mods] band = false` (§8.6, **Mods**)
 - `TERMINATR_PANE=off`, in a coordinator session with terminatr's mod unless `[mods] pane = true` (§8.6, **Mods**)
@@ -1134,7 +1135,7 @@ Claude Code is pure data (`manifests/claude.toml`), except for the optional sock
      | working | title spinner `◐◑◒◓` (or Braille), or the `✢ Churning… (` spinner line. `esc to interrupt` isn't used: a custom statusline hides it |
      | idle | a `✳` title (ranked below the blockers, because it also shows while blocked), or a `❯` prompt with dim ghost text skipped |
      | unknown | `showing detailed transcript` |
-- **Todo mirroring:** Claude 2.1 has **no `TodoWrite`**. Its list is managed with `TaskCreate`/`TaskUpdate`, which send **diffs**, one item per call:
+- **Todo mirroring:** Claude 2.1 has **no `TodoWrite`**, and enables `TaskCreate`/`TaskUpdate` only for legacy or unset models: the manifest launches every role with `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` (`[launch.env]`) so current models (sonnet/opus/haiku 5.5) report todos too. Its list is managed with `TaskCreate`/`TaskUpdate`, which send **diffs**, one item per call:
   - `PostToolUse(TaskCreate)` → upsert: id `tool_response.task.id`, text `tool_input.subject`, `activeForm`.
   - `PostToolUse(TaskUpdate)` → upsert: id `tool_input.taskId`, plus whichever of `status`, `subject` and `activeForm` changed.
   - `SessionStart(source=clear)` → reset (ids restart at 1); compaction keeps the list.
