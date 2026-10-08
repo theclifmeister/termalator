@@ -18,6 +18,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/theclifmeister/terminatr/internal/mdfile"
+	"github.com/theclifmeister/terminatr/internal/plat/fsx"
 	"github.com/theclifmeister/terminatr/internal/project"
 )
 
@@ -160,7 +161,7 @@ func Archive(p *project.Project, r *Record) error {
 	if err := os.MkdirAll(ArchiveDir(p), 0o755); err != nil {
 		return err
 	}
-	if err := mdfile.WriteAtomic(archivePath(p, r.ID), data, 0o644); err != nil {
+	if err := fsx.WriteAtomic(archivePath(p, r.ID), data, 0o644); err != nil {
 		return err
 	}
 	a := Archived{ID: r.ID, Task: r.Task, Title: r.Title, Resolved: ResolvedAt(p, r).Format("2006-01-02")}

@@ -13,6 +13,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/theclifmeister/terminatr/internal/plat/flock"
+	"github.com/theclifmeister/terminatr/internal/plat/fsx"
 )
 
 const fence = "+++"
@@ -107,33 +108,6 @@ func Lock(path string) (unlock func(), err error) {
 	return l.Unlock, nil
 }
 
-// WriteAtomic writes data to a temp file in path's directory and renames
-// it over path. The caller holds the lock, if it needs one.
-func WriteAtomic(path string, data []byte, perm fs.FileMode) error {
-	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp*")
-	if err != nil {
-		return err
-	}
-	name := tmp.Name()
-	defer os.Remove(name) // no-op after a successful rename
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := os.Chmod(name, perm); err != nil {
-		return err
-	}
-	return os.Rename(name, path)
-}
-
 // Write locks path and atomically replaces it with front matter and body.
 func Write(path string, front any, body []byte) error {
 	data, err := Join(front, body)
@@ -145,7 +119,7 @@ func Write(path string, front any, body []byte) error {
 		return err
 	}
 	defer unlock()
-	return WriteAtomic(path, data, 0o644)
+	return fsx.WriteAtomic(path, data, 0o644)
 }
 
 // Update is a locked read-modify-write. fn gets the current contents (nil
@@ -168,7 +142,7 @@ func Update(path string, fn func(old []byte) ([]byte, error)) error {
 	if old != nil && bytes.Equal(old, data) {
 		return nil
 	}
-	return WriteAtomic(path, data, 0o644)
+	return fsx.WriteAtomic(path, data, 0o644)
 }
 
 // Append locks path and appends data to it, creating the file if needed.
