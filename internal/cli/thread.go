@@ -1171,10 +1171,10 @@ func (e *Env) threadAnswer(p *project.Project, id string, a answerArgs) error {
 	if info.Question != nil {
 		return e.answerByMod(p, id, r.Session, info.Question, a)
 	}
-	if len(a.options) > 0 || len(a.choices) != 1 || a.question > 1 {
+	if len(a.options) > 0 || len(a.choices) != 1 {
 		return &tasks.Error{Code: "no-mod-question", Msg: fmt.Sprintf("thread %s's menu isn't open through the mod (mods off, or an older agent): answer one menu at a time with --choice N [--text T], as on its screen", id)}
 	}
-	return e.answerByKeys(p, id, r, info, a.choices[0], a.text, a.withText)
+	return e.answerByKeys(p, id, r, info, a.choices[0], a.text, a.withText, a)
 }
 
 // answerByMod answers question a.question of the open menu q through the
@@ -1276,7 +1276,7 @@ func menuAnswer(it proto.QuestionItem, a answerArgs) (string, error) {
 
 // answerByKeys answers the menu on the thread's screen with keys: option
 // n, or the free-text option with text.
-func (e *Env) answerByKeys(p *project.Project, id string, r *thread.Record, info proto.SessionInfo, choice int, text string, withText bool) error {
+func (e *Env) answerByKeys(p *project.Project, id string, r *thread.Record, info proto.SessionInfo, choice int, text string, withText bool, a answerArgs) error {
 	paths, err := server.ResolvePaths()
 	if err != nil {
 		return err
@@ -1306,6 +1306,10 @@ func (e *Env) answerByKeys(p *project.Project, id string, r *thread.Record, info
 	if err := e.call(proto.MethodSessionRead, proto.SessionReadParams{ID: r.Session}, &screen); err != nil {
 		return err
 	}
+	cur, total := menuPosition(screen.Text)
+	if a.question > 0 && a.question != max(cur, 1) {
+		return &tasks.Error{Code: "no-mod-question", Msg: fmt.Sprintf("thread %s's menu is on question %d; by keys the questions are answered in order, one call each", id, max(cur, 1))}
+	}
 	option, question := dialogLines(screen.Text, choice)
 	if option == "" {
 		return &tasks.Error{Code: "no-option", Msg: fmt.Sprintf("the menu on thread %s's screen has no option %d", id, choice)}
@@ -1320,11 +1324,22 @@ func (e *Env) answerByKeys(p *project.Project, id string, r *thread.Record, info
 	keys := func(data string) error {
 		return e.call(proto.MethodSessionKeys, proto.SessionKeysParams{ID: r.Session, Data: data}, nil)
 	}
-	if err := keys(strconv.Itoa(choice)); err != nil {
+	if isText && ans.TextFocus != "" {
+		// The number would submit the option without the words.
+		if err := keys(strings.Repeat(ans.TextFocus, choice-1)); err != nil {
+			return err
+		}
+	} else if err := keys(strconv.Itoa(choice)); err != nil {
 		return err
 	}
 	answer := option
 	if isText {
+		if ans.TextKey != "" {
+			time.Sleep(answerPause)
+			if err := keys(ans.TextKey); err != nil {
+				return err
+			}
+		}
 		time.Sleep(answerPause)
 		if err := keys(text); err != nil {
 			return err
@@ -1338,8 +1353,26 @@ func (e *Env) answerByKeys(p *project.Project, id string, r *thread.Record, info
 	if err := p.Journal(e.Caller, "thread.answer", id, oneLine(question+" → "+answer, 160)); err != nil {
 		return err
 	}
+	if total > 1 && cur < total {
+		fmt.Fprintf(e.Stdout, "answered %s question %d of %d: %s; %d more before the menu closes (tm thread read %s)\n", id, cur, total, answer, total-cur, id)
+		return nil
+	}
 	fmt.Fprintf(e.Stdout, "answered %s: %s\n", id, answer)
 	return nil
+}
+
+var questionPosRE = regexp.MustCompile(`(?m)^\s*Question (\d+)/(\d+)`)
+
+// menuPosition is the "Question k/N" a multi-question menu shows on
+// screen: 0, 0 when it shows none.
+func menuPosition(screen string) (k, n int) {
+	m := questionPosRE.FindStringSubmatch(screen)
+	if m == nil {
+		return 0, 0
+	}
+	k, _ = strconv.Atoi(m[1])
+	n, _ = strconv.Atoi(m[2])
+	return k, n
 }
 
 var optionRE = regexp.MustCompile(`^[^0-9A-Za-z]*([0-9])\.\s+(.+)$`)

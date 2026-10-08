@@ -268,7 +268,7 @@ func (a *app) waitDialog(ctx context.Context, d *dialog) (int, error) {
 	a.mu.Lock()
 	d.shownAt = time.Now()
 	a.dialog = d
-	if d.kind == "permission" || d.kind == "question" {
+	if d.kind == "permission" || d.kind == "question" || d.kind == "codexq" {
 		a.inTool = true
 		if n := a.notify; n != nil {
 			a.notify = nil
@@ -381,6 +381,21 @@ func (a *app) dialogKeyLocked(d *dialog, k key) {
 		select {
 		case d.result <- n:
 		default:
+		}
+	}
+	// Codex's "None of the above": its number only selects it; Tab opens
+	// the notes, which take the text, and Enter submits them.
+	if d.kind == "codexq" && d.sel == d.textOpt {
+		switch {
+		case k.kind == kTab:
+			d.notes = true
+			return
+		case k.kind == kRune && d.notes:
+			d.text = append(d.text, k.r)
+			return
+		case k.kind == kEnter && d.notes:
+			choose(d.sel + 1)
+			return
 		}
 	}
 	// A question's text option is a text field while focused: it takes

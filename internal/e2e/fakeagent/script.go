@@ -38,6 +38,9 @@ type step struct {
 	Header      string         `toml:"header"`
 	Question    string         `toml:"question"`
 	Options     []string       `toml:"options"`
+	Style       string         `toml:"style"` // question: "codex" draws Codex's menu
+	At          int            `toml:"at"`    // codex question: its number k of "Question k/N"
+	Of          int            `toml:"of"`    // codex question: N
 	Type        string         `toml:"type"`
 	Message     string         `toml:"message"`
 	AfterMS     int            `toml:"after_ms"`
@@ -447,6 +450,10 @@ func (a *app) questionStep(ctx context.Context, st step) error {
 	}
 	all := append(append([]string(nil), opts...), "Type something.")
 	d := &dialog{kind: "question", header: st.Header, question: st.Question, options: all, textOpt: len(all) - 1}
+	if st.Style == "codex" {
+		all = append(append([]string(nil), opts...), "None of the above")
+		d = &dialog{kind: "codexq", question: st.Question, options: all, textOpt: len(all) - 1, at: max(st.At, 1), of: max(st.Of, 1)}
+	}
 	n, err := a.waitDialog(ctx, d)
 	if err != nil {
 		return err

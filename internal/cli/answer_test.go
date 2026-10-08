@@ -68,3 +68,18 @@ func TestQuestionLines(t *testing.T) {
 		t.Fatalf("got\n%s\nwant\n%s", got, want)
 	}
 }
+
+func TestMenuPosition(t *testing.T) {
+	for _, c := range []struct {
+		screen string
+		k, n   int
+	}{
+		{"  Question 2/3 (2 unanswered)\n  Which?\n", 2, 3},
+		{"  Question 1/1 (1 unanswered)", 1, 1},
+		{"  1. Yes\n  2. No\n", 0, 0},
+	} {
+		if k, n := menuPosition(c.screen); k != c.k || n != c.n {
+			t.Errorf("menuPosition(%q) = %d/%d, want %d/%d", c.screen, k, n, c.k, c.n)
+		}
+	}
+}

@@ -123,12 +123,17 @@ type RemoteControl struct {
 // Answer is a manifest's [answer] table. A menu's options are numbered;
 // option N is chosen by typing its number. The option named TextOption
 // takes the user's own words: its number focuses it, then the text is
-// typed and Submit sent.
+// typed and Submit sent. When the option needs a key to open its text
+// field (Codex: Tab for notes), TextKey is sent between the two. Where a
+// number submits the option at once (Codex), TextFocus moves to the text
+// option instead: its key, typed N-1 times from the first option.
 type Answer struct {
 	// Rule names the screen rule that matches a question menu; tm
 	// answers only while it is the screen's settled match.
 	Rule       string `toml:"rule"`
 	TextOption string `toml:"text_option"` // part of the free-text option's label
+	TextFocus  string `toml:"text_focus"`  // key that moves down one option, in place of the number, e.g. "\x1b[B"
+	TextKey    string `toml:"text_key"`    // keys after the option's number that open its text field, e.g. "\t"
 	Submit     string `toml:"submit"`      // keys after the text, e.g. "\r"
 }
 
@@ -381,7 +386,7 @@ func (m *Manifest) validate() error {
 			}
 		}
 	}
-	if a := m.Answer; a.Rule != "" || a.TextOption != "" || a.Submit != "" {
+	if a := m.Answer; a.Rule != "" || a.TextOption != "" || a.Submit != "" || a.TextKey != "" || a.TextFocus != "" {
 		found := false
 		for _, x := range m.Rules {
 			found = found || (x.ID == a.Rule && x.State == StateBlocked)
@@ -391,6 +396,9 @@ func (m *Manifest) validate() error {
 		}
 		if (a.TextOption == "") != (a.Submit == "") {
 			errs = append(errs, errors.New("answer: text_option and submit go together"))
+		}
+		if (a.TextKey != "" || a.TextFocus != "") && a.TextOption == "" {
+			errs = append(errs, errors.New("answer: text_key and text_focus need text_option"))
 		}
 	}
 	if r := m.Inject.EmptyRule; r != "" {

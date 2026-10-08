@@ -10,9 +10,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/theclifmeister/terminatr/internal/agent"
 )
 
 const askScript = `
@@ -186,4 +189,84 @@ func TestThreadAnswerByMod(t *testing.T) {
 			t.Errorf("journal lacks %q:\n%s", w, journal)
 		}
 	}
+}
+
+const codexAskScript = `
+[[step]]
+do = "question"
+style = "codex"
+at = 1
+of = 2
+question = "Which colour should the setting use?"
+options = ["Red", "Green", "Blue (Recommended)"]
+
+[[step]]
+do = "question"
+style = "codex"
+at = 2
+of = 2
+question = "What should it be called?"
+options = ["Alpha", "Beta"]
+
+[[step]]
+do = "stream"
+ms = 50
+text = "ASKED"
+`
+
+// TestThreadAnswerCodex: Codex's plan-mode menus (T102): "Question k/N"
+// menus answered one call each, a number submitting at once; the last
+// option, "None of the above", takes the user's words as notes: its
+// number, Tab, the words, Enter ([answer] text_key). The fake agent
+// draws Codex's screen, matched by Codex's own rule and [answer].
+func TestThreadAnswerCodex(t *testing.T) {
+	env, projDir, _ := threadEnv(t)
+	cx, ok := agent.Builtin("codex")
+	if !ok {
+		t.Fatal("no built-in codex manifest")
+	}
+	rule := regexp.MustCompile(`(?s)\[\[rules\]\]\nid = "blocked-question".*?\n\n`)
+	codexRule := rule.FindString(string(cx))
+	ans := regexp.MustCompile(`(?s)\[answer\]\n.*?\n\n`).FindString(string(cx))
+	if codexRule == "" || ans == "" {
+		t.Fatal("codex.toml: no blocked-question rule or [answer]")
+	}
+	env.FakeClaude(func(m string) string {
+		m = rule.ReplaceAllLiteralString(m, codexRule)
+		return regexp.MustCompile(`(?s)\[answer\]\n.*?\n\n`).ReplaceAllLiteralString(m, ans)
+	})
+	scripts := ""
+	for _, kv := range env.Vars {
+		if v, ok := strings.CutPrefix(kv, "FAKEAGENT_SCRIPTS="); ok {
+			scripts = v
+		}
+	}
+	os.WriteFile(filepath.Join(scripts, "thread-ask.toml"), []byte(codexAskScript), 0o644)
+	th := startThread(t, env, projDir)
+	answer := func(args ...string) Result {
+		return env.CLI(append([]string{"thread", "answer", "t-0001", "--project", "demo"}, args...)...)
+	}
+	env.MustCLI("thread", "prompt", "t-0001", "run thread-ask", "--project", "demo")
+	env.WaitState(th, "blocked", agentWait)
+	env.WaitFor(th, "Question 1/2", agentWait)
+	waitReason(t, env, th, "question")
+
+	if r := answer("--choice", "1", "--question", "2"); r.Code != 1 || !strings.Contains(r.Stderr+r.Stdout, "no-mod-question") {
+		t.Errorf("answer question 2 first: %+v", r)
+	}
+	if r := answer("--choice", "4"); r.Code != 1 || !strings.Contains(r.Stderr+r.Stdout, "needs-text") {
+		t.Errorf("answer 3 without text: %+v", r)
+	}
+	if r := answer("--choice", "4", "--text", "teal"); r.Code != 0 ||
+		!strings.Contains(r.Stdout, "question 1 of 2: ") || !strings.Contains(r.Stdout, `"teal"`) {
+		t.Fatalf("answer with notes: %+v", r)
+	}
+	env.WaitFor(th, "→ teal", agentWait)
+	env.WaitFor(th, "Question 2/2", agentWait)
+	waitReason(t, env, th, "question")
+	if r := answer("--choice", "2"); r.Code != 0 || !strings.Contains(r.Stdout, "answered t-0001: Beta") {
+		t.Fatalf("answer 2: %+v", r)
+	}
+	env.WaitFor(th, "→ Beta", agentWait)
+	env.WaitFor(th, "ASKED", agentWait)
 }
