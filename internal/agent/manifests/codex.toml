@@ -185,6 +185,8 @@ state = "idle"
 # Fires at the first prompt for startup and resume, and at the next
 # prompt after /clear (clear, the new thread) and /compact (compact; seen
 # live, T105): the context goes back in every time.
+# tm hook waits up to 3 s for the context, not 500 ms (T94).
+timeout = "context"
 respond = '''{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":{{json .Context}}}}'''
 
 [[hooks]]

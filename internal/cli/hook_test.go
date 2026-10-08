@@ -208,3 +208,39 @@ func TestHookSessionStartLimit(t *testing.T) {
 		t.Errorf("slow SessionStart context lost: %q", out)
 	}
 }
+
+// The event's name comes from [hook] event_field, and a [[hooks]] entry's
+// timeout = "context" gives its response the longer deadline, for any
+// agent (docs/SPEC.md §8.2).
+func TestHookManifestWireFormat(t *testing.T) {
+	e, out, _, sock := hookEnv(t, `{"type":"agent_start","id":"x"}`)
+	agents := filepath.Join(os.Getenv("TERMINATR_HOME"), "agents")
+	if err := os.MkdirAll(agents, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `manifest_version = 1
+name = "pi"
+[launch]
+command = "pi"
+[hook]
+event_field = "type"
+keep = ["id"]
+[[hooks]]
+event = "agent_start"
+timeout = "context"
+respond = "{{json .Context}}"
+`
+	if err := os.WriteFile(filepath.Join(agents, "pi.toml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := make(chan proto.HookEventParams, 1)
+	fakeServer(t, sock, hookResponse+500*time.Millisecond, `"ctx"`, got)
+	runHookTimed(t, e, "--agent", "pi")
+	p := <-got
+	if p.Event != "agent_start" || p.Payload["type"] != "agent_start" || p.Payload["id"] != "x" {
+		t.Fatalf("event %q payload %v", p.Event, p.Payload)
+	}
+	if out.String() != `"ctx"` {
+		t.Errorf("slow context lost: %q", out)
+	}
+}

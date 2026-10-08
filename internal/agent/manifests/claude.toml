@@ -253,6 +253,8 @@ event = "SessionStart"
 state = "idle"
 # Fires for startup, resume, clear, compact and fork; the context is
 # fetched fresh from the server every time.
+# tm hook waits up to 3 s for the context, not 500 ms (T94).
+timeout = "context"
 respond = '''{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":{{json .Context}}}}'''
 
 [[hooks]]
