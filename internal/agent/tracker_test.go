@@ -37,7 +37,7 @@ func (r *rig) hook(event string, payload map[string]any) {
 		payload["session_id"] = "sid-1"
 	}
 	ev := HookEvent{Agent: "claude", Event: event, Payload: payload, Seq: r.seq, At: r.now}
-	sigs, _, err := r.a.Hook(ev, nil)
+	sigs, _, err := r.a.Hook(ev, HookEnv{})
 	if err != nil {
 		r.t.Fatal(err)
 	}
@@ -351,7 +351,7 @@ func TestTrackerSessionIDAndTodos(t *testing.T) {
 	// /clear: SessionEnd(clear) is not an exit; the new id wins; the list resets.
 	r.hook("SessionEnd", map[string]any{"reason": "clear", "session_id": "sid-1"})
 	ev := HookEvent{Event: "SessionStart", Payload: map[string]any{"source": "clear", "session_id": "sid-2"}, Seq: 100, At: r.now}
-	sigs, _, _ := r.a.Hook(ev, nil)
+	sigs, _, _ := r.a.Hook(ev, HookEnv{})
 	if !r.tr.Hook(ev, sigs) {
 		t.Fatal("session id change not reported")
 	}
@@ -361,7 +361,7 @@ func TestTrackerSessionIDAndTodos(t *testing.T) {
 	}
 	// Out-of-order (stale) events are dropped.
 	old := HookEvent{Event: "SessionStart", Payload: map[string]any{"session_id": "sid-1"}, Seq: 50, At: r.now}
-	sigs, _, _ = r.a.Hook(old, nil)
+	sigs, _, _ = r.a.Hook(old, HookEnv{})
 	r.tr.Hook(old, sigs)
 	if r.tr.AgentSID() != "sid-2" {
 		t.Fatal("a stale event changed the session id")

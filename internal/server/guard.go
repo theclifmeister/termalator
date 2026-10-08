@@ -191,6 +191,67 @@ func (s *Server) guardRoutes(mux *http.ServeMux, id string) {
 	})
 }
 
+// hookGuardOf judges the tool calls session id's hooks report against
+// its rules (agent.HookEnv.Guard: agents without a mod, which answer
+// PreToolUse with the refusal) and records a refusal as POST /v1/denied
+// does. With a mod, the mod judges: nil.
+func (s *Server) hookGuardOf(id string, mod bool) func(string, map[string]any) *guard.Denial {
+	if mod {
+		return nil
+	}
+	return func(tool string, input map[string]any) *guard.Denial {
+		s.mu.Lock()
+		rec, ok := s.records[id]
+		s.mu.Unlock()
+		if !ok {
+			return nil
+		}
+		d := s.hookRules(rec).Judge(tool, input)
+		if d != nil {
+			s.guardDenied(rec, GuardDenial{Rule: d.Rule, Tool: tool, Summary: d.Summary})
+		}
+		return d
+	}
+}
+
+// hookRulesFor is how long a session's rules are kept for its hooks: a
+// tool call must not wait on config.toml and git each time, and a
+// change of the human's settings still reaches running sessions.
+const hookRulesFor = time.Minute
+
+// hookRulesCache holds each session's rules for its hooks.
+var hookRulesCache = struct {
+	sync.Mutex
+	m map[string]hookRulesEntry
+}{m: map[string]hookRulesEntry{}}
+
+type hookRulesEntry struct {
+	rules GuardRules
+	at    time.Time
+}
+
+// hookRules is session r's rules, worked out at most once per
+// hookRulesFor.
+func (s *Server) hookRules(r SessionRecord) GuardRules {
+	now := guardNow()
+	hookRulesCache.Lock()
+	e, ok := hookRulesCache.m[r.ID]
+	hookRulesCache.Unlock()
+	if ok && now.Sub(e.at) < hookRulesFor {
+		return e.rules
+	}
+	g := s.guardRulesFor(r)
+	hookRulesCache.Lock()
+	for id, old := range hookRulesCache.m {
+		if now.Sub(old.at) >= hookRulesFor {
+			delete(hookRulesCache.m, id)
+		}
+	}
+	hookRulesCache.m[r.ID] = hookRulesEntry{rules: g, at: now}
+	hookRulesCache.Unlock()
+	return g
+}
+
 // guardRecent is when each session was last refused, within the window.
 var guardRecent = struct {
 	sync.Mutex

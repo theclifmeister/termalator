@@ -12,6 +12,8 @@ import (
 	"text/template"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/theclifmeister/terminatr/internal/guard"
 )
 
 // ManifestVersion is the manifest format this binary reads.
@@ -232,7 +234,9 @@ type HookMap struct {
 	Counter    string `toml:"counter"`
 	CounterKey string `toml:"counter_key"`
 	// Respond is a template printed back to the harness. It sees .Event,
-	// .Payload and .Context (rendered only when the template uses it).
+	// .Payload, .Context (rendered only when the template uses it) and
+	// .Guard (the guard's refusal of the payload's tool call, or nil;
+	// judged only when the template uses it).
 	Respond string `toml:"respond"`
 }
 
@@ -505,7 +509,7 @@ func (a *manifestAgent) Launch(spec LaunchSpec) (Launch, error) {
 	return out, nil
 }
 
-func (a *manifestAgent) Hook(ev HookEvent, ctxFn func() ([]byte, error)) ([]Signal, HookResult, error) {
+func (a *manifestAgent) Hook(ev HookEvent, env HookEnv) ([]Signal, HookResult, error) {
 	ignored := false
 	for _, f := range a.m.IgnoreFields {
 		if s, ok := lookupString(ev.Payload, f); ok && s != "" {
@@ -542,7 +546,7 @@ func (a *manifestAgent) Hook(ev HookEvent, ctxFn func() ([]byte, error)) ([]Sign
 			sigs = append(sigs, sig)
 		}
 		if h.Respond != "" && res.Stdout == nil {
-			out, err := renderRespond(h.Respond, ev, ctxFn)
+			out, err := renderRespond(h.Respond, ev, env)
 			if err != nil {
 				return sigs, res, err
 			}
@@ -620,24 +624,44 @@ func render(tmpl string, data any) (string, error) {
 	return b.String(), nil
 }
 
-// renderRespond renders a hook response. .Context is a method so the
-// (possibly expensive) context is rendered only if the template uses it.
-func renderRespond(tmpl string, ev HookEvent, ctxFn func() ([]byte, error)) ([]byte, error) {
-	s, err := render(tmpl, respondData{ev: ev, ctxFn: ctxFn})
+// renderRespond renders a hook response. .Context and .Guard are
+// methods so the (possibly expensive) context is rendered, and the call
+// judged, only if the template uses them.
+func renderRespond(tmpl string, ev HookEvent, env HookEnv) ([]byte, error) {
+	s, err := render(tmpl, &respondData{ev: ev, env: env})
 	return []byte(s), err
 }
 
 type respondData struct {
-	ev    HookEvent
-	ctxFn func() ([]byte, error)
+	ev     HookEvent
+	env    HookEnv
+	judged bool
+	denial *guard.Denial
 }
 
-func (d respondData) Event() string           { return d.ev.Event }
-func (d respondData) Payload() map[string]any { return d.ev.Payload }
-func (d respondData) Context() (string, error) {
-	if d.ctxFn == nil {
+func (d *respondData) Event() string           { return d.ev.Event }
+func (d *respondData) Payload() map[string]any { return d.ev.Payload }
+func (d *respondData) Context() (string, error) {
+	if d.env.Context == nil {
 		return "", nil
 	}
-	b, err := d.ctxFn()
+	b, err := d.env.Context()
 	return string(b), err
+}
+
+// Guard is the guard's refusal of the tool call in the payload
+// (tool_name, tool_input), or nil: a template answers with it, e.g.
+// {{with .Guard}}…{{json .Message}}…{{end}}. The call is judged (and a
+// refusal recorded) once however often the template asks.
+func (d *respondData) Guard() *guard.Denial {
+	if d.judged || d.env.Guard == nil {
+		return d.denial
+	}
+	d.judged = true
+	tool, _ := d.ev.Payload["tool_name"].(string)
+	input, _ := d.ev.Payload["tool_input"].(map[string]any)
+	if tool != "" {
+		d.denial = d.env.Guard(tool, input)
+	}
+	return d.denial
 }

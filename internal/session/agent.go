@@ -18,6 +18,7 @@ import (
 
 	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/detect"
+	"github.com/theclifmeister/terminatr/internal/guard"
 	"github.com/theclifmeister/terminatr/internal/pty"
 )
 
@@ -37,6 +38,9 @@ type AgentConfig struct {
 	Home string
 	// Context renders the role's context for hook responses (§7.8).
 	Context func() ([]byte, error)
+	// Guard judges a tool call a hook reports against the session's
+	// guard rules, for hook responses (agent.HookEnv.Guard).
+	Guard func(tool string, input map[string]any) *guard.Denial
 	// OnChange is called (without locks held) when the merged state or
 	// the agent's session id changes.
 	OnChange func(*Session)
@@ -309,7 +313,7 @@ func (s *Session) Hook(event string, payload map[string]any) (agent.HookResult, 
 		return agent.HookResult{}, ErrNoAgent
 	}
 	ev := agent.HookEvent{Agent: rt.a.Name(), Event: event, Payload: payload, Seq: rt.seq.Add(1), At: time.Now()}
-	sigs, res, err := rt.a.Hook(ev, rt.cfg.Context)
+	sigs, res, err := rt.a.Hook(ev, agent.HookEnv{Context: rt.cfg.Context, Guard: rt.cfg.Guard})
 	rt.tr.Hook(ev, sigs)
 	if t := rt.src.JSONLTail; t != nil {
 		if p, ok := payload[t.PathField].(string); ok && p != "" && filepath.IsAbs(p) {

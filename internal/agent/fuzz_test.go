@@ -23,7 +23,7 @@ func FuzzParseManifest(f *testing.F) {
 		}
 		a := FromManifest(m)
 		_, _ = a.Launch(LaunchSpec{AgentSID: "x", Kickoff: "k"})
-		_, _, _ = a.Hook(HookEvent{Event: "Stop", Payload: map[string]any{}}, nil)
+		_, _, _ = a.Hook(HookEvent{Event: "Stop", Payload: map[string]any{}}, HookEnv{})
 	})
 }
 
@@ -44,7 +44,7 @@ func FuzzHookPayload(f *testing.F) {
 		if json.Unmarshal(payload, &p) != nil {
 			return
 		}
-		sigs, _, _ := a.Hook(HookEvent{Event: event, Payload: p}, func() ([]byte, error) { return []byte("ctx"), nil })
+		sigs, _, _ := a.Hook(HookEvent{Event: event, Payload: p}, HookEnv{Context: func() ([]byte, error) { return []byte("ctx"), nil }})
 		var list []Todo
 		for _, s := range sigs {
 			if s.Todo != nil {
@@ -99,7 +99,7 @@ func FuzzTracker(f *testing.F) {
 			switch k := int(op) % 16; {
 			case k < len(events):
 				ev := HookEvent{Event: events[k], Payload: p, Seq: uint64(i + 1), At: now}
-				sigs, _, _ := a.Hook(ev, nil)
+				sigs, _, _ := a.Hook(ev, HookEnv{})
 				tr.Hook(ev, sigs)
 			case k == 10:
 				rd, err := src.StatusFile.Read(data, src)
