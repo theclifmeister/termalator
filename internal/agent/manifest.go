@@ -345,8 +345,13 @@ func (m *Manifest) validate() error {
 		}
 	}
 	if t := m.JSONLTail; t != nil {
-		if t.PathField == "" || len(t.Rules) == 0 {
-			errs = append(errs, errors.New("jsonl_tail: needs path_field and rules"))
+		if t.PathField == "" || (len(t.Rules) == 0 && t.Usage == nil) {
+			errs = append(errs, errors.New("jsonl_tail: needs path_field, and rules or usage"))
+		}
+		if t.Usage != nil {
+			if err := t.Usage.validate(); err != nil {
+				errs = append(errs, fmt.Errorf("jsonl_tail.usage: %w", err))
+			}
 		}
 		for i, r := range t.Rules {
 			if !valid[r.State] || r.State == "" {

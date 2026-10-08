@@ -374,7 +374,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		Agent: &session.AgentConfig{
 			Agent: a, AgentSID: r.AgentSessionID, Kickoff: launch.Kickoff, Home: home,
 			Context:    s.hookContextOf(r.ID, modSock != ""),
-			OnChange:   s.agentChanged,
+			OnChange:   s.agentChanged, OnUsage: s.tailUsage,
 			PromptHold: envDuration(envPromptHold), OnPromptResolved: s.promptResolved,
 			ModSocket: modSock,
 		},

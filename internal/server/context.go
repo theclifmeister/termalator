@@ -3,13 +3,16 @@ package server
 import (
 	"strings"
 
+	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/proto"
+	"github.com/theclifmeister/terminatr/internal/session"
+	"github.com/theclifmeister/terminatr/internal/thread"
 )
 
 // Context use (docs/SPEC.md §8.6, Context): the mod sends how many
 // tokens the session's last request read as context, and the window,
-// with its usage; the
+// with its usage (or the agent's JSONL file reports them); the
 // server keeps the latest per session, in memory, and shows it with the
 // session (SessionInfo.Context) and in the project watch.
 
@@ -78,4 +81,14 @@ func crossedContext(was any, had bool, now ctxUse) bool {
 	}
 	w := was.(ctxUse)
 	return w.tokens*100 < w.window*int64(hint)
+}
+
+// tailUsage takes what session sess used as its agent's JSONL file
+// reports it ([jsonl_tail.usage]): the same store as the mod's POST
+// /v1/usage, for an agent without a mod.
+func (s *Server) tailUsage(sess *session.Session, u agent.Usage) {
+	id := sess.ID()
+	s.setContext(id, u.Model, u.Context, u.ContextWindow)
+	s.addUsage(id, thread.Usage{Turns: u.Turns, Input: u.Input, Output: u.Output,
+		CacheRead: u.CacheRead, CacheCreation: u.CacheCreation, CostUSD: u.CostUSD})
 }
