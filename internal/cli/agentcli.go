@@ -134,10 +134,18 @@ func agentCheck(e *Env, args []string) int {
 	}
 	if err == nil {
 		// Render every template once, with a sample spec, so template
-		// errors show up now rather than at launch.
+		// errors show up now rather than at launch. The brief is a real
+		// file, for templates that read it (file .BriefPath).
+		dir, derr := os.MkdirTemp("", "tm-agent-check-")
+		if derr != nil {
+			return e.srvFail("agent check", derr)
+		}
+		defer os.RemoveAll(dir)
+		brief := filepath.Join(dir, "brief.md")
+		os.WriteFile(brief, []byte("# Sample brief\n\nSay \"hello\".\n"), 0o600)
 		_, err = agent.FromManifest(m).Launch(agent.LaunchSpec{
 			Role: agent.RoleThread, SessionID: "s-0", AgentSID: "00000000-0000-4000-8000-000000000000",
-			Cwd: "/tmp/wt", RepoRoot: "/tmp/repo", GitDir: "/tmp/repo/.git/worktrees/wt", RuntimeDir: "/tmp/rt", BriefPath: "/tmp/brief.md", Kickoff: "hello",
+			Cwd: "/tmp/wt", RepoRoot: "/tmp/repo", GitDir: "/tmp/repo/.git/worktrees/wt", RuntimeDir: "/tmp/rt", BriefPath: brief, Kickoff: "hello",
 			TMBin: "/usr/local/bin/tm", Socket: "/tmp/tm.sock",
 			Access: agent.Access{Read: []string{"/p"}, NoWrite: []string{"/p"}, Write: []string{"/tmp/repo/.git", "/tmp/repo/.git/worktrees/wt"}},
 		})
