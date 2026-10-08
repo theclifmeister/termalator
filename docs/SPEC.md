@@ -64,7 +64,8 @@ One binary, several roles:
 | `internal/server` | Server lifecycle, control socket, session registry, the views (§3.3), persistence of `sessions.json` and `views.json` |
 | `internal/view` | The server-owned view: its one pane, actions, geometry (`Lay`), the sidebar's layout; no I/O |
 | `internal/proto` | Wire types: handshake, requests, events, attach frames |
-| `internal/pty` | Spawning on a PTY, resize, reaping (macOS, Linux) |
+| `internal/plat/pty` | A session's process on a PTY (`Console`): resize, foreground job, stop (hangup, then kill), reaping (macOS, Linux) |
+| `internal/plat/shell` | Default interactive shell, quoting and hook command lines per shell kind, unwrapping shells and interpreters from an argv (§8.2) |
 | `internal/emu` | The only wrapper around libghostty-vt (go.mitchellh.com/libghostty) |
 | `internal/session` | One hosted process: PTY + emulator + agent + subscribers + merged state |
 | `internal/agent` | Agent interface, manifest format, registry, built-in manifests (`manifests/*.toml`) |

@@ -2,7 +2,6 @@ package agent
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 )
 
@@ -90,35 +89,4 @@ func FilterEnv(env, patterns []string) []string {
 		}
 	}
 	return out
-}
-
-// UnwrapArgv strips interpreters and shells from a process's argv, so an
-// agent started as `node /usr/lib/node_modules/.bin/claude` or
-// `sh -c "claude --resume x"` is seen as `claude …` (docs/SPEC.md §8.2).
-func UnwrapArgv(argv []string) []string {
-	for i := 0; i < 4 && len(argv) > 0; i++ {
-		switch filepath.Base(argv[0]) {
-		case "node", "bun", "deno":
-			rest := argv[1:]
-			for len(rest) > 0 && strings.HasPrefix(rest[0], "-") {
-				rest = rest[1:]
-			}
-			if len(rest) > 0 && rest[0] == "run" && filepath.Base(argv[0]) == "deno" {
-				rest = rest[1:]
-			}
-			argv = rest
-		case "sh", "bash", "zsh", "dash":
-			if len(argv) >= 3 && argv[1] == "-c" {
-				argv = strings.Fields(argv[2])
-				if len(argv) > 0 && argv[0] == "exec" {
-					argv = argv[1:]
-				}
-				continue
-			}
-			return argv
-		default:
-			return argv
-		}
-	}
-	return argv
 }

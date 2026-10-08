@@ -4,15 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/emu"
+	"github.com/theclifmeister/terminatr/internal/plat/pty"
 	"github.com/theclifmeister/terminatr/internal/proto"
-	"github.com/theclifmeister/terminatr/internal/pty"
 )
 
 // Config describes a session to start.
@@ -58,8 +57,7 @@ type Config struct {
 // at exactly the same byte.
 type Session struct {
 	cfg  Config
-	cmd  *exec.Cmd
-	ptmx *os.File
+	con  pty.Console
 	in   *inputQueue
 	done chan struct{}
 
@@ -130,14 +128,14 @@ func Start(cfg Config) (*Session, error) {
 		return nil, err
 	}
 	s.term = term
-	cmd, ptmx, err := pty.Start(cfg.Argv, cfg.Cwd, cfg.Env, cfg.Cols, cfg.Rows)
+	con, err := pty.Start(cfg.Argv, cfg.Cwd, cfg.Env, cfg.Cols, cfg.Rows)
 	if err != nil {
 		term.Close()
 		return nil, err
 	}
-	s.cmd, s.ptmx = cmd, ptmx
+	s.con = con
 	if cfg.Agent != nil {
-		rt, err := newAgentRT(*cfg.Agent, cmd.Process.Pid, false)
+		rt, err := newAgentRT(*cfg.Agent, con.PID(), false)
 		if err != nil {
 			// Unreachable for a validated manifest; the process still runs.
 			cfg.Logf("session %s: agent: %v", cfg.ID, err)
@@ -177,7 +175,7 @@ func (s *Session) ID() string { return s.cfg.ID }
 
 // PID returns the process id of the session's process (its process group
 // and session leader).
-func (s *Session) PID() int { return s.cmd.Process.Pid }
+func (s *Session) PID() int { return s.con.PID() }
 
 // Done is closed once the process has exited and the session is torn down.
 func (s *Session) Done() <-chan struct{} { return s.done }
@@ -232,7 +230,7 @@ func (s *Session) Info() proto.SessionInfo {
 		Thread:  cfg.Thread,
 		Argv:    s.cfg.Argv,
 		Cwd:     s.cfg.Cwd,
-		PID:     s.cmd.Process.Pid,
+		PID:     s.con.PID(),
 		Cols:    s.cols,
 		Rows:    s.rows,
 		Created: s.cfg.Created,
@@ -315,7 +313,7 @@ func (s *Session) Resize(cols, rows uint16) error {
 	if err := s.term.Resize(cols, rows); err != nil {
 		return err
 	}
-	if err := pty.Resize(s.ptmx, cols, rows); err != nil {
+	if err := s.con.Resize(cols, rows); err != nil {
 		s.cfg.Logf("session %s: %v", s.cfg.ID, err)
 	}
 	s.cols, s.rows = cols, rows
@@ -415,23 +413,17 @@ func (s *Session) RequestDigest(sub *Subscriber) error {
 	return nil
 }
 
-// Stop ends the session: SIGHUP to its process group, then SIGKILL if it
-// is still running after grace. It returns once the session is torn down
-// or the kill did not help within a few more seconds.
+// Stop ends the session: a hangup to its process tree, then a kill if it
+// is still running after grace (pty.Console.Stop). It returns once the
+// session is torn down or a few seconds after that did not help.
 func (s *Session) Stop(grace time.Duration) {
-	pid := s.cmd.Process.Pid
-	hangup(pid)
-	select {
-	case <-s.done:
-		return
-	case <-time.After(grace):
+	if err := s.con.Stop(grace); err != nil {
+		s.cfg.Logf("session %s: %v", s.cfg.ID, err)
 	}
-	s.cfg.Logf("session %s: still running %v after SIGHUP; sending SIGKILL", s.cfg.ID, grace)
-	kill(pid)
 	select {
 	case <-s.done:
 	case <-time.After(3 * time.Second):
-		s.cfg.Logf("session %s: did not exit after SIGKILL", s.cfg.ID)
+		s.cfg.Logf("session %s: not torn down 3s after stopping", s.cfg.ID)
 	}
 }
 
@@ -445,7 +437,7 @@ func (s *Session) readLoop(done chan<- struct{}) {
 	defer close(done)
 	buf := make([]byte, 64<<10)
 	for {
-		n, err := s.ptmx.Read(buf)
+		n, err := s.con.Read(buf)
 		if n > 0 && err == nil {
 			n, err = s.coalesce(buf, n)
 		}
@@ -470,20 +462,20 @@ func (s *Session) readLoop(done chan<- struct{}) {
 func (s *Session) coalesce(buf []byte, n int) (int, error) {
 	end := time.Now().Add(coalesceWindow)
 	for n < len(buf) {
-		if s.ptmx.SetReadDeadline(end) != nil {
+		if s.con.SetReadDeadline(end) != nil {
 			return n, nil // not pollable: no coalescing
 		}
-		m, err := s.ptmx.Read(buf[n:])
+		m, err := s.con.Read(buf[n:])
 		n += m
 		if err != nil {
-			s.ptmx.SetReadDeadline(time.Time{})
+			s.con.SetReadDeadline(time.Time{})
 			if errors.Is(err, os.ErrDeadlineExceeded) {
 				return n, nil
 			}
 			return n, err
 		}
 	}
-	s.ptmx.SetReadDeadline(time.Time{})
+	s.con.SetReadDeadline(time.Time{})
 	return n, nil
 }
 
@@ -493,7 +485,7 @@ func (s *Session) writeLoop() {
 		if !ok {
 			return
 		}
-		if _, err := s.ptmx.Write(b); err != nil {
+		if _, err := s.con.Write(b); err != nil {
 			s.in.close()
 			return
 		}
@@ -502,7 +494,7 @@ func (s *Session) writeLoop() {
 
 func (s *Session) waitLoop(readDone <-chan struct{}) {
 	status := "exited"
-	if err := s.cmd.Wait(); err != nil {
+	if err := s.con.Wait(); err != nil {
 		status = err.Error()
 	}
 	// Let the reader drain what the process wrote last. A grandchild that
@@ -512,7 +504,7 @@ func (s *Session) waitLoop(readDone <-chan struct{}) {
 	case <-readDone:
 	case <-time.After(500 * time.Millisecond):
 	}
-	s.ptmx.Close()
+	s.con.Close()
 	<-readDone
 	s.in.close()
 
@@ -531,7 +523,7 @@ func (s *Session) waitLoop(readDone <-chan struct{}) {
 	s.term = nil
 	rt := s.ag
 	s.mu.Unlock()
-	s.cfg.Logf("session %s: pid %d %s", s.cfg.ID, s.cmd.Process.Pid, status)
+	s.cfg.Logf("session %s: pid %d %s", s.cfg.ID, s.con.PID(), status)
 	if rt != nil {
 		rt.tr.Exited(status)
 		if rt.observed {

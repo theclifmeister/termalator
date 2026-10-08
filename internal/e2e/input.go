@@ -71,7 +71,7 @@ func (w *Window) send(what string, b []byte, err error) {
 	if len(b) == 0 {
 		w.env.T.Fatalf("window: %s encodes to nothing (does the program in the window track it?)", what)
 	}
-	if _, err := w.ptmx.Write(b); err != nil {
+	if _, err := w.con.Write(b); err != nil {
 		w.env.T.Fatalf("window: send %s: %v", what, err)
 	}
 }

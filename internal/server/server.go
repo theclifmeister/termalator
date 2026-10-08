@@ -26,6 +26,7 @@ import (
 	"github.com/theclifmeister/terminatr/internal/keychain"
 	"github.com/theclifmeister/terminatr/internal/plat/fsx"
 	"github.com/theclifmeister/terminatr/internal/plat/ipc"
+	"github.com/theclifmeister/terminatr/internal/plat/shell"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/session"
@@ -745,11 +746,7 @@ func sessionError(id string, err error) *proto.Error {
 func (s *Server) startSession(p proto.SessionStartParams) (any, *proto.Error) {
 	argv := p.Argv
 	if len(argv) == 0 && p.Agent == "" {
-		sh := os.Getenv("SHELL")
-		if sh == "" {
-			sh = "/bin/sh"
-		}
-		argv = []string{sh, "-l"}
+		argv = shell.Interactive()
 	}
 	if p.Agent != "" && len(argv) > 0 {
 		return nil, proto.Errorf(proto.ErrBadParams, "pass an agent or a command, not both")

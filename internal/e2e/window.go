@@ -3,15 +3,13 @@
 package e2e
 
 import (
-	"os"
-	"os/exec"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/emu"
-	"github.com/theclifmeister/terminatr/internal/pty"
+	"github.com/theclifmeister/terminatr/internal/plat/pty"
 	"github.com/theclifmeister/terminatr/internal/view"
 )
 
@@ -21,8 +19,7 @@ import (
 // terminal queries the way a real terminal would.
 type Window struct {
 	env  *Env
-	cmd  *exec.Cmd
-	ptmx *os.File
+	con  pty.Console
 	done chan struct{}
 
 	mu     sync.Mutex
@@ -65,7 +62,7 @@ func (e *Env) WindowCmd(cols, rows uint16, argv ...string) *Window {
 	w := &Window{env: e, done: make(chan struct{}), last: time.Now(), cols: int(cols)}
 	term, err := emu.NewWith(emu.Options{
 		Cols: cols, Rows: rows, Scrollback: 1000,
-		WritePty:  func(b []byte) { w.ptmx.Write(b) },
+		WritePty:  func(b []byte) { w.con.Write(b) },
 		Xtversion: "terminatr-e2e",
 		// Like a terminal on a dark desktop, it answers CSI ? 996 n.
 		ColorScheme: func() (emu.Scheme, bool) { return emu.SchemeDark, true },
@@ -83,26 +80,26 @@ func (e *Env) WindowCmd(cols, rows uint16, argv ...string) *Window {
 		w.held = held
 	})
 	env := append(append([]string(nil), e.Vars...), "TERM=xterm-256color")
-	// internal/pty gives a non-blocking master, so closing it really hangs
+	// plat/pty gives a non-blocking master, so closing it really hangs
 	// up the window.
-	cmd, ptmx, err := pty.Start(argv, "/", env, cols, rows)
+	con, err := pty.Start(argv, "/", env, cols, rows)
 	if err != nil {
 		e.T.Fatal(err)
 	}
-	w.ptmx, w.cmd = ptmx, cmd
-	e.track(cmd.Process.Pid, "window "+strings.Join(argv, " "))
+	w.con = con
+	e.track(con.PID(), "window "+strings.Join(argv, " "))
 	e.mu.Lock()
 	e.windows = append(e.windows, w)
 	e.mu.Unlock()
 	go w.readLoop()
-	go func() { cmd.Wait(); close(w.done) }()
+	go func() { con.Wait(); close(w.done) }()
 	return w
 }
 
 func (w *Window) readLoop() {
 	buf := make([]byte, 32<<10)
 	for {
-		n, err := w.ptmx.Read(buf)
+		n, err := w.con.Read(buf)
 		if n > 0 {
 			w.mu.Lock()
 			if w.term != nil {
@@ -119,12 +116,12 @@ func (w *Window) readLoop() {
 }
 
 // PID is the pid of the command running in the window.
-func (w *Window) PID() int { return w.cmd.Process.Pid }
+func (w *Window) PID() int { return w.con.PID() }
 
 // Type sends raw bytes as if typed ("\r" is Enter).
 func (w *Window) Type(s string) {
 	w.env.T.Helper()
-	if _, err := w.ptmx.Write([]byte(s)); err != nil {
+	if _, err := w.con.Write([]byte(s)); err != nil {
 		w.env.T.Fatalf("type into window: %v", err)
 	}
 }
@@ -139,7 +136,7 @@ func (w *Window) Resize(cols, rows uint16) {
 	}
 	w.term.Resize(cols, rows)
 	w.cols = int(cols)
-	if err := pty.Resize(w.ptmx, cols, rows); err != nil {
+	if err := w.con.Resize(cols, rows); err != nil {
 		w.env.T.Fatal(err)
 	}
 }
@@ -232,7 +229,7 @@ func (w *Window) Quiet(d time.Duration) {
 // KillClient SIGKILLs the window's whole process group: the client dies
 // without any chance to clean up.
 func (w *Window) KillClient() {
-	syscall.Kill(-w.cmd.Process.Pid, syscall.SIGKILL)
+	syscall.Kill(-w.con.PID(), syscall.SIGKILL)
 	select {
 	case <-w.done:
 	case <-time.After(5 * time.Second):
@@ -250,7 +247,7 @@ func (w *Window) CloseWindow() {
 	if s, err := w.term.Screen(); err == nil {
 		w.screen = TrimScreen(s)
 	}
-	w.ptmx.Close()
+	w.con.Close()
 	w.term.Close()
 	w.term = nil
 	if w.enc != nil {
