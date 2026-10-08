@@ -69,7 +69,10 @@ template = '''
 {{- if .Mods}}, "types": "./types/index.d.ts"{{end}}}
 '''
 
-# Every event goes to `tm hook --agent claude`: a command hook (an http hook
+# Every event goes to `tm hook --agent claude`: a command hook in exec form
+# ("command" is the tm binary, "args" its arguments: no shell on any OS, so
+# no quoting; Claude >= 2.1.139, which tested_versions' 2.1. prefix doesn't
+# pin) (an http hook
 # shows a red error in Claude's UI whenever the server is down), synchronous
 # so events stay in order (~4 ms each), always exit 0, never stderr.
 # With .Mods the mod reports the turn's state itself (docs/SPEC.md §8.6,
@@ -82,9 +85,9 @@ template = '''
 [[launch.files]]
 path = "claude-plugin/hooks/hooks.json"
 template = '''
-{{- $cmd := json (printf "%q hook --agent claude" .TMBin) -}}
-{{- $h := printf `[{"hooks":[{"type":"command","command":%s,"timeout":5}]}]` $cmd -}}
-{{- $todo := printf `[{"matcher":"TaskCreate|TaskUpdate|TodoWrite","hooks":[{"type":"command","command":%s,"timeout":5}]}]` $cmd -}}
+{{- $cmd := hookexec .TMBin "hook" "--agent" "claude" -}}
+{{- $h := printf `[{"hooks":[{"type":"command",%s,"timeout":5}]}]` $cmd -}}
+{{- $todo := printf `[{"matcher":"TaskCreate|TaskUpdate|TodoWrite","hooks":[{"type":"command",%s,"timeout":5}]}]` $cmd -}}
 {{- if .Mods}}{"modules": ["./register.ts"], "hooks": {
   "SessionStart": {{$h}}, "PostToolUse": {{$todo}},
   "SubagentStart": {{$h}}, "SubagentStop": {{$h}}, "SessionEnd": {{$h}}

@@ -86,6 +86,7 @@ func TestClaudeLaunch(t *testing.T) {
 		Hooks map[string][]struct {
 			Hooks []struct {
 				Type, Command string
+				Args          []string
 				Async         bool
 				Timeout       int
 			}
@@ -96,7 +97,7 @@ func TestClaudeLaunch(t *testing.T) {
 	}
 	for _, ev := range []string{"SessionStart", "PermissionRequest", "SubagentStart", "StopFailure", "SessionEnd"} {
 		h := hooks.Hooks[ev]
-		if len(h) != 1 || h[0].Hooks[0].Command != `"/bin/tm" hook --agent claude` || h[0].Hooks[0].Async || h[0].Hooks[0].Timeout != 5 {
+		if len(h) != 1 || h[0].Hooks[0].Command != "/bin/tm" || !slices.Equal(h[0].Hooks[0].Args, []string{"hook", "--agent", "claude"}) || h[0].Hooks[0].Async || h[0].Hooks[0].Timeout != 5 {
 			t.Fatalf("hooks.json %s = %+v; want one sync command hook with timeout 5", ev, h)
 		}
 	}
