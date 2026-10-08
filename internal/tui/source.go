@@ -268,14 +268,6 @@ func (s *ServerSource) Memory(slug string) (project.Memory, error) {
 	return p.ReadMemory()
 }
 
-func (s *ServerSource) start(p proto.SessionStartParams) (string, error) {
-	var res proto.SessionStartResult
-	if err := s.call(proto.MethodSessionStart, p, &res); err != nil {
-		return "", err
-	}
-	return res.Session.ID, nil
-}
-
 func (s *ServerSource) NewProject(slug string) (string, error) {
 	if s.Caller.IsAgent() {
 		return "", errors.New("human-only: only the human creates projects")
