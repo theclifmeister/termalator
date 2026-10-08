@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/caller"
 	"github.com/theclifmeister/terminatr/internal/codehost"
 	"github.com/theclifmeister/terminatr/internal/config"
@@ -230,17 +231,27 @@ func (p *Project) scaffold() error {
 }
 
 // WriteRoleFile (re)generates AGENTS.md, the coordinator's role file, and
-// links CLAUDE.md to it (§5.2, §7.8).
+// links the agents' role_files (CLAUDE.md) to it (§5.2, §7.8).
 func (p *Project) WriteRoleFile() error {
 	if err := mdfile.WriteAtomic(p.Path("AGENTS.md"), []byte(roleFile(p)), 0o644); err != nil {
 		return err
 	}
-	link := p.Path("CLAUDE.md")
-	if target, err := os.Readlink(link); err == nil && target == "AGENTS.md" {
-		return nil
+	dir, _ := home.AgentsDir()
+	reg, _ := agent.Load(dir) // a broken user manifest is skipped
+	for _, name := range agent.RoleFiles(reg) {
+		if name == "AGENTS.md" || name != filepath.Base(name) {
+			continue
+		}
+		link := p.Path(name)
+		if target, err := os.Readlink(link); err == nil && target == "AGENTS.md" {
+			continue
+		}
+		os.Remove(link)
+		if err := os.Symlink("AGENTS.md", link); err != nil {
+			return err
+		}
 	}
-	os.Remove(link)
-	return os.Symlink("AGENTS.md", link)
+	return nil
 }
 
 // RefreshRoleFile rewrites AGENTS.md when tm generated it and its text is

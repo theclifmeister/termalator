@@ -30,6 +30,9 @@ const pluginDir = "claude-plugin"
 // ModsMinVersion makes the Claude agent an agent.Modder.
 func (a *Agent) ModsMinVersion() string { return ModsMinVersion }
 
+// ModRequired: Claude has its command hooks without the mod.
+func (a *Agent) ModRequired() bool { return false }
+
 // Launch is the manifest's launch, plus the mod's files with spec.Mods.
 func (a *Agent) Launch(spec agent.LaunchSpec) (agent.Launch, error) {
 	l, err := a.Agent.Launch(spec)

@@ -105,6 +105,9 @@ type Source interface {
 	SetRepo(slug, path string, add bool) error
 	// Agents lists the agents tm can run.
 	Agents() []string
+	// ModsNote names the agents the Mods setting is for and the version
+	// each needs ("Claude Code 2.1.289").
+	ModsNote() string
 	// Models lists the models the agents' manifests offer a thread (the
 	// choices of the models setting, docs/SPEC.md §11.2), each name once.
 	Models() []string
@@ -519,6 +522,11 @@ func (s *ServerSource) Agents() []string {
 		return nil
 	}
 	return reg.Names()
+}
+
+func (s *ServerSource) ModsNote() string {
+	reg, _ := agent.Load(s.Paths.AgentsDir())
+	return agent.ModNote(reg)
 }
 
 func (s *ServerSource) Models() []string {
