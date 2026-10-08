@@ -248,5 +248,5 @@ func (e *Env) StartShell(dir string, argv ...string) string {
 func (w *Window) OpenSession(id string) {
 	w.env.T.Helper()
 	w.ClickText(id, 0)
-	w.Key(keyEnter)
+	w.Key(Enter)
 }
