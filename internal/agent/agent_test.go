@@ -55,6 +55,9 @@ func TestClaudeLaunch(t *testing.T) {
 	if !l.Kickoff {
 		t.Fatal("Kickoff unset with the kickoff in argv")
 	}
+	if !contains(l.Env, "CLAUDE_CODE_ENABLE_TODO_TOOLS=1") {
+		t.Fatalf("env = %q: want CLAUDE_CODE_ENABLE_TODO_TOOLS=1 so current models get the todo tools", l.Env)
+	}
 	spec.Resume = true
 	if l, err := a.Launch(spec); err != nil || l.Kickoff {
 		t.Fatalf("resume: Kickoff %v, err %v", l.Kickoff, err)
