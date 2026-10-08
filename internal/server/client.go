@@ -8,13 +8,12 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
-	"syscall"
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/plat/ipc"
+	"github.com/theclifmeister/terminatr/internal/plat/proc"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/service"
 	"github.com/theclifmeister/terminatr/internal/version"
@@ -187,28 +186,27 @@ func StartLaunchd(p Paths) error {
 	return waitUp(p, nil, p.Log+" and "+c.ServiceLog())
 }
 
-// StartChild starts `tm server run --detached` as a new session with no
-// controlling terminal and stdio on /dev/null, and waits until it answers.
-// On macOS the server runs in the caller's security session.
+// StartChild starts `tm server run --detached` detached
+// (proc.StartDetached: a new session with no controlling terminal and
+// stdio on the null device), and waits until it answers. On macOS the
+// server runs in the caller's security session.
 func StartChild(p Paths) error {
 	bin, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	devnull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
+	child, err := proc.StartDetached(proc.Spec{Argv: []string{bin, "server", "run", "--detached"}, Dir: "/"})
 	if err != nil {
-		return err
-	}
-	defer devnull.Close()
-	cmd := exec.Command(bin, "server", "run", "--detached")
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = devnull, devnull, devnull
-	cmd.Dir = "/"
-	cmd.SysProcAttr = newSession()
-	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start server: %w", err)
 	}
 	exited := make(chan error, 1)
-	go func() { exited <- cmd.Wait() }()
+	go func() {
+		st, err := child.Wait()
+		if err == nil {
+			err = errors.New(st.String())
+		}
+		exited <- err
+	}()
 	return waitUp(p, exited, p.Log)
 }
 
@@ -332,10 +330,10 @@ func ForceKill(p Paths) (int, error) {
 		return 0, err
 	}
 	pid := readPID(p.PID)
-	if !alive(pid) {
+	if !proc.Alive(pid) {
 		return pid, fmt.Errorf("lock is held but pid file names no live process (%d)", pid)
 	}
-	if err := kill(pid, syscall.SIGKILL); err != nil {
+	if err := proc.Kill(pid); err != nil {
 		return pid, err
 	}
 	return pid, nil
@@ -359,7 +357,7 @@ func WaitStopped(p Paths, timeout time.Duration) bool {
 // WaitExited waits until pid no longer exists.
 func WaitExited(pid int, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
-	for alive(pid) {
+	for proc.Alive(pid) {
 		if time.Now().After(deadline) {
 			return false
 		}

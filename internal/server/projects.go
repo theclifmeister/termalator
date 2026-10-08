@@ -10,7 +10,7 @@ import (
 
 	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/caller"
-	"github.com/theclifmeister/terminatr/internal/plat/pty"
+	"github.com/theclifmeister/terminatr/internal/plat/proc"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/session"
@@ -21,7 +21,10 @@ import (
 // descends from a coordinator or thread session is that agent; anything
 // else (a shell outside terminatr, a shell session) is the human. This
 // is soft, as the spec says: an agent can start a process outside its
-// tree. File access rules are the second layer (§5.2).
+// tree. File access rules are the second layer (§5.2). The walk stops at a
+// parent that started after its child: the real parent is gone and its
+// pid reused (Windows keeps a dead parent's pid; Unix hands the orphan
+// to init).
 func (s *Server) callerOf(pid int) caller.Caller {
 	s.mu.Lock()
 	byPID := make(map[int]SessionRecord, len(s.sessions))
@@ -29,7 +32,12 @@ func (s *Server) callerOf(pid int) caller.Caller {
 		byPID[sess.PID()] = s.records[id]
 	}
 	s.mu.Unlock()
+	var child proc.Info // pid's child on the way up, once there is one
 	for i := 0; i < 64 && pid > 1; i++ {
+		in, err := proc.Lookup(pid)
+		if err == nil && i > 0 && !in.ParentOf(child) {
+			break // child's parent is gone and its pid reused
+		}
 		if r, ok := byPID[pid]; ok {
 			switch r.Role {
 			case proto.RoleCoordinator:
@@ -39,11 +47,10 @@ func (s *Server) callerOf(pid int) caller.Caller {
 			}
 			return caller.Caller{Kind: caller.Human}
 		}
-		ppid, err := pty.ParentPID(pid)
-		if err != nil || ppid == pid {
+		if err != nil || in.PPID == pid {
 			break
 		}
-		pid = ppid
+		child, pid = in, in.PPID
 	}
 	return caller.Caller{Kind: caller.Human}
 }

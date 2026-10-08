@@ -3,9 +3,8 @@ package server
 import (
 	"errors"
 	"fmt"
-	"syscall"
 
-	"github.com/theclifmeister/terminatr/internal/plat/pty"
+	"github.com/theclifmeister/terminatr/internal/plat/proc"
 	"github.com/theclifmeister/terminatr/internal/proto"
 )
 
@@ -78,7 +77,7 @@ func Terminate(p Paths, want int, yes bool) (int, error) {
 	}
 	pid := readPID(p.PID)
 	switch {
-	case !alive(pid):
+	case !proc.Alive(pid):
 		return pid, fmt.Errorf("the server lock is held but %s names no live process (%d); see %s", p.PID, pid, p.Log)
 	case want != 0 && want != pid:
 		return pid, fmt.Errorf("the server says it is pid %d but %s says %d; not signalling either", want, p.PID, pid)
@@ -88,7 +87,7 @@ func Terminate(p Paths, want int, yes bool) (int, error) {
 		return pid, proto.Errorf(proto.ErrRefused,
 			"the server (pid %d) can't be asked whether agents are working; pass --yes to stop it (agents are resumed)", pid)
 	}
-	if err := kill(pid, syscall.SIGTERM); err != nil {
+	if err := proc.Terminate(pid); err != nil {
 		return pid, err
 	}
 	return pid, nil
@@ -97,11 +96,8 @@ func Terminate(p Paths, want int, yes bool) (int, error) {
 // isServerProcess reports whether pid runs `tm server run`, whatever the
 // binary is called (the server re-execs a pinned copy, §3.6).
 func isServerProcess(pid int) bool {
-	argv, err := pty.ProcArgs(pid)
-	if err != nil {
-		return false
-	}
-	return isServerArgv(argv)
+	in, err := proc.Lookup(pid)
+	return err == nil && isServerArgv(in.Argv)
 }
 
 func isServerArgv(argv []string) bool {

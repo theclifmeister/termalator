@@ -1,10 +1,9 @@
 // Package pty runs a session's process on a pseudo-terminal: a Console is
 // the terminal's master side plus the process tree behind it, which it
-// resizes, inspects and stops. It also reads other processes' argv and
-// parent (ProcArgs, ParentPID).
+// resizes, inspects and stops. Other processes' argv and parent are
+// plat/proc's (Lookup).
 //
-// It works on Unix: macOS and Linux fully, other Unixes without ProcArgs
-// and ParentPID. Elsewhere every call returns errors.ErrUnsupported
+// It works on Unix. Elsewhere every call returns errors.ErrUnsupported
 // (pty_other.go) until the Windows port adds ConPTY, with a Job Object
 // standing in for the process group.
 package pty

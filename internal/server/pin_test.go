@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/theclifmeister/terminatr/internal/plat/proc"
 )
 
 // TestPinBinary: every build pins to the same path; a new build replaces
@@ -209,7 +211,7 @@ func TestInheritedLockRefusesOtherFiles(t *testing.T) {
 // TestRemoveLegacyPins: the old server-bin directory goes, except a file a
 // live process runs.
 func TestRemoveLegacyPins(t *testing.T) {
-	if _, err := processCommands(); err != nil {
+	if _, err := proc.List(); err != nil {
 		t.Skip("cannot list processes: ", err)
 	}
 	home := t.TempDir()

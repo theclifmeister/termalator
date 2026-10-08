@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/theclifmeister/terminatr/internal/plat/flock"
 	"github.com/theclifmeister/terminatr/internal/plat/fsx"
+	"github.com/theclifmeister/terminatr/internal/plat/proc"
 	"github.com/theclifmeister/terminatr/internal/service"
 )
 
@@ -175,7 +175,7 @@ const lockFDEnv = "TERMINATR_SERVER_LOCK_FD"
 
 // execPinned runs the pin in place of this process, keeping the pid
 // (launchd's job, the caller's wait) and the lock, so no other server can
-// start in between. run is syscall.Exec (Options.Exec). It returns only
+// start in between. run is proc.Exec (Options.Exec). It returns only
 // on failure, with the lock still held and closed on exec again.
 func execPinned(lock *lockFile, pin string, args []string, run func(string, []string, []string) error) error {
 	fd, err := lock.Inheritable()
@@ -224,33 +224,23 @@ func removeLegacyPins(home string) {
 	if err != nil {
 		return
 	}
-	cmds, err := processCommands()
+	procs, err := proc.List()
 	if err != nil {
 		return
 	}
 	for _, e := range entries {
 		f := filepath.Join(dir, e.Name())
-		if !e.Type().IsRegular() || !runs(cmds, f) {
+		if !e.Type().IsRegular() || !runs(procs, f) {
 			os.Remove(f)
 		}
 	}
 	os.Remove(dir) // fails, harmlessly, while files remain
 }
 
-// processCommands lists the command line of every process.
-func processCommands() ([]string, error) {
-	out, err := exec.Command("ps", "-axo", "command=").Output()
-	if err != nil {
-		return nil, err
-	}
-	return strings.Split(string(out), "\n"), nil
-}
-
-// runs reports whether a command line starts with the program at path.
-func runs(cmds []string, path string) bool {
-	for _, c := range cmds {
-		c = strings.TrimSpace(c)
-		if c == path || strings.HasPrefix(c, path+" ") {
+// runs reports whether some process runs the program at path.
+func runs(procs []proc.Info, path string) bool {
+	for _, p := range procs {
+		if p.Exe == path || len(p.Argv) > 0 && p.Argv[0] == path {
 			return true
 		}
 	}

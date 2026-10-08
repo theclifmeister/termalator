@@ -18,7 +18,7 @@ import (
 	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/detect"
 	"github.com/theclifmeister/terminatr/internal/guard"
-	"github.com/theclifmeister/terminatr/internal/plat/pty"
+	"github.com/theclifmeister/terminatr/internal/plat/proc"
 	"github.com/theclifmeister/terminatr/internal/plat/shell"
 )
 
@@ -486,7 +486,7 @@ func (s *Session) probeAgent(rt *agentRT, now time.Time) {
 	rt.probedAt = now
 	rt.mu.Unlock()
 	pidGone := ""
-	if rt.pid > 0 && gone(rt.pid) {
+	if rt.pid > 0 && !proc.Alive(rt.pid) {
 		pidGone = fmt.Sprintf("pid %d is gone", rt.pid)
 	}
 	live, why := agent.LiveUnknown, ""
@@ -956,11 +956,11 @@ func (s *Session) identifyLoop() {
 		if pgrp == 0 {
 			continue
 		}
-		argv, err := pty.ProcArgs(pgrp)
-		if err != nil {
+		in, err := proc.Lookup(pgrp)
+		if err != nil || len(in.Argv) == 0 {
 			continue
 		}
-		a := s.cfg.Identify(agent.ProcessInfo{Argv: shell.Unwrap(argv)})
+		a := s.cfg.Identify(agent.ProcessInfo{Argv: shell.Unwrap(in.Argv)})
 		if a == nil {
 			continue
 		}

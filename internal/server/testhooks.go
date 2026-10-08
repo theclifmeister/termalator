@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/theclifmeister/terminatr/internal/plat/proc"
 )
 
 // Test hooks (docs/OPERATIONS.md, Test servers). Tests set them in the
@@ -41,7 +43,7 @@ func (s *Server) watchOwner() {
 		return
 	}
 	go func() {
-		for alive(owner) {
+		for proc.Alive(owner) {
 			select {
 			case <-s.stopReq:
 				return

@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/theclifmeister/terminatr/internal/plat/proc"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/server"
 	"github.com/theclifmeister/terminatr/internal/service"
@@ -99,12 +100,12 @@ func serverRun(e *Env, args []string) int {
 			for range hup {
 			}
 		}()
-	} else if !*detached || !server.IsSessionLeader() {
+	} else if !*detached || !proc.Detached() {
 		// Started by hand; a detached child of StartDetached logs it.
 		warnSSH(e.Stderr, runtime.GOOS, e.Getenv)
 	}
 	if *detached {
-		if !server.IsSessionLeader() {
+		if !proc.Detached() {
 			// Started by hand from a shell: get a fresh session first.
 			if err := server.Respawn(); err != nil {
 				return e.srvFail("server run", err)
@@ -117,7 +118,7 @@ func serverRun(e *Env, args []string) int {
 		}
 		defer lf.Close()
 		logger.SetOutput(lf)
-		if err := server.Detach(); err != nil {
+		if err := proc.Detach(); err != nil {
 			logger.Printf("detach: %v", err)
 			return ExitIO
 		}
@@ -130,7 +131,7 @@ func serverRun(e *Env, args []string) int {
 	if len(os.Args) > 2 && os.Args[1] == "server" && os.Args[2] == "run" {
 		// This process is `tm server run` (not a test calling in): the
 		// server runs from its pin (docs/SPEC.md §3.6).
-		opts.Exec, opts.Args = syscall.Exec, os.Args[1:]
+		opts.Exec, opts.Args = proc.Exec, os.Args[1:]
 	}
 	err = server.Run(ctx, opts)
 	var running *server.AlreadyRunningError

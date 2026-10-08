@@ -7,8 +7,8 @@ import (
 	"io"
 	"log"
 	"os"
-	"syscall"
 
+	"github.com/theclifmeister/terminatr/internal/plat/proc"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/server"
@@ -132,7 +132,7 @@ func (e *Env) attach(p server.Paths, vc *tui.ViewConn, side *tui.SidebarOptions,
 		// server's binary and attach again.
 		logger.Printf("re-exec %s: %v", verr.Bin, err)
 		argv := append([]string{verr.Bin}, args...)
-		err = syscall.Exec(verr.Bin, argv, append(os.Environ(), reexecEnv+"=1"))
+		err = proc.Exec(verr.Bin, argv, append(os.Environ(), reexecEnv+"=1"))
 		return res, e.srvFail("attach", fmt.Errorf("re-exec %s: %w", verr.Bin, err))
 	}
 	if err != nil {
