@@ -270,3 +270,35 @@ func TestThreadAnswerCodex(t *testing.T) {
 	env.WaitFor(th, "→ Beta", agentWait)
 	env.WaitFor(th, "ASKED", agentWait)
 }
+
+// TestThreadAnswerCodexMenu: a Codex menu that isn't [answer]'s question
+// but another blocked/question rule (/new's dialog here, "Implement this
+// plan?" live) is answered by number too, its label without the
+// description column (T155).
+func TestThreadAnswerCodexMenu(t *testing.T) {
+	env, projDir, _ := threadEnv(t)
+	env.FakeCodex()
+	env.MustCLI("thread", "start", "Small fix", "--agent", "codex", "--project", "demo")
+	var rec struct{ Session string }
+	readTOML(t, filepath.Join(projDir, "threads", "t-0001", "thread.toml"), &rec)
+	th := &Session{ID: rec.Session}
+	env.WaitState(th, "idle", agentWait)
+	answer := func(args ...string) Result {
+		return env.CLI(append([]string{"thread", "answer", "t-0001", "--project", "demo"}, args...)...)
+	}
+
+	env.Keys(th, "/new")
+	time.Sleep(300 * time.Millisecond)
+	env.Keys(th, "\r")
+	env.WaitFor(th, "Where should the new conversation run?", agentWait)
+	waitReason(t, env, th, "question")
+	if r := answer("--choice", "2", "--text", "here"); r.Code != 1 || !strings.Contains(r.Stderr+r.Stdout, "not-text-option") {
+		t.Errorf("text on a menu without a text option: %+v", r)
+	}
+	if r := answer("--choice", "1"); r.Code != 0 || strings.TrimSpace(r.Stdout) != "answered t-0001: Current checkout" {
+		t.Fatalf("answer /new's dialog: %+v\n%s", r, env.Screen(th))
+	}
+	if !Poll(agentWait, func() bool { return !strings.Contains(env.Screen(th), "Where should the new conversation run?") }) {
+		t.Fatalf("the dialog stayed:\n%s", env.Screen(th))
+	}
+}

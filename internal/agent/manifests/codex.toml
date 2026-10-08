@@ -278,7 +278,9 @@ priority = 40
 region = "bottom:4"
 contains = ["Press enter to confirm or esc to cancel"]
 
-# request_user_input (plan mode): "Question 1/2 (2 unanswered)".
+# request_user_input (plan mode): "Question 1/2 (2 unanswered)". The
+# footer says "enter to submit answer", but "enter to submit all" on the
+# last of several questions (seen live, T155).
 [[rules]]
 id = "blocked-question"
 state = "blocked"
@@ -286,7 +288,7 @@ reason = "question"
 priority = 40
 region = "bottom:16"
 regex = '(?m)^\s*Question \d+/\d+'
-contains = ["enter to submit answer"]
+contains = ["enter to submit"]
 
 # Free text is the last option, "None of the above" (checked live, 0.160):
 # a number submits its option at once, even this one, without notes. So
