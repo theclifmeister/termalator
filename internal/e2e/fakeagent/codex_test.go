@@ -310,8 +310,14 @@ func TestCodexQueueAndClear(t *testing.T) {
 	}
 	a.send("\x1b[200~fourth\x1b[201~\r")
 	a.waitEvent("SessionStart", 3)
-	if h := a.hooks(); h[len(h)-1]["source"] != "compact" || h[len(h)-1]["session_id"] != start["session_id"] {
-		t.Fatalf("after /compact %v", h[len(h)-1])
+	var last rec
+	for _, h := range a.hooks() {
+		if h["hook_event_name"] == "SessionStart" {
+			last = h
+		}
+	}
+	if last["source"] != "compact" || last["session_id"] != start["session_id"] {
+		t.Fatalf("after /compact %v", last)
 	}
 }
 

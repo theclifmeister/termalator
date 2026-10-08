@@ -1682,12 +1682,13 @@ Terminatr has a test strategy from the first milestone, not a test phase at the 
 | **Integration** | A real `tm server` in an isolated `TERMINATR_HOME` (a `t.TempDir()`, with a short run dir under `/tmp`), driven through the CLI and the socket. Lifecycle, stale sockets, handshake, sessions, hooks, tasks, threads with the fake agent | `go test -race ./...` (packages under `internal/…` with `_integration_test.go` files) | every PR |
 | **End-to-end** | The whole product as the user sees it: `tm` and `tm attach` running inside a **virtual terminal** (libghostty), keys typed, screens compared with golden files, windows closed, clients and servers killed | `internal/e2e`, `make e2e` (all) / `make e2e-smoke` (a core set under about 2 minutes) | smoke on every PR and on main; race-built smoke and the full suite weekly |
 | **Real agent** | The same scenarios against the installed `claude`, to catch Claude releases that change hooks, screens, the session file, or the task tools | build tag `realclaude`, `make test-claude` | on demand, and nightly on a machine with a Claude login (not GitHub-hosted CI) |
+| **Real Codex** | The Codex scenarios against the installed `codex`, to catch Codex releases that change hooks, screens, the rollout or `codex queue` (§16.4) | build tag `realcodex`, `make test-codex` | on demand only, on a machine with a ChatGPT login |
 
 **On every PR** (macOS and Linux, `ci.yml`): gofmt, vet, build, `go test -race ./...` (unit, integration and fuzz seeds), `make e2e-smoke` (without `-race`, in its own job, two shards per OS: `make e2e-smoke E2E_SHARD=1/2`), `tm selftest`. The release snapshot (`make release-snapshot` on macOS) runs on every push to main and on PRs that touch the release build (`.goreleaser.yaml`, the Makefile, `go.mod`/`go.sum`, `scripts/release/`, `Formula/`, the workflows, libghostty bindings).
 
 **Weekly** (`weekly.yml`, also by hand through `workflow_dispatch`; skipped when main hasn't changed since its last successful run): `make fuzz` (1 minute per target), `make test-race`, the full `make e2e` and `make e2e-smoke-race` (the smoke set with a race-built `tm`) on Linux and macOS.
 
-**On demand or nightly, on a logged-in machine:** `make test-claude`.
+**On demand or nightly, on a logged-in machine:** `make test-claude`. **On demand only:** `make test-codex`.
 
 ### 16.2 The end-to-end harness: `internal/e2e`
 
@@ -1758,6 +1759,16 @@ Built in M3 (`internal/e2e/fakeagent`, a small Go TUI). It behaves like Claude C
   - `SessionStart` context re-injection;
   - the access policy: a thread can't write the project folder, interactively and under yolo.
 - A failure files an inbox item in the `terminatr` project, or prints a summary when run by hand, naming the manifest lines involved.
+
+**Real Codex** (T105). Build tag `realcodex`; `make test-codex` runs it against the `codex` on `PATH` with gpt-6-luna and the user's ChatGPT login (`~/.codex`). On demand only, not in the weekly job (user, 2026-10-08). The regular e2e runs the same cases against the fake agent as Codex (`FakeCodex`: the fake called `codex`, under the real `codex.toml` and its Go agent). It checks:
+
+- `codex --version` is within `tested_versions`;
+- a first prompt (pasted: Codex reports its thread id only with its first hook), then prompts through `codex queue`;
+- an approval approved and one cancelled with Esc (`Interrupt`), with `-a on-request` added to the launch: under 0.160's default policy an escalation is refused without a dialog;
+- `/compact` (`PreCompact`; `SessionStart` with source `compact` at the next prompt) and `/clear` (a new thread, which reports itself at its first prompt; the thread left ends a minute later with a `SessionEnd` that must change nothing);
+- a question in plan mode (no hook; the screen rule), and the "Implement this plan?" menu after it;
+- a resume after a server restart (`codex resume <id>`);
+- the hook sequences against the fake's, and every dialog's screen rule. Screens captured live go to `internal/agent/testdata/codex/`, where every screen rule must decide at least one.
 
 ### 16.5 Race detector and fuzzing
 
