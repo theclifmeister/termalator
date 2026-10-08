@@ -439,7 +439,7 @@ func TestAgentCommands(t *testing.T) {
 }
 
 // TestSmokeMakeRun: `make run` (scripts/run.sh) opens the dashboard,
-// where s starts a shell in the current directory and attaches to it.
+// where a shell started from the command line in the current directory attaches.
 func TestSmokeMakeRun(t *testing.T) {
 	env := New(t)
 	dir := env.Workdir()
@@ -449,8 +449,9 @@ func TestSmokeMakeRun(t *testing.T) {
 	}
 	env.Vars = append(env.Vars, "PATH="+filepath.Dir(env.Bin)+":/usr/bin:/bin")
 	w := env.WindowCmd(100, 30, "/bin/sh", "-c", "cd "+dir+" && exec "+filepath.Join(root, "scripts", "run.sh"))
-	w.WaitFor("no sessions; s starts a shell", wait)
-	w.Type("s")
+	id := env.StartShell(dir)
+	w.WaitFor(id, wait)
+	w.OpenSession(id)
 	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, `prefix+d dashboard`) })
 	for _, s := range env.Sessions() {
 		env.track(s.PID, "session "+s.ID)

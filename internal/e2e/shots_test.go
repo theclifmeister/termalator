@@ -304,7 +304,7 @@ func shootSize(t *testing.T, env *Env, dir string, sz shotSize) {
 	s.esc()
 
 	s.home()
-	// t: the project popup on its Tasks tab; inbox, switcher, new project.
+	// t: the project popup on its Tasks tab; inbox, new project.
 	w.Type("t")
 	s.soft("3 tasks")
 	s.shot("tasks")
@@ -316,10 +316,6 @@ func shootSize(t *testing.T, env *Env, dir string, sz shotSize) {
 	w.Type("i")
 	s.soft("The coordinator handles these")
 	s.shot("inbox")
-	s.esc()
-	w.Type("p")
-	time.Sleep(300 * time.Millisecond)
-	s.shot("switcher")
 	s.esc()
 	w.Type("n")
 	time.Sleep(300 * time.Millisecond)
@@ -404,10 +400,6 @@ func shootSize(t *testing.T, env *Env, dir string, sz shotSize) {
 		w.Prefix("a")
 		time.Sleep(400 * time.Millisecond)
 		s.shot("attach-popup")
-		s.esc()
-		w.Prefix("p")
-		time.Sleep(400 * time.Millisecond)
-		s.shot("attach-switcher")
 		s.esc()
 		w.Prefix("?")
 		time.Sleep(400 * time.Millisecond)

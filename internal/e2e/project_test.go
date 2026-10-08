@@ -1,6 +1,6 @@
 package e2e
 
-// M4 scenarios with projects: tm project open, the project switcher, the
+// M4 scenarios with projects: tm project open, the
 // server's caller checks (docs/SPEC.md §11.1) and the "clearing the
 // coordinator loses nothing" invariant (§16.6).
 
@@ -52,11 +52,8 @@ func TestSmokeProjectOpenAndSwitch(t *testing.T) {
 		return a >= 0 && b == a+2 && coord(lines[a+1], "○") && coord(lines[b+1], "·")
 	})
 
-	// p, down, enter: beta's coordinator starts and is attached.
-	w.Type("p")
-	w.WaitFor("enter open its coordinator", wait)
-	w.Key(keyDown)
-	w.Key(Enter)
+	// ]: beta's coordinator starts and is attached.
+	w.Type("]")
 	w.WaitUntil("attached to beta", agentWait, func(sc string) bool { return lastLine(sc, beta+" coordinator") })
 	w.WaitFor("Fake Claude Code", agentWait)
 
@@ -66,11 +63,6 @@ func TestSmokeProjectOpenAndSwitch(t *testing.T) {
 	w.WaitUntil("attached to alpha", wait, func(sc string) bool { return lastLine(sc, alpha+" coordinator") && lastLine(sc, " · "+id+" ") })
 	w.Prefix("]")
 	w.WaitUntil("attached to beta", wait, func(sc string) bool { return lastLine(sc, beta+" coordinator") })
-	// Prefix p: the switcher, over the dashboard.
-	w.Prefix("p")
-	w.WaitFor("enter open its coordinator", wait)
-	w.Key(keyEsc)
-	w.WaitFor("SESSIONS", wait)
 	w.Quit()
 	w.WaitExit(wait)
 

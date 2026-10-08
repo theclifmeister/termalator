@@ -44,7 +44,6 @@ func TestDashboardPrefixQuits(t *testing.T) {
 		"the tasks":         func(m *dash) { press(m, "t") },
 		"the settings":      func(m *dash) { press(m, ",") },
 		"the help":          func(m *dash) { press(m, "?") },
-		"the switcher":      func(m *dash) { press(m, "p") },
 		"the keys tab":      func(m *dash) { press(m, "a", "5") },
 		"a prompt":          func(m *dash) { press(m, "n") },
 		"a question": func(m *dash) {

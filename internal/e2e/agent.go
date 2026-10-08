@@ -231,3 +231,22 @@ func (e *Env) HookEvents() []string {
 	}
 	return out
 }
+
+// StartShell starts a shell session (`tm session start -- argv`; /bin/sh
+// when argv is empty) in dir and returns its id. The dashboard has no
+// key for it: shells are started from the command line.
+func (e *Env) StartShell(dir string, argv ...string) string {
+	e.T.Helper()
+	if len(argv) == 0 {
+		argv = []string{"/bin/sh"}
+	}
+	return strings.TrimSpace(e.MustCLI(append([]string{"session", "start", "--cwd", dir, "--cols", "100", "--rows", "30", "--"}, argv...)...))
+}
+
+// OpenSession selects the session's row on the dashboard with a click
+// and attaches it with enter.
+func (w *Window) OpenSession(id string) {
+	w.env.T.Helper()
+	w.ClickText(id, 0)
+	w.Key(Enter)
+}

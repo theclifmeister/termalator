@@ -84,14 +84,12 @@ type ThreadRow struct {
 }
 
 // Source is the dashboard's view of the world; tests use a fake. It
-// only reads, starts shells, opens projects and asks the coordinator to
+// only reads, opens projects and asks the coordinator to
 // act on a task: what happens to threads and tasks is the coordinator's
 // (docs/SPEC.md §4).
 type Source interface {
 	Load() Data
 	Board(slug string) (*tasks.Board, error)
-	// StartShell starts a shell of cols×rows in cwd.
-	StartShell(cwd string, cols, rows int) (string, error)
 	NewProject(slug string) (string, error)
 	// OpenProject returns the project's coordinator session, started
 	// first if none runs.
@@ -268,18 +266,6 @@ func (s *ServerSource) Memory(slug string) (project.Memory, error) {
 		return project.Memory{}, err
 	}
 	return p.ReadMemory()
-}
-
-func (s *ServerSource) start(p proto.SessionStartParams) (string, error) {
-	var res proto.SessionStartResult
-	if err := s.call(proto.MethodSessionStart, p, &res); err != nil {
-		return "", err
-	}
-	return res.Session.ID, nil
-}
-
-func (s *ServerSource) StartShell(cwd string, cols, rows int) (string, error) {
-	return s.start(proto.SessionStartParams{Cwd: cwd, Cols: uint16(cols), Rows: uint16(rows)})
 }
 
 func (s *ServerSource) NewProject(slug string) (string, error) {

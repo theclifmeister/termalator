@@ -42,7 +42,7 @@ func newProject(env *Env, name string) (slug, dir string) {
 func TestSmokeDashboard(t *testing.T) {
 	env := New(t)
 	w := env.Window(100, 24)
-	w.WaitFor("no sessions; s starts a shell", wait)
+	w.WaitFor("no sessions", wait)
 	w.Golden("dashboard-empty.txt")
 
 	slug, _ := newProject(env, "demo")

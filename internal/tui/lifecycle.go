@@ -87,7 +87,7 @@ func PauseProject(c caller.Caller, slug string, on bool) (string, error) {
 }
 
 // ArchiveProject archives or unarchives a project. An archived project
-// is hidden from the sidebar and the switcher, and the ticker leaves it
+// is hidden from the sidebar, and the ticker leaves it
 // alone; archiving is refused while its agents run.
 func ArchiveProject(call callFn, c caller.Caller, slug string, on bool) (string, error) {
 	if err := humanOnly(c, "archives projects"); err != nil {
@@ -109,7 +109,7 @@ func ArchiveProject(call callFn, c caller.Caller, slug string, on bool) (string,
 	case !changed:
 		return slug + " is already " + map[bool]string{true: "archived", false: "not archived"}[on], nil
 	case on:
-		return "archived " + slug + ": hidden from the sidebar and the switcher, and the ticker leaves it alone (tm project unarchive " + slug + ")", nil
+		return "archived " + slug + ": hidden from the sidebar, and the ticker leaves it alone (tm project unarchive " + slug + ")", nil
 	}
 	return "unarchived " + slug, nil
 }

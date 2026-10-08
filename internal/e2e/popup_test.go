@@ -220,7 +220,8 @@ func TestSmokeProjectPopup(t *testing.T) {
 	// it.
 	w2 := env.Window(cols, 40)
 	w2.WaitFor("SESSIONS", wait)
-	w.Type("s")
+	id := env.StartShell("/")
+	w.OpenSession(id)
 	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, "prefix+d dashboard") })
 	w2.WaitUntil("w2 attached", wait, func(sc string) bool { return lastLine(sc, "prefix+d dashboard") })
 	w.Prefix("a")

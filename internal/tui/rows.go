@@ -364,9 +364,9 @@ func buildRows(d Data, project string) []row {
 	// the projects, so it says so.
 	rows = append(rows, row{head: "OTHER SESSIONS", count: len(other)})
 	if len(other) == 0 {
-		note := "  no sessions; s starts a shell"
+		note := "  no sessions"
 		if n := len(d.Sessions); n > 0 {
-			note = fmt.Sprintf("  none outside the projects (%d in them); s starts a shell", n)
+			note = fmt.Sprintf("  none outside the projects (%d in them)", n)
 		}
 		other = []row{{note: note}}
 	}

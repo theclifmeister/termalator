@@ -333,7 +333,7 @@ func TestAttachLocalScrollback(t *testing.T) {
 }
 
 // TestRunScript runs scripts/run.sh (`make run`) in a window: it opens
-// the dashboard; s starts a shell and attaches; Ctrl+B d comes back to the
+// the dashboard; a shell started from the command line attaches; Ctrl+B d comes back to the
 // dashboard and q leaves the shell running.
 func TestRunScript(t *testing.T) {
 	env := New(t)
@@ -342,8 +342,9 @@ func TestRunScript(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := env.WindowCmd(100, 30, filepath.Join(root, "scripts", "run.sh"))
-	w.WaitFor("no sessions; s starts a shell", wait)
-	w.Type("s")
+	id := env.StartShell(root)
+	w.WaitFor(id, wait)
+	w.OpenSession(id)
 	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, `prefix+d dashboard`) && strings.Contains(sc, "$") })
 	w.Type("echo hello-$((6*7))\r")
 	w.WaitFor("hello-42", wait)
@@ -404,12 +405,13 @@ func TestRunScriptLoginShellQueries(t *testing.T) {
 	}
 	env.MustCLI("server", "stop")
 
-	// make run, in a window the size of the user's: s starts the login
-	// shell at the window's size, less the sidebar, the status bar and the row above it,
-	// and attaches.
+	// make run, in a window the size of the user's: a login shell started
+	// from the command line attaches at the window's size, less the
+	// sidebar, the status bar and the row above it.
 	w := env.WindowCmd(76, 53, filepath.Join(root, "scripts", "run.sh"))
-	w.WaitFor("no sessions; s starts a shell", wait)
-	w.Type("s")
+	id := env.StartShell("/", "/bin/bash", "-l")
+	w.WaitFor(id, wait)
+	w.OpenSession(id)
 	w.WaitFor("prompt$", wait)
 	if !Poll(wait, func() bool { return w.Modes().AltScreen }) {
 		t.Fatal("run.sh did not attach")
@@ -418,7 +420,12 @@ func TestRunScriptLoginShellQueries(t *testing.T) {
 	if len(list) != 1 {
 		t.Fatalf("sessions: %+v", list)
 	}
-	s := &Session{ID: list[0].ID, PID: list[0].PID}
+	s := &Session{ID: id}
+	for _, l := range list {
+		if l.ID == id {
+			s.PID = l.PID
+		}
+	}
 	env.track(s.PID, "session "+s.ID)
 	assertPaneSize(t, env, s, uint16(76-SideCols(76)), 51) // 76 is narrow: the sidebar is its slim strip
 	// mirrored: w runs tm attach itself (not run.sh), so it can be asked

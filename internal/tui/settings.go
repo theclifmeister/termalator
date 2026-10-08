@@ -794,10 +794,10 @@ func safetySettings(slug string) []setting {
 				}
 				return m.lifecycle(slug, verb)
 			}},
-		{label: "Archive", help: "Hide the project from the sidebar and the switcher, and stop all background work for it; tm project unarchive brings it back. Not while its coordinator or threads run. Asks first.",
+		{label: "Archive", help: "Hide the project from the sidebar, and stop all background work for it; tm project unarchive brings it back. Not while its coordinator or threads run. Asks first.",
 			value: func(m *dash) string { return "enter archives" },
 			change: func(m *dash) tea.Cmd {
-				m.confirmNo("Archive "+slug, "Archive "+slug+"? It leaves the sidebar and the switcher, and nothing runs for it until tm project unarchive "+slug+".", "not archived", func() tea.Cmd {
+				m.confirmNo("Archive "+slug, "Archive "+slug+"? It leaves the sidebar, and nothing runs for it until tm project unarchive "+slug+".", "not archived", func() tea.Cmd {
 					m.pop() // the project popup
 					return m.lifecycle(slug, "archive")
 				})

@@ -8,7 +8,7 @@
                                │        report new · for the coordinator
                                │  tasks: 0 need you · 1 in motion · 0 on deck
                                │ OTHER SESSIONS ──────────────────────────────────────────────────────────────────────────────────────────────
-                               │  none outside the projects (1 in them); s starts a shell
+                               │  none outside the projects (1 in them)
                                │
                                │
                                │

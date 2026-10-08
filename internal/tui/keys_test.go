@@ -92,7 +92,6 @@ func TestPrefixStep(t *testing.T) {
 		{"the prefix arms", false, pk, true, prefixDo{arm: true}},
 		{"prefix twice sends it", true, pk, true, prefixDo{input: true}},
 		{"prefix d detaches", true, key("d"), false, prefixDo{detach: true}},
-		{"prefix p detaches to the switcher", true, key("p"), true, prefixDo{detach: true, then: "p"}},
 		{"prefix ] without a dashboard cancels", true, key("]"), false, prefixDo{}},
 		{"prefix i opens the inbox over the session", true, key("i"), true, prefixDo{popup: "i"}},
 		{"prefix , opens the settings over the session", true, key(","), true, prefixDo{popup: ","}},

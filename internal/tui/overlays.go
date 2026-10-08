@@ -6,7 +6,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/tasks"
 )
 
@@ -202,54 +201,3 @@ func joinKeys(keys ...string) string {
 	}
 	return strings.Join(out, " · ")
 }
-
-// switchView is the project switcher: enter opens the selected
-// project's coordinator.
-type switchView struct{ sel int }
-
-func (sw *switchView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
-	switch k.String() {
-	case "esc":
-		m.pop()
-	case "up", "k", "down", "j", "pgup", "pgdown":
-		sw.sel = moveSel(sw.sel, scrollKeys[k.String()], len(m.data.Projects))
-	case "enter":
-		if sw.sel < len(m.data.Projects) && !m.busy {
-			m.pop()
-			return m.openProject(m.data.Projects[sw.sel].Slug)
-		}
-	}
-	return nil
-}
-
-func (sw *switchView) render(m *dash) string {
-	w := m.inner(viewWidth)
-	var lines []string
-	var hits []int
-	for i, p := range m.data.Projects {
-		hits = append(hits, i)
-		r := row{key: "p:" + p.Slug, who: p.Slug, state: "—", rest: "no coordinator running", pct: -1}
-		for _, s := range m.data.Sessions {
-			if s.Role == proto.RoleCoordinator && s.Project == p.Slug {
-				r.state, r.rest, r.pct = stateWord(s), progress(s, nil), sessionPct(s)
-				break
-			}
-		}
-		if p.Slug == m.current {
-			r.rest = joinSp(r.rest, "· the current project")
-		}
-		lines = append(lines, line(r, w, i == sw.sel))
-	}
-	return m.popup(box{title: "Project switcher", body: lines, sel: sw.sel, hits: hits, keys: "enter open its coordinator · esc close"})
-}
-
-// click selects a project; a double-click opens its coordinator.
-func (sw *switchView) click(m *dash, item, _ int, double bool) tea.Cmd {
-	sw.sel = item
-	if double {
-		return sw.key(m, keyMsg("enter"))
-	}
-	return nil
-}
-
-func (sw *switchView) wheel(m *dash, d int) { sw.key(m, arrow(d)) }
