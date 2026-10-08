@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -111,4 +112,50 @@ func (r *Registry) Names() []string {
 func Builtin(name string) ([]byte, bool) {
 	b, err := builtin.ReadFile("manifests/" + name + ".toml")
 	return b, err == nil
+}
+
+// GuardSecrets is every known agent's [guard] secrets, resolved: the
+// built-in manifests' and reg's (nil: the built-ins only), so a user
+// manifest replacing a built-in one doesn't drop what it protected.
+func GuardSecrets(reg *Registry, home string, getenv func(string) string) []string {
+	var out []string
+	add := func(m *Manifest) {
+		for _, p := range GuardPaths(m.Guard.Secrets, home, getenv) {
+			if !slices.Contains(out, p) {
+				out = append(out, p)
+			}
+		}
+	}
+	names, _ := fs.Glob(builtin, "manifests/*.toml")
+	for _, n := range names {
+		data, _ := builtin.ReadFile(n)
+		if m, err := ParseManifest(data); err == nil {
+			add(m)
+		}
+	}
+	if reg != nil {
+		for _, n := range reg.Names() {
+			if m := ManifestOf(reg.agents[n]); m != nil {
+				add(m)
+			}
+		}
+	}
+	return out
+}
+
+// GuardWritable is the [guard] writable folders of the agent named
+// name, resolved: reg's manifest, else the built-in one.
+func GuardWritable(reg *Registry, name, home string, getenv func(string) string) []string {
+	var m *Manifest
+	if reg != nil {
+		if a, ok := reg.Get(name); ok {
+			m = ManifestOf(a)
+		}
+	} else if data, ok := Builtin(name); ok {
+		m, _ = ParseManifest(data)
+	}
+	if m == nil {
+		return nil
+	}
+	return GuardPaths(m.Guard.Writable, home, getenv)
 }
