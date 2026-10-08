@@ -835,6 +835,21 @@ var funcs = template.FuncMap{
 		b, err := json.Marshal(v)
 		return string(b), err
 	},
+	// hookexec is the exec form of a command hook, no shell on any OS:
+	// the "command" and "args" members of the hook object, e.g.
+	// hookexec .TMBin "hook" "--agent" "claude" ->
+	// "command":"/bin/tm","args":["hook","--agent","claude"].
+	"hookexec": func(command string, args ...string) (string, error) {
+		if args == nil {
+			args = []string{}
+		}
+		c, err := json.Marshal(command)
+		if err != nil {
+			return "", err
+		}
+		a, err := json.Marshal(args)
+		return fmt.Sprintf(`"command":%s,"args":%s`, c, a), err
+	},
 	// rules formats one permission rule per directory, e.g.
 	// rules "Read(/%s/**)" .Access.Read -> ["Read(//home/u/p/**)"].
 	"rules": func(format string, dirs []string) []string {

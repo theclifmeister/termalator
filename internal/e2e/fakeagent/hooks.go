@@ -18,9 +18,11 @@ import (
 type hookGroup struct {
 	Matcher string `json:"matcher"`
 	Hooks   []struct {
-		Type    string  `json:"type"`
-		Command string  `json:"command"`
-		Timeout float64 `json:"timeout"`
+		Type    string `json:"type"`
+		Command string `json:"command"`
+		// Args set means exec form: Command is run directly, no shell.
+		Args    []string `json:"args"`
+		Timeout float64  `json:"timeout"`
 	} `json:"hooks"`
 }
 
@@ -29,6 +31,7 @@ type hookCmd struct {
 	event   string
 	matcher *regexp.Regexp // nil matches everything
 	command string
+	args    []string // non-nil: exec form
 	timeout time.Duration
 }
 
@@ -70,7 +73,7 @@ func compileHooks(groups map[string][]hookGroup, events []string) []hookCmd {
 				if t <= 0 {
 					t = 60 * time.Second
 				}
-				out = append(out, hookCmd{event: ev, matcher: re, command: h.Command, timeout: t})
+				out = append(out, hookCmd{event: ev, matcher: re, command: h.Command, args: h.Args, timeout: t})
 			}
 		}
 	}
@@ -93,6 +96,9 @@ func runHookCmd(h hookCmd, payload []byte, dir string, env []string) (string, in
 	ctx, cancel := context.WithTimeout(context.Background(), h.timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", h.command)
+	if h.args != nil {
+		cmd = exec.CommandContext(ctx, h.command, h.args...)
+	}
 	cmd.Dir = dir
 	cmd.Env = env
 	cmd.Stdin = bytes.NewReader(payload)

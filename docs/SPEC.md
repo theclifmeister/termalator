@@ -988,7 +988,7 @@ An agent is first of all a TOML manifest. `internal/agent/manifests/claude.toml`
 
 **Match syntax**, the same everywhere: keys are dotted payload paths. A value means equals; `"!value"` means absent or different; `"*"` means present and non-empty; `"!*"` means absent or empty. Numbers and booleans compare as their text.
 
-**The hook endpoint.** All generated hook files call `"$TERMINATR_BIN" hook --agent <name>` as a **command** hook. That is the `tm` binary itself, so the hook always exists. The spike measured why each of the following rules matters:
+**The hook endpoint.** All generated hook files call `tm hook --agent <name>` as a **command** hook: Codex's as `"$TERMINATR_BIN" hook --agent codex` (a shell string, whose text never changes, so its trust hash doesn't change), Claude's in exec form, `"command": "<tm>", "args": ["hook", "--agent", "claude"]` (T172; the manifest's `hookexec` template function writes the two members), which runs no shell on any OS, so a path needs no quoting and Windows needs no `sh`; it needs Claude >= 2.1.139 (`tested_versions` is a prefix, `2.1.`, and does not pin that). That is the `tm` binary itself, so the hook always exists. The spike measured why each of the following rules matters:
 - **Delivery.** It reads the payload from stdin, trims it with `[hook]`, wraps it in an envelope (`TERMINATR_SESSION`, a timestamp, the parent pid), and sends it over a **stream** connection of kind `hook` to the server socket.
   - Datagrams are not usable: macOS caps them at 2048 bytes, and bigger payloads were dropped silently.
   - About 4 ms per event, end to end.
