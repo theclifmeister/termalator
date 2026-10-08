@@ -60,6 +60,10 @@ func agentCheck(d Deps, name, source string, m *agent.Manifest) Check {
 	switch {
 	case v == "":
 		c.Status, c.Detail = Warn, fmt.Sprintf("%s: no version in %q", path, firstLine(raw))
+	case m.Identify.MinVersion != "" && !agent.VersionAtLeast(v, m.Identify.MinVersion):
+		c.Status = Warn
+		c.Detail = fmt.Sprintf("%s %s is older than %s, the oldest terminatr's generated files work with (Claude's exec-form hooks need 2.1.139: on older versions the hooks don't run and threads lose hook state)%s; update %s",
+			path, v, m.Identify.MinVersion, src, m.Display)
 	case !m.Tested(v):
 		c.Status = Warn
 		c.Detail = fmt.Sprintf("%s %s is not in tested_versions %v%s; its status file and messaging socket are ignored, state comes from hooks and the screen",

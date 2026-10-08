@@ -50,6 +50,10 @@ type Rules struct {
 	// Tools are the session's agent's tools the guard judges, by name
 	// (its manifest's [guard.tools]); a tool not listed is not judged.
 	Tools map[string]Tool `json:"tools,omitempty"`
+	// CaseFold: the file system ignores case in names (macOS, Windows;
+	// plat/caps), so paths are compared with case folded and
+	// ~/.Terminatr/worktrees is the worktrees folder.
+	CaseFold bool `json:"caseFold,omitempty"`
 }
 
 // Tool is what the guard knows of one of an agent's tools: its kind and
@@ -160,7 +164,7 @@ func PatchPaths(patch string) []string {
 func (r Rules) has(id string) bool { return slices.Contains(r.Rules, id) }
 
 func (r Rules) writable(p string) bool {
-	return slices.ContainsFunc(r.Writable, func(w string) bool { return under(p, w) })
+	return slices.ContainsFunc(r.Writable, func(w string) bool { return r.under(p, w) })
 }
 
 // deny is the refusal under rule; the sentence's end says what to do,
@@ -825,6 +829,18 @@ func (r Rules) abs(p string) string {
 	return "/" + strings.Join(parts, "/")
 }
 
+// fold is p as paths are compared: case folded where the file system
+// ignores case.
+func (r Rules) fold(p string) string {
+	if r.CaseFold {
+		return strings.ToLower(p)
+	}
+	return p
+}
+
+// under: p is root or inside it, by the file system's idea of case.
+func (r Rules) under(p, root string) bool { return under(r.fold(p), r.fold(root)) }
+
 func under(p, root string) bool {
 	if root == "" {
 		return false
@@ -848,17 +864,17 @@ func (r Rules) isSecret(p string) bool {
 		fixed = "/"
 	}
 	return slices.ContainsFunc(r.Secrets, func(s string) bool {
-		return under(fixed, s) || (fixed != p && under(s, fixed) && fixed != "/" && fixed != r.Home)
+		return r.under(fixed, s) || (fixed != p && r.under(s, fixed) && fixed != "/" && r.fold(fixed) != r.fold(r.Home))
 	})
 }
 
 // isWorktreeRoot: removing p takes a worktree with it: the thread's own,
 // tm's worktrees folder, a project's folder in it or a worktree in that.
 func (r Rules) isWorktreeRoot(p string) bool {
-	if r.Role == "thread" && len(r.Writable) > 0 && under(r.Writable[0], p) {
+	if r.Role == "thread" && len(r.Writable) > 0 && r.under(r.Writable[0], p) {
 		return true
 	}
-	wt := r.Worktrees
+	wt, p := r.fold(r.Worktrees), r.fold(p)
 	if wt == "" {
 		return false
 	}

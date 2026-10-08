@@ -24,6 +24,7 @@ import (
 	"github.com/theclifmeister/terminatr/internal/caller"
 	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/guard"
+	"github.com/theclifmeister/terminatr/internal/plat/caps"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/worktree"
@@ -86,7 +87,7 @@ func (s *Server) guardRulesFor(r SessionRecord) GuardRules {
 		return GuardRules{}
 	}
 	home, _ := os.UserHomeDir()
-	g := GuardRules{On: true, Role: r.Role, Home: home, Cwd: r.Cwd}
+	g := GuardRules{On: true, Role: r.Role, Home: home, Cwd: r.Cwd, CaseFold: caps.CaseFold}
 	if s.opts.Paths.Home != "" {
 		g.Worktrees = realPath(filepath.Join(s.opts.Paths.Home, "worktrees"))
 	}
