@@ -40,7 +40,6 @@ func prefixKeysAll() []string {
 var popupStates = map[string]func(m *dash){
 	"the help":           func(m *dash) { keyPress(m, "?") },
 	"the inbox":          func(m *dash) { keyPress(m, "i") },
-	"the switcher":       func(m *dash) { keyPress(m, "p") },
 	"the settings":       func(m *dash) { keyPress(m, ",") },
 	"the menu":           func(m *dash) { m.openMenu("", m.dashItems(), 0, m.bodyRows()) },
 	"overview tab":       func(m *dash) { m.Update(keyPress(m, "a")()); keyPress(m, "1") },
@@ -132,7 +131,7 @@ func needsYou(t *testing.T) *dash {
 // rather than accepting a task).
 func TestPrefixNeverReachesPopup(t *testing.T) {
 	want := map[string]string{"a": "*tui.projectView", "i": "*tui.projectView", "t": "*tui.projectView",
-		",": "*tui.settingsView", "?": "*tui.helpView", "p": "*tui.switchView", "d": "<nil>", "tab": "<nil>",
+		",": "*tui.settingsView", "?": "*tui.helpView", "d": "<nil>", "tab": "<nil>",
 		"r": "*tui.confirmView"}
 	states := map[string]func(m *dash){"the list": func(*dash) {}}
 	for name, open := range popupStates {

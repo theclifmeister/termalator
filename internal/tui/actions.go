@@ -75,8 +75,6 @@ func init() {
 				return ""
 			},
 			run: (*dash).enter},
-		{keys: []string{"s"}, label: "s", help: "new shell session (in the directory tm was started in)", menu: []string{"new shell"},
-			run: (*dash).startShell},
 		{keys: []string{"T"}, label: "T", help: "on an agent session outside the projects (one you started yourself): ask the current project's coordinator to adopt it as a thread (asks first)",
 			menu: []string{"adopt as a thread"},
 			foot: func(m *dash, r row, ok bool) string {
@@ -100,14 +98,6 @@ func init() {
 			foot: withProject("tasks"), run: (*dash).taskTab},
 		{keys: []string{"i"}, label: "i", help: "the Inbox tab of the project popup: what the coordinator is told about", menu: []string{"inbox"},
 			foot: withProject("inbox"), run: (*dash).inbox},
-		{keys: []string{"p"}, label: "p", help: "project switcher; enter opens that project's coordinator", menu: []string{"switch project"},
-			foot: func(m *dash, _ row, _ bool) string {
-				if len(m.data.Projects) > 1 {
-					return "projects"
-				}
-				return ""
-			},
-			run: (*dash).switcher},
 		{keys: []string{"]", "["}, label: "] [", help: "next / previous project's coordinator", menu: []string{"next project", "previous project"},
 			run: func(m *dash, key string) tea.Cmd { return m.cycleProject(key == "]") }},
 		{keys: []string{"<", ">"}, label: "< >", help: "narrow / widen the list beside the details panel (or drag the divider)", menu: []string{"narrower list", "wider list"},
@@ -177,15 +167,6 @@ func (m *dash) enter(string) tea.Cmd {
 	return nil
 }
 
-func (m *dash) startShell(string) tea.Cmd {
-	cols, rows := m.paneSize()
-	cwd := m.cwd
-	return m.act(func() actionMsg {
-		id, err := m.src.StartShell(cwd, cols, rows)
-		return actionMsg{attach: id, sel: "s:" + id, err: err}
-	})
-}
-
 func (m *dash) newProject(string) tea.Cmd {
 	m.prompt("New project", "Its name (becomes a lower-case slug, e.g. demo-app):", "", func(slug string) tea.Cmd {
 		return m.act(func() actionMsg {
@@ -218,21 +199,6 @@ func (m *dash) inbox(string) tea.Cmd {
 	if slug := m.needProject(); slug != "" {
 		return m.showTab(slug, tabInbox)
 	}
-	return nil
-}
-
-func (m *dash) switcher(string) tea.Cmd {
-	if len(m.data.Projects) == 0 {
-		m.msg = "no projects; n creates one"
-		return nil
-	}
-	sw := &switchView{}
-	for i, p := range m.data.Projects {
-		if p.Slug == m.projectHere() {
-			sw.sel = i
-		}
-	}
-	m.push(sw)
 	return nil
 }
 

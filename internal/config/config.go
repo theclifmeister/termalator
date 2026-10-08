@@ -139,7 +139,7 @@ type Safety struct {
 	// Paused stops the ticker's prompts (nudges, PR follow-up) and new
 	// threads of the project; state polling goes on (§7.5, §11.2).
 	Paused bool `json:"paused"`
-	// Archived hides the project from the sidebar and the switcher and
+	// Archived hides the project from the sidebar and
 	// stops all ticker work for it (§5.1).
 	Archived bool `json:"archived"`
 	// Merge is who merges a thread's PR: MergeCoordinator or MergeThread.

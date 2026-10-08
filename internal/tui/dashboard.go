@@ -55,7 +55,7 @@ type DashOptions struct {
 	Source Source
 	In     *os.File
 	Out    *os.File
-	// Cwd is where s starts shells.
+	// Cwd is the default directory for adding a repository.
 	Cwd   string
 	State DashState
 	// Width and Height size the first frame before the terminal reports

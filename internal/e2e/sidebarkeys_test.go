@@ -63,7 +63,8 @@ func TestSmokeSidebarKeys(t *testing.T) {
 	// reaches it.
 	w.Detach()
 	w.WaitFor("SESSIONS", wait)
-	w.Type("s")
+	id := env.StartShell("/")
+	w.OpenSession(id)
 	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, "prefix+d dashboard") && strings.Contains(sc, "$") })
 	w.Prefix("\t")
 	w.WaitUntil("sidebar focused", wait, func(sc string) bool { return lastLine(sc, "sidebar: ↑ ↓ move") })

@@ -263,20 +263,10 @@ func TestDashboardMenus(t *testing.T) {
 	if !ok || len(mv.items) != len(m.dashItems()) {
 		t.Fatalf("≡ didn't open the menu of every action: %T", m.top())
 	}
-	clickItem(t, m, "switch project")
-	if _, ok := m.top().(*switchView); !ok {
-		t.Fatalf("the menu's switch project opened %T", m.top())
-	}
-	// The switcher: a click selects, a double-click opens.
-	x, y := at(t, m, "beta")
-	mouseAt(m, tea.MouseLeft, x, y)
-	if sw := m.top().(*switchView); sw.sel != 1 {
-		t.Fatalf("click selected project %d", sw.sel)
-	}
 	keyPress(m, "esc")
 
 	// A row's menu: right-click the coordinator.
-	x, y = atNth(t, m, "coordinator", 1)
+	x, y := atNth(t, m, "coordinator", 1)
 	mouseAt(m, tea.MouseRight, x, y)
 	mv, ok = m.top().(*menuView)
 	if !ok || m.sel != "p:alpha" {

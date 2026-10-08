@@ -146,10 +146,6 @@ func (f *fakeSource) Memory(string) (project.Memory, error)    { return f.memory
 func (f *fakeSource) Agents() []string                         { return f.agents }
 func (f *fakeSource) Models() []string                         { return []string{"opus", "sonnet", "haiku"} }
 func (f *fakeSource) NewProject(name string) (string, error)   { return name, nil }
-func (f *fakeSource) StartShell(cwd string, c, r int) (string, error) {
-	f.started = append(f.started, "shell "+cwd)
-	return "s-9", nil
-}
 func (f *fakeSource) OpenProject(slug string, c, r int) (string, error) {
 	f.opened = append(f.opened, slug)
 	return "s-" + slug, nil
@@ -330,13 +326,6 @@ func TestDashboardKeys(t *testing.T) {
 	run(m, press(m, "enter"))
 	if m.result.Attach != "s-5" {
 		t.Fatalf("attach %q", m.result.Attach)
-	}
-
-	// s starts a shell where the dashboard was started.
-	m.sel, m.result = "p:alpha", DashResult{}
-	run(m, press(m, "s"))
-	if got := strings.Join(src.started, ","); got != "shell /work" || m.result.Attach != "s-9" {
-		t.Fatalf("started %q attach %q", got, m.result.Attach)
 	}
 
 	// ] from alpha opens beta's coordinator; [ from beta wraps to alpha.
@@ -593,17 +582,6 @@ func TestDashboardPrefix(t *testing.T) {
 		t.Fatal("prefix d on the dashboard did something")
 	}
 
-	// Back from a session after prefix p: the switcher opens.
-	m = newDash(DashOptions{Source: src, Width: 100, Height: 30, State: DashState{Then: "p"}})
-	m.setData(src.data)
-	if _, ok := m.top().(*switchView); !ok {
-		t.Fatalf("then p: overlay %T", m.top())
-	}
-	m.setData(src.data)
-	m.pop()
-	if m.top() != nil {
-		t.Fatal("then ran twice")
-	}
 }
 
 // TestDashboardOver: a popup over a session (prefix then a key in it)
@@ -657,9 +635,9 @@ func TestDashboardFooter(t *testing.T) {
 	m := newDash(DashOptions{Source: src, Width: 100, Height: 30, State: DashState{Current: "beta"}})
 	m.setData(src.data)
 	for sel, want := range map[string]string{
-		"n:s-1":          "≡ menu · enter attach · a project · t tasks · i inbox · p projects · , settings · ? help · prefix+q quit",
-		"th:beta:t-0005": "≡ menu · enter attach · a project · t tasks · i inbox · p projects",
-		"th:beta:t-0006": "≡ menu · a project · t tasks · i inbox · p projects",
+		"n:s-1":          "≡ menu · enter attach · a project · t tasks · i inbox · , settings · ? help · prefix+q quit",
+		"th:beta:t-0005": "≡ menu · enter attach · a project · t tasks · i inbox",
+		"th:beta:t-0006": "≡ menu · a project · t tasks · i inbox",
 		"p:beta":         "≡ menu · enter open · a project · t tasks",
 	} {
 		m.sel = sel

@@ -87,7 +87,7 @@ func TestSmokeViewsShared(t *testing.T) {
 	w2.Detach()
 	w1.WaitFor("SESSIONS", wait)
 	w2.WaitFor("SESSIONS", wait)
-	// Opening beta's coordinator from w2's switcher shows it in w1.
+	// Opening beta's coordinator with ] from w2 shows it in w1.
 	w2.Type("]")
 	w1.WaitUntil("w1 on beta", agentWait, func(sc string) bool { return lastLine(sc, beta+" coordinator") })
 	w2.Detach()

@@ -1079,7 +1079,7 @@ func TestNoKeyAliases(t *testing.T) {
 }
 
 // TestListsPage: pgup and pgdown move through every list: the inbox,
-// the switcher, the task view and the settings.
+// the task view and the settings.
 func TestListsPage(t *testing.T) {
 	src, m := popupData(t)
 	src.data.Projects[0].Items = nil
@@ -1096,13 +1096,6 @@ func TestListsPage(t *testing.T) {
 	keyPress(m, "pgup")
 	if in.sel[tabInbox] != 0 {
 		t.Errorf("inbox pgup: %d", in.sel[tabInbox])
-	}
-	keyPress(m, "esc")
-	keyPress(m, "p")
-	sw := m.top().(*switchView)
-	keyPress(m, "pgdown")
-	if sw.sel != len(m.data.Projects)-1 {
-		t.Errorf("switcher pgdown: %d", sw.sel)
 	}
 	keyPress(m, "esc")
 	m.Update(keyPress(m, "t")())

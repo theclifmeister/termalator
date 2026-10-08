@@ -37,10 +37,10 @@ func TestSmokeMouseDashboard(t *testing.T) {
 	w.WaitUntil("the help closed", wait, func(sc string) bool { return !strings.Contains(sc, "─ Help ─") })
 
 	w.ClickText("≡ menu", 28)
-	w.WaitFor("switch project", wait)
+	w.WaitFor("next project", wait)
 	w.WaitFor("details panel on / off", wait)
 	w.Click(130, 2)
-	w.WaitUntil("the menu closed", wait, func(sc string) bool { return !strings.Contains(sc, "switch project") })
+	w.WaitUntil("the menu closed", wait, func(sc string) bool { return !strings.Contains(sc, "next project") })
 
 	x, y := w.TextAt(s1.ID+" ", 1)
 	w.RightClick(x, y)
