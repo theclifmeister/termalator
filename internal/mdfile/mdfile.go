@@ -8,10 +8,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"unicode/utf8"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/theclifmeister/terminatr/internal/plat/flock"
 )
 
 const fence = "+++"
@@ -99,24 +100,11 @@ func LockPath(path string) string {
 // Lock takes an exclusive lock on LockPath(path) and returns its release
 // function. It blocks until the lock is free.
 func Lock(path string) (unlock func(), err error) {
-	f, err := os.OpenFile(LockPath(path), os.O_CREATE|os.O_RDWR, 0o600)
+	l, err := flock.Wait(LockPath(path))
 	if err != nil {
-		return nil, err
-	}
-	for {
-		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX)
-		if err != syscall.EINTR {
-			break
-		}
-	}
-	if err != nil {
-		f.Close()
 		return nil, fmt.Errorf("lock %s: %w", path, err)
 	}
-	return func() {
-		syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
-		f.Close()
-	}, nil
+	return l.Unlock, nil
 }
 
 // WriteAtomic writes data to a temp file in path's directory and renames
