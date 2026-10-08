@@ -4,9 +4,9 @@
 
 You talk to one **coordinator**. It splits the work into tasks and hands each to a **thread**: an agent in its own git worktree that opens a pull request and reports back. `tm`, a single binary, keeps every agent running in a background server when you close the terminal, and its dashboard shows what each one is doing and what waits for you. All progress lives in plain markdown under `~/.terminatr/projects/<slug>/`, so clearing an agent's context loses nothing.
 
-**Claude Code only for now.** Other agents (Codex, pi) will follow: agents plug in through a manifest ([docs/SPEC.md §8](docs/SPEC.md#8-agents)).
+**Claude Code and Codex are supported**; pi and opencode will follow. Agents plug in through a manifest ([docs/SPEC.md §8](docs/SPEC.md#8-agents)). Using Codex? See [docs/CODEX.md](docs/CODEX.md).
 
-tm uses Claude Code's mods (plugin hooks, early access, Claude Code 2.1.289 or newer) to set and read state: session state, context use, questions and approvals, and the guard. It doesn't screen-scrape ([docs/SPEC.md §8.6](docs/SPEC.md#8-agents)).
+For Claude Code, tm uses its mods (plugin hooks, early access, Claude Code 2.1.289 or newer) to set and read state: session state, context use, questions and approvals, and the guard. It doesn't screen-scrape ([docs/SPEC.md §8.6](docs/SPEC.md#8-agents)).
 
 ```
  PROJECTS                    1 │ tm dashboard                                                                          ● server ok · 1 session
@@ -24,7 +24,7 @@ tm uses Claude Code's mods (plugin hooks, early access, Claude Code 2.1.289 or n
 
 ## Requirements
 
-macOS 13+ or Linux with glibc 2.28+ (arm64 or x86_64), git, and [Claude Code](https://claude.com/claude-code).
+macOS 13+ or Linux with glibc 2.28+ (arm64 or x86_64), git, and at least one agent: [Claude Code](https://claude.com/claude-code) or [Codex](https://developers.openai.com/codex).
 
 ## Install
 
@@ -46,6 +46,7 @@ Newer Homebrew refuses formulas from a tap it doesn't trust, hence `brew trust` 
 ## Learn more
 
 - [terminatr.dev](https://terminatr.dev): the website
+- [docs/CODEX.md](docs/CODEX.md): using Codex
 - [docs/OPERATIONS.md](docs/OPERATIONS.md): using, installing, upgrading and operating `tm`
 - [docs/SPEC.md](docs/SPEC.md): how it works
 - [CONTRIBUTING.md](CONTRIBUTING.md): building from source, tests, pull requests
