@@ -429,7 +429,7 @@ The processes die with the server, because the PTY master closes and the childre
   | `p` | project switcher: every project with its coordinator's state; `enter` opens that project's coordinator (started if none runs); as `prefix+p` |
   | `]` / `[` | open the next / previous project's coordinator; as the prefix commands |
   | `{` / `}`, `b` | narrow / widen the projects sidebar, the slim strip; as the prefix commands |
-  | `n` | new project: a prompt for its name, which becomes the slug (`Demo App` → `demo-app`); as `prefix+n`, which opens the prompt from anywhere (a session, a popup, the sidebar), not in the switcher |
+  | `n` | new project: a prompt for its name, which becomes the slug (`Demo App` → `demo-app`); as `prefix+n`, which opens the prompt as a popup over a session (like `prefix+a`) or over the dashboard, never by way of the dashboard; the project is created and you stay where you were; not in the switcher |
   | `s` | new shell session |
   | `<` / `>` | narrow / widen the list beside the details panel |
   | `\|` | show or hide the details panel; as `prefix+\|` |

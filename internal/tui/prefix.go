@@ -15,7 +15,7 @@ import (
 // sidebar's and the info panel's (paneCommands) and the prefix itself.
 
 // prefixHint is the footer while the prefix waits for its command.
-const prefixHint = "prefix ▸ d dashboard · q quit · a i t , ? popups · n new project · p ] [ projects · { } b sidebar · | details · tab area · r remote · esc cancel"
+const prefixHint = "prefix ▸ d dashboard · q quit · a i t , ? n popups · p ] [ projects · { } b sidebar · | details · tab area · r remote · esc cancel"
 
 // prefixCommand runs the key typed after the prefix.
 func (m *dash) prefixCommand(key string) tea.Cmd {
@@ -52,7 +52,7 @@ func (m *dash) prefixCommand(key string) tea.Cmd {
 		m.stack = nil
 		return m.listKey(key)
 	case prefixCommands[key]:
-		// n p ] [ run on the dashboard: over a session, go back to it.
+		// p ] [ run on the dashboard: over a session, go back to it.
 		m.stack = nil
 		var back tea.Cmd
 		if m.over != nil {
