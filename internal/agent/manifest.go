@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"text/template"
 
@@ -78,6 +79,9 @@ type Manifest struct {
 	// means threads run the agent's default. They need model_args.
 	Models []Model `toml:"models"`
 
+	// Guard: the agent's own paths the guard knows (docs/SPEC.md §8.6).
+	Guard Guard `toml:"guard"`
+
 	Screen struct {
 		// Resize: "follow" (the default) lets the console typed in size
 		// the pane; "explicit" resizes it only on a window resize or a
@@ -135,6 +139,55 @@ type Answer struct {
 	TextFocus  string `toml:"text_focus"`  // key that moves down one option, in place of the number, e.g. "\x1b[B"
 	TextKey    string `toml:"text_key"`    // keys after the option's number that open its text field, e.g. "\t"
 	Submit     string `toml:"submit"`      // keys after the text, e.g. "\r"
+}
+
+// Guard is a manifest's [guard] table. Each entry is a path relative to
+// home ("~/" optional) or under an environment variable ("$CODEX_HOME/auth.json").
+type Guard struct {
+	// Secrets are the agent's credential stores. The credentials rule
+	// covers every known agent's, whatever the session's agent.
+	Secrets []string `toml:"secrets"`
+	// Writable are the agent's own folders its threads write to besides
+	// the worktree and the temporary folders (the worktree-only rule).
+	Writable []string `toml:"writable"`
+}
+
+// GuardPaths resolves [guard] entries to absolute paths, against home
+// and getenv. An entry whose variable is unset or empty, or a relative
+// one without a home, is left out.
+func GuardPaths(entries []string, home string, getenv func(string) string) []string {
+	var out []string
+	for _, e := range entries {
+		missing := false
+		p := os.Expand(e, func(name string) string {
+			v := getenv(name)
+			if v == "" {
+				missing = true
+			}
+			return v
+		})
+		p = strings.TrimPrefix(p, "~/")
+		if missing || p == "" {
+			continue
+		}
+		if !filepath.IsAbs(p) {
+			if home == "" {
+				continue
+			}
+			p = filepath.Join(home, p)
+		}
+		out = append(out, filepath.Clean(p))
+	}
+	return out
+}
+
+// validGuardPath reports whether a [guard] entry is home-relative or
+// starts with a variable, and stays out of "..".
+func validGuardPath(e string) bool {
+	if e == "" || slices.Contains(strings.Split(filepath.ToSlash(e), "/"), "..") {
+		return false
+	}
+	return !filepath.IsAbs(e) || strings.HasPrefix(e, "$")
 }
 
 // AnswerOf returns a's [answer], or nil when it has none.
@@ -320,6 +373,16 @@ func (m *Manifest) validate() error {
 	}
 	if len(m.Models) > 0 && len(m.Launch.ModelArgs) == 0 {
 		errs = append(errs, errors.New("models need launch.model_args"))
+	}
+	for _, e := range m.Guard.Secrets {
+		if !validGuardPath(e) {
+			errs = append(errs, fmt.Errorf("guard.secrets: %q is not relative to home or under $VAR", e))
+		}
+	}
+	for _, e := range m.Guard.Writable {
+		if !validGuardPath(e) {
+			errs = append(errs, fmt.Errorf("guard.writable: %q is not relative to home or under $VAR", e))
+		}
 	}
 	switch m.Screen.Resize {
 	case "", ResizeFollow, ResizeExplicit:

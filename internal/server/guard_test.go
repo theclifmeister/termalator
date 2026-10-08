@@ -300,8 +300,10 @@ func TestAccessThreadGitDirs(t *testing.T) {
 	}
 }
 
-// TestGuardSecrets: Codex's login is a credential store, in ~/.codex or
-// $CODEX_HOME, and a Codex thread's hooks refuse reading it.
+// TestGuardSecrets: the agents' paths come from their manifests. Codex's
+// login is a credential store, in ~/.codex or $CODEX_HOME, and a Codex
+// thread's hooks refuse reading it; every session keeps every agent's
+// secrets.
 func TestGuardSecrets(t *testing.T) {
 	testPaths(t)
 	p := newWatchProject(t)
@@ -326,5 +328,15 @@ func TestGuardSecrets(t *testing.T) {
 	}
 	if d := judge("Bash", map[string]any{"command": "cat ~/.codex/config.toml"}); d != nil {
 		t.Errorf("cat of ~/.codex/config.toml: %+v", d)
+	}
+	// The writable folders are the session agent's: Claude's plans and
+	// memory for a Claude thread, none of them for a Codex thread.
+	plans := filepath.Join(home, ".claude", "plans")
+	if slices.Contains(g.Writable, plans) {
+		t.Errorf("codex thread writable %q", g.Writable)
+	}
+	rec.Agent = "claude"
+	if g := s.guardRulesFor(rec); !slices.Contains(g.Writable, plans) || !slices.Contains(g.Writable, filepath.Join(home, ".claude", "projects")) || !slices.Contains(g.Secrets, filepath.Join(codexHome, "auth.json")) {
+		t.Errorf("claude thread %+v", g)
 	}
 }

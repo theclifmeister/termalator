@@ -114,6 +114,13 @@ template = '''
 }
 '''
 
+# The guard (docs/SPEC.md §8.6): Claude's login, where it isn't in the
+# macOS keychain (CLAUDE_CONFIG_DIR moves it), and the folders a thread
+# writes outside its worktree: plan mode's plans and its own memory.
+[guard]
+secrets = [".claude/.credentials.json", "$CLAUDE_CONFIG_DIR/.credentials.json"]
+writable = [".claude/plans", ".claude/projects"]
+
 # Remote Control (2.1.289): the Claude apps list the session under its
 # name. /remote-control <name> turns it on in a running session. A resumed
 # conversation reconnects on its own, flag or not, so off can't be a
