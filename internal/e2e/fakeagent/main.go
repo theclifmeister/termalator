@@ -70,7 +70,8 @@ type app struct {
 	alwaysAllow map[string]bool
 	notify      *step
 	lastText    string
-	remote      bool // Remote Control is on (--remote-control, /remote-control)
+	remote      bool        // Remote Control is on (--remote-control, /remote-control)
+	cx          *codexState // the Codex flavour (codex.go); nil as Claude
 
 	written       sessionState // what the session file holds
 	real          sessionState // the last computed state
@@ -92,6 +93,10 @@ type sessionState struct {
 }
 
 func main() {
+	if isCodex() {
+		codexMain()
+		return
+	}
 	opts := parseArgs(os.Args[1:])
 	version := os.Getenv("FAKEAGENT_VERSION")
 	if version == "" {
@@ -418,6 +423,9 @@ func (a *app) log(kind string, fields map[string]any) {
 
 // transcriptAppend adds an entry with the common fields.
 func (a *app) transcriptAppend(entry map[string]any) {
+	if a.cx != nil {
+		return // Codex writes its rollout (codex.go)
+	}
 	a.mu.Lock()
 	entry["sessionId"] = a.sid
 	path := a.transcript()

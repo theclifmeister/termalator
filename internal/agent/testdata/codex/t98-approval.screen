@@ -1,0 +1,22 @@
+# source: T98, codex-cli 0.160.0, tm pane 120x40, blank rows kept
+# want: blocked-permission-dialog
+# also: idle-composer
+---
+› Create the file /private/tmp/claude-501/t134/outside.txt containing hi with a shell command, requesting escalated
+  permissions.
+
+• Running printf 'hi' > /private/tmp/claude-501/t134/outside.txt
+
+  Would you like to run the following command?
+
+  Environment: local
+
+  Reason: Do you want to allow creating /private/tmp/claude-501/t134/outside.txt with the requested contents?
+
+  $ printf 'hi' > /private/tmp/claude-501/t134/outside.txt
+
+› 1. Yes, proceed (y)
+  2. Yes, and don't ask again for commands that start with `printf 'hi' > /private/tmp/claude-501/t134/outside.txt` (p)
+  3. No, and tell Codex what to do differently (esc)
+
+  Press enter to confirm or esc to cancel

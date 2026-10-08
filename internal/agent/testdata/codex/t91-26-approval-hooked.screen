@@ -1,0 +1,24 @@
+# source: T91 (threads/t-0083/library/T91-codex-screens.md), codex-cli 0.160.0, tm pane 120x40, blank rows dropped; after Esc on an approval
+# want: idle-composer
+# also: idle-empty-box
+# dim: Ask Codex to do anything
+---
+  >_ OpenAI Codex (v0.160.0)
+     /private/tmp/claude-501/t83/wt
+  You bring the idea. I’ll bring the brackets.
+› Run `ls` and then reply DONE.
+• Explored
+  └ List ls
+    + Show details
+• DONE
+  Worked for 2s • 22:22
+› Create the file /private/tmp/claude-501/t83/outside.txt containing hi with a shell command, requesting escalated
+  permissions.
+• I’ll request elevated permission to write the file outside the workspace.
+✗ You canceled the request to run printf hi > /private/tmp/claude-501/t83/outside.txt
+• Failed (exit 1) printf hi > /private/tmp/claude-501/t83/outside.txt
+  └ (no output)
+■ Conversation interrupted - use /feedback if something went wrong
+› Ask Codex to do anything
+  GPT-6-Luna medium · /private/tmp/claude-501/t83/wt · Run ls
+  ? for shortcuts                                                                             ⚠ 4 warnings · f2 to view

@@ -971,6 +971,7 @@ An agent is first of all a TOML manifest. `internal/agent/manifests/claude.toml`
 | `[[models]]` | the models a thread may be started with (`tm thread start --model`, `tm task delegate --model`): `name` (one word, as `model_args` passes it) and `about` (one line, at most 120 characters, on when it fits; `tm context` shows it to the coordinator). Needs `model_args`; without entries `--model` is refused and threads run the agent's default. A user manifest replaces the list with the built-in. Claude: `opus`, `sonnet`, `haiku` (the aliases `claude --model` accepts; haiku's `about` notes it has no auto mode). The user's `models` setting narrows the list per project (§11.2) |
 | `[screen] resize` | `follow` (the default): typing in a console resizes the agent's pane to that console's rectangle. `explicit`: only a window resize or a layout change does, and a new pane doesn't fill the first console showing it, for inline renderers that garble their scrollback on resize (§3.3, sizing) |
 | `session_field` | the payload field carrying the agent's own session id. It is read from **every** hook event, and the latest value wins (Claude rotates the id on `/clear`) |
+| `session_starts` | the hook events that start a session or switch to another (Codex: `SessionStart`). When set, any other event naming a session id that isn't the current one is from a session the agent left, and is ignored (explain shows it): Codex unloads the thread `/clear` left a minute later with `SessionEnd`. Empty: every event may switch |
 | `ignore_fields` | a hook event carrying one of these fields (for example a subagent's `agent_id`) is ignored for state, session id and todos. It still feeds `counter` entries |
 | `[hook]` | payload trimming in `tm hook`: `keep` (top-level fields), `truncate` (field → max bytes), and `[[hook.keep_when]]` (`match` + `fields`) for bulky fields only some events need |
 | `[[hooks]]` | `event`; optional `match`; `state`, `reason`, `transient`; `counter` (`"+name"`/`"-name"`) with `counter_key`; `respond` (a template printed back to the harness, where `.Context` renders the role's context, §7.8, and `.Guard` is the guard's refusal of the payload's tool call or nil, §8.6 **Guard**). Every matching entry applies |
@@ -1681,12 +1682,13 @@ Terminatr has a test strategy from the first milestone, not a test phase at the 
 | **Integration** | A real `tm server` in an isolated `TERMINATR_HOME` (a `t.TempDir()`, with a short run dir under `/tmp`), driven through the CLI and the socket. Lifecycle, stale sockets, handshake, sessions, hooks, tasks, threads with the fake agent | `go test -race ./...` (packages under `internal/…` with `_integration_test.go` files) | every PR |
 | **End-to-end** | The whole product as the user sees it: `tm` and `tm attach` running inside a **virtual terminal** (libghostty), keys typed, screens compared with golden files, windows closed, clients and servers killed | `internal/e2e`, `make e2e` (all) / `make e2e-smoke` (a core set under about 2 minutes) | smoke on every PR and on main; race-built smoke and the full suite weekly |
 | **Real agent** | The same scenarios against the installed `claude`, to catch Claude releases that change hooks, screens, the session file, or the task tools | build tag `realclaude`, `make test-claude` | on demand, and nightly on a machine with a Claude login (not GitHub-hosted CI) |
+| **Real Codex** | The Codex scenarios against the installed `codex`, to catch Codex releases that change hooks, screens, the rollout or `codex queue` (§16.4) | build tag `realcodex`, `make test-codex` | on demand only, on a machine with a ChatGPT login |
 
 **On every PR** (macOS and Linux, `ci.yml`): gofmt, vet, build, `go test -race ./...` (unit, integration and fuzz seeds), `make e2e-smoke` (without `-race`, in its own job, two shards per OS: `make e2e-smoke E2E_SHARD=1/2`), `tm selftest`. The release snapshot (`make release-snapshot` on macOS) runs on every push to main and on PRs that touch the release build (`.goreleaser.yaml`, the Makefile, `go.mod`/`go.sum`, `scripts/release/`, `Formula/`, the workflows, libghostty bindings).
 
 **Weekly** (`weekly.yml`, also by hand through `workflow_dispatch`; skipped when main hasn't changed since its last successful run): `make fuzz` (1 minute per target), `make test-race`, the full `make e2e` and `make e2e-smoke-race` (the smoke set with a race-built `tm`) on Linux and macOS.
 
-**On demand or nightly, on a logged-in machine:** `make test-claude`.
+**On demand or nightly, on a logged-in machine:** `make test-claude`. **On demand only:** `make test-codex`.
 
 ### 16.2 The end-to-end harness: `internal/e2e`
 
@@ -1757,6 +1759,16 @@ Built in M3 (`internal/e2e/fakeagent`, a small Go TUI). It behaves like Claude C
   - `SessionStart` context re-injection;
   - the access policy: a thread can't write the project folder, interactively and under yolo.
 - A failure files an inbox item in the `terminatr` project, or prints a summary when run by hand, naming the manifest lines involved.
+
+**Real Codex** (T105). Build tag `realcodex`; `make test-codex` runs it against the `codex` on `PATH` with gpt-6-luna and a ChatGPT login: `~/.codex`, or a dedicated `CODEX_HOME` logged in once (a fresh one has no login, and `auth.json` isn't copied). It skips when codex isn't logged in. A run takes about 3 minutes and 310k input tokens, mostly cached. On demand only, not in the weekly job (user, 2026-10-08). The regular e2e runs the same cases against the fake agent as Codex (`FakeCodex`: the fake called `codex`, under the real `codex.toml` and its Go agent). It checks:
+
+- `codex --version` is within `tested_versions`;
+- a first prompt (pasted: Codex reports its thread id only with its first hook), then prompts through `codex queue`;
+- an approval approved and one cancelled with Esc (`Interrupt`), with `-a on-request` added to the launch: under 0.160's default policy an escalation is refused without a dialog;
+- `/compact` (`PreCompact`; `SessionStart` with source `compact` at the next prompt) and `/clear` (a new thread, which reports itself at its first prompt; the thread left ends a minute later with a `SessionEnd` that must change nothing);
+- a question in plan mode (no hook; the screen rule), and the "Implement this plan?" menu after it;
+- a resume after a server restart (`codex resume <id>`);
+- the hook sequences against the fake's, and every dialog's screen rule. Screens captured live go to `internal/agent/testdata/codex/`, where every screen rule must decide at least one.
 
 ### 16.5 Race detector and fuzzing
 

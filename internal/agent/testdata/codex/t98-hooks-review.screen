@@ -1,0 +1,13 @@
+# source: T98, codex-cli 0.160.0, tm pane 120x40, blank rows kept
+# want: hooks-review
+# also: idle-composer
+---
+  Hooks need review
+  4 hooks are new or changed.
+  Hooks can run outside the sandbox after you trust them.
+
+› 1. Review hooks
+  2. Trust all and continue
+  3. Continue without trusting (hooks won't run)
+
+  enter confirm · esc skip

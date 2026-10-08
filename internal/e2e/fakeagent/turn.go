@@ -89,6 +89,19 @@ func (a *app) runSlash(j job) {
 	case strings.HasPrefix(j.text, "/remote-control"):
 		a.doRemote()
 	}
+	if a.cx != nil {
+		switch j.text {
+		case "/clear":
+			a.codexClear()
+		case "/compact":
+			a.codexCompact()
+		case "/new":
+			a.codexNew()
+		case "/exit", "/quit":
+			a.exit(0, "exit")
+		}
+		j.text = "" // done
+	}
 	switch j.text {
 	case "/clear":
 		a.doClear()
@@ -184,7 +197,13 @@ func (a *app) runTurn(j job) {
 
 	a.log("prompt", map[string]any{"text": j.text, "via": j.via})
 	a.transcriptAppend(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": j.text}})
-	_, err := a.fireHook(ctx, "UserPromptSubmit", map[string]any{"prompt": j.text})
+	var err error
+	if a.cx != nil {
+		err = a.codexBegin(ctx)
+	}
+	if err == nil {
+		_, err = a.fireHook(ctx, "UserPromptSubmit", map[string]any{"prompt": j.text})
+	}
 	if err == nil {
 		err = a.runPrompt(ctx, j)
 	}
@@ -202,6 +221,9 @@ func (a *app) finishTurn() {
 	last := a.lastText
 	a.mu.Unlock()
 	a.transcriptAppend(map[string]any{"type": "system", "subtype": "turn_duration", "durationMs": dur})
+	if a.cx != nil {
+		a.codexEnd(last)
+	}
 	a.mu.Lock()
 	a.running, a.cancel, a.spinning, a.inTool = nil, nil, false, false
 	a.notify = nil
@@ -235,13 +257,20 @@ func (a *app) finishCancelled(j job) {
 	}
 	a.mu.Unlock()
 	a.transcriptAppend(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": []any{map[string]any{"type": "text", "text": text}}}})
+	if a.cx != nil {
+		a.codexCancelled()
+	}
 	a.mu.Lock()
 	a.running, a.cancel, a.spinning, a.inTool = nil, nil, false, false
 	a.notify = nil
 	a.dialog = nil
 	a.awaitKey = nil
-	a.conv = append(a.conv, &convLine{prefix: "  ⎿  ", text: "Interrupted · What should Claude do instead?"})
-	if j.userJob() {
+	if a.cx != nil {
+		a.conv = append(a.conv, &convLine{prefix: "■ ", text: "Conversation interrupted - use /feedback if something went wrong"})
+	} else {
+		a.conv = append(a.conv, &convLine{prefix: "  ⎿  ", text: "Interrupted · What should Claude do instead?"})
+	}
+	if j.userJob() && a.cx == nil {
 		restored := []rune(j.text)
 		if len(a.input) > 0 {
 			restored = append(append(restored, ' '), a.input...)
@@ -268,7 +297,7 @@ func (a *app) waitDialog(ctx context.Context, d *dialog) (int, error) {
 	a.mu.Lock()
 	d.shownAt = time.Now()
 	a.dialog = d
-	if d.kind == "permission" || d.kind == "question" || d.kind == "codexq" {
+	if d.kind == "permission" || d.kind == "question" || d.kind == "codexq" || d.kind == "approval" {
 		a.inTool = true
 		if n := a.notify; n != nil {
 			a.notify = nil
@@ -363,6 +392,8 @@ func (a *app) handleKey(k key) {
 		case text == "/clear", text == "/compact", text == "/exit",
 			text == "/remote-control", strings.HasPrefix(text, "/remote-control "):
 			kind = "slash"
+		case a.cx != nil && (text == "/new" || text == "/quit"):
+			kind = "slash"
 		}
 		a.mu.Unlock()
 		a.enqueue(job{kind: kind, text: text, via: via})
@@ -420,6 +451,12 @@ func (a *app) dialogKeyLocked(d *dialog, k key) {
 			return
 		}
 	}
+	// Codex's approval: y and p are the first two options' keys.
+	if d.kind == "approval" && k.kind == kRune && (k.r == 'y' || k.r == 'p') {
+		d.sel = map[rune]int{'y': 0, 'p': 1}[k.r]
+		choose(d.sel + 1)
+		return
+	}
 	switch k.kind {
 	case kRune:
 		if k.r >= '1' && k.r <= '9' && int(k.r-'0') <= len(d.options) {
@@ -440,11 +477,16 @@ func (a *app) dialogKeyLocked(d *dialog, k key) {
 	case kEnter:
 		choose(d.sel + 1)
 	case kEsc, kCtrlC:
-		if d.kind == "remote" {
+		switch d.kind {
+		case "remote":
 			choose(3) // Esc to continue
-		} else if d.kind == "trust" || d.kind == "bypass" {
+		case "trust", "bypass", "cxtrust", "newdlg":
 			choose(0)
-		} else {
+		case "hooksreview":
+			choose(3) // esc skip: without trusting
+		case "update":
+			choose(2) // esc skip
+		default:
 			a.cancelTurnLocked()
 		}
 	}

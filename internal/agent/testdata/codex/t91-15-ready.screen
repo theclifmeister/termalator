@@ -1,0 +1,18 @@
+# source: T91 (threads/t-0083/library/T91-codex-screens.md), codex-cli 0.160.0, tm pane 120x40, blank rows dropped
+# want: idle-composer
+# also: idle-empty-box
+# dim: Ask Codex to do anything
+---
+  >_ OpenAI Codex (v0.160.0)
+     /private/tmp/claude-501/t83/wt
+  Same terminal, new possibilities.
+› Reply with just the word READY.
+■ {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The 'gpt-6-astra' model is not
+supported when using Codex with a ChatGPT account."}}
+• Model changed to gpt-6-luna medium for this session only
+› Reply with just the word READY.
+• READY
+  Worked for 1s • 22:18
+› Ask Codex to do anything
+  GPT-6-Luna medium · /private/tmp/claude-501/t83/wt · Reply READY
+  ? for shortcuts                                                                             ⚠ 2 warnings · f2 to view

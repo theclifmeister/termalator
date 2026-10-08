@@ -1,0 +1,27 @@
+# source: T91 (threads/t-0083/library/T91-codex-screens.md), codex-cli 0.160.0, tm pane 120x40, blank rows dropped; the second option wraps
+# want: blocked-permission-dialog
+# also: idle-composer
+---
+› Run each of these three shell commands separately (one tool call each, no retries with other permissions, don't ask …
+  Traceback (most recent call last):
+    File "<string>", line 1, in <module>
+      import socket; s=socket.socket(socket.AF_UNIX); s.connect("/private/tmp/claude-501/t83/run/tm.sock");
+  print("connected")
+                                                      ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  PermissionError: [Errno 1] Operation not permitted
+  3. Exit code: 0
+  sandbox=seatbelt net=1 thread=01a112dc-ae8a-7cc2-89e6-36ea46b45a2d tmpdir=/var/folders/yj/
+  _ng3_hr92mv4mcrfm6b45jm80000gn/T/
+  Worked for 17s • 22:18
+› Now retry command 1 (the git commit), requesting escalated permissions for it.
+• I’ll retry the original commit command with elevated access.
+• Running echo x > f.txt && git add f.txt && git -c user.name=t -c user.email=t@t commit -m test
+  Would you like to run the following command?
+  Environment: local
+  Reason: May I run the requested git commit command with elevated permissions?
+  $ echo x > f.txt && git add f.txt && git -c user.name=t -c user.email=t@t commit -m test
+› 1. Yes, proceed (y)
+  2. Yes, and don't ask again for commands that start with `echo x > f.txt && git add f.txt && git -c user.name=t -c
+     user.email=t@t commit -m test` (p)
+  3. No, and tell Codex what to do differently (esc)
+  Press enter to confirm or esc to cancel

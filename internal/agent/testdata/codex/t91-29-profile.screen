@@ -1,0 +1,32 @@
+# source: T91 (threads/t-0083/library/T91-codex-screens.md), codex-cli 0.160.0, tm pane 120x40, blank rows dropped
+# want: idle-composer
+# also: idle-empty-box
+# dim: Ask Codex to do anything
+---
+  1) echo z > h.txt && git add h.txt && git -c user.name=t -c user.email=t@t commit -m test
+  2) python3 -c 'import socket; s=socket.socket(socket.AF_UNIX); s.connect("/private/tmp/claude-501/t83/run/tm.sock");
+  print("connected")'
+  3) echo "sandbox=$CODEX_SANDBOX net=$CODEX_SANDBOX_NETWORK_DISABLED thread=$CODEX_THREAD_ID tmpdir=$TMPDIR"
+• I’ll run the three commands as separate tool calls, exactly as written, and report their exit codes and outputs.
+• Ran echo "sandbox=$CODEX_SANDBOX net=$CODEX_SANDBOX_NETWORK_DISABLED thread=$CODEX_THREAD_ID tmpdir=$TMPDIR"
+  └ sandbox=seatbelt net=1 thread=01a112e5-0cdf-7f32-a0f6-7fdaf0cf319a tmpdir=/var/folders/yj/_ng3_hr92mv4mcrfm6b45jm80…
+    + 1 line (ctrl+t to expand)
+• 1. Exit code: 128
+     Output:
+     fatal: Unable to create '/private/tmp/claude-501/t83/repo/.git/worktrees/wt/index.lock': Operation not permitted
+  2. Exit code: 1
+     Output:
+     Traceback (most recent call last):
+       File "<string>", line 1, in <module>
+         import socket; s=socket.socket(socket.AF_UNIX); s.connect("/private/tmp/claude-501/t83/run/tm.sock");
+     print("connected")
+                                                         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     PermissionError: [Errno 1] Operation not permitted
+  3. Exit code: 0
+     Output:
+     sandbox=seatbelt net=1 thread=01a112e5-0cdf-7f32-a0f6-7fdaf0cf319a tmpdir=/var/folders/yj/
+     _ng3_hr92mv4mcrfm6b45jm80000gn/T/
+  Worked for 13s • 22:26
+› Ask Codex to do anything
+  GPT-6-Luna medium · /private/tmp/claude-501/t83/wt · Run three shell commands
+  ? for shortcuts                                                                             ⚠ 2 warnings · f2 to view

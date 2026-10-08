@@ -1,0 +1,20 @@
+# Codex: a shell command that needs approval. Approve it (1, y, Enter,
+# or p for the session), or refuse it (3, Esc): the turn is then
+# interrupted (the Interrupt hook, turn_aborted).
+
+[[step]]
+do = "stream"
+ms = 200
+text = "I'll run it with elevated access."
+
+[[step]]
+do = "permission"
+tool = "Bash"
+subject = "May I write outside the workspace?"
+input = { command = "printf hi > ../outside.txt" }
+response = { stdout = "" }
+
+[[step]]
+do = "stream"
+ms = 200
+text = "done"

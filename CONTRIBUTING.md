@@ -14,7 +14,7 @@ make test-race  # the same with -race (CI runs it on main)
 make e2e-smoke  # the end-to-end smoke set that CI runs on every PR; E2E_SHARD=1/2 runs half of it
 ```
 
-For plain `go` commands or gopls, run `eval "$(make env)"` first. `make test-claude` runs the end-to-end suite against a real, logged-in Claude Code. It costs a few cents and CI doesn't run it, so run it yourself when you change how tm drives Claude.
+For plain `go` commands or gopls, run `eval "$(make env)"` first. `make test-claude` runs the end-to-end suite against a real, logged-in Claude Code. It costs a few cents and CI doesn't run it, so run it yourself when you change how tm drives Claude. `make test-codex` does the same against a real Codex logged in with ChatGPT; run it when you change how tm drives Codex, or after a Codex update.
 
 ## Pull requests
 

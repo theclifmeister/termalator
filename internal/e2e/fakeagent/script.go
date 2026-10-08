@@ -242,6 +242,9 @@ func defaultSubject(tool string, input map[string]any) string {
 // allowed for the session. It fires PermissionRequest first. It returns
 // whether the tool may run.
 func (a *app) askPermission(ctx context.Context, tool, subject string, input map[string]any, id string) (bool, error) {
+	if a.cx != nil {
+		return a.codexApprove(ctx, tool, subject, input, id)
+	}
 	a.mu.Lock()
 	skip := a.opts.yolo || a.alwaysAllow[tool]
 	a.mu.Unlock()
@@ -431,6 +434,9 @@ func (a *app) questionStep(ctx context.Context, st step) error {
 	opts := st.Options
 	if len(opts) == 0 {
 		opts = []string{"Yes", "No"}
+	}
+	if a.cx != nil {
+		return a.codexQuestion(ctx, st, opts)
 	}
 	var optList []any
 	for _, o := range opts {

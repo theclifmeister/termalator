@@ -262,6 +262,27 @@ func (t *Tracker) Hook(ev HookEvent, sigs []Signal) (sidChanged bool) {
 	return sidChanged
 }
 
+// Ignore records a hook event that changes nothing, with why, for
+// explain.
+func (t *Tracker) Ignore(ev HookEvent, why string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if ev.Seq != 0 && ev.Seq <= t.seq["hook"] {
+		return
+	}
+	if ev.Seq != 0 {
+		t.seq["hook"] = ev.Seq
+	}
+	at := ev.At
+	if at.IsZero() {
+		at = t.now()
+	}
+	t.events = append(t.events, EventRecord{At: at, Seq: ev.Seq, Event: ev.Event, Detail: eventDetail(ev.Payload), Signals: []string{"ignored: " + why}})
+	if len(t.events) > maxEvents {
+		t.events = t.events[len(t.events)-maxEvents:]
+	}
+}
+
 func eventDetail(p map[string]any) string {
 	var parts []string
 	for _, k := range []string{"source", "reason", "notification_type", "tool_name", "tool_use_id", "agent_type"} {

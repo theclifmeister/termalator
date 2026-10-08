@@ -1,0 +1,14 @@
+# source: T98, codex-cli 0.160.0, tm pane 120x40, blank rows kept
+# want: blocked-new-dialog
+# also: idle-composer
+---
+■ Conversation interrupted - use /feedback if something went wrong
+• Context compacted · 2s
+  Worked for 2s • 22:23
+
+  Where should the new conversation run?
+
+› 1. Current checkout  Keep using the current working directory
+  2. New worktree      Create an isolated managed checkout
+
+  enter select · esc back

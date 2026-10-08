@@ -139,6 +139,9 @@ func (a *app) renderLoop() {
 
 // frameLocked builds a whole screen: title, clear, lines.
 func (a *app) frameLocked(now time.Time) string {
+	if a.cx != nil {
+		return a.codexFrameLocked(now)
+	}
 	cols, rows := termSize()
 	title := "✳ Fake Claude"
 	if a.statusLocked() == "busy" {
@@ -229,6 +232,10 @@ type dialog struct {
 
 // lines are the dialog's rows, with ❯ on the selected option.
 func (d *dialog) lines() []string {
+	switch d.kind {
+	case "cxtrust", "hooksreview", "update", "approval", "newdlg":
+		return d.codexLines()
+	}
 	var out []string
 	opts := func() {
 		for i, o := range d.options {

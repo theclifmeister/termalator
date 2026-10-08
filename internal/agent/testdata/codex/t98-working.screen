@@ -1,0 +1,14 @@
+# source: T98, codex-cli 0.160.0, tm pane 120x40, blank rows kept
+# want: working-status
+# also: idle-composer
+---
+■ Conversation interrupted - use /feedback if something went wrong
+
+› Run the shell command: sleep 6; then reply DONE.
+
+• Working (3s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close
+
+› Ask Codex to do anything
+
+  GPT-6-Luna medium · /private/tmp/claude-501/t134/wt
+  ? for shortcuts                                                                             ⚠ 2 warnings · f2 to view

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,6 +23,12 @@ type Sources struct {
 	// SessionField names the payload field carrying the agent's own
 	// session id. It is read from every hook event; the latest wins.
 	SessionField string `toml:"session_field"`
+	// SessionStarts are the hook events that start a session or switch
+	// to another. When set, any other event naming a session id that
+	// isn't the current one is from a session the agent left (Codex
+	// unloads the thread /clear left about a minute later, with
+	// SessionEnd), and is ignored. Empty: every event may switch.
+	SessionStarts []string `toml:"session_starts"`
 
 	Hook         HookTrim      `toml:"hook"`
 	StatusFile   *StatusFile   `toml:"status_file"`
@@ -449,4 +456,15 @@ func (t *TodoSnapshot) Heal(mirror, snap []Todo) []Todo {
 		out[i] = s
 	}
 	return out
+}
+
+// Foreign reports whether a hook event is from a session the agent left:
+// it names a session id other than current, and isn't one of
+// SessionStarts. It returns that id.
+func (s Sources) Foreign(event string, payload map[string]any, current string) (string, bool) {
+	if len(s.SessionStarts) == 0 || s.SessionField == "" || current == "" || slices.Contains(s.SessionStarts, event) {
+		return "", false
+	}
+	sid, _ := lookupString(payload, s.SessionField)
+	return sid, sid != "" && sid != current
 }

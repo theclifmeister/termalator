@@ -331,6 +331,11 @@ func (s *Session) Hook(event string, payload map[string]any) (agent.HookResult, 
 		return agent.HookResult{}, ErrNoAgent
 	}
 	ev := agent.HookEvent{Agent: rt.a.Name(), Event: event, Payload: payload, Seq: rt.seq.Add(1), At: time.Now()}
+	if sid, ok := rt.src.Foreign(event, payload, rt.tr.AgentSID()); ok {
+		rt.tr.Ignore(ev, "session "+sid+" was left")
+		s.agentChanged(rt)
+		return agent.HookResult{}, nil
+	}
 	sigs, res, err := rt.a.Hook(ev, agent.HookEnv{Context: rt.cfg.Context, Guard: rt.cfg.Guard})
 	rt.tr.Hook(ev, sigs)
 	if t := rt.src.JSONLTail; t != nil {
