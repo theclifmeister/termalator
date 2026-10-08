@@ -17,6 +17,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/guard"
 )
 
@@ -267,8 +268,6 @@ type Model struct {
 	Default bool `toml:"default"`
 }
 
-var modelNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/@\[\]-]{0,63}$`)
-
 // FindModel returns the manifest's model named name.
 func (m *Manifest) FindModel(name string) (Model, bool) {
 	for _, x := range m.Models {
@@ -289,12 +288,77 @@ func (m *Manifest) DefaultModel() string {
 	return ""
 }
 
-// ModelsOf returns a's allowed models, nil for none.
+// ModelsOf returns the [[models]] of a's manifest, nil for none: the
+// catalog's fallback. What a thread may use is Models, which config.toml
+// can replace.
 func ModelsOf(a Agent) []Model {
 	if m := ManifestOf(a); m != nil {
 		return m.Models
 	}
 	return nil
+}
+
+// Models is agent a's models catalog (docs/SPEC.md §8.2, §11.2): the
+// user's [agents.<name>] models in config.toml when set, else the
+// manifest's [[models]]; Default marks the model a launch passes when
+// none is chosen. cfg nil is the manifest's alone.
+func Models(a Agent, cfg *config.Config) []Model {
+	if a == nil {
+		return nil
+	}
+	return MergeModels(ModelsOf(a), cfg.Agent(a.Name()))
+}
+
+// MergeModels lays the user's settings s over the manifest's models:
+// s's models, when set, replace the list as a whole (so one can be
+// removed); s's default_model, when set, is the default ("" none),
+// else the manifest's while the list still has it. A default the list
+// doesn't have is none (tm doctor reports it).
+func MergeModels(manifest []Model, s config.AgentSettings) []Model {
+	def := ""
+	for _, x := range manifest {
+		if x.Default {
+			def = x.Name
+		}
+	}
+	if s.HasDefault {
+		def = s.DefaultModel
+	}
+	var out []Model
+	if s.HasModels {
+		for _, x := range s.Models {
+			out = append(out, Model{Name: x.Name, About: x.About})
+		}
+	} else {
+		for _, x := range manifest {
+			out = append(out, Model{Name: x.Name, About: x.About})
+		}
+	}
+	for i := range out {
+		out[i].Default = out[i].Name == def
+	}
+	return out
+}
+
+// WithDefaultModel is spec with, when it chooses no model, the
+// catalog's default (Models): the one config.toml names, or the
+// manifest's; with none, AgentDefault, so the agent runs its own.
+func WithDefaultModel(a Agent, cfg *config.Config, spec LaunchSpec) LaunchSpec {
+	if spec.Model == "" {
+		spec.Model = DefaultOf(Models(a, cfg))
+		spec.AgentDefault = spec.Model == ""
+	}
+	return spec
+}
+
+// DefaultOf is the name of the model marked default, "" for none.
+func DefaultOf(models []Model) string {
+	for _, x := range models {
+		if x.Default {
+			return x.Name
+		}
+	}
+	return ""
 }
 
 // ManifestFile is a generated file written into the session's runtime dir
@@ -394,13 +458,13 @@ func (m *Manifest) validate() error {
 	seen := map[string]bool{}
 	for i, x := range m.Models {
 		switch {
-		case !modelNameRE.MatchString(x.Name):
+		case config.CheckModelName(x.Name) != nil:
 			errs = append(errs, fmt.Errorf("models[%d]: name %q is not one word of letters, digits and ._:/@[]-", i, x.Name))
 		case seen[x.Name]:
 			errs = append(errs, fmt.Errorf("models[%d]: %q is listed twice", i, x.Name))
 		}
 		seen[x.Name] = true
-		if strings.TrimSpace(x.About) == "" || strings.ContainsAny(x.About, "\r\n") || len([]rune(x.About)) > 120 {
+		if config.CheckModelAbout(x.About) != nil {
 			errs = append(errs, fmt.Errorf("models[%d]: about must be one line of 1 to 120 characters", i))
 		}
 	}
@@ -631,7 +695,7 @@ func (a *manifestAgent) Launch(spec LaunchSpec) (Launch, error) {
 		// Some CLIs open an interactive picker for an empty id.
 		return out, fmt.Errorf("agent %s: resume needs the agent's session id", a.m.Name)
 	}
-	if spec.Model == "" {
+	if spec.Model == "" && !spec.AgentDefault {
 		spec.Model = a.m.DefaultModel() // none chosen: the manifest's default
 	}
 	data := launchData{spec, a.m.HookEvents()}

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/guard"
 )
 
@@ -842,6 +843,82 @@ func TestManifestModels(t *testing.T) {
 	spec.Model = "gpt-5.6-terra"
 	if l, err := codex.Launch(spec); err != nil || !strings.Contains(strings.Join(l.Argv, " "), "-m gpt-5.6-terra") || strings.Contains(strings.Join(l.Argv, " "), "gpt-6-luna") {
 		t.Fatalf("codex launch with a model: %v %q", err, l.Argv)
+	}
+}
+
+// TestMergeModels: the user's catalog replaces the manifest's list as a
+// whole and its default_model wins; unset, the manifest's apply, its
+// default only while the list still has it. With AgentDefault, Launch
+// passes no model.
+func TestMergeModels(t *testing.T) {
+	manifest := []Model{{Name: "a", About: "x", Default: true}, {Name: "b", About: "y"}}
+	names := func(ms []Model) string {
+		var out []string
+		for _, m := range ms {
+			n := m.Name + ":" + m.About
+			if m.Default {
+				n += "*"
+			}
+			out = append(out, n)
+		}
+		return strings.Join(out, " ")
+	}
+	for _, c := range []struct {
+		s    config.AgentSettings
+		want string
+	}{
+		{config.AgentSettings{}, "a:x* b:y"},
+		{config.AgentSettings{HasDefault: true, DefaultModel: "b"}, "a:x b:y*"},
+		{config.AgentSettings{HasDefault: true}, "a:x b:y"},
+		{config.AgentSettings{HasModels: true, Models: []config.AgentModel{{Name: "a", About: "new"}, {Name: "c", About: "z"}}}, "a:new* c:z"},
+		{config.AgentSettings{HasModels: true, Models: []config.AgentModel{{Name: "c", About: "z"}}}, "c:z"},
+		{config.AgentSettings{HasModels: true, Models: []config.AgentModel{{Name: "c", About: "z"}}, HasDefault: true, DefaultModel: "c"}, "c:z*"},
+		{config.AgentSettings{HasModels: true}, ""},
+		{config.AgentSettings{HasDefault: true, DefaultModel: "gone"}, "a:x b:y"},
+	} {
+		if got := names(MergeModels(manifest, c.s)); got != c.want {
+			t.Errorf("%+v: %q, want %q", c.s, got, c.want)
+		}
+	}
+	if got := MergeModels(manifest, config.AgentSettings{}); !got[0].Default || manifest[1].Default {
+		t.Fatal("the manifest's list changed")
+	}
+	reg, _ := Load("")
+	codex, _ := reg.Get("codex")
+	l, err := codex.Launch(LaunchSpec{Role: RoleThread, Cwd: "/w", RuntimeDir: "/r", AgentSID: "x", AgentDefault: true})
+	if err != nil || slices.Contains(l.Argv, "-m") {
+		t.Fatalf("codex with the agent's own default: %v %q", err, l.Argv)
+	}
+	if got := DefaultOf(Models(codex, nil)); got != "gpt-6-luna" {
+		t.Fatalf("codex default without settings: %q", got)
+	}
+	// The server's launch: config.toml's default, or none.
+	argv := func(body string) string {
+		t.Helper()
+		dir := t.TempDir()
+		t.Setenv("TERMINATR_HOME", dir)
+		os.WriteFile(filepath.Join(dir, "config.toml"), []byte(body), 0o600)
+		cfg, err := config.Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		l, err := codex.Launch(WithDefaultModel(codex, cfg, LaunchSpec{Role: RoleThread, Cwd: "/w", RuntimeDir: "/r", AgentSID: "x"}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.Join(l.Argv, " ")
+	}
+	if got := argv(""); !strings.Contains(got, "-m gpt-6-luna") {
+		t.Fatalf("no settings: %q", got)
+	}
+	if got := argv("[agents.codex]\ndefault_model = \"gpt-5.6-terra\"\n"); !strings.Contains(got, "-m gpt-5.6-terra") {
+		t.Fatalf("default_model: %q", got)
+	}
+	if got := argv("[agents.codex]\ndefault_model = \"\"\n"); strings.Contains(got, " -m ") {
+		t.Fatalf("no default: %q", got)
+	}
+	if got := argv("[agents.codex]\nmodels = [{ name = \"gpt-7\", about = \"new\" }]\n"); strings.Contains(got, " -m ") {
+		t.Fatalf("manifest default removed from the list: %q", got)
 	}
 }
 

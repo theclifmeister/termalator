@@ -238,6 +238,7 @@ type settingsView struct {
 var settingsTabs = [2]string{"General", "All projects"}
 
 func (m *dash) openSettings() {
+	m.catalogs = m.src.Catalogs()
 	sv := &settingsView{tabs: [2]settingsList{{rows: globalSettings(m.src.ModsNote())}, {rows: allProjectsSettings()}}}
 	m.push(sv)
 }
@@ -297,6 +298,9 @@ func globalSettings(note string) []setting {
 				m.data.ContextHint = next
 				return m.setSetting("ui", "context_hint", next, "context hint "+contextHintWords(next))
 			}},
+		{label: "Models", help: "Each agent's models a thread may run, a line on when each fits, and the default. Agents release new ones often: add, change or remove them here. Enter lists them.",
+			value:  func(m *dash) string { return catalogWords(m.catalogs) },
+			change: func(m *dash) tea.Cmd { m.openCatalog(); return nil }},
 		{label: "Mods", help: "Load terminatr's mod in agent panes (early access). Needs " + note + " or newer. Applies to sessions launched after the change.",
 			value: func(m *dash) string { return onOff(m.data.Mods) },
 			change: func(m *dash) tea.Cmd {
@@ -727,11 +731,12 @@ func safetySettings(slug string) []setting {
 		{label: "Thread models", help: "The models the coordinator may pick for a thread. Enter lists them to allow or leave out; with none left out it chooses from all. A model it may not pick is refused (haiku has no auto mode, so its threads stop at every permission prompt).",
 			value: func(m *dash) string { return modelWords(safety(m).Models) },
 			change: func(m *dash) tea.Cmd {
-				m.push(&modelsView{all: m.src.Models(), allow: slices.Clone(safety(m).Models),
+				names := catalogNames(m.src.Catalogs())
+				m.push(&modelsView{all: names, allow: slices.Clone(safety(m).Models),
 					save: func(m *dash, list []string) tea.Cmd {
 						// Every model allowed: all projects drops the line,
 						// a project keeps the explicit list (x follows all).
-						if all && len(list) == len(m.src.Models()) {
+						if all && len(list) == len(names) && !slices.ContainsFunc(list, func(n string) bool { return !slices.Contains(names, n) }) {
 							s := safety(m)
 							s.Models = nil
 							m.data.Defaults = &s
@@ -920,9 +925,10 @@ func modelWords(allow []string) string {
 
 // modelsView lists the models a thread may use, one to allow or leave
 // out with enter or space; each change is saved at once. At least one
-// stays allowed.
+// stays allowed. An allowed name no agent's catalog lists any more is
+// shown stale, never dropped unasked: enter leaves it out.
 type modelsView struct {
-	all   []string // every model the agents offer
+	all   []string // every model the agents' catalogs offer
 	allow []string // the allowed ones; empty is every model
 	sel   int
 	err   string
@@ -934,32 +940,47 @@ func (v *modelsView) allowed(name string) bool {
 	return len(v.allow) == 0 || slices.Contains(v.allow, name)
 }
 
+// rows are the catalogs' models, then the stale allowed names.
+func (v *modelsView) rows() []string {
+	out := slices.Clone(v.all)
+	for _, n := range v.allow {
+		if !slices.Contains(out, n) {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+func (v *modelsView) stale(name string) bool { return !slices.Contains(v.all, name) }
+
 func (v *modelsView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
+	rows := v.rows()
 	switch k.String() {
 	case "esc", "q":
 		m.pop()
 	case "up", "k", "down", "j":
-		v.sel = moveSel(v.sel, scrollKeys[k.String()], len(v.all))
+		v.sel = moveSel(v.sel, scrollKeys[k.String()], len(rows))
 	case "enter", "space", " ":
-		if v.sel >= len(v.all) {
+		if v.sel >= len(rows) {
 			break
 		}
-		name := v.all[v.sel]
+		name := rows[v.sel]
 		var next []string
-		for _, n := range v.all {
+		for _, n := range rows {
 			if (n == name) != v.allowed(n) { // flip name, keep the others
 				next = append(next, n)
 			}
 		}
-		if len(next) == 0 {
+		if !slices.ContainsFunc(next, func(n string) bool { return !v.stale(n) }) {
 			v.err = "at least one model stays allowed"
 			break
 		}
 		v.err = ""
 		v.allow = next
-		if len(next) == len(v.all) {
+		if len(next) == len(v.all) && !slices.ContainsFunc(next, v.stale) {
 			v.allow = nil
 		}
+		v.sel = min(v.sel, max(len(v.rows())-1, 0))
 		return v.save(m, next)
 	}
 	return nil
@@ -968,12 +989,15 @@ func (v *modelsView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 func (v *modelsView) render(m *dash) string {
 	lines := []string{styleFaint.Render("The models the coordinator may pick for a thread.")}
 	w := m.inner(dialogWidth)
-	for i, n := range v.all {
+	for i, n := range v.rows() {
 		mark, word := ic().todoOpen, "left out"
 		if v.allowed(n) {
 			mark, word = ic().todoDone, "allowed"
 		}
 		l := fit(mark+" "+n, 16) + "  " + styleFaint.Render(word)
+		if v.stale(n) {
+			l = fit(mark+" "+n, 16) + "  " + styleBad.Render("stale: no agent lists it")
+		}
 		if i == v.sel {
 			l = styleSel.Render(fit(ansi.Strip(l), w))
 		}

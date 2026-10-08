@@ -294,7 +294,7 @@ func (e *Env) threadStart(p *project.Project, o startOpts, asJSON bool) error {
 	if err := checkAgent(agentName, *o.agent == ""); err != nil {
 		return err
 	}
-	if err := checkModel(agentName, *o.model, safety.Models); err != nil {
+	if err := checkModel(cfg, agentName, *o.model, safety.Models); err != nil {
 		return err
 	}
 	if err := pausedErr(p, safety); err != nil {
@@ -419,10 +419,11 @@ func checkAgent(name string, setting bool) error {
 	return &tasks.Error{Code: "unknown-agent", Msg: msg}
 }
 
-// checkModel refuses a model the agent's manifest doesn't list in its
-// [[models]] (docs/SPEC.md §8.2), or the project's models allow-list
-// (docs/SPEC.md §11.2) leaves out; "" is the agent's default.
-func checkModel(agentName, model string, allow []string) error {
+// checkModel refuses a model the agent's catalog doesn't list (its
+// manifest's [[models]], or the user's in config.toml, docs/SPEC.md
+// §8.2), or the project's models allow-list (docs/SPEC.md §11.2) leaves
+// out; "" is the agent's default.
+func checkModel(cfg *config.Config, agentName, model string, allow []string) error {
 	if model == "" {
 		return nil
 	}
@@ -438,7 +439,7 @@ func checkModel(agentName, model string, allow []string) error {
 	if !ok {
 		return &tasks.Error{Code: "unknown-agent", Msg: fmt.Sprintf("no agent %q (tm agent list)", agentName)}
 	}
-	models := agent.ModelsOf(a)
+	models := agent.Models(a, cfg)
 	if len(models) == 0 {
 		return &tasks.Error{Code: "unknown-model", Msg: fmt.Sprintf("agent %s lists no models; start the thread without --model", agentName)}
 	}

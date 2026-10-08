@@ -172,6 +172,7 @@ type dash struct {
 	errMsg   string                  // msg when it reports a failure, drawn as one
 	busy     bool                    // an action is running
 	queued   []func(m *dash) tea.Cmd // settings keys pressed while it runs, in order
+	catalogs []Catalog               // the agents' models, read when the , popup opens (catalog.go)
 	stack    []overlay               // views open on top of the list, topmost last
 	under    overlay                 // the popup the topmost draws over, while it draws
 	geo      *boxGeo                 // where the topmost was drawn, for the mouse
