@@ -37,6 +37,16 @@ do = "stream"
 ms = 50
 text = "COORD-DONE"
 `,
+	"coord-path": `
+[[step]]
+do = "run"
+cmd = 'echo "$(command -v tm) $TERMINATR_BIN" > "$OUT/path"; echo "exit $?" >> "$OUT/path"'
+
+[[step]]
+do = "stream"
+ms = 50
+text = "PATH-DONE"
+`,
 	"coord-agents": `
 [[step]]
 do = "run"
@@ -192,6 +202,22 @@ func TestAgentSettings(t *testing.T) {
 	}
 	if ran["t-0001"] != "other" || ran["t-0002"] != "claude" {
 		t.Fatalf("threads ran %v", ran)
+	}
+}
+
+// TestSessionPathHasServerTm: a session's `tm` is the server's own binary
+// (docs/SPEC.md §3.4), whatever else PATH holds.
+func TestSessionPathHasServerTm(t *testing.T) {
+	env, _, out := threadEnv(t)
+	coord := &Session{ID: strings.TrimSpace(env.MustCLI("project", "open", "demo"))}
+	info, _ := env.Info(coord)
+	coord.PID = info.PID
+	env.track(info.PID, "coordinator "+coord.ID)
+	env.WaitState(coord, "idle", agentWait)
+	env.Prompt(coord, "run coord-path")
+	f := strings.Fields(readOut(t, out, "path"))
+	if len(f) < 2 || f[0] != f[1] || filepath.Base(f[0]) != "tm" {
+		t.Fatalf("command -v tm vs TERMINATR_BIN: %v", f)
 	}
 }
 

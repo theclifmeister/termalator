@@ -637,3 +637,17 @@ func TestSessionEnvStripsInheritedIdentity(t *testing.T) {
 		}
 	}
 }
+
+func TestWithBinFirst(t *testing.T) {
+	got := withBinFirst([]string{"HOME=/h", "PATH=/opt/homebrew/bin:/run/bin:/usr/bin"}, "/run/bin/tm")
+	if want := "PATH=/run/bin:/opt/homebrew/bin:/usr/bin"; got[1] != want || got[0] != "HOME=/h" {
+		t.Errorf("got %v, want %s", got, want)
+	}
+	again := withBinFirst(got, "/run/bin/tm")
+	if again[1] != got[1] {
+		t.Errorf("resume duplicated the entry: %v", again)
+	}
+	if got := withBinFirst([]string{"HOME=/h"}, "/run/bin/tm"); got[1] != "PATH=/run/bin" {
+		t.Errorf("no PATH: %v", got)
+	}
+}
