@@ -2,7 +2,7 @@
 
 **One terminal for all your coding agents: a coordinator you talk to, threads that do the work.**
 
-`tm` is a single binary that hosts coding-agent sessions in a background server, so they survive closing your terminal, and gives you a dashboard over all of them. In a project, a **coordinator** agent is your single point of contact; it hands work to **threads**, agents that each work in their own git worktree and open pull requests. All progress lives in plain markdown under `~/.terminatr/projects/<slug>/`, which every session can read, so clearing an agent's context loses nothing.
+You talk to one **coordinator**. It splits the work into tasks and hands each to a **thread**: an agent in its own git worktree that opens a pull request and reports back. `tm`, a single binary, keeps every agent running in a background server when you close the terminal, and its dashboard shows what each one is doing and what waits for you. All progress lives in plain markdown under `~/.terminatr/projects/<slug>/`, so clearing an agent's context loses nothing.
 
 Claude Code is the first supported agent; others plug in through a manifest ([docs/SPEC.md §8](docs/SPEC.md#8-agents)).
 

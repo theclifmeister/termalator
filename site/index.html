@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>terminatr: one terminal for all your coding agents</title>
+<meta name="description" content="tm runs your coding agents in a background server: one coordinator you talk to, threads that work in git worktrees and open pull requests, and a dashboard that survives closing the terminal.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b0d14">
+<meta property="og:title" content="terminatr">
+<meta property="og:description" content="One terminal for all your coding agents: a coordinator you talk to, threads that do the work.">
+<meta property="og:url" content="https://terminatr.dev/">
+<meta property="og:type" content="website">
+<link rel="canonical" href="https://terminatr.dev/">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="top">
+  <a class="brand" href="#top" aria-label="terminatr, back to top"><span class="prompt" aria-hidden="true">❯</span> tm</a>
+  <nav aria-label="Sections">
+    <a href="#features">features</a>
+    <a href="#screens">screens</a>
+    <a href="#install">install</a>
+    <a href="https://github.com/theclifmeister/terminatr">github</a>
+  </nav>
+</header>
+
+<main id="main">
+
+<section class="hero" id="top" aria-labelledby="hero-title">
+  <h1 id="hero-title" class="sr-only">terminatr</h1>
+  <pre class="logo" aria-hidden="true">████████╗███████╗██████╗ ███╗   ███╗██╗███╗   ██╗ █████╗ ████████╗██████╗
+╚══██╔══╝██╔════╝██╔══██╗████╗ ████║██║████╗  ██║██╔══██╗╚══██╔══╝██╔══██╗
+   ██║   █████╗  ██████╔╝██╔████╔██║██║██╔██╗ ██║███████║   ██║   ██████╔╝
+   ██║   ██╔══╝  ██╔══██╗██║╚██╔╝██║██║██║╚██╗██║██╔══██║   ██║   ██╔══██╗
+   ██║   ███████╗██║  ██║██║ ╚═╝ ██║██║██║ ╚████║██║  ██║   ██║   ██║  ██║
+   ╚═╝   ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝</pre>
+  <p class="tagline">One terminal for all your coding agents.<br><span class="hl">A coordinator you talk to, threads that do the work.</span></p>
+  <p class="pitch">You talk to one <strong>coordinator</strong>. It splits the work into tasks and hands each to a <strong>thread</strong>: an agent in its own git worktree that opens a pull request and reports back. <code>tm</code>, a single binary, keeps every agent running in a background server when you close the terminal, and its dashboard shows what each one is doing and what waits for you. All progress lives in plain markdown under <code>~/.terminatr/projects/</code>, so clearing an agent's context loses nothing.</p>
+  <div class="cta">
+    <a class="btn primary" href="#install">Install with Homebrew</a>
+    <a class="btn" href="https://github.com/theclifmeister/terminatr">Source on GitHub</a>
+  </div>
+  <p class="meta">macOS 13+ · Linux · one binary, <code>tm</code> · MIT · Claude Code today, other agents by manifest</p>
+
+  <figure class="term hero-term">
+    <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span>~ — tm</span></div>
+    <div class="typed" aria-hidden="true"><span class="ps">$</span> <span class="cmd" data-type="tm"></span><span class="caret"></span></div>
+    <div class="scroll" tabindex="0" role="region" aria-label="The tm dashboard: a project's coordinator and a thread, with the thread's details on the right">
+<!-- screen:split --><pre class="screen" style="--cols:172" data-golden="dashboard-split.txt"> <span class="head">PROJECTS</span>                    1 <span class="dim">│</span> <span class="title">tm dashboard</span>                                                                                                        <span class="ok">● server ok</span> · 1 session
+ <span class="accent">■</span> demo                    1   <span class="dim">│</span> demo <span class="dim">─────────────────────────────────────────────────────────────────────────────────────│</span> <span class="task">T1</span> Fix the login
+ <span class="dim">└─</span> coordinator              · <span class="dim">│</span>  coordinator                         —           not running; <span class="key">enter</span> starts it  <span class="warn">1 inbox</span>    <span class="dim">│</span> <span class="idle">○ idle</span>
+    <span class="dim">└─</span> <span class="task">T1</span> Fix the login  <span class="accent">50%</span> ○ <span class="dim">│</span>  <span class="task">T1</span> Fix the login                    <span class="idle">○ idle</span>      <span class="warn">report new</span>  <span class="accent">50%</span> 1/2 <span class="warn">▸</span> Fix  4m  <span class="link">PR #7</span>  t-…<span class="dim">│</span> <span class="dim">──────────────────────────────────────────────</span>
+                               <span class="dim">│</span>  tasks: 0 need you · 1 in motion · 0 on deck                                              <span class="dim">│</span> project   demo
+                               <span class="dim">│</span> <span class="head">OTHER SESSIONS</span> <span class="dim">───────────────────────────────────────────────────────────────────────────│</span> thread    <span class="task">t-0001</span>
+                               <span class="dim">│</span>  none outside the projects (1 in them)                                                    <span class="dim">│</span> session   s-3
+                               <span class="dim">│</span>                                                                                           <span class="dim">│</span> progress  <span class="accent">▰▰▰</span><span class="dim">▱▱</span> <span class="accent">50%</span> 1/2
+                               <span class="dim">│</span>                                                                                           <span class="dim">│</span> now       <span class="warn">▸</span> Fix
+                               <span class="dim">│</span>                                                                                           <span class="dim">│</span> updated   4m ago
+                               <span class="dim">│</span>                                                                                           <span class="dim">│</span> PR        <span class="link">https://github.com/o/r/pull/7</span>
+                               <span class="dim">│</span>                                                                                           <span class="dim">│</span> report    1, new · for the coordinator
+                               <span class="dim">│</span>                                                                                           <span class="dim">│</span>
+                               <span class="dim">│</span>                                                                                           <span class="dim">│</span> steps 1/2
+                               <span class="dim">│</span>                                                                                           <span class="dim">│</span>   <span class="ok">✓</span> 1 Reproduce
+                               <span class="dim">│</span>                                                                                           <span class="dim">│</span>   ○ 2 Fix
+                               <span class="dim">│</span>                                                                                           <span class="dim">│</span>
+                               <span class="dim">│</span>                                                                                           <span class="dim">│</span> <span class="key">enter</span> attach
+                               <span class="dim">│</span>                                                                                           <span class="dim">│</span>
+                               <span class="dim">│</span>                                                                                           <span class="dim">│</span>
+                               <span class="dim">│</span>                                                                                           <span class="dim">│</span>
+                               <span class="dim">│</span>                                                                                           <span class="dim">│</span>
+                               <span class="dim">│</span>                                                                                           <span class="dim">│</span>
+                               <span class="dim">│</span>                                                                                           <span class="dim">│</span>
+                               <span class="dim">│</span>                                                                                           <span class="dim">│</span>
+                               <span class="dim">│</span>                                                                                           <span class="dim">│</span>
+                               <span class="dim">│</span>                                                                                           <span class="dim">│</span>
+                               <span class="dim">│────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────</span>
+                               <span class="dim">│</span> <span class="key">≡ menu</span> · <span class="key">enter</span> attach · a project · t tasks · i inbox · , settings · ? help · <span class="key">prefix+q</span> quit
+                               <span class="dim">│</span></pre><!-- /screen:split -->
+    </div>
+    <figcaption>The dashboard: projects on the left, each with its coordinator and threads, the selected thread's task, steps and PR on the right. A real capture from tm's end-to-end tests.</figcaption>
+  </figure>
+</section>
+
+<section id="features" aria-labelledby="features-title">
+  <h2 id="features-title"><span class="num">01</span> What it does</h2>
+  <ul class="features">
+    <li>
+      <h3><span class="glyph" aria-hidden="true">◆</span> One coordinator, many threads</h3>
+      <p>The coordinator is your single point of contact. It turns what you ask into tasks and starts a thread for each: an agent in its own <strong>git worktree</strong> and branch, so they never trip over each other. All progress lives in markdown under <code>~/.terminatr/projects/</code>, so clearing an agent's context loses nothing.</p>
+    </li>
+    <li>
+      <h3><span class="glyph" aria-hidden="true">●</span> Survives the terminal</h3>
+      <p><code>tm</code> is a client; the agents live in a background server. Close the window, drop the SSH link, quit: they keep working. Run <code>tm</code> again from any terminal, at any size, and you are back. After a crash or an upgrade the server resumes them.</p>
+    </li>
+    <li>
+      <h3><span class="glyph" aria-hidden="true">▦</span> Dashboard, sidebar, popup</h3>
+      <p>Every session and project with its live state: <em>working</em>, <em>blocked</em>, <em>idle</em>. A project tree on the left of every screen, an info panel beside each agent, and a project popup (<kbd>a</kbd>) with its overview, inbox, tasks and settings. Keyboard first, mouse everywhere, the same view in every terminal you open.</p>
+    </li>
+    <li>
+      <h3><span class="glyph" aria-hidden="true">⎇</span> PRs, merged when CI is green</h3>
+      <p>Threads push their branch and open a pull request on GitHub or Azure DevOps. tm watches the checks: a failing run goes back to the thread with the log, a conflict with main asks for a merge. Threads can't merge; the coordinator does, once the checks pass.</p>
+    </li>
+    <li>
+      <h3><span class="glyph" aria-hidden="true">✓</span> Tasks and an inbox</h3>
+      <p>Tasks with steps in a plain <code>TASKS.md</code>: on deck, in motion, needs you, done. Threads hand in reports; the coordinator reads them from its inbox and moves the task. What waits for you, a review, a question, a red build, comes first under <strong>NEEDS YOU</strong>.</p>
+    </li>
+    <li>
+      <h3><span class="glyph" aria-hidden="true">⌁</span> Works over SSH</h3>
+      <p>It is a terminal program, so it goes where SSH goes. Copying from a pane lands on the clipboard of the machine you sit at (OSC 52). On a Mac the server starts in the desktop's session, so agents keep the keychain when you started it remotely. Remote Control picks up the coordinator from your phone.</p>
+    </li>
+    <li>
+      <h3><span class="glyph" aria-hidden="true">⇣</span> Homebrew, signed, self-updating</h3>
+      <p>One Go binary. macOS builds are signed with a Developer ID and notarised. Install from the Homebrew tap; <code>tm update</code> upgrades it and <code>tm doctor</code> checks the setup.</p>
+    </li>
+    <li>
+      <h3><span class="glyph" aria-hidden="true">⚙</span> Agents as data</h3>
+      <p>Claude Code is the reference agent, with live state, todos, resume and a mod that shows the task in its pane. Other agents plug in through a TOML manifest that says how to launch and resume them and read their state.</p>
+    </li>
+  </ul>
+</section>
+
+<section id="screens" aria-labelledby="screens-title">
+  <h2 id="screens-title"><span class="num">02</span> Screens</h2>
+  <p class="lede">Not mockups: these are tm's own screens, the golden captures its end-to-end tests compare against, with the colours put back.</p>
+
+  <div class="tabs" role="tablist" aria-label="Screens">
+    <button role="tab" id="tab-needs" aria-controls="panel-needs" aria-selected="true">needs you</button>
+    <button role="tab" id="tab-thread" aria-controls="panel-thread" aria-selected="false" tabindex="-1">thread</button>
+    <button role="tab" id="tab-tasks" aria-controls="panel-tasks" aria-selected="false" tabindex="-1">tasks</button>
+    <button role="tab" id="tab-inbox" aria-controls="panel-inbox" aria-selected="false" tabindex="-1">inbox</button>
+    <button role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="false" tabindex="-1">project</button>
+  </div>
+
+  <figure class="term tabpanel" role="tabpanel" id="panel-needs" aria-labelledby="tab-needs">
+    <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span>tm · dashboard</span></div>
+    <div class="scroll" tabindex="0">
+<!-- screen:needs --><pre class="screen" style="--cols:101" data-golden="dashboard-needs-you.txt"> <span class="head">PROJECTS</span>                    1 <span class="dim">│</span> <span class="title">tm dashboard</span>                                <span class="ok">● server ok</span> · 1 session
+ <span class="accent">■</span> demo                    0 <span class="bad">⚑</span> <span class="dim">│</span> <span class="head">NEEDS YOU</span> 1 <span class="dim">───────────────────────────────────────────────────────</span>
+ <span class="dim">└─</span> coordinator              · <span class="dim">│</span>  demo          <span class="task">T1</span> Write the README   <span class="warn">◆ review</span>    <span class="dim">▱▱▱▱▱</span>  0/2
+                               <span class="dim">│</span> demo <span class="dim">──────────────────────────────────────────────────────────────</span>
+                               <span class="dim">│</span>  coordinator               —           not running; <span class="key">enter</span> starts it
+                               <span class="dim">│</span>  tasks: 1 needs you (t lists them) · 1 in motion · 0 on deck
+                               <span class="dim">│</span> <span class="head">OTHER SESSIONS</span> 1 <span class="dim">──────────────────────────────────────────────────</span>
+                               <span class="dim">│</span>  s-3                 /bin/sh               <span class="ok">▷ running</span>   4m          /
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│────────────────────────────────────────────────────────────────────</span>
+                               <span class="dim">│</span> <span class="key">≡ menu</span> · <span class="key">enter</span> open · a project · t tasks · i inbox · , settings ·…
+                               <span class="dim">│</span></pre><!-- /screen:needs -->
+    </div>
+    <figcaption>A task waits for your review, so it sits on top under NEEDS YOU, and the sidebar flags its project.</figcaption>
+  </figure>
+  <figure class="term tabpanel" role="tabpanel" id="panel-thread" aria-labelledby="tab-thread" hidden>
+    <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span>tm · dashboard</span></div>
+    <div class="scroll" tabindex="0">
+<!-- screen:thread --><pre class="screen" style="--cols:147" data-golden="dashboard-thread.txt"> <span class="head">PROJECTS</span>                    1 <span class="dim">│</span> <span class="title">tm dashboard</span>                                                                          <span class="ok">● server ok</span> · 1 session
+ <span class="accent">■</span> demo                    1   <span class="dim">│</span> demo <span class="dim">────────────────────────────────────────────────────────────────────────────────────────────────────────</span>
+ <span class="dim">└─</span> coordinator              · <span class="dim">│</span>  coordinator                               —           not running; <span class="key">enter</span> starts it  <span class="warn">1 inbox</span>
+    <span class="dim">└─</span> <span class="task">T1</span> Fix the login  <span class="accent">50%</span> ○ <span class="dim">│</span>  <span class="task">T1</span> Fix the login                          <span class="idle">○ idle</span>      <span class="warn">report new</span>  <span class="accent">▰▰▰</span><span class="dim">▱▱</span>  <span class="accent">50%</span> 1/2 <span class="warn">▸</span> Fix  4m          <span class="link">PR #7</span>  <span class="task">t-0001</span>
+                               <span class="dim">│</span>        steps 1/2
+                               <span class="dim">│</span>          <span class="ok">✓</span> 1 Reproduce
+                               <span class="dim">│</span>          ○ 2 Fix
+                               <span class="dim">│</span>        <span class="warn">report new</span> · for the coordinator
+                               <span class="dim">│</span>  tasks: 0 need you · 1 in motion · 0 on deck
+                               <span class="dim">│</span> <span class="head">OTHER SESSIONS</span> <span class="dim">──────────────────────────────────────────────────────────────────────────────────────────────</span>
+                               <span class="dim">│</span>  none outside the projects (1 in them)
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│──────────────────────────────────────────────────────────────────────────────────────────────────────────────</span>
+                               <span class="dim">│</span> <span class="key">≡ menu</span> · <span class="key">enter</span> attach · a project · t tasks · i inbox · , settings · ? help · <span class="key">prefix+q</span> quit
+                               <span class="dim">│</span></pre><!-- /screen:thread -->
+    </div>
+    <figcaption>A thread on its task: state, progress, the step it is on, its pull request and a fresh report for the coordinator.</figcaption>
+  </figure>
+  <figure class="term tabpanel" role="tabpanel" id="panel-tasks" aria-labelledby="tab-tasks" hidden>
+    <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span>tm · project popup</span></div>
+    <div class="scroll" tabindex="0">
+<!-- screen:tasks --><pre class="screen" style="--cols:120" data-golden="popup-tasks.txt"> <span class="head">PROJECTS</span>                    1 <span class="dim">│</span> <span class="title">tm dashboard</span>                                                   <span class="ok">● server ok</span> · 0 sessions
+ <span class="accent">■</span> demo                    0   <span class="dim">│</span> demo <span class="dim">──────────────────────────────────────────────────────────────────────────────────</span>
+ <span class="dim">└─</span> coordinator              · <span class="dim">│</span>  coordinator                        —           not running; <span class="key">enter</span> starts it
+                               <span class="dim">│</span>  tasks: 0 need you · 1 in motion · 1 on deck
+            <span class="dim">╭─</span> demo <span class="dim">───────────────────────────────────────────────────────────────────────────────────────╮────────────</span>
+            <span class="dim">│</span>  1 overview   <span class="warn">2 inbox</span>   3 tasks   4 settings   5 keys   6 memory   7 library                 <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span> <span class="head">IN MOTION</span> <span class="dim">──────────────────────────────────────────────────────────────────────────────────</span> <span class="dim">│</span>
+            <span class="dim">│</span> <span class="task">T1</span>     Write the README                  <span class="ok">● started</span>   <span class="accent">▰▰▰</span><span class="dim">▱▱</span>  1/2                              <span class="dim">│</span>
+            <span class="dim">│</span>        <span class="ok">✓</span> Draft                                                                               <span class="dim">│</span>
+            <span class="dim">│</span>        ○ Review                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span> <span class="head">ON DECK</span> <span class="dim">────────────────────────────────────────────────────────────────────────────────────</span> <span class="dim">│</span>
+            <span class="dim">│</span> <span class="task">T2</span>     Ship it                           <span class="idle">○ ready</span>                                             <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span> <span class="key">enter</span> show · <span class="key">esc</span> close                                                                       <span class="dim">│</span>
+            <span class="dim">╰──────────────────────────────────────────────────────────────────────────────────────────────╯</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│────────────────────────────────────────────────────────────────────────────────────────</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span></pre><!-- /screen:tasks -->
+    </div>
+    <figcaption>The project popup's tasks tab: what is in motion with its steps, and what is on deck.</figcaption>
+  </figure>
+  <figure class="term tabpanel" role="tabpanel" id="panel-inbox" aria-labelledby="tab-inbox" hidden>
+    <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span>tm · project popup</span></div>
+    <div class="scroll" tabindex="0">
+<!-- screen:inbox --><pre class="screen" style="--cols:142" data-golden="dashboard-inbox.txt"> <span class="head">PROJECTS</span>                    1 <span class="dim">│</span> <span class="title">tm dashboard</span>                                                                          <span class="ok">● server ok</span> · 1 session
+ <span class="accent">■</span> demo                    1   <span class="dim">│</span> demo <span class="dim">────────────────────────────────────────────────────────────────────────────────────────────────────────</span>
+ <span class="dim">└─</span> coordinator              · <span class="dim">│</span>  coordinator                               —           not running; <span class="key">enter</span> starts it  <span class="warn">1 inbox</span>
+    <span class="dim">└─</span> <span class="task">T1</span> Fix <span class="dim">╭─</span> demo <span class="dim">────────────────────────────────────────────────────────────────────────────────────────────────────────╮</span>
+              <span class="dim">│</span>  1 overview   <span class="warn">2 inbox</span> 1   3 tasks   4 settings   5 keys   6 memory   7 library                                <span class="dim">│</span>
+              <span class="dim">│</span>                                                                                                               <span class="dim">│</span>
+              <span class="dim">│</span> report          4m    <span class="task">T1</span> handed in report 1 Fix the login                                                     <span class="dim">│</span>
+              <span class="dim">│</span>                                                                                                               <span class="dim">│</span>
+              <span class="dim">│</span> The coordinator handles these (tm inbox done).                                                                <span class="dim">│</span>
+              <span class="dim">│</span>                                                                                                               <span class="dim">│───────────────</span>
+              <span class="dim">│</span>                                                                                                               <span class="dim">│</span>
+              <span class="dim">│</span>                                                                                                               <span class="dim">│</span>
+              <span class="dim">│</span>                                                                                                               <span class="dim">│</span>
+              <span class="dim">│</span>                                                                                                               <span class="dim">│</span>
+              <span class="dim">│</span>                                                                                                               <span class="dim">│</span>
+              <span class="dim">│</span>                                                                                                               <span class="dim">│</span>
+              <span class="dim">│</span>                                                                                                               <span class="dim">│</span>
+              <span class="dim">│</span>                                                                                                               <span class="dim">│</span>
+              <span class="dim">│</span>                                                                                                               <span class="dim">│</span>
+              <span class="dim">│</span>                                                                                                               <span class="dim">│</span>
+              <span class="dim">│</span>                                                                                                               <span class="dim">│</span>
+              <span class="dim">│</span>                                                                                                               <span class="dim">│</span>
+              <span class="dim">│</span>                                                                                                               <span class="dim">│</span>
+              <span class="dim">│</span>                                                                                                               <span class="dim">│</span>
+              <span class="dim">│</span>                                                                                                               <span class="dim">│</span>
+              <span class="dim">│</span> <span class="key">← →</span> tabs · <span class="key">esc</span> close                                                                                          <span class="dim">│</span>
+              <span class="dim">╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────╯</span>
+                               <span class="dim">│──────────────────────────────────────────────────────────────────────────────────────────────────────────────</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span></pre><!-- /screen:inbox -->
+    </div>
+    <figcaption>The inbox: a thread handed in its report. The coordinator reads it and moves the task.</figcaption>
+  </figure>
+  <figure class="term tabpanel" role="tabpanel" id="panel-overview" aria-labelledby="tab-overview" hidden>
+    <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span>tm · project popup</span></div>
+    <div class="scroll" tabindex="0">
+<!-- screen:overview --><pre class="screen" style="--cols:120" data-golden="popup-overview.txt"> <span class="head">PROJECTS</span>                    1 <span class="dim">│</span> <span class="title">tm dashboard</span>                                                   <span class="ok">● server ok</span> · 0 sessions
+ <span class="accent">■</span> demo                    0   <span class="dim">│</span> demo <span class="dim">──────────────────────────────────────────────────────────────────────────────────</span>
+ <span class="dim">└─</span> coordinator              · <span class="dim">│</span>  coordinator                        —           not running; <span class="key">enter</span> starts it
+                               <span class="dim">│</span>  tasks: 0 need you · 1 in motion · 1 on deck
+            <span class="dim">╭─</span> demo <span class="dim">───────────────────────────────────────────────────────────────────────────────────────╮────────────</span>
+            <span class="dim">│</span>  1 overview   <span class="warn">2 inbox</span>   3 tasks   4 settings   5 keys   6 memory   7 library                 <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span> Project       demo                                                                           <span class="dim">│</span>
+            <span class="dim">│</span> Goal          none set; ask the coordinator to set one                                       <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span> Repositories  ~/src/demo                                                                     <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span> Machines      this machine                                                                   <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span> Coordinator   claude · not running; <span class="key">enter</span> on the project starts it                           <span class="dim">│</span>
+            <span class="dim">│</span> Threads       none open                                                                      <span class="dim">│</span>
+            <span class="dim">│</span>               start after asking you (Settings tab)                                          <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span> Tasks         0 need you · 1 in motion · 1 on deck · 0 done                                  <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span>                                                                                              <span class="dim">│</span>
+            <span class="dim">│</span> + add repository · x remove it · <span class="key">← →</span> tabs · <span class="key">esc</span> close                                        <span class="dim">│</span>
+            <span class="dim">╰──────────────────────────────────────────────────────────────────────────────────────────────╯</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│────────────────────────────────────────────────────────────────────────────────────────</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span></pre><!-- /screen:overview -->
+    </div>
+    <figcaption>A project at a glance: its repositories, its coordinator, its threads and its tasks.</figcaption>
+  </figure>
+
+  <div class="panels">
+    <figure class="term small">
+      <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span>sidebar</span></div>
+      <div class="scroll" tabindex="0">
+<!-- screen:sidebar --><pre class="screen" style="--cols:32" data-golden="sidebar-unicode.txt"> <span class="head">PROJECTS</span>                    2 <span class="dim">│</span>
+ <span class="accent">■</span> beta                    0   <span class="dim">│</span>
+ <span class="dim">└─</span> coordinator              · <span class="dim">│</span>
+ <span class="accent">■</span> demo                    1   <span class="dim">│</span>
+ <span class="dim">└─</span> coordinator              · <span class="dim">│</span>
+    <span class="dim">└─</span> <span class="task">t-0001</span> Small fix      ○ <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span>
+                               <span class="dim">│</span></pre><!-- /screen:sidebar -->
+      </div>
+      <figcaption>The projects sidebar, on every screen.</figcaption>
+    </figure>
+    <figure class="term small">
+      <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span>coordinator panel</span></div>
+      <div class="scroll" tabindex="0">
+<!-- screen:coordinator --><pre class="screen" style="--cols:39" data-golden="infopanel-coordinator"><span class="dim">│</span> demo
+<span class="dim">│</span> 1 needs you · 1 thread
+<span class="dim">│</span>
+<span class="dim">│</span> <span class="head">NEEDS YOU</span> <span class="dim">───────────────────────────</span>
+<span class="dim">│</span> <span class="task">T3</span> <span class="bad">▲ blocked</span> Get the keys
+<span class="dim">│</span>
+<span class="dim">│</span> <span class="head">THREADS</span> <span class="dim">─────────────────────────────</span>
+<span class="dim">│</span> <span class="task">t-0001</span> <span class="task">T1</span> <span class="idle">○ idle</span> 1/2
+<span class="dim">│</span>   <span class="warn">▸</span> Fix it
+<span class="dim">│</span>
+<span class="dim">│</span> <span class="head">ON DECK</span> <span class="dim">─────────────────────────────</span>
+<span class="dim">│</span> <span class="task">T2</span> <span class="idle">○ ready</span> Write the docs
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+            <span class="key">≡ menu</span> · <span class="key">prefix+d</span> dashboard</pre><!-- /screen:coordinator -->
+      </div>
+      <figcaption>Beside the coordinator: what needs you, the threads, what is on deck.</figcaption>
+    </figure>
+    <figure class="term small">
+      <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span>thread panel</span></div>
+      <div class="scroll" tabindex="0">
+<!-- screen:threadpanel --><pre class="screen" style="--cols:40" data-golden="infopanel-thread"><span class="dim">│</span> <span class="task">T1</span> Fix the login
+<span class="dim">│</span> <span class="ok">● started</span> · click to open
+<span class="dim">│</span>
+<span class="dim">│</span> <span class="head">STEPS</span> <span class="dim">───────────────────────────────</span>
+<span class="dim">│</span> <span class="accent">▰▰</span><span class="dim">▱▱▱</span> <span class="accent">33%</span> 1/3
+<span class="dim">│</span> <span class="ok">✓</span> Find the bug
+<span class="dim">│</span> <span class="warn">◐</span> Fix it
+<span class="dim">│</span> ○ Test it
+<span class="dim">│</span>
+<span class="dim">│</span> <span class="head">THREAD</span> <span class="dim">──────────────────────────────</span>
+<span class="dim">│</span> thread    <span class="task">t-0001</span> <span class="idle">○ idle</span>
+<span class="dim">│</span> now       <span class="warn">▸</span> Fix it
+<span class="dim">│</span>
+<span class="dim">│</span> branch    tm/demo/t-0001-fix-the-login
+<span class="dim">│</span> …/worktrees/demo/t-0001-fix-the-login
+<span class="dim">│</span> active    4m ago
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+<span class="dim">│</span>
+            <span class="key">≡ menu</span> · <span class="key">prefix+d</span> dashboard</pre><!-- /screen:threadpanel -->
+      </div>
+      <figcaption>Beside a thread: its task, steps, branch and worktree.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section id="install" aria-labelledby="install-title">
+  <h2 id="install-title"><span class="num">03</span> Install</h2>
+  <p class="lede">macOS 13+ or Linux (glibc 2.28+), with Homebrew. Newer Homebrew wants you to trust a tap's formula once.</p>
+  <ol class="steps">
+    <li><span class="c">tap it</span><div class="cmdline"><code>brew tap theclifmeister/terminatr https://github.com/theclifmeister/terminatr</code><button class="copy" type="button" aria-label="Copy the tap command">copy</button></div></li>
+    <li><span class="c">trust it</span><div class="cmdline"><code>brew trust --formula theclifmeister/terminatr/terminatr</code><button class="copy" type="button" aria-label="Copy the trust command">copy</button></div></li>
+    <li><span class="c">install it</span><div class="cmdline"><code>brew install theclifmeister/terminatr/terminatr</code><button class="copy" type="button" aria-label="Copy the install command">copy</button></div></li>
+    <li><span class="c">run it</span><div class="cmdline"><code>tm</code><button class="copy" type="button" aria-label="Copy tm">copy</button></div></li>
+  </ol>
+  <p class="after">Then press <kbd>n</kbd> for a new project and <kbd>enter</kbd> to start its coordinator. <kbd>Ctrl+B</kbd> <kbd>d</kbd> brings you back to the dashboard, <kbd>?</kbd> lists every key. No Homebrew? The <a href="https://github.com/theclifmeister/terminatr#install">README</a> has a one-line install from the releases.</p>
+</section>
+
+</main>
+
+<footer>
+  <pre class="foot-art" aria-hidden="true">─── ❯ tm ───────────────────────────────────────</pre>
+  <p>terminatr · MIT · <a href="https://github.com/theclifmeister/terminatr">github.com/theclifmeister/terminatr</a></p>
+  <p class="quiet">No cookies, no analytics, no trackers. Just HTML.</p>
+</footer>
+</body>
+</html>
