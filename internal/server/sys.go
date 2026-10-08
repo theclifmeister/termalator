@@ -2,7 +2,6 @@ package server
 
 import (
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"strconv"
@@ -10,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"golang.org/x/sys/unix"
+	"github.com/theclifmeister/terminatr/internal/plat/flock"
 )
 
 func fileOwner(fi fs.FileInfo) (int, bool) {
@@ -22,13 +21,13 @@ func fileOwner(fi fs.FileInfo) (int, bool) {
 }
 
 // ErrLocked means another process holds the server lock.
-var ErrLocked = errors.New("server lock is held")
+var ErrLocked = flock.ErrLocked
 
-// lockFile is an exclusive flock on the server lock file. The kernel drops
+// lockFile is the exclusive lock on the server lock file. The kernel drops
 // it when the holder exits, however it exits, so a crashed server never
 // leaves a stale lock behind.
 type lockFile struct {
-	f *os.File
+	*flock.Lock
 	// handedOver: this server came by exec into the pin (execPinned) and
 	// must not exec again.
 	handedOver bool
@@ -37,18 +36,11 @@ type lockFile struct {
 // tryLock takes the lock without waiting; it returns ErrLocked if another
 // open file description holds it.
 func tryLock(path string) (*lockFile, error) {
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
+	l, err := flock.TryLock(path)
 	if err != nil {
 		return nil, err
 	}
-	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		f.Close()
-		if errors.Is(err, unix.EWOULDBLOCK) {
-			return nil, ErrLocked
-		}
-		return nil, fmt.Errorf("lock %s: %w", path, err)
-	}
-	return &lockFile{f: f}, nil
+	return &lockFile{Lock: l}, nil
 }
 
 // lockWait bounds how long a starting server waits for a lock held by a
@@ -78,11 +70,6 @@ func takeLock(p Paths) (*lockFile, error) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-}
-
-func (l *lockFile) unlock() {
-	unix.Flock(int(l.f.Fd()), unix.LOCK_UN)
-	l.f.Close()
 }
 
 // readPID reads a pid file; 0 if missing or malformed.

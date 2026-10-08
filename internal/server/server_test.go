@@ -259,7 +259,7 @@ func TestStartDuringLockProbe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	time.AfterFunc(200*time.Millisecond, lk.unlock)
+	time.AfterFunc(200*time.Millisecond, lk.Unlock)
 	startServer(t, p)
 }
 
@@ -272,7 +272,7 @@ func TestLockHeldWithoutServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lk.unlock()
+	defer lk.Unlock()
 	t0 := time.Now()
 	err = Run(context.Background(), Options{Paths: p, Log: log.New(io.Discard, "", 0)})
 	var running *AlreadyRunningError
@@ -344,7 +344,7 @@ func TestHungServerIsReported(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lk.unlock()
+	defer lk.Unlock()
 	os.WriteFile(p.PID, []byte("4242\n"), 0o600)
 	ln, err := net.Listen("unix", p.Socket)
 	if err != nil {

@@ -70,7 +70,7 @@ func Stop(p Paths, yes bool) (Stopped, error) {
 func Terminate(p Paths, want int, yes bool) (int, error) {
 	lk, err := tryLock(p.Lock)
 	if err == nil {
-		lk.unlock()
+		lk.Unlock()
 		return 0, ErrNotRunning
 	}
 	if !errors.Is(err, ErrLocked) {

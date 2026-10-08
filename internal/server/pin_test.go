@@ -100,7 +100,7 @@ func TestPinRunsAndHandsOverLock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lk.unlock()
+	defer lk.Unlock()
 	self, err := os.Executable()
 	if err != nil {
 		t.Skip(err)
@@ -117,7 +117,7 @@ func TestPinRunsAndHandsOverLock(t *testing.T) {
 		argv, env = a, e
 		// The exec'd image would see the descriptor: it must stay open
 		// across exec.
-		flags, err := unix.FcntlInt(lk.f.Fd(), unix.F_GETFD, 0)
+		flags, err := unix.FcntlInt(lk.Fd(), unix.F_GETFD, 0)
 		if err != nil || flags&unix.FD_CLOEXEC != 0 {
 			t.Errorf("lock closes on exec: %d %v", flags, err)
 		}
@@ -146,7 +146,7 @@ func TestPinRunsAndHandsOverLock(t *testing.T) {
 		t.Fatalf("%s set %d times", lockFDEnv, n)
 	}
 	// A failed exec leaves the lock closed on exec again.
-	if flags, _ := unix.FcntlInt(lk.f.Fd(), unix.F_GETFD, 0); flags&unix.FD_CLOEXEC == 0 {
+	if flags, _ := unix.FcntlInt(lk.Fd(), unix.F_GETFD, 0); flags&unix.FD_CLOEXEC == 0 {
 		t.Fatal("lock still open across exec after a failed one")
 	}
 	// Another process still can't take it.
@@ -178,7 +178,7 @@ func TestPinHelperAdopt(t *testing.T) {
 		if os.Getenv(lockFDEnv) != "" {
 			t.Fatal("hand-over variable left for sessions")
 		}
-		if flags, _ := unix.FcntlInt(lk.f.Fd(), unix.F_GETFD, 0); flags&unix.FD_CLOEXEC == 0 {
+		if flags, _ := unix.FcntlInt(lk.Fd(), unix.F_GETFD, 0); flags&unix.FD_CLOEXEC == 0 {
 			t.Fatal("adopted lock open across exec")
 		}
 	case "try":

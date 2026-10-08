@@ -114,7 +114,7 @@ func Connect(p Paths, autostart bool) (*Client, error) {
 	case lerr == nil:
 		os.Remove(p.Socket)
 		os.Remove(p.PID)
-		lk.unlock()
+		lk.Unlock()
 		if !autostart {
 			return nil, ErrNotRunning
 		}
@@ -319,7 +319,7 @@ func (c *Client) WriteFrame(typ proto.FrameType, payload []byte) error {
 func ForceKill(p Paths) (int, error) {
 	lk, err := tryLock(p.Lock)
 	if err == nil {
-		lk.unlock()
+		lk.Unlock()
 		os.Remove(p.Socket)
 		os.Remove(p.PID)
 		return 0, ErrNotRunning
@@ -342,7 +342,7 @@ func WaitStopped(p Paths, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for {
 		if lk, err := tryLock(p.Lock); err == nil {
-			lk.unlock()
+			lk.Unlock()
 			return true
 		}
 		if time.Now().After(deadline) {
