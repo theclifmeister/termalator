@@ -17,6 +17,7 @@ import (
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/tasks"
+	"github.com/theclifmeister/terminatr/internal/thread"
 )
 
 // The project popup (a on the dashboard, prefix+a in a session;
@@ -34,10 +35,11 @@ const (
 	tabSettings
 	tabKeys
 	tabMemory
+	tabLibrary
 	tabCount
 )
 
-var tabNames = [tabCount]string{"overview", "inbox", "tasks", "settings", "keys", "memory"}
+var tabNames = [tabCount]string{"overview", "inbox", "tasks", "settings", "keys", "memory", "library"}
 
 type projectView struct {
 	slug string
@@ -58,6 +60,11 @@ type projectView struct {
 	// loads; memErr is why it didn't.
 	memory *project.Memory
 	memErr error
+	// library is every thread's library files, newest first (the
+	// Library tab), libOK once loaded; libErr is why it didn't.
+	library []thread.LibFile
+	libOK   bool
+	libErr  error
 	// pick is the task to select once the board loads, 0 for none.
 	pick int
 	// doneAll lists the done tasks on the Tasks tab; they are collapsed
@@ -158,7 +165,7 @@ func (pv *projectView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	case "left":
 		pv.tab = (pv.tab + tabCount - 1) % tabCount
 		return nil
-	case "1", "2", "3", "4", "5", "6":
+	case "1", "2", "3", "4", "5", "6", "7":
 		pv.tab = int(s[0] - '1')
 		return nil
 	}
@@ -181,9 +188,11 @@ func (pv *projectView) key(m *dash, k tea.KeyPressMsg) tea.Cmd {
 	if pv.sel[pv.tab] == before {
 		pv.nudge[pv.tab] += d
 	}
-	switch {
-	case pv.tab == tabOverview:
+	switch pv.tab {
+	case tabOverview:
 		return pv.repoKey(m, k)
+	case tabLibrary:
+		return pv.libraryKey(m, k)
 	}
 	return nil
 }
@@ -265,6 +274,8 @@ func (pv *projectView) count(m *dash) int {
 		return len(project.Rows(pv.data(m).Items))
 	case tabTasks:
 		return len(pv.tasks())
+	case tabLibrary:
+		return len(pv.library)
 	}
 	return 0
 }
@@ -412,6 +423,11 @@ func (pv *projectView) box(m *dash) box {
 	case tabMemory:
 		body = pv.memoryLines(m, w)
 		keys = "↑ ↓ scroll · " + keys
+	case tabLibrary:
+		body, sel, hits = pv.libraryLines(w)
+		if len(pv.library) > 0 {
+			keys = "enter read · d delete · D delete the thread's · " + keys
+		}
 	}
 	head := []string{pv.tabBar(p), ""}
 	all := append([]int{tabHit, noHit}, hits...)
@@ -459,6 +475,11 @@ func (pv *projectView) click(m *dash, item, col int, double bool) tea.Cmd {
 	if double && pv.tab == tabTasks {
 		if t := pv.selTask(); t != nil {
 			return m.openTask(pv, t)
+		}
+	}
+	if double && pv.tab == tabLibrary {
+		if f, ok := pv.selLib(); ok {
+			return m.openLibFile(pv, f)
 		}
 	}
 	return nil

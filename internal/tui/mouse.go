@@ -55,7 +55,7 @@ type hint struct {
 // x: "enter attach · a project" has enter at the first, a at the second.
 // A hint naming several keys ("p ] [ projects") has a button per key, its
 // words go to the first; hints whose first word isn't a key (↑ ↓ scroll,
-// 1-6 pick one) are no buttons.
+// 1-7 pick one) are no buttons.
 func hints(keys string, x int) []hint {
 	var out []hint
 	for i, p := range strings.Split(keys, " · ") {
