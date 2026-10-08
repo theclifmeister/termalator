@@ -160,6 +160,16 @@ func (a *app) basePayloadLocked(event string) map[string]any {
 	if a.opts.yolo {
 		mode = "bypassPermissions"
 	}
+	if a.cx != nil {
+		return map[string]any{
+			"session_id":      a.sid,
+			"transcript_path": a.cx.rollout,
+			"cwd":             a.cwd,
+			"model":           a.cx.model,
+			"permission_mode": mode,
+			"hook_event_name": event,
+		}
+	}
 	return map[string]any{
 		"session_id":      a.sid,
 		"transcript_path": transcriptPath(a.home, a.cwd, a.sid),
@@ -192,6 +202,9 @@ func (a *app) sessionStart(source string) {
 // Claude adds for its children.
 func (a *app) childEnv() []string {
 	env := os.Environ()
+	if a.cx != nil {
+		return append(env, "CODEX_THREAD_ID="+a.sid)
+	}
 	env = append(env, "CLAUDECODE=1", "CLAUDE_CODE_ENTRYPOINT=cli", "CLAUDE_PROJECT_DIR="+a.cwd)
 	if a.sockPath != "" {
 		env = append(env, "CLAUDE_CODE_MESSAGING_SOCKET="+a.sockPath, "CLAUDE_CODE_MESSAGING_TOKEN="+a.messagingToken())

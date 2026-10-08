@@ -35,8 +35,6 @@ func (e *Env) HomeDir() string {
 	return ""
 }
 
-var commandLine = regexp.MustCompile(`(?m)^command = "claude"$`)
-
 // FakeClaude installs the built-in claude manifest as a user manifest
 // with launch.command pointed at the fake agent. edit, if given, changes
 // the manifest text further (e.g. drops a source). Keys the fake gets
@@ -57,15 +55,41 @@ func (e *Env) FakeAgent(name string) {
 	})
 }
 
+// FakeCodex installs the built-in codex manifest as a user manifest
+// with launch.command pointed at the fake agent run as "codex" (a
+// symlink), which makes it Codex 0.160: the fake's Codex flavour. The Go
+// agent comes with the name, so the hooks and their trust hashes, and
+// `codex queue` for prompts, are tm's own.
+func (e *Env) FakeCodex(edit ...func(string) string) {
+	e.T.Helper()
+	link := filepath.Join(e.Home, "fakebin", "codex")
+	if err := os.MkdirAll(filepath.Dir(link), 0o700); err != nil {
+		e.T.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(filepath.Dir(e.Bin), "fakeagent"), link); err != nil {
+		e.T.Fatal(err)
+	}
+	e.installManifest("codex", "codex", link, edit...)
+	e.Setenv("FAKEAGENT_TRUST_DEBOUNCE_MS", "100")
+}
+
 func (e *Env) fakeManifest(name string, edit ...func(string) string) {
 	e.T.Helper()
-	b, ok := agent.Builtin("claude")
+	e.installManifest("claude", name, filepath.Join(filepath.Dir(e.Bin), "fakeagent"), edit...)
+}
+
+// installManifest writes the built-in manifest base, with its launch
+// command replaced by command, as the user manifest name.toml.
+func (e *Env) installManifest(base, name, command string, edit ...func(string) string) {
+	e.T.Helper()
+	b, ok := agent.Builtin(base)
 	if !ok {
-		e.T.Fatal("no built-in claude manifest")
+		e.T.Fatalf("no built-in %s manifest", base)
 	}
-	m := commandLine.ReplaceAllString(string(b), "command = "+strconv.Quote(filepath.Join(filepath.Dir(e.Bin), "fakeagent")))
+	line := regexp.MustCompile(`(?m)^command = "` + base + `"$`)
+	m := line.ReplaceAllString(string(b), "command = "+strconv.Quote(command))
 	if m == string(b) {
-		e.T.Fatal("claude.toml: no command line to replace")
+		e.T.Fatalf("%s.toml: no command line to replace", base)
 	}
 	for _, f := range edit {
 		m = f(m)

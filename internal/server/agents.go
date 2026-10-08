@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -354,6 +355,14 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 	base := agent.FilterEnv(s.baseEnv(), launch.Unset)
 	env := sessionEnv(base, set)
 	r.Argv = launch.Argv
+	// The agent's own id is known ahead only when the launch gives it
+	// (Claude's --session-id, a resume). Codex picks its thread id itself
+	// and reports it with the first hook: until then there is none, so a
+	// prompt isn't queued for a thread that doesn't exist (T105).
+	agentSID := r.AgentSessionID
+	if !slices.Contains(launch.Argv, agentSID) {
+		agentSID = ""
+	}
 	home, _ := os.UserHomeDir()
 	// A thread never waits on a folder-trust screen for the worktree tm
 	// made for it (docs/SPEC.md §8.6): an agent that can, trusts it first.
@@ -372,7 +381,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		// Set before Start: the first session.list must show it.
 		RemoteControl: r.RemoteControl, RemoteHeld: r.RemoteHeld,
 		Agent: &session.AgentConfig{
-			Agent: a, AgentSID: r.AgentSessionID, Kickoff: launch.Kickoff, Home: home,
+			Agent: a, AgentSID: agentSID, Kickoff: launch.Kickoff, Home: home,
 			Context:    s.hookContextOf(r.ID, modSock != ""),
 			Guard:      s.hookGuardOf(r.ID, modSock != ""),
 			OnChange:   s.agentChanged,
