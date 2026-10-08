@@ -1,3 +1,5 @@
+//go:build unix
+
 package e2e
 
 // M2 scenarios: tm attach as the user sees it (docs/SPEC.md §15 M2).

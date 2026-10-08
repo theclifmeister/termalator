@@ -1,3 +1,5 @@
+//go:build unix
+
 package e2e
 
 // Server-owned views (docs/SPEC.md §3.3, Views): every console running

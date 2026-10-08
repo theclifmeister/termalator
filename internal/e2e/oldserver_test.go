@@ -1,3 +1,5 @@
+//go:build unix
+
 package e2e
 
 // Replacing a server of another version (docs/SPEC.md §3.3, Stopping

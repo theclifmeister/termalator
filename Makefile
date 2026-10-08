@@ -17,6 +17,7 @@
 #   make test-codex   the scenarios against the real codex (needs a ChatGPT login)
 #   make fuzz       run every fuzz target for FUZZTIME each (weekly)
 #   make vet        go vet ./... and staticcheck ./...
+#   make vet-cross  go vet ./... for windows, darwin and freebsd, without cgo (no libghostty)
 #   make toolchain  check Go, Zig, pkg-config and git
 #   make env        print the PKG_CONFIG_PATH export, for gopls or a plain `go build`
 #   make release-snapshot  cross-build the release archives into dist/ (no tag, no upload)
@@ -87,7 +88,7 @@ export CGO_ENABLED := 1
 CGO_CFLAGS ?= -O2 -g
 export CGO_CFLAGS += -DTM_LIBGHOSTTY=$(GHOSTTY_OUT)
 
-.PHONY: all build run test test-race test-claude test-codex e2e e2e-smoke e2e-smoke-race fuzz vet ghostty toolchain env clean distclean zig-path release-ghostty release-snapshot release
+.PHONY: all build run test test-race test-claude test-codex e2e e2e-smoke e2e-smoke-race fuzz vet vet-cross ghostty toolchain env clean distclean zig-path release-ghostty release-snapshot release
 
 all: build
 
@@ -154,6 +155,13 @@ test-codex: $(READY)
 vet: $(READY)
 	$(GO) vet ./...
 	$(GO) run $(STATICCHECK) ./...
+
+# Type-checks the tree for other OSes in seconds, without cgo: internal/emu
+# is then its stub (emu_nocgo.go). Windows and FreeBSD catch Unix-only and
+# darwin/linux-only code outside a per-OS file (internal/plat).
+VET_GOOS ?= windows darwin freebsd
+vet-cross:
+	@for goos in $(VET_GOOS); do echo "GOOS=$$goos go vet ./..."; CGO_ENABLED=0 GOOS=$$goos $(GO) vet ./... || exit 1; done
 
 ghostty: $(READY)
 

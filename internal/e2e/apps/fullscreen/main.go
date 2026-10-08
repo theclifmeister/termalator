@@ -1,3 +1,5 @@
+//go:build unix
+
 // Command fullscreen is the e2e harness's full-screen app, a stand-in for
 // vim, htop and Claude Code's default renderer: it switches to the
 // alternate screen and asks for everything Claude asks for (any-event

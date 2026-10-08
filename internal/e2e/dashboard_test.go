@@ -1,3 +1,5 @@
+//go:build unix
+
 package e2e
 
 // M4 scenarios: the dashboard (docs/SPEC.md §4, §15 M4). TestSmoke* run

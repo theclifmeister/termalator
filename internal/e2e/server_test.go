@@ -1,3 +1,5 @@
+//go:build unix
+
 package e2e
 
 // M1 scenarios: the server lifecycle with real processes. TestSmoke* run

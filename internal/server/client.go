@@ -199,7 +199,7 @@ func StartChild(p Paths) error {
 	cmd := exec.Command(bin, "server", "run", "--detached")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = devnull, devnull, devnull
 	cmd.Dir = "/"
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	cmd.SysProcAttr = newSession()
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start server: %w", err)
 	}
@@ -331,7 +331,7 @@ func ForceKill(p Paths) (int, error) {
 	if !alive(pid) {
 		return pid, fmt.Errorf("lock is held but pid file names no live process (%d)", pid)
 	}
-	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil {
+	if err := kill(pid, syscall.SIGKILL); err != nil {
 		return pid, err
 	}
 	return pid, nil

@@ -1,3 +1,5 @@
+//go:build unix
+
 package e2e
 
 // M3 scenarios: agent sessions under the real claude.toml, with the

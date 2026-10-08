@@ -1,3 +1,5 @@
+//go:build unix
+
 package e2e
 
 // The parallel threads cap, auto-close and complete tasks (docs/SPEC.md

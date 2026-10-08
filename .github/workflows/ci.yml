@@ -1,8 +1,8 @@
 name: ci
 
 # Lean by design (GitHub bills every job, rounded up to the minute):
-#   pull request  one Linux job (`test`: gofmt, build, vet, unit tests, selftest,
-#                 e2e smoke), plus claude-mod / release-snapshot when their
+#   pull request  one Linux job (`test`: gofmt, build, vet, cross-vet, unit
+#                 tests, selftest, e2e smoke), plus claude-mod / release-snapshot when their
 #                 files change. No macOS, no -race. Docs-only and site-only changes
 #                 skip it.
 #   push to main  the same Linux job with unit tests under -race (the e2e
@@ -49,6 +49,10 @@ jobs:
 
       - name: vet (go vet, staticcheck)
         run: make vet
+
+      # GOOS=windows, darwin and freebsd without cgo: seconds, no runner.
+      - name: cross-vet (windows, darwin, freebsd)
+        run: make vet-cross
 
       - name: test
         run: make ${{ github.event_name == 'push' && 'test-race' || 'test' }}

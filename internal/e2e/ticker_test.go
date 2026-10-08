@@ -1,3 +1,5 @@
+//go:build unix
+
 package e2e
 
 // M7 scenarios: the ticker (docs/SPEC.md §7.5, §15 M7). The fake agent

@@ -1,4 +1,4 @@
-//go:build realcodex
+//go:build unix && realcodex
 
 package e2e
 

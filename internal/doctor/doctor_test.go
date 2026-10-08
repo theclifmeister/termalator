@@ -15,10 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/sys/unix"
-
 	_ "github.com/theclifmeister/terminatr/internal/agent/claude" // registers the Go agent (Doctor)
 	"github.com/theclifmeister/terminatr/internal/codehost"
+	"github.com/theclifmeister/terminatr/internal/plat/flock"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/server"
@@ -93,14 +92,11 @@ func TestServerStaleFiles(t *testing.T) {
 
 func TestServerHung(t *testing.T) {
 	d := testDeps(t)
-	f, err := os.OpenFile(d.Paths.Lock, os.O_RDWR|os.O_CREATE, 0o600)
+	lk, err := flock.TryLock(d.Paths.Lock)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
-	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		t.Fatal(err)
-	}
+	defer lk.Unlock()
 	os.WriteFile(d.Paths.PID, []byte("4242\n"), 0o600)
 	cs, live := Server(d)
 	c := find(cs, "server")
@@ -743,14 +739,11 @@ func TestServerHangs(t *testing.T) {
 	d := testDeps(t)
 	defer func(a, b time.Duration) { callTimeout, codeHostTimeout = a, b }(callTimeout, codeHostTimeout)
 	callTimeout, codeHostTimeout = 200*time.Millisecond, 200*time.Millisecond
-	lk, err := os.OpenFile(d.Paths.Lock, os.O_RDWR|os.O_CREATE, 0o600)
+	lk, err := flock.TryLock(d.Paths.Lock)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lk.Close()
-	if err := unix.Flock(int(lk.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		t.Fatal(err)
-	}
+	defer lk.Unlock()
 	ln, err := net.Listen("unix", d.Paths.Socket)
 	if err != nil {
 		t.Fatal(err)

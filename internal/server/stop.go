@@ -88,7 +88,7 @@ func Terminate(p Paths, want int, yes bool) (int, error) {
 		return pid, proto.Errorf(proto.ErrRefused,
 			"the server (pid %d) can't be asked whether agents are working; pass --yes to stop it (agents are resumed)", pid)
 	}
-	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
+	if err := kill(pid, syscall.SIGTERM); err != nil {
 		return pid, err
 	}
 	return pid, nil

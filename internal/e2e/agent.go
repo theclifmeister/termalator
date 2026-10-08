@@ -1,3 +1,5 @@
+//go:build unix
+
 package e2e
 
 // Agent helpers (M3): the scripted fake agent (internal/e2e/fakeagent)

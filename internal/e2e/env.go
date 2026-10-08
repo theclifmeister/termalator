@@ -1,3 +1,5 @@
+//go:build unix
+
 // Package e2e is terminatr's end-to-end test harness (docs/SPEC.md §16.2).
 // Scenarios run the real tm against an isolated server and look at what a
 // user would see: a Window is a PTY whose output a libghostty-vt emulator

@@ -1,3 +1,5 @@
+//go:build unix
+
 package e2e
 
 // The ticker against Azure DevOps (docs/SPEC.md §7.5): the repo's

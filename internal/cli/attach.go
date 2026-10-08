@@ -9,8 +9,6 @@ import (
 	"os"
 	"syscall"
 
-	"golang.org/x/sys/unix"
-
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/server"
@@ -155,10 +153,4 @@ func newest(list []proto.SessionInfo) string {
 		return ""
 	}
 	return best.ID
-}
-
-// rawMode reports whether f is a terminal with echo and line editing off.
-func rawMode(f *os.File) bool {
-	t, err := unix.IoctlGetTermios(int(f.Fd()), ioctlGetTermios)
-	return err == nil && t.Lflag&(unix.ICANON|unix.ECHO) == 0
 }
