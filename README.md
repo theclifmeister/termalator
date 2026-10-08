@@ -4,7 +4,9 @@
 
 You talk to one **coordinator**. It splits the work into tasks and hands each to a **thread**: an agent in its own git worktree that opens a pull request and reports back. `tm`, a single binary, keeps every agent running in a background server when you close the terminal, and its dashboard shows what each one is doing and what waits for you. All progress lives in plain markdown under `~/.terminatr/projects/<slug>/`, so clearing an agent's context loses nothing.
 
-Claude Code is the first supported agent; others plug in through a manifest ([docs/SPEC.md §8](docs/SPEC.md#8-agents)).
+**Claude Code only for now.** Other agents (Codex, pi) will follow: agents plug in through a manifest ([docs/SPEC.md §8](docs/SPEC.md#8-agents)).
+
+tm uses Claude Code's mods (plugin hooks, early access, Claude Code 2.1.289 or newer) to set and read state: session state, context use, questions and approvals, and the guard. It doesn't screen-scrape ([docs/SPEC.md §8.6](docs/SPEC.md#8-agents)).
 
 ```
  PROJECTS                    1 │ tm dashboard                                                                          ● server ok · 1 session
@@ -28,8 +30,8 @@ macOS 13+ or Linux with glibc 2.28+ (arm64 or x86_64), git, and [Claude Code](ht
 
 ```sh
 brew tap theclifmeister/terminatr https://github.com/theclifmeister/terminatr
-brew trust --formula theclifmeister/terminatr/terminatr
-brew install theclifmeister/terminatr/terminatr
+brew trust theclifmeister/terminatr
+brew install terminatr
 ```
 
 Newer Homebrew refuses formulas from a tap it doesn't trust, hence `brew trust` once. No Homebrew? See [Install in docs/OPERATIONS.md](docs/OPERATIONS.md#install) for the direct download. Then run `tm doctor` to check the setup.
