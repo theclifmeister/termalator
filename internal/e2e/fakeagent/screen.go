@@ -220,6 +220,8 @@ type dialog struct {
 	sel      int
 	textOpt  int    // question: the option that is a text field once focused, or -1
 	text     []rune // what was typed into it
+	notes    bool   // codexq: Tab opened the notes field
+	at, of   int    // codexq: "Question at/of"
 	shownAt  time.Time
 	debounce time.Duration
 	result   chan int // the chosen option, 1-based; 0 to exit
@@ -271,6 +273,23 @@ func (d *dialog) lines() []string {
 		out = append(out, " Remote Control", "", " This session is available in the Claude mobile app.", "")
 		opts()
 		out = append(out, "", " Enter to select · Esc to continue")
+	case "codexq":
+		// As Codex 0.160 draws request_user_input in plan mode.
+		out = append(out, fmt.Sprintf("  Question %d/%d (%d unanswered)", d.at, d.of, d.of-d.at+1), "  "+d.question)
+		for i, o := range d.options {
+			mark := "  "
+			if i == d.sel {
+				mark = "› "
+			}
+			switch {
+			case i == d.textOpt && d.notes:
+				o += "  " + string(d.text) + "_"
+			case i == d.textOpt:
+				o += "  Optionally, add details in notes (tab)"
+			}
+			out = append(out, fmt.Sprintf("  %s%d. %s", mark, i+1, o))
+		}
+		out = append(out, "  tab to add notes | enter to submit answer | esc to interrupt")
 	case "question":
 		out = append(out, " ☐ "+d.header, " "+d.question)
 		opts()

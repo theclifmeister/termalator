@@ -241,6 +241,16 @@ region = "bottom:16"
 regex = '(?m)^\s*Question \d+/\d+'
 contains = ["enter to submit answer"]
 
+# Free text is the last option, "None of the above" (checked live, 0.160):
+# a number submits its option at once, even this one, without notes. So
+# Down moves to it, Tab opens the notes, then the words and Enter.
+[answer]
+rule = "blocked-question"
+text_option = "None of the above"
+text_focus = "\u001b[B"
+text_key = "\t"
+submit = "\r"
+
 # /new: "Where should the new conversation run?"
 [[rules]]
 id = "blocked-new-dialog"
