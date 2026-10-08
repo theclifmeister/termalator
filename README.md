@@ -30,8 +30,8 @@ macOS 13+ or Linux with glibc 2.28+ (arm64 or x86_64), git, and [Claude Code](ht
 
 ```sh
 brew tap theclifmeister/terminatr https://github.com/theclifmeister/terminatr
-brew trust --formula theclifmeister/terminatr/terminatr
-brew install theclifmeister/terminatr/terminatr
+brew trust theclifmeister/terminatr
+brew install terminatr
 ```
 
 Newer Homebrew refuses formulas from a tap it doesn't trust, hence `brew trust` once. No Homebrew? See [Install in docs/OPERATIONS.md](docs/OPERATIONS.md#install) for the direct download. Then run `tm doctor` to check the setup.

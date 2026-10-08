@@ -10,12 +10,12 @@ On macOS 13+ or Linux with glibc 2.28+, on arm64 or x86_64.
 
 ```sh
 brew tap theclifmeister/terminatr https://github.com/theclifmeister/terminatr
-brew trust --formula theclifmeister/terminatr/terminatr
-brew install theclifmeister/terminatr/terminatr
+brew trust theclifmeister/terminatr
+brew install terminatr
 tm doctor
 ```
 
-The two-argument `brew tap` is needed because the formula lives in this repository (`Formula/terminatr.rb`), not in a `homebrew-terminatr` one. Newer Homebrew refuses to install from a tap it doesn't trust, hence `brew trust --formula` once after tapping. `brew upgrade terminatr` (or `tm update`, which suggests it) picks up new releases.
+The two-argument `brew tap` is needed because the formula lives in this repository (`Formula/terminatr.rb`), not in a `homebrew-terminatr` one. Newer Homebrew refuses to install from a tap it doesn't trust, hence `brew trust theclifmeister/terminatr` once after tapping (it trusts the tap, so the formula follows; `brew trust --formula` wants the full `theclifmeister/terminatr/terminatr`). `brew upgrade terminatr` (or `tm update`, which suggests it) picks up new releases.
 
 **Direct download.** Release archives are on the [releases page](https://github.com/theclifmeister/terminatr/releases). Each holds one static `tm` binary (plus this file, the README and the licence); `checksums.txt` lists their sha256. To install the latest into `~/.local/bin`:
 
