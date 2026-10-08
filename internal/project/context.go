@@ -139,6 +139,7 @@ func (p *Project) Context(seen Ticked) ([]Section, error) {
 			head = append(head, "  "+l)
 		}
 	}
+	head = append(head, agentLines(safety.ThreadAgent)...)
 	head = append(head, modelLines(safety.Models)...)
 	out = append(out, Section{Title: "Project", Lines: head})
 	out = append(out, capLines("Standing instructions (PROJECT.md)", splitLines(p.Instructions), capInstructions, "PROJECT.md"))
@@ -209,6 +210,30 @@ func (p *Project) Context(seen Ticked) ([]Section, error) {
 	}
 	out = append(out, j)
 	return out, nil
+}
+
+// agentLines name the agents the coordinator may start threads with:
+// the user's thread_agent, which tm thread start runs without --agent,
+// and the others the registry knows, for --agent.
+func agentLines(threadAgent string) []string {
+	dir, err := home.AgentsDir()
+	if err != nil {
+		return nil
+	}
+	reg, _ := agent.Load(dir) // a broken user manifest is skipped
+	if reg == nil {
+		return nil
+	}
+	names := reg.Names()
+	if !slices.Contains(names, threadAgent) {
+		return []string{fmt.Sprintf("Thread agent: %s (config.toml; the human's), which tm doesn't know: tm thread start refuses without --agent; agents: %s", threadAgent, strings.Join(names, ", "))}
+	}
+	out := []string{"Thread agent: " + threadAgent + " (config.toml; the human's): tm thread start runs it"}
+	others := slices.DeleteFunc(slices.Clone(names), func(n string) bool { return n == threadAgent })
+	if len(others) > 0 {
+		out[0] += "; --agent may name another: " + strings.Join(others, ", ")
+	}
+	return out
 }
 
 // modelLines list each agent's models for tm thread start --model, from

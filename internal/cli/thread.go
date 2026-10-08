@@ -281,16 +281,17 @@ func (e *Env) threadStart(p *project.Project, o startOpts, asJSON bool) error {
 	if err := e.coordinatorOnly(p, "starting threads"); err != nil {
 		return err
 	}
-	agentName := *o.agent
-	if agentName == "" {
-		agentName = "claude"
-	}
 	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
 	safety, err := cfg.Safety(p.Slug)
 	if err != nil {
+		return err
+	}
+	// --agent overrides the user's thread_agent setting (§11.2).
+	agentName := cmp.Or(*o.agent, safety.ThreadAgent)
+	if err := checkAgent(agentName, *o.agent == ""); err != nil {
 		return err
 	}
 	if err := checkModel(agentName, *o.model, safety.Models); err != nil {
@@ -395,6 +396,27 @@ func (e *Env) threadStart(p *project.Project, o startOpts, asJSON bool) error {
 	}
 	fmt.Fprintf(e.Stdout, " (session %s)\n", info.ID)
 	return nil
+}
+
+// checkAgent refuses an agent the registry doesn't know (tm agent
+// list): the --agent given, or with setting the project's thread_agent.
+func checkAgent(name string, setting bool) error {
+	dir, err := home.AgentsDir()
+	if err != nil {
+		return err
+	}
+	reg, err := agent.Load(dir) // a broken user manifest is skipped
+	if reg == nil {
+		return err
+	}
+	if _, ok := reg.Get(name); ok {
+		return nil
+	}
+	msg := fmt.Sprintf("no agent %q (tm agent list)", name)
+	if setting {
+		msg = fmt.Sprintf("the user's settings name thread agent %q, which tm doesn't know (tm agent list): ask the user to pick another in the settings popup, or start with --agent", name)
+	}
+	return &tasks.Error{Code: "unknown-agent", Msg: msg}
 }
 
 // checkModel refuses a model the agent's manifest doesn't list in its

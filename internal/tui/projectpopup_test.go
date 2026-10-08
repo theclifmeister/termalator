@@ -538,8 +538,7 @@ func TestNoFileNamesInUI(t *testing.T) {
 }
 
 // TestPrefixCapture: the , popup's prefix row takes the next ctrl+key,
-// the current prefix too, and saves it; the default agent steps through
-// the known agents.
+// the current prefix too, and saves it.
 func TestPrefixCapture(t *testing.T) {
 	src, m := popupData(t)
 	keyPress(m, ",")
@@ -557,14 +556,6 @@ func TestPrefixCapture(t *testing.T) {
 	}
 	if c, err := prefixKey(); err != nil || c.String() != "ctrl+a" {
 		t.Fatalf("saved prefix %v %v", c, err)
-	}
-	keyPress(m, "down")
-	act(m, src, "enter")
-	if got := config.DefaultAgent(DefaultAgent); got != "pi" {
-		t.Fatalf("default agent %q", got)
-	}
-	if !strings.Contains(screen(m), "pi") {
-		t.Fatalf("default agent not shown:\n%s", screen(m))
 	}
 }
 
@@ -1485,5 +1476,80 @@ func TestLibraryTab(t *testing.T) {
 	run(m, keyPress(m, "y"))
 	if !slices.Equal(src.libRemoved, []string{"t-0001/data.json", "t-0001/"}) {
 		t.Fatalf("after D: %v", src.libRemoved)
+	}
+}
+
+// TestAgentSettings: the thread and coordinator agent rows step through
+// the agents tm knows and save to the project's table, or all
+// projects'; the project's info names the coordinator agent a new one
+// runs, and an agent tm doesn't know is flagged.
+func TestAgentSettings(t *testing.T) {
+	src, m := popupData(t)
+	src.data.Sessions = slices.DeleteFunc(src.data.Sessions, func(s proto.SessionInfo) bool {
+		return s.Role == proto.RoleCoordinator && s.Project == "alpha"
+	})
+	m.setData(src.Load())
+	at := func(rows []setting, label string) int {
+		i := slices.IndexFunc(rows, func(r setting) bool { return r.label == label })
+		if i < 0 {
+			t.Fatalf("no %s row", label)
+		}
+		return i
+	}
+	keyPress(m, "a")
+	if out := screen(m); !strings.Contains(lineWith(out, "Coordinator"), "claude · not running") {
+		t.Fatalf("info's coordinator:\n%s", out)
+	}
+	keyPress(m, "4")
+	for range at(projectSettings("alpha"), "Thread agent") {
+		keyPress(m, "down")
+	}
+	if out := screen(m); !strings.Contains(lineWith(out, "Thread agent"), "claude · all projects") {
+		t.Fatalf("thread agent row:\n%s", out)
+	}
+	act(m, src, "enter")
+	if th, co := config.Agents("alpha"); th != "pi" || co != "claude" {
+		t.Fatalf("alpha's agents %q %q", th, co)
+	}
+	if th, _ := config.Agents("beta"); th != "claude" {
+		t.Fatalf("beta's thread agent %q", th)
+	}
+	if !strings.Contains(m.msg, "new threads of alpha run pi") {
+		t.Fatalf("message %q", m.msg)
+	}
+	act(m, src, "enter") // and back round to claude
+	if th, _ := config.Agents("alpha"); th != "claude" {
+		t.Fatalf("alpha's thread agent after two presses %q", th)
+	}
+
+	// All projects: coordinators of every project that doesn't set its own.
+	keyPress(m, "esc")
+	keyPress(m, ",")
+	keyPress(m, "2")
+	for range at(allProjectsSettings(), "Coordinator agent") {
+		keyPress(m, "down")
+	}
+	act(m, src, "enter")
+	if _, co := config.Agents("beta"); co != "pi" {
+		t.Fatalf("beta's coordinator agent %q", co)
+	}
+	keyPress(m, "esc")
+	keyPress(m, "a")
+	if out := screen(m); !strings.Contains(lineWith(out, "Coordinator"), "pi · not running") {
+		t.Fatalf("info's coordinator after the change:\n%s", out)
+	}
+
+	// An agent tm doesn't know (a hand edit, a removed manifest).
+	src.agents = []string{"claude"}
+	keyPress(m, "4")
+	for range at(projectSettings("alpha"), "Coordinator agent") {
+		keyPress(m, "down")
+	}
+	if out := screen(m); !strings.Contains(out, "tm knows no agent pi") {
+		t.Fatalf("unknown agent not flagged:\n%s", out)
+	}
+	act(m, src, "enter")
+	if _, co := config.Agents("alpha"); co != "claude" {
+		t.Fatalf("enter didn't pick a known agent: %q", co)
 	}
 }
