@@ -122,6 +122,18 @@ template = '''
 secrets = [".claude/.credentials.json", "$CLAUDE_CONFIG_DIR/.credentials.json"]
 writable = [".claude/plans", ".claude/projects"]
 
+# The tools the guard judges, by kind, and the input fields each reads.
+# The mod's guard (hooks/guard.ts) gets them from GET /v1/rules too.
+[guard.tools]
+Bash = { kind = "shell", fields = ["command"] }
+Edit = { kind = "write", fields = ["file_path"] }
+Write = { kind = "write", fields = ["file_path"] }
+MultiEdit = { kind = "write", fields = ["file_path"] }
+NotebookEdit = { kind = "write", fields = ["notebook_path"] }
+Read = { kind = "read", fields = ["file_path"] }
+Grep = { kind = "read", fields = ["path"] }
+Glob = { kind = "glob", fields = ["pattern", "path"] }
+
 # Remote Control (2.1.289): the Claude apps list the session under its
 # name. /remote-control <name> turns it on in a running session. A resumed
 # conversation reconnects on its own, flag or not, so off can't be a

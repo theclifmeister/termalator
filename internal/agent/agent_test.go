@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -289,6 +290,37 @@ func TestClaudeGuardResponse(t *testing.T) {
 	_, res, _ := a.Hook(HookEvent{Event: "PreToolUse", Payload: map[string]any{"tool_name": "Bash", "tool_input": map[string]any{"command": "gh pr merge 1"}}}, HookEnv{})
 	if len(res.Stdout) != 0 {
 		t.Errorf("no guard answered %q", res.Stdout)
+	}
+}
+
+// TestGuardFields: .Guard reads the tool call from the [hook]
+// tool_field and input_field, tool_name and tool_input by default.
+func TestGuardFields(t *testing.T) {
+	const base = "manifest_version = 1\nname = \"a\"\n[launch]\ncommand = \"a\"\n" +
+		"[[hooks]]\nevent = \"before\"\nrespond = '{{with .Guard}}{{.Rule}}{{end}}'\n"
+	for _, c := range []struct {
+		hook    string
+		payload map[string]any
+	}{
+		{"", map[string]any{"tool_name": "bash", "tool_input": map[string]any{"command": "x"}}},
+		{"[hook]\ntool_field = \"tool\"\ninput_field = \"args\"\n", map[string]any{"tool": "bash", "args": map[string]any{"command": "x"}}},
+	} {
+		m, err := ParseManifest([]byte(base + c.hook))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var judged string
+		env := HookEnv{Guard: func(tool string, input map[string]any) *guard.Denial {
+			judged = tool + " " + input["command"].(string)
+			return &guard.Denial{Rule: "merge"}
+		}}
+		_, res, err := FromManifest(m).Hook(HookEvent{Event: "before", Payload: c.payload}, env)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if judged != "bash x" || string(res.Stdout) != "merge" {
+			t.Errorf("%q: judged %q, answered %q", c.hook, judged, res.Stdout)
+		}
 	}
 }
 
@@ -818,5 +850,68 @@ func TestManifestGuard(t *testing.T) {
 	}
 	if got := GuardWritable(reg, "codex", "/h", getenv); got != nil {
 		t.Errorf("codex writable = %q", got)
+	}
+}
+
+// TestManifestGuardTools: [guard.tools] gives each tool a known kind and
+// the input fields it reads; GuardTools is the session agent's own.
+func TestManifestGuardTools(t *testing.T) {
+	const base = "manifest_version = 1\nname = \"a\"\n[launch]\ncommand = \"a\"\n[guard.tools]\n"
+	for _, c := range []struct {
+		tools string
+		ok    bool
+	}{
+		{`bash = { kind = "shell", fields = ["command"] }` + "\n" + `edit = { kind = "write", fields = ["filePath"] }`, true},
+		{`apply = { kind = "patch", fields = ["patch", "input"] }` + "\n" + `glob = { kind = "glob", fields = ["pattern", "path"] }` + "\n" + `read = { kind = "read", fields = ["filePath"] }`, true},
+		{`bash = { kind = "exec", fields = ["command"] }`, false},
+		{`bash = { kind = "shell" }`, false},
+		{`bash = { kind = "shell", fields = [""] }`, false},
+		{`bash = { kind = "shell", fields = ["command"], args = ["x"] }`, false},
+	} {
+		if _, err := ParseManifest([]byte(base + c.tools + "\n")); (err == nil) != c.ok {
+			t.Errorf("%s: err = %v, want ok %v", c.tools, err, c.ok)
+		}
+	}
+	claude := GuardTools(nil, "claude")
+	if claude["Bash"].Kind != guard.KindShell || claude["NotebookEdit"].Kind != guard.KindWrite || claude["Glob"].Kind != guard.KindGlob {
+		t.Errorf("built-in claude tools = %v", claude)
+	}
+	if codex := GuardTools(nil, "codex"); codex["apply_patch"].Kind != guard.KindPatch || len(codex) != 2 {
+		t.Errorf("built-in codex tools = %v", codex)
+	}
+	if GuardTools(nil, "nope") != nil {
+		t.Error("an unknown agent has tools")
+	}
+}
+
+// TestGuardToolVectors: the built-in manifests' [guard.tools] are the
+// shared guard vectors' (claude/mod/tests/guard-vectors.ts), which both
+// matchers pass.
+func TestGuardToolVectors(t *testing.T) {
+	b, err := os.ReadFile("claude/mod/tests/guard-vectors.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const mark = "\nexport default "
+	i := bytes.Index(b, []byte(mark))
+	if i < 0 {
+		t.Fatalf("guard-vectors.ts: no %q", mark)
+	}
+	var v struct {
+		Tools map[string]guard.Tool `json:"tools"`
+	}
+	if err := json.Unmarshal(b[i+len(mark):], &v); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"claude", "codex"} {
+		tools := GuardTools(nil, name)
+		if len(tools) == 0 {
+			t.Errorf("%s: no [guard.tools]", name)
+		}
+		for tool, x := range tools {
+			if got, ok := v.Tools[tool]; !ok || !reflect.DeepEqual(got, x) {
+				t.Errorf("%s %s: manifest %+v, vectors %+v", name, tool, x, got)
+			}
+		}
 	}
 }

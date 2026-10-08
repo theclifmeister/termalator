@@ -1,10 +1,33 @@
 // The guard's shared test vectors: hooks/guard.ts (tests/guard.test.ts)
 // and its Go port in the server (internal/server/guardmatch_test.go) both
 // pass every case: what the call breaks (rule, null for none) and the
-// summary journaled; and the sentence each rule gives each role.
+// summary journaled; and the sentence each rule gives each role. The
+// tools (each one's kind and input fields, as a manifest's [guard.tools]
+// gives them and GET /v1/rules serves them) go with every rule set:
+// Claude's and Codex's, which their manifests must match
+// (internal/agent TestGuardToolVectors), and a lowercase vocabulary like
+// pi's and opencode's.
 // Everything after "export default " is JSON, for the Go test: keep it
 // so (double quotes, no trailing commas, no comments). One case a line.
 export default {
+"tools": {
+ "Bash": {"kind": "shell", "fields": ["command"]},
+ "Edit": {"kind": "write", "fields": ["file_path"]},
+ "Write": {"kind": "write", "fields": ["file_path"]},
+ "MultiEdit": {"kind": "write", "fields": ["file_path"]},
+ "NotebookEdit": {"kind": "write", "fields": ["notebook_path"]},
+ "Read": {"kind": "read", "fields": ["file_path"]},
+ "Grep": {"kind": "read", "fields": ["path"]},
+ "Glob": {"kind": "glob", "fields": ["pattern", "path"]},
+ "apply_patch": {"kind": "patch", "fields": ["command"]},
+ "bash": {"kind": "shell", "fields": ["command"]},
+ "edit": {"kind": "write", "fields": ["filePath"]},
+ "write": {"kind": "write", "fields": ["filePath"]},
+ "patch": {"kind": "patch", "fields": ["patchText"]},
+ "read": {"kind": "read", "fields": ["filePath"]},
+ "grep": {"kind": "read", "fields": ["path"]},
+ "glob": {"kind": "glob", "fields": ["pattern", "path"]}
+},
 "rules": {
  "thread": {"on": true, "role": "thread", "rules": ["force-push", "push-default", "worktree-only", "delete-branch", "merge", "credentials"], "home": "/h", "cwd": "/h/.terminatr/worktrees/demo/t-0001-fix", "writable": ["/h/.terminatr/worktrees/demo/t-0001-fix", "/tmp", "/private/tmp"], "worktrees": "/h/.terminatr/worktrees", "protected": ["main", "master"], "secrets": ["/h/.ssh", "/h/.aws", "/h/.config/gh", "/h/.codex/auth.json", "/ch/auth.json"]},
  "coordinator": {"on": true, "role": "coordinator", "rules": ["force-push", "push-default", "delete-branch", "credentials"], "home": "/h", "cwd": "/h/.terminatr/projects/demo", "worktrees": "/h/.terminatr/worktrees", "protected": ["main", "master"], "secrets": ["/h/.ssh", "/h/.aws", "/h/.config/gh", "/h/.codex/auth.json", "/ch/auth.json"]},
@@ -136,6 +159,21 @@ export default {
  {"rules": "thread", "tool": "Bash", "input": {"command": "cat ~/.codex/auth.json"}, "rule": "credentials", "summary": "cat of /h/.codex/auth.json"},
  {"rules": "coordinator", "tool": "Read", "input": {"file_path": "/ch/auth.json"}, "rule": "credentials", "summary": "Read of /ch/auth.json"},
  {"rules": "thread", "tool": "Read", "input": {"file_path": "/h/.codex/config.toml"}, "rule": null},
+ {"rules": "thread", "tool": "bash", "input": {"command": "cd x && gh pr merge 1"}, "rule": "merge", "summary": "gh pr merge"},
+ {"rules": "thread", "tool": "bash", "input": {"command": "git push -u origin tm/x"}, "rule": null},
+ {"rules": "thread", "tool": "edit", "input": {"filePath": "/h/.terminatr/projects/demo/PROJECT.md"}, "rule": "worktree-only", "summary": "edit of /h/.terminatr/projects/demo/PROJECT.md"},
+ {"rules": "thread", "tool": "write", "input": {"filePath": "docs/a.md"}, "rule": null},
+ {"rules": "thread", "tool": "write", "input": {"file_path": "/etc/x"}, "rule": null},
+ {"rules": "thread", "tool": "patch", "input": {"patchText": "*** Begin Patch\n*** Update File: /etc/hosts\n@@\n-a\n+b\n*** End Patch"}, "rule": "worktree-only", "summary": "patch of /etc/hosts"},
+ {"rules": "thread", "tool": "patch", "input": {"patchText": "*** Begin Patch\n*** Add File: x.go\n+package x\n*** End Patch"}, "rule": null},
+ {"rules": "thread", "tool": "read", "input": {"filePath": "/h/.ssh/id_ed25519"}, "rule": "credentials", "summary": "read of /h/.ssh/id_ed25519"},
+ {"rules": "thread", "tool": "read", "input": {"filePath": "README.md"}, "rule": null},
+ {"rules": "coordinator", "tool": "grep", "input": {"pattern": "token", "path": "/h/.config/gh"}, "rule": "credentials", "summary": "grep of /h/.config/gh"},
+ {"rules": "thread", "tool": "glob", "input": {"pattern": "/h/.aws/*"}, "rule": "credentials", "summary": "glob of /h/.aws/?"},
+ {"rules": "thread", "tool": "Glob", "input": {"pattern": "*.json", "path": "/h/.aws"}, "rule": "credentials", "summary": "Glob of /h/.aws"},
+ {"rules": "thread", "tool": "shell", "input": {"command": "gh pr merge 1"}, "rule": null},
+ {"rules": "thread", "tool": "Bash", "input": {"cmd": "gh pr merge 1"}, "rule": null},
+ {"rules": "off", "tool": "bash", "input": {"command": "gh pr merge 1"}, "rule": null},
  {"rules": "thread", "tool": "Bash", "input": {"command": "gh auth token"}, "rule": "credentials", "summary": "gh auth token"},
  {"rules": "thread", "tool": "Bash", "input": {"command": "gh auth status --show-token"}, "rule": "credentials", "summary": "gh auth status --show-token"},
  {"rules": "thread", "tool": "Bash", "input": {"command": "security find-generic-password -s x -w"}, "rule": "credentials", "summary": "security find-generic-password"},

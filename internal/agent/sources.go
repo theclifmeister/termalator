@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -69,7 +70,18 @@ type HookTrim struct {
 	Keep     []string       `toml:"keep"`     // top-level fields to keep; empty keeps everything
 	Truncate map[string]int `toml:"truncate"` // field -> max bytes
 	KeepWhen []KeepWhen     `toml:"keep_when"`
+	// Tool and Input name the payload fields holding a tool call's tool
+	// and its input, which the guard judges (.Guard in a respond
+	// template). Empty: tool_name and tool_input.
+	Tool  string `toml:"tool_field"`
+	Input string `toml:"input_field"`
 }
+
+// ToolField is the payload field naming a tool call's tool.
+func (h HookTrim) ToolField() string { return cmp.Or(h.Tool, "tool_name") }
+
+// InputField is the payload field holding a tool call's input.
+func (h HookTrim) InputField() string { return cmp.Or(h.Input, "tool_input") }
 
 // KeepWhen keeps extra fields when the payload matches.
 type KeepWhen struct {

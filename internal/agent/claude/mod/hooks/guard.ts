@@ -26,7 +26,14 @@ export type Rules = {
   worktrees?: string
   protected?: readonly string[]
   secrets?: readonly string[]
+  // The agent's tools the guard judges, by name (its manifest's
+  // [guard.tools]); a tool not listed is not judged.
+  tools?: Readonly<Record<string, Tool>>
 }
+
+// What the guard knows of a tool: its kind (shell, write, patch, read,
+// glob) and the fields of its input that kind reads.
+export type Tool = { kind: string; fields: readonly string[] }
 
 // A refusal: the rule, what the model reads, and a short account for
 // the journal that carries no text of the call beyond a path or branch.
@@ -44,42 +51,40 @@ export function rulesOf(text: string): Rules {
   }
 }
 
-// judge is the rule the call of tool with input breaks, or null.
+// judge is the rule the call of tool with input breaks, or null. The
+// tool is judged by its kind in r.tools, from the fields listed there.
 export function judge(r: Rules, tool: string, input: Record<string, unknown>): Denial | null {
   if (!r.on || !r.rules?.length) return null
+  const t = r.tools && Object.hasOwn(r.tools, tool) ? r.tools[tool] : undefined
+  if (!t) return null
   const has = (id: string) => r.rules!.includes(id)
-  const str = (k: string) => (typeof input[k] === 'string' ? (input[k] as string) : '')
-  switch (tool) {
-    case 'Bash':
-      return judgeBash(r, has, str('command'))
-    case 'Edit':
-    case 'Write':
-    case 'MultiEdit':
-    case 'NotebookEdit': {
-      const p = str('file_path') || str('notebook_path')
-      if (p && has('worktree-only') && !(r.writable ?? []).some(w => under(abs(r, p), w))) {
-        return deny(r, 'worktree-only', `${tool} of ${safe(abs(r, p))}`)
+  const values = (t.fields ?? []).map(f => input[f]).filter((v): v is string => typeof v === 'string' && v !== '')
+  const writable = (p: string) => (r.writable ?? []).some(w => under(abs(r, p), w))
+  switch (t.kind) {
+    case 'shell':
+      for (const c of values) {
+        const d = judgeBash(r, has, c)
+        if (d) return d
       }
       return null
-    }
-    case 'apply_patch': {
-      // Codex (for pi and the Go port, internal/guard): the patch is the
-      // command; each file it adds, updates, deletes or moves to is a write.
+    case 'write':
       if (!has('worktree-only')) return null
-      for (const p of patchPaths(str('command'))) {
-        if (!(r.writable ?? []).some(w => under(abs(r, p), w))) return deny(r, 'worktree-only', `${tool} of ${safe(abs(r, p))}`)
+      for (const p of values) if (!writable(p)) return deny(r, 'worktree-only', `${tool} of ${safe(abs(r, p))}`)
+      return null
+    case 'patch':
+      // Each file the patch adds, updates, deletes or moves to is a write.
+      if (!has('worktree-only')) return null
+      for (const patch of values) {
+        for (const p of patchPaths(patch)) if (!writable(p)) return deny(r, 'worktree-only', `${tool} of ${safe(abs(r, p))}`)
       }
       return null
-    }
-    case 'Read':
-    case 'Grep':
-    case 'Glob': {
+    case 'read':
+    case 'glob':
+      // A glob's fields may be patterns: judged by the part before the
+      // first wildcard.
       if (!has('credentials')) return null
-      for (const p of [str('file_path'), str('path'), tool === 'Glob' ? str('pattern') : '']) {
-        if (p && isSecret(r, abs(r, p))) return deny(r, 'credentials', `${tool} of ${safe(abs(r, p))}`)
-      }
+      for (const p of values) if (isSecret(r, abs(r, p))) return deny(r, 'credentials', `${tool} of ${safe(abs(r, p))}`)
       return null
-    }
   }
   return null
 }

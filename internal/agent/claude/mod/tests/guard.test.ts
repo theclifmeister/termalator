@@ -7,6 +7,7 @@ import type { Rules } from '../hooks/guard'
 import vectors from './guard-vectors'
 
 type Vectors = {
+  tools: Rules['tools']
   rules: Record<string, Rules>
   cases: { rules: string; tool: string; input: Record<string, unknown>; rule: string | null; summary?: string }[]
   messages: Record<string, Record<string, string>>
@@ -15,11 +16,12 @@ type Vectors = {
 const SOCKET = '/run/s/s-7/mod.sock'
 const WT = '/h/.terminatr/worktrees/demo/t-0001-fix'
 
+const TOOLS = (vectors as unknown as Vectors).tools
 const all = ['force-push', 'push-default', 'worktree-only', 'delete-branch', 'merge', 'credentials']
 const thread: Rules = {
   on: true, role: 'thread', rules: all, home: '/h', cwd: WT,
   writable: [WT, '/tmp', '/private/tmp'], worktrees: '/h/.terminatr/worktrees',
-  protected: ['main', 'master'], secrets: ['/h/.ssh', '/h/.aws', '/h/.config/gh'],
+  protected: ['main', 'master'], secrets: ['/h/.ssh', '/h/.aws', '/h/.config/gh'], tools: TOOLS,
 }
 
 test('commands splits a command line shell-style', () => {
@@ -34,11 +36,11 @@ test('commands splits a command line shell-style', () => {
 test('the shared vectors: rule and summary of each call', () => {
   const v = vectors as unknown as Vectors
   for (const c of v.cases) {
-    const d = judge(v.rules[c.rules], c.tool, c.input)
+    const d = judge({ ...v.rules[c.rules], tools: v.tools }, c.tool, c.input)
     expect([c.rules, c.tool, c.input, d?.rule ?? null, d?.summary]).toEqual([c.rules, c.tool, c.input, c.rule, c.summary])
   }
   for (const [role, m] of Object.entries(v.messages)) {
-    const r = { ...v.rules.thread, role }
+    const r = { ...v.rules.thread, role, tools: v.tools }
     const probe: Record<string, [string, Record<string, unknown>]> = {
       'force-push': ['Bash', { command: 'git push -f' }], 'push-default': ['Bash', { command: 'git push origin master' }],
       'worktree-only': ['Write', { file_path: '/etc/x' }], 'delete-branch': ['Bash', { command: 'git branch -D x' }],

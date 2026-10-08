@@ -10,6 +10,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/theclifmeister/terminatr/internal/guard"
 )
 
 //go:embed manifests/*.toml
@@ -170,16 +172,35 @@ func GuardSecrets(reg *Registry, home string, getenv func(string) string) []stri
 // GuardWritable is the [guard] writable folders of the agent named
 // name, resolved: reg's manifest, else the built-in one.
 func GuardWritable(reg *Registry, name, home string, getenv func(string) string) []string {
-	var m *Manifest
-	if reg != nil {
-		if a, ok := reg.Get(name); ok {
-			m = ManifestOf(a)
-		}
-	} else if data, ok := Builtin(name); ok {
-		m, _ = ParseManifest(data)
-	}
+	m := manifestNamed(reg, name)
 	if m == nil {
 		return nil
 	}
 	return GuardPaths(m.Guard.Writable, home, getenv)
+}
+
+// GuardTools is the [guard.tools] of the agent named name: reg's
+// manifest, else the built-in one.
+func GuardTools(reg *Registry, name string) map[string]guard.Tool {
+	if m := manifestNamed(reg, name); m != nil {
+		return m.Guard.Tools
+	}
+	return nil
+}
+
+// manifestNamed is the manifest of the agent named name in reg, or with
+// reg nil the built-in one; nil for none.
+func manifestNamed(reg *Registry, name string) *Manifest {
+	if reg != nil {
+		if a, ok := reg.Get(name); ok {
+			return ManifestOf(a)
+		}
+		return nil
+	}
+	data, ok := Builtin(name)
+	if !ok {
+		return nil
+	}
+	m, _ := ParseManifest(data)
+	return m
 }

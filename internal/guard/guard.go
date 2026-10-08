@@ -47,7 +47,39 @@ type Rules struct {
 	// Secrets are the files and folders no tool may read under
 	// credentials.
 	Secrets []string `json:"secrets,omitempty"`
+	// Tools are the session's agent's tools the guard judges, by name
+	// (its manifest's [guard.tools]); a tool not listed is not judged.
+	Tools map[string]Tool `json:"tools,omitempty"`
 }
+
+// Tool is what the guard knows of one of an agent's tools: its kind and
+// the fields of its input the kind reads.
+type Tool struct {
+	Kind   Kind     `json:"kind" toml:"kind"`
+	Fields []string `json:"fields" toml:"fields"`
+}
+
+// Kind is what a tool does, as the guard judges it.
+type Kind string
+
+const (
+	// KindShell runs a command line (each field one), judged command by
+	// command.
+	KindShell Kind = "shell"
+	// KindWrite writes the file each field names (worktree-only).
+	KindWrite Kind = "write"
+	// KindPatch applies a patch (each field one, Codex's *** Begin Patch
+	// format) and writes each file it adds, updates, deletes or moves to.
+	KindPatch Kind = "patch"
+	// KindRead reads the file or folder each field names (credentials).
+	KindRead Kind = "read"
+	// KindGlob is KindRead whose fields may be glob patterns, judged by
+	// the part before the first wildcard.
+	KindGlob Kind = "glob"
+)
+
+// Kinds are the kinds a manifest may give a tool.
+var Kinds = []Kind{KindShell, KindWrite, KindPatch, KindRead, KindGlob}
 
 // Denial is a refusal: the rule, what the model reads, and a short
 // account for the journal that carries no text of the call beyond a
@@ -58,55 +90,58 @@ type Denial struct {
 	Summary string `json:"summary"`
 }
 
-// Judge is the rule the call of tool with input breaks, or nil. Tools
-// are Claude's (Bash, Edit, Write, MultiEdit, NotebookEdit, Read, Grep,
-// Glob) and Codex's (Bash, apply_patch).
+// Judge is the rule the call of tool with input breaks, or nil. The
+// tool is judged by its kind in r.Tools, from the fields listed there.
 func (r Rules) Judge(tool string, input map[string]any) *Denial {
 	if !r.On || len(r.Rules) == 0 {
 		return nil
 	}
-	str := func(k string) string {
-		s, _ := input[k].(string)
-		return s
-	}
-	switch tool {
-	case "Bash":
-		return r.judgeBash(str("command"))
-	case "Edit", "Write", "MultiEdit", "NotebookEdit":
-		p := str("file_path")
-		if p == "" {
-			p = str("notebook_path")
-		}
-		if p != "" && r.has("worktree-only") && !r.writable(r.abs(p)) {
-			return r.deny("worktree-only", tool+" of "+safe(r.abs(p)), "")
-		}
+	t, ok := r.Tools[tool]
+	if !ok {
 		return nil
-	case "apply_patch":
-		// Codex: the patch is the command; each file it adds, updates,
-		// deletes or moves to is a write.
+	}
+	var values []string
+	for _, f := range t.Fields {
+		if s, _ := input[f].(string); s != "" {
+			values = append(values, s)
+		}
+	}
+	switch t.Kind {
+	case KindShell:
+		for _, c := range values {
+			if d := r.judgeBash(c); d != nil {
+				return d
+			}
+		}
+	case KindWrite:
 		if !r.has("worktree-only") {
 			return nil
 		}
-		for _, p := range PatchPaths(str("command")) {
+		for _, p := range values {
 			if !r.writable(r.abs(p)) {
 				return r.deny("worktree-only", tool+" of "+safe(r.abs(p)), "")
 			}
 		}
-		return nil
-	case "Read", "Grep", "Glob":
+	case KindPatch:
+		if !r.has("worktree-only") {
+			return nil
+		}
+		for _, patch := range values {
+			for _, p := range PatchPaths(patch) {
+				if !r.writable(r.abs(p)) {
+					return r.deny("worktree-only", tool+" of "+safe(r.abs(p)), "")
+				}
+			}
+		}
+	case KindRead, KindGlob:
 		if !r.has("credentials") {
 			return nil
 		}
-		pattern := ""
-		if tool == "Glob" {
-			pattern = str("pattern")
-		}
-		for _, p := range []string{str("file_path"), str("path"), pattern} {
-			if p != "" && r.isSecret(r.abs(p)) {
+		for _, p := range values {
+			if r.isSecret(r.abs(p)) {
 				return r.deny("credentials", tool+" of "+safe(r.abs(p)), "")
 			}
 		}
-		return nil
 	}
 	return nil
 }
