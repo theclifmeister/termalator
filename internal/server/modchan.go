@@ -23,15 +23,14 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/plat/ipc"
 	"github.com/theclifmeister/terminatr/internal/session"
 	"github.com/theclifmeister/terminatr/internal/thread"
 )
@@ -97,20 +96,19 @@ type ModUsage struct {
 // held. Any listener the id had is closed first.
 func (s *Server) listenMod(id, rt string) (string, error) {
 	s.closeModLocked(id)
-	path := filepath.Join(rt, modSocketName)
-	os.Remove(path)
-	ln, err := net.Listen("unix", path)
+	path := ipc.SessionAddr(rt, modSocketName)
+	os.Remove(string(path))
+	ln, err := ipc.Listen(path)
 	if err != nil {
 		return "", err
 	}
-	os.Chmod(path, 0o600)
 	srv := &http.Server{Handler: s.modHandler(id), ReadHeaderTimeout: 5 * time.Second}
 	if s.mods == nil {
 		s.mods = map[string]*http.Server{}
 	}
 	s.mods[id] = srv
 	go srv.Serve(ln)
-	return path, nil
+	return string(path), nil
 }
 
 // closeModLocked closes session id's mod listener, if any; s.mu held.

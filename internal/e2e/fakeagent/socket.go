@@ -9,18 +9,19 @@ import (
 	"net"
 	"os"
 	"strings"
+
+	"github.com/theclifmeister/terminatr/internal/plat/ipc"
 )
 
 // listen opens the messaging socket, like Claude's uds-messaging one.
 func (a *app) listen() {
 	path := fmt.Sprintf("/tmp/fa-%d.sock", a.pid)
 	os.Remove(path)
-	ln, err := net.Listen("unix", path)
+	ln, err := ipc.Listen(ipc.Addr(path))
 	if err != nil {
 		a.log("error", map[string]any{"text": "messaging socket: " + err.Error()})
 		return
 	}
-	_ = os.Chmod(path, 0o600)
 	a.listener = ln
 	a.sockPath = path
 	go func() {

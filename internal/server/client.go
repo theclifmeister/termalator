@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/theclifmeister/terminatr/internal/plat/ipc"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/service"
 	"github.com/theclifmeister/terminatr/internal/version"
@@ -59,7 +61,9 @@ func Dial(p Paths, kind proto.Kind) (*Client, error) { return dial(p, kind, prot
 
 // dial is Dial claiming protocol, which Stop lowers to an older server's.
 func dial(p Paths, kind proto.Kind, protocol int) (*Client, error) {
-	conn, err := net.DialTimeout("unix", p.Socket, UnresponsiveTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), UnresponsiveTimeout)
+	conn, err := ipc.Dial(ctx, ipc.Addr(p.Socket))
+	cancel()
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +101,7 @@ func Connect(p Paths, autostart bool) (*Client, error) {
 	if errors.As(err, &verr) {
 		return nil, err
 	}
-	if !errors.Is(err, syscall.ECONNREFUSED) && !errors.Is(err, syscall.ENOENT) {
+	if !ipc.IsAbsent(err) {
 		var ne net.Error
 		if errors.As(err, &ne) && ne.Timeout() {
 			return nil, &UnresponsiveError{PID: readPID(p.PID), Log: p.Log}

@@ -5,11 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
-	"syscall"
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/plat/ipc"
 )
 
 func init() {
@@ -76,8 +75,9 @@ func (a *Agent) Prompt(ctx context.Context, t agent.PromptTarget, text string) e
 	if !a.m.Tested(t.Version) {
 		return fmt.Errorf("claude: version %q: %w", t.Version, agent.ErrUntestedVersion)
 	}
-	d := net.Dialer{Timeout: dialTimeout}
-	c, err := d.DialContext(ctx, "unix", path)
+	dctx, cancel := context.WithTimeout(ctx, dialTimeout)
+	c, err := ipc.Dial(dctx, ipc.Addr(path))
+	cancel()
 	if err != nil {
 		return fmt.Errorf("claude: messaging socket: %w", err)
 	}
@@ -104,13 +104,14 @@ func (a *Agent) Probe(ctx context.Context, t agent.PromptTarget) (agent.Liveness
 	if path == "" {
 		return agent.LiveUnknown, ErrNoSocket
 	}
-	d := net.Dialer{Timeout: probeTimeout}
-	c, err := d.DialContext(ctx, "unix", path)
+	dctx, cancel := context.WithTimeout(ctx, probeTimeout)
+	c, err := ipc.Dial(dctx, ipc.Addr(path))
+	cancel()
 	switch {
 	case err == nil:
 		c.Close()
 		return agent.Live, nil
-	case errors.Is(err, syscall.ENOENT), errors.Is(err, syscall.ECONNREFUSED):
+	case ipc.IsAbsent(err):
 		return agent.Gone, fmt.Errorf("messaging socket: %w", err)
 	default:
 		return agent.LiveUnknown, fmt.Errorf("messaging socket: %w", err)
