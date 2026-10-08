@@ -14,3 +14,7 @@
 
 # BSD sed -i -e leftovers
 *-e
+
+# Python bytecode (site/tools/screens.py)
+__pycache__/
+*.pyc
