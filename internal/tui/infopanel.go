@@ -4,8 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"os"
-	"os/exec"
-	"runtime"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +13,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/theclifmeister/terminatr/internal/emu"
+	"github.com/theclifmeister/terminatr/internal/plat/fsx"
+	"github.com/theclifmeister/terminatr/internal/plat/open"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/server"
@@ -350,10 +351,20 @@ func reportHead(text string, n int) []string {
 
 // homeShort writes a path under the home directory with ~.
 func homeShort(p string) string {
-	if home, _ := os.UserHomeDir(); home != "" && strings.HasPrefix(p, home) {
-		return "~" + p[len(home):]
+	home, _ := os.UserHomeDir()
+	return shortHome(p, home)
+}
+
+// shortHome writes p with ~ for home when p is home or under it.
+func shortHome(p, home string) string {
+	rel, ok := fsx.Rel(home, p)
+	switch {
+	case !ok:
+		return p
+	case rel == ".":
+		return "~"
 	}
-	return p
+	return "~" + string(filepath.Separator) + rel
 }
 
 // infoPanel is the attach client's info panel: what it shows and this
@@ -532,13 +543,7 @@ func (c *client) infoTask(id int) {
 }
 
 // openURL opens a web address in the browser (a variable for tests).
-var openURL = func(url string) error {
-	name := "xdg-open"
-	if runtime.GOOS == "darwin" {
-		name = "open"
-	}
-	return exec.Command(name, url).Start()
-}
+var openURL = open.URL
 
 // infoMouse handles the mouse over the panel or dragging its border: the
 // border drags, a click on the task or the PR opens it, any other click

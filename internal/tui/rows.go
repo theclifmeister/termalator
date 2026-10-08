@@ -337,10 +337,7 @@ func buildRows(d Data, project string) []row {
 		if s.Project != "" && bySlug[s.Project] {
 			continue
 		}
-		where := s.Cwd
-		if home != "" && strings.HasPrefix(where, home) {
-			where = "~" + where[len(home):]
-		}
+		where := shortHome(s.Cwd, home)
 		sr := row{key: "s:" + s.ID, session: s.ID,
 			mark: markTop, who: s.ID, what: sessionName(s), state: stateWord(s), rest: joinSp(progressOnly(s), age(now.Sub(s.Created)), where), pct: sessionPct(s)}
 		if s.State == "blocked" {

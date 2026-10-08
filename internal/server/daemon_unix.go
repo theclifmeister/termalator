@@ -4,7 +4,6 @@ package server
 
 import (
 	"errors"
-	"io/fs"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -92,12 +91,4 @@ func alive(pid int) bool {
 	}
 	err := syscall.Kill(pid, 0)
 	return err == nil || errors.Is(err, syscall.EPERM)
-}
-
-func fileOwner(fi fs.FileInfo) (int, bool) {
-	st, ok := fi.Sys().(*syscall.Stat_t)
-	if !ok {
-		return 0, false
-	}
-	return int(st.Uid), true
 }

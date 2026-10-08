@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/theclifmeister/terminatr/internal/mdfile"
+	"github.com/theclifmeister/terminatr/internal/plat/fsx"
 )
 
 // A renamed project keeps its memos (tm project rename, docs/SPEC.md
@@ -50,7 +50,7 @@ func RenameProjectState(path, from, to string) error {
 	if err != nil {
 		return err
 	}
-	return mdfile.WriteAtomic(path, append(out, '\n'), 0o600)
+	return fsx.WriteAtomic(path, append(out, '\n'), 0o600)
 }
 
 func (st *state) rename(from, to string) {

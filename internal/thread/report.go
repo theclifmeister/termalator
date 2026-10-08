@@ -14,7 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/theclifmeister/terminatr/internal/codehost"
-	"github.com/theclifmeister/terminatr/internal/mdfile"
+	"github.com/theclifmeister/terminatr/internal/plat/fsx"
 	"github.com/theclifmeister/terminatr/internal/project"
 )
 
@@ -165,7 +165,7 @@ func StoreReport(p *project.Project, id, text string, attach []string, now time.
 				return err
 			}
 		}
-		if err := mdfile.WriteAtomic(Path(p, id, "REPORT.md"), []byte(strings.TrimSpace(strings.ReplaceAll(text, "\r\n", "\n"))+"\n"), 0o644); err != nil {
+		if err := fsx.WriteAtomic(Path(p, id, "REPORT.md"), []byte(strings.TrimSpace(strings.ReplaceAll(text, "\r\n", "\n"))+"\n"), 0o644); err != nil {
 			return err
 		}
 		for _, a := range attach {

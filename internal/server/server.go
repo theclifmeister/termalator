@@ -24,6 +24,7 @@ import (
 	"github.com/theclifmeister/terminatr/internal/codehost"
 	"github.com/theclifmeister/terminatr/internal/emu"
 	"github.com/theclifmeister/terminatr/internal/keychain"
+	"github.com/theclifmeister/terminatr/internal/plat/fsx"
 	"github.com/theclifmeister/terminatr/internal/plat/ipc"
 	"github.com/theclifmeister/terminatr/internal/plat/shell"
 	"github.com/theclifmeister/terminatr/internal/project"
@@ -159,8 +160,8 @@ func Run(ctx context.Context, opts Options) error {
 	// The run dir holds the socket, the lock and the pid file. Bind before
 	// anything else can start: a server that cannot listen must not own
 	// processes nobody can reach.
-	if err := ensurePrivateDir(p.RunDir); err != nil {
-		return err
+	if err := fsx.EnsurePrivateDir(p.RunDir); err != nil {
+		return fmt.Errorf("refusing to use the run dir: %w", err)
 	}
 	lock, err := takeLock(p)
 	if err != nil {
@@ -460,7 +461,7 @@ func (s *Server) serveControl(c net.Conn, br *bufio.Reader, peerPID int) {
 		}
 		switch req.Method {
 		case proto.MethodViewSubscribe:
-			s.serveViewStream(c, br, req)
+			s.serveViewStream(c, br, req, peerPID)
 			return
 		case proto.MethodSessionWatch:
 			s.serveWatch(c, br, req)
@@ -493,6 +494,17 @@ func (s *Server) serveControl(c net.Conn, br *bufio.Reader, peerPID int) {
 }
 
 func (s *Server) dispatch(req proto.Request, peerPID int) (any, *proto.Error) {
+	if req.Method == proto.MethodViewDigest {
+		var p proto.ViewDigestParams
+		if err := decodeParams(req.Params, &p); err != nil {
+			return nil, err
+		}
+		n := s.views.askDigest(p.PID)
+		if n == 0 {
+			return nil, proto.Errorf(proto.ErrBadParams, "no console of pid %d", p.PID)
+		}
+		return proto.ViewDigestResult{Consoles: n}, nil
+	}
 	if strings.HasPrefix(req.Method, "view.") {
 		var p proto.ViewParams
 		if err := decodeParams(req.Params, &p); err != nil {

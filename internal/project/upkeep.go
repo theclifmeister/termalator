@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/mdfile"
+	"github.com/theclifmeister/terminatr/internal/plat/fsx"
 
 	"github.com/theclifmeister/terminatr/internal/caller"
 	"github.com/theclifmeister/terminatr/internal/tasks"
@@ -251,7 +252,7 @@ func addToTar(path, dir string, names []string) error {
 	if err := zw.Close(); err != nil {
 		return err
 	}
-	return mdfile.WriteAtomic(path, buf.Bytes(), 0o644)
+	return fsx.WriteAtomic(path, buf.Bytes(), 0o644)
 }
 
 // ArchiveJournal moves the JOURNAL.md lines older than age (by their
@@ -307,7 +308,7 @@ func (p *Project) ArchiveJournal(now time.Time, age time.Duration) (int, error) 
 	}
 	// The archive holds the lines before they leave JOURNAL.md: a crash
 	// in between repeats them in the archive rather than losing them.
-	return n, mdfile.WriteAtomic(path, []byte(strings.Join(keep, "")), 0o644)
+	return n, fsx.WriteAtomic(path, []byte(strings.Join(keep, "")), 0o644)
 }
 
 // appendGzip appends data to path as one more gzip member, under its

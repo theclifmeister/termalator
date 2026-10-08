@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -276,11 +275,7 @@ func sessionPanel(d *panel, s proto.SessionInfo) {
 		}
 		d.field("queued", q)
 	}
-	where := s.Cwd
-	if home, _ := os.UserHomeDir(); home != "" && strings.HasPrefix(where, home) {
-		where = "~" + where[len(home):]
-	}
-	d.field("dir", oneLine(where))
+	d.field("dir", oneLine(homeShort(s.Cwd)))
 	if len(s.Argv) > 0 {
 		d.field("command", oneLine(strings.Join(s.Argv, " ")))
 	}

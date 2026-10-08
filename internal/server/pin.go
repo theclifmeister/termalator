@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/theclifmeister/terminatr/internal/plat/flock"
+	"github.com/theclifmeister/terminatr/internal/plat/fsx"
 	"github.com/theclifmeister/terminatr/internal/service"
 )
 
@@ -60,20 +61,14 @@ func pinBinary(runDir, bin string) (string, error) {
 	} else if same {
 		return dst, nil
 	}
-	tmp := filepath.Join(dir, ".tm-"+strconv.Itoa(os.Getpid())+".tmp")
-	os.Remove(tmp)
-	if err := cloneFile(bin, tmp); err != nil {
-		if err := copyFile(bin, tmp); err != nil {
+	err := fsx.Replace(dst, 0o700, func(tmp string) error {
+		if err := cloneFile(bin, tmp); err != nil {
 			os.Remove(tmp)
-			return "", err
+			return copyFile(bin, tmp)
 		}
-	}
-	if err := os.Chmod(tmp, 0o700); err != nil {
-		os.Remove(tmp)
-		return "", err
-	}
-	if err := os.Rename(tmp, dst); err != nil {
-		os.Remove(tmp)
+		return nil
+	})
+	if err != nil {
 		return "", err
 	}
 	return dst, nil
@@ -113,19 +108,7 @@ func pinFor(runDir, bin, source string, logf func(string, ...any)) (string, bool
 	}
 	after, err := os.Stat(pin)
 	replaced := before == nil || err != nil || !os.SameFile(before, after)
-	return pin, replaced || !samePath(bin, pin), nil
-}
-
-// samePath reports whether a and b name the same file by path, after
-// symlinks.
-func samePath(a, b string) bool {
-	if r, err := filepath.EvalSymlinks(a); err == nil {
-		a = r
-	}
-	if r, err := filepath.EvalSymlinks(b); err == nil {
-		b = r
-	}
-	return a == b
+	return pin, replaced || !fsx.SamePath(bin, pin), nil
 }
 
 // removeOtherPins removes all but the pin from dir: older per-build

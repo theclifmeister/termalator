@@ -584,22 +584,6 @@ func TestResolvePathsKeepsTestsIsolated(t *testing.T) {
 	}
 }
 
-func TestPrivateDirIsEnforced(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "run")
-	if err := ensurePrivateDir(dir); err != nil {
-		t.Fatal(err)
-	}
-	os.Chmod(dir, 0o755)
-	if err := ensurePrivateDir(dir); err == nil {
-		t.Fatal("accepted a 0755 socket directory")
-	}
-	link := filepath.Join(t.TempDir(), "link")
-	os.Symlink(dir, link)
-	if err := ensurePrivateDir(link); err == nil {
-		t.Fatal("accepted a symlinked socket directory")
-	}
-}
-
 func TestLogRotation(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "server.log")
 	r, err := openRotating(path)

@@ -25,6 +25,7 @@ import (
 	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/guard"
 	"github.com/theclifmeister/terminatr/internal/plat/caps"
+	"github.com/theclifmeister/terminatr/internal/plat/fsx"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/worktree"
@@ -111,7 +112,7 @@ func (s *Server) guardRulesFor(r SessionRecord) GuardRules {
 	reg := s.agents
 	s.mu.Unlock()
 	if slices.Contains(g.Rules, "worktree-only") {
-		dirs := []string{r.Cwd, os.TempDir(), "/tmp", "/private/tmp", "/var/folders", "/private/var/folders"}
+		dirs := append([]string{r.Cwd}, fsx.TempRoots()...)
 		dirs = append(dirs, agent.GuardWritable(reg, r.Agent, home, os.Getenv)...)
 		g.Writable = withReal(dirs)
 	}

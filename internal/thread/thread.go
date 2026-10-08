@@ -16,6 +16,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/theclifmeister/terminatr/internal/home"
 	"github.com/theclifmeister/terminatr/internal/mdfile"
+	"github.com/theclifmeister/terminatr/internal/plat/fsx"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/tasks"
 )
@@ -227,7 +228,7 @@ func Create(p *project.Project, rec Record) (*Record, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := mdfile.WriteAtomic(recordPath(p, rec.ID), data, 0o644); err != nil {
+	if err := fsx.WriteAtomic(recordPath(p, rec.ID), data, 0o644); err != nil {
 		return nil, err
 	}
 	return &rec, nil
