@@ -10,7 +10,7 @@ terminatr runs [Codex](https://developers.openai.com/codex) next to Claude Code:
 
 ## Models
 
-Codex threads run `gpt-6-luna` unless a model is chosen; `gpt-5.6-terra` is the other. `gpt-6-astra` is refused on a ChatGPT login. Pick one with `--model` (`tm thread start --agent codex --model gpt-5.6-terra …`). If the project limits its models (**Thread models** in Settings, or `models` in `config.toml`), the list must include the Codex models, or `--model` is refused with `model-not-allowed`. Without `--model` the default runs and isn't checked.
+Codex threads run `gpt-6-luna` unless a model is chosen; `gpt-5.6-terra` is the other. `gpt-6-astra` is refused on a ChatGPT login. Pick one with `--model` (`tm thread start --agent codex --model gpt-5.6-terra …`). If the project limits its models (**Thread models** in Settings, or `models` in `config.toml`), the list must include the Codex models, or `--model` is refused with `model-not-allowed`. Without `--model` the default runs and isn't checked. When OpenAI releases another model, add it (or change the default) in Settings > General > **Models**; no tm release is needed.
 
 ## Approvals and the sandbox
 

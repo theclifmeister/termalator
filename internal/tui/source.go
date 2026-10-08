@@ -108,9 +108,15 @@ type Source interface {
 	// ModsNote names the agents the Mods setting is for and the version
 	// each needs ("Claude Code 2.1.289").
 	ModsNote() string
-	// Models lists the models the agents' manifests offer a thread (the
-	// choices of the models setting, docs/SPEC.md §11.2), each name once.
-	Models() []string
+	// Catalogs are the agents' models catalogs, by agent name: the
+	// manifests' [[models]] and the user's settings over them
+	// (docs/SPEC.md §8.2, §11.2), for the General Models page and the
+	// choices of the Thread models setting.
+	Catalogs() []Catalog
+	// SetModels writes an agent's models catalog and default
+	// (config.toml [agents.<name>]); AgentSettings{} resets it to the
+	// manifest's. It is refused when tm runs inside an agent.
+	SetModels(agentName string, s config.AgentSettings) error
 	// Ask asks the project's coordinator to act on task id: an inbox
 	// item of kind (project.KindDelegate, KindAccept or KindSendBack,
 	// with the user's note) that is the user's word (docs/SPEC.md §4).
@@ -529,15 +535,44 @@ func (s *ServerSource) ModsNote() string {
 	return agent.ModNote(reg)
 }
 
-func (s *ServerSource) Models() []string {
+func (s *ServerSource) Catalogs() []Catalog {
 	reg, _ := agent.Load(s.Paths.AgentsDir())
 	if reg == nil {
 		return nil
 	}
-	var out []string
+	cfg, _ := config.Load()
+	var out []Catalog
 	for _, n := range reg.Names() {
 		a, _ := reg.Get(n)
-		for _, m := range agent.ModelsOf(a) {
+		out = append(out, Catalog{Agent: n, Manifest: agent.ModelsOf(a), Settings: cfg.Agent(n)})
+	}
+	return out
+}
+
+func (s *ServerSource) SetModels(agentName string, set config.AgentSettings) error {
+	if s.Caller.IsAgent() {
+		return errHumanOnly
+	}
+	return config.SetAgentModels(agentName, set)
+}
+
+// Catalog is one agent's models catalog: its manifest's [[models]] and
+// the user's config.toml settings over them.
+type Catalog struct {
+	Agent    string
+	Manifest []agent.Model
+	Settings config.AgentSettings
+}
+
+// Models is the catalog as threads see it (agent.MergeModels).
+func (c Catalog) Models() []agent.Model { return agent.MergeModels(c.Manifest, c.Settings) }
+
+// catalogNames lists the models the catalogs offer, each name once: the
+// choices of the Thread models setting.
+func catalogNames(cats []Catalog) []string {
+	var out []string
+	for _, c := range cats {
+		for _, m := range c.Models() {
 			if !slices.Contains(out, m.Name) {
 				out = append(out, m.Name)
 			}

@@ -328,6 +328,10 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		RemoteControl: r.RemoteControl, RemoteName: remoteName(r),
 		Mods: modSock != "",
 	}
+	if spec.Model == "" {
+		cfg, _ := config.Load()
+		spec = agent.WithDefaultModel(a, cfg, spec)
+	}
 	launch, err := a.Launch(spec)
 	if err != nil {
 		s.closeModLocked(r.ID)

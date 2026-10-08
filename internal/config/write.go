@@ -297,6 +297,24 @@ func Edit(data []byte, table, key string, value any) ([]byte, error) {
 	if n, ok := value.(int); ok {
 		value = int64(n)
 	}
+	if want, ok := value.([]AgentModel); ok {
+		arr, _ := v.([]map[string]any)
+		if arr == nil {
+			for _, x := range asSlice(v) {
+				m, _ := x.(map[string]any)
+				arr = append(arr, m)
+			}
+		}
+		if len(arr) != len(want) {
+			return nil, ErrForm
+		}
+		for i, x := range arr {
+			if len(x) != 2 || x["name"] != any(want[i].Name) || x["about"] != any(want[i].About) {
+				return nil, ErrForm
+			}
+		}
+		return res, nil
+	}
 	if want, ok := value.([]string); ok {
 		// A TOML array decodes as []any.
 		arr, _ := v.([]any)
@@ -314,6 +332,12 @@ func Edit(data []byte, table, key string, value any) ([]byte, error) {
 		return nil, ErrForm
 	}
 	return res, nil
+}
+
+// asSlice is a decoded TOML array, nil for another value.
+func asSlice(v any) []any {
+	a, _ := v.([]any)
+	return a
 }
 
 // Remove returns data without the line setting key in table, everything
@@ -372,6 +396,14 @@ func tomlValue(v any) (string, error) {
 		return strconv.FormatBool(v), nil
 	case int:
 		return strconv.Itoa(v), nil
+	case []AgentModel:
+		parts := make([]string, len(v))
+		for i, x := range v {
+			n, _ := tomlValue(x.Name)
+			a, _ := tomlValue(x.About)
+			parts[i] = "{ name = " + n + ", about = " + a + " }"
+		}
+		return "[" + strings.Join(parts, ", ") + "]", nil
 	case []string:
 		parts := make([]string, len(v))
 		for i, x := range v {
