@@ -579,7 +579,7 @@ func (pv *projectView) overview(m *dash, p ProjectData, w int) ([]string, int, [
 	out = append(out, field("Coordinator")+pv.coordinatorLine(m, p))
 	threads := map[string][]string{}
 	for _, t := range p.Threads {
-		a := cmp.Or(t.Agent, DefaultAgent)
+		a := cmp.Or(t.Agent, config.DefaultAgent)
 		threads[a] = append(threads[a], t.ID)
 	}
 	if len(threads) == 0 {
@@ -635,14 +635,18 @@ func lineHits(n int, at map[int]int) []int {
 func (pv *projectView) coordinatorLine(m *dash, p ProjectData) string {
 	for _, s := range m.data.Sessions {
 		if s.Role == proto.RoleCoordinator && s.Project == p.Slug {
-			line := cmp.Or(s.Agent, DefaultAgent) + styleFaint.Render(" · "+s.ID+" "+stateWord(s))
+			line := cmp.Or(s.Agent, config.DefaultAgent) + styleFaint.Render(" · "+s.ID+" "+stateWord(s))
 			if s.RemoteControl {
 				line += styleFaint.Render(" · remote control on")
 			}
 			return line
 		}
 	}
-	return config.DefaultAgent(DefaultAgent) + styleFaint.Render(" · not running; enter on the project starts it")
+	s := config.Defaults
+	if p.Safety != nil {
+		s = *p.Safety
+	}
+	return s.CoordinatorAgent + styleFaint.Render(" · not running; enter on the project starts it")
 }
 
 // taskLines are the Tasks tab's lines.

@@ -12,7 +12,6 @@ import (
 
 	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/caller"
-	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/rename"
@@ -60,9 +59,6 @@ func runProject(e *Env, args []string) error {
 		}
 		if len(pos) != 1 {
 			return usagef("%s", projectUsage)
-		}
-		if *agentName == "" {
-			*agentName = config.DefaultAgent(defaultAgent)
 		}
 		if e.Caller.IsAgent() {
 			return &project.Error{Code: "human-only", Msg: "the human opens projects"}

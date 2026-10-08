@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"slices"
@@ -160,8 +161,6 @@ const (
 // folders.
 type ServerSource struct {
 	Paths server.Paths
-	// Agent is the agent of coordinators.
-	Agent string
 	// Caller is who acts: the human, unless tm runs inside an agent.
 	Caller caller.Caller
 
@@ -320,7 +319,7 @@ func (s *ServerSource) NewProject(slug string) (string, error) {
 const coordinatorKickoff = "You are this project's coordinator. Greet the user: say in a few lines where the project stands, from your context, then ask what to do next."
 
 func (s *ServerSource) OpenProject(slug string, cols, rows int) (string, error) {
-	return OpenCoordinator(s.call, slug, config.DefaultAgent(s.Agent), cols, rows)
+	return OpenCoordinator(s.call, slug, "", cols, rows)
 }
 
 // errHumanOnly refuses a settings change from inside an agent.
@@ -541,7 +540,8 @@ func (s *ServerSource) Models() []string {
 
 // OpenCoordinator returns the id of the project's coordinator session,
 // starting one (agent, role coordinator, cwd the project folder) if none
-// runs: `tm project open` and the dashboard's project rows.
+// runs: `tm project open` and the dashboard's project rows. An empty
+// agentName is the project's coordinator_agent setting (§11.2).
 func OpenCoordinator(call func(method string, params, result any) error, slug, agentName string, cols, rows int) (string, error) {
 	p, err := project.Open(slug)
 	if err != nil {
@@ -556,7 +556,7 @@ func OpenCoordinator(call func(method string, params, result any) error, slug, a
 			return s.ID, nil
 		}
 	}
-	// The project's remote control setting; a broken config.toml shows
+	// The project's agent and remote control settings; a broken config.toml shows
 	// in the settings popup, it doesn't keep the coordinator from starting.
 	safety := config.Defaults
 	if cfg, err := config.Load(); err == nil {
@@ -564,7 +564,7 @@ func OpenCoordinator(call func(method string, params, result any) error, slug, a
 	}
 	var started proto.SessionStartResult
 	err = call(proto.MethodSessionStart, proto.SessionStartParams{
-		Agent: agentName, Role: proto.RoleCoordinator, Project: slug, Cwd: p.Dir,
+		Agent: cmp.Or(agentName, safety.CoordinatorAgent), Role: proto.RoleCoordinator, Project: slug, Cwd: p.Dir,
 		Cols: uint16(cols), Rows: uint16(rows), Kickoff: coordinatorKickoff,
 		RemoteControl: safety.CoordinatorRemoteControl}, &started)
 	if err != nil {
