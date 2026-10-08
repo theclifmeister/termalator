@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/theclifmeister/terminatr/internal/plat/fsx"
 )
 
 // Folder trust (docs/SPEC.md §8.6). Claude asks "Do you trust the files
@@ -143,23 +145,5 @@ func writeAtomic(path string, data []byte, mode fs.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(filepath.Dir(path), ".claude.json.tm-*")
-	if err != nil {
-		return err
-	}
-	tmp := f.Name()
-	_, err = f.Write(append(data, '\n'))
-	if err == nil {
-		err = f.Chmod(mode)
-	}
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	if err == nil {
-		err = os.Rename(tmp, path)
-	}
-	if err != nil {
-		os.Remove(tmp)
-	}
-	return err
+	return fsx.WriteAtomic(path, append(data, '\n'), mode)
 }

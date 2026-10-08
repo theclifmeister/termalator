@@ -270,7 +270,7 @@ func TestHeldPromptProbeGone(t *testing.T) {
 	a := goneAgent{claudeLike(t)}
 	resolved := make(chan PromptResolution, 1)
 	s := startBox(t, a, "draft", 500*time.Millisecond, resolved)
-	writeStatus(t, s.agentRT().cfg.Home, s.cmd.Process.Pid, `{"status":"idle","version":"2.1.291","messagingSocketPath":"/nowhere.sock"}`)
+	writeStatus(t, s.agentRT().cfg.Home, s.PID(), `{"status":"idle","version":"2.1.291","messagingSocketPath":"/nowhere.sock"}`)
 	eventually(t, "the probe", func() bool {
 		e, _ := s.Explain()
 		return strings.HasPrefix(e.Extra["liveness"], "gone: messaging socket")
@@ -329,7 +329,7 @@ func TestStatusFileOfGonePID(t *testing.T) {
 func TestNudgeAfterInjectedSlashCommand(t *testing.T) {
 	resolved := make(chan PromptResolution, 1)
 	s := startBox(t, claudeLike(t), "", time.Hour, resolved)
-	home, pid := s.agentRT().cfg.Home, s.cmd.Process.Pid
+	home, pid := s.agentRT().cfg.Home, s.PID()
 	writeStatus(t, home, pid, `{"status":"idle","version":"2.1.291"}`)
 	if _, err := s.Hook("UserPromptSubmit", map[string]any{"prompt": "go"}); err != nil {
 		t.Fatal(err)

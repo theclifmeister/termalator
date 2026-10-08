@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/theclifmeister/terminatr/internal/plat/shell"
 )
 
 // rig drives a tracker through the Claude manifest with a fake clock, so
@@ -371,20 +373,8 @@ func TestTrackerSessionIDAndTodos(t *testing.T) {
 	}
 }
 
-func TestUnwrapArgv(t *testing.T) {
-	for _, c := range []struct{ in, want []string }{
-		{[]string{"claude", "--resume", "x"}, []string{"claude", "--resume", "x"}},
-		{[]string{"/usr/bin/node", "--no-warnings", "/usr/lib/bin/claude", "-c"}, []string{"/usr/lib/bin/claude", "-c"}},
-		{[]string{"/bin/sh", "-c", "exec claude --model x"}, []string{"claude", "--model", "x"}},
-		{[]string{"/bin/zsh", "-l"}, []string{"/bin/zsh", "-l"}},
-		{nil, nil},
-	} {
-		got := UnwrapArgv(c.in)
-		if strings.Join(got, " ") != strings.Join(c.want, " ") {
-			t.Errorf("UnwrapArgv(%q) = %q, want %q", c.in, got, c.want)
-		}
-	}
-	if !claude(t).Identify(ProcessInfo{Argv: UnwrapArgv([]string{"node", "/opt/x/claude"})}) {
+func TestIdentifyUnwrapped(t *testing.T) {
+	if !claude(t).Identify(ProcessInfo{Argv: shell.Unwrap([]string{"node", "/opt/x/claude"})}) {
 		t.Error("claude not identified through node")
 	}
 }

@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,10 +14,10 @@ import (
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
-	"golang.org/x/term"
 
 	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/emu"
+	"github.com/theclifmeister/terminatr/internal/plat/term"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/server"
@@ -139,8 +138,7 @@ func Attach(opts Options) (res Result, err error) {
 	if opts.Log == nil {
 		opts.Log = log.New(io.Discard, "", 0)
 	}
-	fd := int(opts.In.Fd())
-	if !term.IsTerminal(fd) {
+	if !term.IsTerminal(opts.In) {
 		return res, ErrNotTTY
 	}
 	loadIcons()
@@ -148,8 +146,8 @@ func Attach(opts Options) (res Result, err error) {
 	if kerr != nil {
 		fmt.Fprintf(os.Stderr, "tm attach: %v; using %s\n", kerr, DefaultPrefixKey)
 	}
-	cols, rows, err := term.GetSize(fd)
-	if err != nil || cols <= 0 || rows <= 0 {
+	cols, rows, ok := term.Size(opts.In)
+	if !ok {
 		cols, rows = 80, 24
 	}
 	c, err := newClient(opts.Paths, opts.Log)
@@ -182,7 +180,7 @@ func Attach(opts Options) (res Result, err error) {
 		return Result{Reason: "no session to show", Detached: true}, nil
 	}
 
-	old, err := term.MakeRaw(fd)
+	unraw, err := term.MakeRaw(opts.In)
 	if err != nil {
 		return res, err
 	}
@@ -190,7 +188,7 @@ func Attach(opts Options) (res Result, err error) {
 	restore := func() {
 		restoreOnce.Do(func() {
 			opts.Out.WriteString(outerRestore)
-			term.Restore(fd, old)
+			unraw()
 		})
 	}
 	defer restore()
@@ -204,15 +202,13 @@ func Attach(opts Options) (res Result, err error) {
 		return res, err
 	}
 
-	// SIGHUP (the window closed), SIGTERM and SIGINT detach. The server
-	// lives in its own session and never sees these.
-	sigs := make(chan os.Signal, 4)
-	signal.Notify(sigs, attachSignals...)
-	defer signal.Stop(sigs)
-	go c.signals(sigs, fd)
-
+	// The window closing (on Unix SIGHUP), SIGTERM and SIGINT detach. The
+	// server lives in its own session and never sees these.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	digests, stopDigests := vc.Digests()
+	defer stopDigests()
+	go c.events(ctx, term.Events(ctx), digests, opts.In)
 	go c.viewLoop(watch)
 	stopInput := c.inputLoop(ctx, opts.In)
 	if c.statusBar || c.side != nil {
@@ -877,14 +873,36 @@ func (c *client) act(method string, p proto.ViewParams) {
 	}
 }
 
-func (c *client) signals(sigs <-chan os.Signal, fd int) {
-	for sig := range sigs {
-		switch sig {
-		case sigResize:
+// events handles the outer terminal's events and the server's digest
+// requests until ctx ends.
+func (c *client) events(ctx context.Context, evs <-chan term.Event, digests <-chan struct{}, in *os.File) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-digests:
+			// Consistency check (view.digest, e2e): the server puts its
+			// digest into the stream, readLoop compares it with the
+			// mirror's.
+			if c.lock() {
+				p := c.focus
+				c.mu.Unlock()
+				if p != nil {
+					c.send(p, proto.FrameDigestReq, nil)
+				}
+			}
+		case ev, ok := <-evs:
+			if !ok {
+				return
+			}
+			if ev.Kind == term.Detach {
+				c.finish(Result{Reason: "detached (" + ev.Why + ")", Detached: true, Quit: true})
+				continue
+			}
 			// The user really resized the window: the view takes its size
 			// and its panes follow, whoever typed last (docs/SPEC.md §3.3).
-			cols, rows, err := term.GetSize(fd)
-			if err != nil || cols <= 0 || rows <= 0 {
+			cols, rows, ok := term.Size(in)
+			if !ok {
 				continue
 			}
 			if !c.lock() {
@@ -895,18 +913,6 @@ func (c *client) signals(sigs <-chan os.Signal, fd int) {
 			c.mu.Unlock()
 			c.act(proto.MethodViewSize, proto.ViewParams{Cols: uint16(cols), Rows: uint16(rows), Resize: true})
 			c.poke()
-		case sigDigest:
-			// Consistency check: the server puts its digest into the
-			// stream, readLoop compares it with the mirror's.
-			if c.lock() {
-				p := c.focus
-				c.mu.Unlock()
-				if p != nil {
-					c.send(p, proto.FrameDigestReq, nil)
-				}
-			}
-		default:
-			c.finish(Result{Reason: "detached (" + sig.String() + ")", Detached: true, Quit: true})
 		}
 	}
 }

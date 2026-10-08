@@ -372,6 +372,9 @@ type ViewStream struct {
 	c *Client
 	// Client is this console's id in the view, for the view.* calls.
 	Client string
+	// Digest, when set before the first Next, is called for each
+	// view.digest event.
+	Digest func()
 }
 
 // SubscribeView joins a view and returns the stream and the view as it
@@ -396,8 +399,13 @@ func (s *ViewStream) Next() (view.View, error) {
 		if err := readJSONLine(s.c.br, &ev); err != nil {
 			return view.View{}, err
 		}
-		if ev.Event == proto.EventViewChanged {
+		switch ev.Event {
+		case proto.EventViewChanged:
 			return ev.View, nil
+		case proto.EventViewDigest:
+			if s.Digest != nil {
+				s.Digest()
+			}
 		}
 	}
 }

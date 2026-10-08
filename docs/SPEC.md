@@ -64,7 +64,8 @@ One binary, several roles:
 | `internal/server` | Server lifecycle, control socket, session registry, the views (§3.3), persistence of `sessions.json` and `views.json` |
 | `internal/view` | The server-owned view: its one pane, actions, geometry (`Lay`), the sidebar's layout; no I/O |
 | `internal/proto` | Wire types: handshake, requests, events, attach frames |
-| `internal/pty` | Spawning on a PTY, resize, reaping (macOS, Linux) |
+| `internal/plat/pty` | A session's process on a PTY (`Console`): resize, foreground job, stop (hangup, then kill), reaping (macOS, Linux) |
+| `internal/plat/shell` | Default interactive shell, quoting and hook command lines per shell kind, unwrapping shells and interpreters from an argv (§8.2) |
 | `internal/emu` | The only wrapper around libghostty-vt (go.mitchellh.com/libghostty) |
 | `internal/session` | One hosted process: PTY + emulator + agent + subscribers + merged state |
 | `internal/agent` | Agent interface, manifest format, registry, built-in manifests (`manifests/*.toml`) |
@@ -188,7 +189,7 @@ So that this keeps working, every server of every future protocol keeps three pr
 | sessions | `session.list`, `session.start`, `session.stop`, `session.read` (screen text), `session.prompt` (queued, pasted once the agent is idle; the answer's `via` says how it went), `session.keys`, `session.wait` (until a state), `session.remote {id, on}` (a coordinator's remote control, §11.2), `session.adopt {id, project, thread, brief}` (a plain agent session becomes a thread's, §9 **Adopt**; refused unless it is a live shell-role session with an agent), `session.watch {id}` (the session's state; the connection then streams `watch.changed`, below; a server without it answers `unknown-method`), `project.watch {project}` (a project's dashboard for the coordinator's /tm pane; the connection then streams `project.changed`, **Watch** below), `session.ask {id, question}` (a mod's open question menu; the connection then waits for its answers, **Ask** below), `session.answer {id, index, answer}` (one question of it, from `tm thread answer`; `no-question` when none is open) |
 | agents | `agent.list`, `agent.reload`, `agent.explain` (which signals and rules produced a session's state) |
 | hooks | `hook.event` (from `tm hook`; also its own connection kind, §8.2) |
-| views | `view.subscribe` (join a view; the connection then streams `view.changed`), `view.attach`, `view.dashboard`, `view.project`, `view.select`, `view.sidesel`, `view.sidebar`, `view.info`, `view.size`, `view.input` (below) |
+| views | `view.subscribe` (join a view; the connection then streams `view.changed`), `view.attach`, `view.dashboard`, `view.project`, `view.select`, `view.sidesel`, `view.sidebar`, `view.info`, `view.size`, `view.input` (below), `view.digest` (tests: a console's digest check, §16.2) |
 | callers | `caller.who` (who the peer pid is: the hosted session it descends from, and its role, §11.1) |
 | projects | `cli.run {args, cwd, stdin}`: an agent's project command (`tm task`, `thread`, `report`, `status`, `done`, `inbox`, `context`, `project`) run inside the server with the caller from the peer pid (§11.1); its answer is the command's output and exit code |
 | tools | `tool.run {name, input}` (T104): one of a thread's tools (§8.6) for `tm mcp`; the thread is the caller's, from the peer pid, and the answer is `{text, is_error}` as the mod socket's `POST /v1/tools/<name>` gives it |
@@ -1737,7 +1738,7 @@ What the harness provides (M1 built `Env`, `Window` without `Key`/`Paste`/`Wheel
   - `WaitFor`, `Quiet`, `Screen`.
 - **Several consoles.** A scenario opens several `tm` windows at once, of different sizes, to check that a view's consoles show the same thing (`TestSmokeViewsShared`: screens, the sidebar, latest-typist sizing with padding in the larger window, `--own` kept apart) and that the view survives `tm server restart` (`TestSmokeViewSurvivesRestart`).
 - **Golden screens.** `testdata/golden/*.txt` holds the plain text of the viewport, plus an optional attribute layer (later). `make e2e E2E_FLAGS=-update` rewrites them. Volatile parts (session ids, pids, durations) are masked by named regexes (`e2e.Mask`, `e2e.DefaultMasks`) and read `<name>` in the file.
-- **Consistency checks.** `AssertMirrorsServer` signals the client (`SIGUSR1`), which asks for an in-stream `DIGEST` and logs whether its mirror matches (`TERMINATR_ATTACH_LOG`): modes, the active screen, recent scrollback.
+- **Consistency checks.** `AssertMirrorsServer` calls `view.digest` with the client's pid; the server sends that console a `view.digest` event on its view stream, and the client asks for an in-stream `DIGEST` and logs whether its mirror matches (`TERMINATR_ATTACH_LOG`): modes, the active screen, recent scrollback.
 - **Artifacts on failure:** every window's last screen and raw bytes, the server log and `sessions.json` (from M3: `tm agent explain` for each session), saved under `$E2E_ARTIFACTS/<test>` and uploaded by CI.
 - **Deterministic apps.** Scenarios use small purpose-built TUIs under `internal/e2e/apps/`: a stream printer, a full-screen mouse app, an inline redraw app. Real programs such as `vim` and `htop` vary between machines.
 

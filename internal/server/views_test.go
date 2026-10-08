@@ -68,7 +68,7 @@ func mustDo(t *testing.T, vs *views, method string, p proto.ViewParams) view.Vie
 
 func join(t *testing.T, vs *views, p proto.ViewSubscribeParams) (*member, string) {
 	t.Helper()
-	m, name, _, err := vs.subscribe(p)
+	m, name, _, err := vs.subscribe(p, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -356,7 +356,7 @@ func TestViewsOwn(t *testing.T) {
 	if _, ok := vs.get(name); ok {
 		t.Fatal("the own view outlived its client")
 	}
-	if _, _, _, err := vs.subscribe(proto.ViewSubscribeParams{Own: true, Session: "gone"}); err == nil {
+	if _, _, _, err := vs.subscribe(proto.ViewSubscribeParams{Own: true, Session: "gone"}, 0); err == nil {
 		t.Fatal("subscribed showing a session that doesn't exist")
 	}
 }
@@ -493,7 +493,7 @@ func FuzzViewActions(f *testing.F) {
 		h := newFakeHost("s-1", "s-2", "s-3")
 		vs := newViews(h, "", nil)
 		vs.loadBytes(file)
-		m, _, _, err := vs.subscribe(proto.ViewSubscribeParams{Cols: 50, Rows: 12})
+		m, _, _, err := vs.subscribe(proto.ViewSubscribeParams{Cols: 50, Rows: 12}, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -522,5 +522,34 @@ func TestHasPanel(t *testing.T) {
 		if hasPanel(role) != want {
 			t.Errorf("hasPanel(%q) = %v", role, !want)
 		}
+	}
+}
+
+func TestViewsAskDigest(t *testing.T) {
+	vs := newViews(newFakeHost("s-1"), "", nil)
+	a, _, _, err := vs.subscribe(proto.ViewSubscribeParams{}, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _, _, err := vs.subscribe(proto.ViewSubscribeParams{Own: true}, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := vs.askDigest(200); n != 1 {
+		t.Fatalf("askDigest(200) = %d, want 1", n)
+	}
+	asked := func(m *member) bool {
+		select {
+		case <-m.digest:
+			return true
+		default:
+			return false
+		}
+	}
+	if asked(a) || !asked(b) {
+		t.Fatalf("asked a=%v b=%v, want only b", asked(a), asked(b))
+	}
+	if n := vs.askDigest(300); n != 0 {
+		t.Fatalf("askDigest(300) = %d, want 0", n)
 	}
 }

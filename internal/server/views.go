@@ -8,13 +8,13 @@ import (
 	"io"
 	"net"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/plat/fsx"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/session"
 	"github.com/theclifmeister/terminatr/internal/view"
@@ -71,6 +71,8 @@ type member struct {
 	cols, rows uint16
 	active     time.Time // its last input, resize or layout change
 	notify     chan struct{}
+	pid        int           // the console's process
+	digest     chan struct{} // view.digest asked for a check
 }
 
 func newViews(host viewHost, path string, logf func(string, ...any)) *views {
@@ -151,28 +153,11 @@ func (vs *views) saveLocked() {
 	sort.Slice(f.Views, func(i, j int) bool { return f.Views[i].Name < f.Views[j].Name })
 	b, err := json.MarshalIndent(f, "", "  ")
 	if err == nil {
-		err = writeAtomic(vs.path, append(b, '\n'))
+		err = fsx.WriteAtomic(vs.path, append(b, '\n'), 0o600)
 	}
 	if err != nil {
 		vs.logf("views.json: %v", err)
 	}
-}
-
-// writeAtomic writes path through a temp file and a rename.
-func writeAtomic(path string, b []byte) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+"-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.Write(b); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
 }
 
 // changedLocked publishes lv's new version: Seq goes up, the file is
@@ -194,7 +179,7 @@ func (vs *views) changedLocked(lv *liveView) {
 // subscribe joins a client to a view, creating it when needed. Joining
 // never resizes a session; a view without a latest client takes the
 // joiner's window as its size.
-func (vs *views) subscribe(p proto.ViewSubscribeParams) (*member, string, view.View, *proto.Error) {
+func (vs *views) subscribe(p proto.ViewSubscribeParams, pid int) (*member, string, view.View, *proto.Error) {
 	cols, rows := p.Cols, p.Rows
 	if cols == 0 || rows == 0 {
 		cols, rows = 80, 24
@@ -225,7 +210,8 @@ func (vs *views) subscribe(p proto.ViewSubscribeParams) (*member, string, view.V
 		vs.byName[name] = lv
 	}
 	vs.nextClient++
-	m := &member{id: fmt.Sprintf("c-%d", vs.nextClient), cols: cols, rows: rows, notify: make(chan struct{}, 1)}
+	m := &member{id: fmt.Sprintf("c-%d", vs.nextClient), cols: cols, rows: rows, notify: make(chan struct{}, 1),
+		pid: pid, digest: make(chan struct{}, 1)}
 	lv.members[m.id] = m
 	if lv.members[lv.v.Latest] == nil {
 		vs.makeLatest(lv, m)
@@ -270,6 +256,27 @@ func (vs *views) leave(name string, m *member) {
 		vs.makeLatest(lv, next)
 	}
 	vs.changedLocked(lv)
+}
+
+// askDigest asks every member of process pid for a digest check
+// (view.digest) and says how many there were.
+func (vs *views) askDigest(pid int) int {
+	vs.mu.Lock()
+	defer vs.mu.Unlock()
+	n := 0
+	for _, lv := range vs.byName {
+		for _, m := range lv.members {
+			if m.pid != pid {
+				continue
+			}
+			n++
+			select {
+			case m.digest <- struct{}{}:
+			default:
+			}
+		}
+	}
+	return n
 }
 
 // get is the view's current version.
@@ -484,7 +491,7 @@ func (s *Server) resizePane(id string, cols, rows uint16) {
 // serveViewStream answers view.subscribe and then streams the view: a
 // view.changed line for every new version, until the client hangs up,
 // which leaves the view.
-func (s *Server) serveViewStream(c net.Conn, br *bufio.Reader, req proto.Request) {
+func (s *Server) serveViewStream(c net.Conn, br *bufio.Reader, req proto.Request, pid int) {
 	var p proto.ViewSubscribeParams
 	resp := proto.Response{ID: req.ID}
 	var m *member
@@ -493,7 +500,7 @@ func (s *Server) serveViewStream(c net.Conn, br *bufio.Reader, req proto.Request
 		resp.Error = perr
 	} else {
 		var v view.View
-		m, name, v, perr = s.views.subscribe(p)
+		m, name, v, perr = s.views.subscribe(p, pid)
 		if perr != nil {
 			resp.Error = perr
 		} else {
@@ -518,6 +525,11 @@ func (s *Server) serveViewStream(c net.Conn, br *bufio.Reader, req proto.Request
 		select {
 		case <-gone:
 			return
+		case <-m.digest:
+			if err := writeJSONLine(c, proto.ViewEvent{Event: proto.EventViewDigest}); err != nil {
+				return
+			}
+			continue
 		case <-m.notify:
 		}
 		v, ok := s.views.get(name)

@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/theclifmeister/terminatr/internal/plat/fsx"
 )
 
 // Stray is a loaded launchd job named like the server's that no server
@@ -104,11 +106,8 @@ func exists(p string) bool {
 }
 
 func inTemp(p string) bool {
-	p = filepath.Clean(p)
-	roots := []string{os.TempDir(), "/tmp", "/private/tmp", "/var/folders", "/private/var/folders"}
-	for _, r := range roots {
-		r = filepath.Clean(r)
-		if strings.HasPrefix(p, r+string(filepath.Separator)) {
+	for _, r := range fsx.TempRoots() {
+		if rel, ok := fsx.Rel(r, p); ok && rel != "." {
 			return true
 		}
 	}

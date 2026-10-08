@@ -17,7 +17,7 @@ import (
 
 	"github.com/theclifmeister/terminatr/internal/codehost"
 	"github.com/theclifmeister/terminatr/internal/config"
-	"github.com/theclifmeister/terminatr/internal/mdfile"
+	"github.com/theclifmeister/terminatr/internal/plat/fsx"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/thread"
@@ -311,7 +311,7 @@ func (t *Ticker) save() {
 		err = os.MkdirAll(filepath.Dir(t.o.State), 0o700)
 	}
 	if err == nil {
-		err = mdfile.WriteAtomic(t.o.State, append(b, '\n'), 0o600)
+		err = fsx.WriteAtomic(t.o.State, append(b, '\n'), 0o600)
 	}
 	if err != nil {
 		t.o.Log.Printf("ticker: %v", err)

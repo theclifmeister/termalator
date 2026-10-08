@@ -17,6 +17,7 @@ import (
 
 	"github.com/theclifmeister/terminatr/internal/caller"
 	"github.com/theclifmeister/terminatr/internal/mdfile"
+	"github.com/theclifmeister/terminatr/internal/plat/fsx"
 	"github.com/theclifmeister/terminatr/internal/project"
 )
 
@@ -261,6 +262,9 @@ func RemoveLibrary(p *project.Project, c caller.Caller, id, name string) (int, e
 	return len(gone), nil
 }
 
+// errNoneGone keeps an archive that removeArchived would not change.
+var errNoneGone = errors.New("no library file to remove")
+
 // removeArchived rewrites thread id's tarball without the library file
 // name (every one when ""), returning the names it dropped. The new
 // tarball replaces the old atomically, under the lock Archive takes.
@@ -278,45 +282,38 @@ func removeArchived(p *project.Project, id, name string) ([]string, error) {
 	}
 	defer unlock()
 	var gone []string
-	tmp, err := os.CreateTemp(ArchiveDir(p), "."+id+"-*.tmp")
-	if err != nil {
-		return nil, err
-	}
-	defer os.Remove(tmp.Name())
-	zw := gzip.NewWriter(tmp)
-	tw := tar.NewWriter(zw)
-	err = walkArchive(ap, func(h *tar.Header, r io.Reader) error {
-		if n, ok := libraryName(id, h); ok && (name == "" || n == name) {
-			gone = append(gone, n)
-			return nil
-		}
-		if err := tw.WriteHeader(h); err != nil {
+	err = fsx.Stream(ap, 0o644, func(w io.Writer) error {
+		zw := gzip.NewWriter(w)
+		tw := tar.NewWriter(zw)
+		err := walkArchive(ap, func(h *tar.Header, r io.Reader) error {
+			if n, ok := libraryName(id, h); ok && (name == "" || n == name) {
+				gone = append(gone, n)
+				return nil
+			}
+			if err := tw.WriteHeader(h); err != nil {
+				return err
+			}
+			_, err := io.Copy(tw, r)
 			return err
+		})
+		if err == nil {
+			err = tw.Close()
 		}
-		_, err := io.Copy(tw, r)
-		return err
+		if err == nil {
+			err = zw.Close()
+		}
+		if err != nil {
+			return fmt.Errorf("%s: %w", ap, err)
+		}
+		if len(gone) == 0 {
+			return errNoneGone
+		}
+		return nil
 	})
-	if err == nil {
-		err = tw.Close()
-	}
-	if err == nil {
-		err = zw.Close()
-	}
-	if err == nil {
-		err = tmp.Close()
-	} else {
-		tmp.Close()
-	}
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", ap, err)
-	}
-	if len(gone) == 0 {
+	if errors.Is(err, errNoneGone) {
 		return nil, nil
 	}
-	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
-		return nil, err
-	}
-	if err := os.Rename(tmp.Name(), ap); err != nil {
+	if err != nil {
 		return nil, err
 	}
 	archiveLibCache.Delete(ap)
