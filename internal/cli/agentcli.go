@@ -137,9 +137,9 @@ func agentCheck(e *Env, args []string) int {
 		// errors show up now rather than at launch.
 		_, err = agent.FromManifest(m).Launch(agent.LaunchSpec{
 			Role: agent.RoleThread, SessionID: "s-0", AgentSID: "00000000-0000-4000-8000-000000000000",
-			Cwd: "/tmp", RuntimeDir: "/tmp/rt", BriefPath: "/tmp/brief.md", Kickoff: "hello",
+			Cwd: "/tmp/wt", RepoRoot: "/tmp/repo", GitDir: "/tmp/repo/.git/worktrees/wt", RuntimeDir: "/tmp/rt", BriefPath: "/tmp/brief.md", Kickoff: "hello",
 			TMBin: "/usr/local/bin/tm", Socket: "/tmp/tm.sock",
-			Access: agent.Access{Read: []string{"/p"}, NoWrite: []string{"/p"}},
+			Access: agent.Access{Read: []string{"/p"}, NoWrite: []string{"/p"}, Write: []string{"/tmp/repo/.git", "/tmp/repo/.git/worktrees/wt"}},
 		})
 	}
 	if err != nil {
