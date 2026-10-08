@@ -24,6 +24,7 @@ import (
 	"github.com/theclifmeister/terminatr/internal/codehost"
 	"github.com/theclifmeister/terminatr/internal/emu"
 	"github.com/theclifmeister/terminatr/internal/keychain"
+	"github.com/theclifmeister/terminatr/internal/plat/ipc"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/session"
@@ -186,14 +187,9 @@ func Run(ctx context.Context, opts Options) error {
 
 	// We hold the lock, so any socket file left here is stale.
 	os.Remove(p.Socket)
-	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: p.Socket, Net: "unix"})
+	ln, err := ipc.Listen(ipc.Addr(p.Socket))
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", p.Socket, err)
-	}
-	ln.SetUnlinkOnClose(false)
-	if err := os.Chmod(p.Socket, 0o600); err != nil {
-		ln.Close()
-		return err
 	}
 	if err := os.WriteFile(p.PID, []byte(strconv.Itoa(os.Getpid())+"\n"), 0o600); err != nil {
 		ln.Close()
@@ -241,7 +237,7 @@ func Run(ctx context.Context, opts Options) error {
 	go func() {
 		defer close(acceptDone)
 		for {
-			c, err := ln.AcceptUnix()
+			c, err := ln.Accept()
 			if err != nil {
 				return
 			}
@@ -389,15 +385,16 @@ func (s *Server) shutdown() {
 
 // handle runs one connection: peer check, handshake, then control or
 // attach.
-func (s *Server) handle(c *net.UnixConn) {
+func (s *Server) handle(c net.Conn) {
 	defer c.Close()
-	uid, pid, err := peerCred(c)
+	peer, err := ipc.PeerOf(c)
 	if err != nil {
 		s.log.Printf("peer credentials: %v", err)
 		return
 	}
-	if uid != os.Getuid() {
-		s.log.Printf("rejected connection from uid %d (pid %d)", uid, pid)
+	pid := peer.PID
+	if !peer.SameUser {
+		s.log.Printf("rejected connection from another user (pid %d)", pid)
 		return
 	}
 	s.mu.Lock()

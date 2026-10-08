@@ -30,7 +30,6 @@ const goos = "runtime.GOOS"
 // into internal/plat and deletes their entries; the list ends empty. Never
 // add to it: put the new OS code in internal/plat instead.
 var allowed = map[string][]string{
-	"internal/agent/claude/claude.go":         {"syscall"},
 	"internal/cli/attach.go":                  {"syscall"},
 	"internal/cli/doctor.go":                  {goos},
 	"internal/cli/server.go":                  {"syscall", goos},
@@ -59,8 +58,6 @@ var allowed = map[string][]string{
 	"internal/server/clone_darwin.go":         {"golang.org/x/sys/unix"},
 	"internal/server/daemon_other.go":         {"syscall"},
 	"internal/server/daemon_unix.go":          {"syscall", "golang.org/x/sys/unix"},
-	"internal/server/peer_darwin.go":          {"golang.org/x/sys/unix"},
-	"internal/server/peer_linux.go":           {"golang.org/x/sys/unix"},
 	"internal/server/resolve.go":              {goos},
 	"internal/server/server.go":               {goos},
 	"internal/server/stop.go":                 {"syscall"},

@@ -4,11 +4,9 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"path/filepath"
-)
 
-// maxSocketPath keeps a margin under the sun_path limit (104 bytes on
-// macOS, 108 on Linux, both including the trailing NUL).
-const maxSocketPath = 100
+	"github.com/theclifmeister/terminatr/internal/plat/ipc"
+)
 
 // Env is the part of the environment the paths depend on.
 type Env struct {
@@ -30,7 +28,7 @@ func RunDir(e Env) string {
 	if e.XDGRuntimeDir != "" {
 		dir = filepath.Join(e.XDGRuntimeDir, "terminatr")
 	}
-	if len(dir)+len("/tm.sock") > maxSocketPath {
+	if !ipc.Fits(dir, ipc.ServerName) {
 		h := sha256.Sum256([]byte(resolve(e.TerminatrHome)))
 		dir = fmt.Sprintf("/tmp/terminatr-%d-%x", e.UID, h[:4])
 	}
@@ -57,12 +55,6 @@ func resolve(path string) string {
 
 // SocketPath returns the server's socket path.
 func SocketPath(e Env) (string, error) {
-	p := e.TerminatrSocket
-	if p == "" {
-		p = filepath.Join(RunDir(e), "tm.sock")
-	}
-	if len(p) > maxSocketPath {
-		return "", fmt.Errorf("socket path %q is %d bytes; unix sockets allow at most %d here", p, len(p), maxSocketPath)
-	}
-	return p, nil
+	a, err := ipc.ServerAddr(RunDir(e), e.TerminatrSocket)
+	return string(a), err
 }

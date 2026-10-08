@@ -2,13 +2,14 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"io"
-	"net"
 	"os"
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/plat/ipc"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/server"
 	"github.com/theclifmeister/terminatr/internal/version"
@@ -105,7 +106,9 @@ func runHook(e *Env, args []string) error {
 // protocol mismatch) is silent and returns "".
 func sendHook(socket string, p proto.HookEventParams, total time.Duration) string {
 	deadline := time.Now().Add(total)
-	c, err := net.DialTimeout("unix", socket, hookDial)
+	ctx, cancel := context.WithTimeout(context.Background(), hookDial)
+	c, err := ipc.Dial(ctx, ipc.Addr(socket))
+	cancel()
 	if err != nil {
 		return ""
 	}

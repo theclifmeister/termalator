@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/theclifmeister/terminatr/internal/plat/ipc"
 )
 
 func TestSocketPath(t *testing.T) {
@@ -47,8 +49,8 @@ func TestSocketPathLongHomes(t *testing.T) {
 	if again, _ := SocketPath(Env{TerminatrHome: long("a") + "/", UID: 501}); again != a {
 		t.Fatalf("the same home gives %s and %s", a, again)
 	}
-	if len(a) > maxSocketPath {
-		t.Fatalf("%s is over %d bytes", a, maxSocketPath)
+	if len(a) > ipc.MaxPath {
+		t.Fatalf("%s is over %d bytes", a, ipc.MaxPath)
 	}
 	// An XDG run dir that is too long falls back per home too.
 	x, _ := SocketPath(Env{TerminatrHome: "/home/me/.terminatr", XDGRuntimeDir: "/run/" + strings.Repeat("r", 100), UID: 1000})
