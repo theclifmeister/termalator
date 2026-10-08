@@ -29,6 +29,10 @@ export type Rules = {
   // The agent's tools the guard judges, by name (its manifest's
   // [guard.tools]); a tool not listed is not judged.
   tools?: Readonly<Record<string, Tool>>
+  // The file system ignores case in names (macOS, Windows; plat/caps),
+  // so paths are compared with case folded and ~/.Terminatr/worktrees
+  // is the worktrees folder.
+  caseFold?: boolean
 }
 
 // What the guard knows of a tool: its kind (shell, write, patch, read,
@@ -59,7 +63,7 @@ export function judge(r: Rules, tool: string, input: Record<string, unknown>): D
   if (!t) return null
   const has = (id: string) => r.rules!.includes(id)
   const values = (t.fields ?? []).map(f => input[f]).filter((v): v is string => typeof v === 'string' && v !== '')
-  const writable = (p: string) => (r.writable ?? []).some(w => under(abs(r, p), w))
+  const writable = (p: string) => (r.writable ?? []).some(w => under(r, abs(r, p), w))
   switch (t.kind) {
     case 'shell':
       for (const c of values) {
@@ -496,7 +500,16 @@ export function abs(r: Rules, p: string): string {
   return '/' + parts.join('/')
 }
 
-function under(p: string, root: string): boolean {
+// fold is p as paths are compared: case folded where the file system
+// ignores case.
+function fold(r: Rules, p: string): string {
+  return r.caseFold ? p.toLowerCase() : p
+}
+
+// under: p is root or inside it, by the file system's idea of case.
+function under(r: Rules, p: string, root: string): boolean {
+  p = fold(r, p)
+  root = fold(r, root)
   return root !== '' && (p === root || p.startsWith(root.endsWith('/') ? root : root + '/'))
 }
 
@@ -504,18 +517,19 @@ function under(p: string, root: string): boolean {
 // part before its first wildcard.
 function isSecret(r: Rules, p: string): boolean {
   const fixed = p.replace(/[*?[{].*$/, '').replace(/\/$/, '') || '/'
-  return (r.secrets ?? []).some(s => under(fixed, s) || (fixed !== p && under(s, fixed) && fixed !== '/' && fixed !== r.home))
+  return (r.secrets ?? []).some(s => under(r, fixed, s) || (fixed !== p && under(r, s, fixed) && fixed !== '/' && fold(r, fixed) !== fold(r, r.home ?? '')))
 }
 
 // isWorktreeRoot: removing p takes a worktree with it: the thread's own,
 // tm's worktrees folder, a project's folder in it or a worktree in that.
 function isWorktreeRoot(r: Rules, p: string): boolean {
   const own = r.role === 'thread' ? r.writable?.[0] : undefined
-  if (own && under(own, p)) return true
-  const wt = r.worktrees
-  if (!wt) return false
-  if (under(wt, p)) return true
-  if (!under(p, wt)) return false
+  if (own && under(r, own, p)) return true
+  if (!r.worktrees) return false
+  const wt = fold(r, r.worktrees)
+  p = fold(r, p)
+  if (under(r, wt, p)) return true
+  if (!under(r, p, wt)) return false
   return p.slice(wt.length + 1).split('/').length <= 2
 }
 
