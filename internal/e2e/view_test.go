@@ -202,3 +202,28 @@ func TestSmokeFirstViewFills(t *testing.T) {
 		w.WaitExit(wait)
 	}
 }
+
+// TestViewConsoleSurvivesRestart: a console on the dashboard keeps
+// working across a server restart: its next key press, made before it
+// has joined the new server's view, rejoins and goes through, with no
+// "no view client" error in the status bar.
+func TestViewConsoleSurvivesRestart(t *testing.T) {
+	env := New(t)
+	slug, _ := newProject(env, "alpha")
+	env.MustCLI("task", "add", "One", "--status", "ready", "--project", slug)
+	w := env.Window(120, 30)
+	w.WaitFor(" ■ "+slug, wait)
+
+	env.MustCLI("server", "restart", "--yes")
+	// At once, so the call reaches the new server under the old id.
+	w.Key(keyDown)
+	w.Key(keyDown)
+	w.Key(keyUp)
+	time.Sleep(2 * time.Second) // a rejoin and the retry take a moment
+	if sc := w.Screen(); strings.Contains(sc, "no view client") || strings.Contains(sc, "bad-params") {
+		t.Fatalf("an error shows after the restart:\n%s", sc)
+	}
+	w.WaitFor("SESSIONS", wait)
+	w.Quit()
+	w.WaitExit(wait)
+}

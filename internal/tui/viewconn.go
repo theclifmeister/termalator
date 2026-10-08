@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -76,6 +77,10 @@ func (vc *ViewConn) run(st *server.ViewStream) {
 				return
 			}
 			params := vc.params
+			if params.Own && vc.v.Mode == view.ModeLayout {
+				// An own view is gone with the server: show its pane again.
+				params.Session = vc.v.Focus
+			}
 			vc.mu.Unlock()
 			s, v, err := server.SubscribeView(vc.paths, params)
 			if err != nil {
@@ -165,7 +170,8 @@ func (vc *ViewConn) Watch() (ch <-chan struct{}, stop func()) {
 // console takes at once: it never waits for its own change to come back.
 func (vc *ViewConn) Do(method string, p proto.ViewParams) (view.View, error) {
 	vc.mu.Lock()
-	p.Client = vc.client
+	client := vc.client
+	p.Client = client
 	if !vc.up {
 		vc.mu.Unlock()
 		return vc.View(), ErrViewDown
@@ -175,12 +181,61 @@ func (vc *ViewConn) Do(method string, p proto.ViewParams) (view.View, error) {
 		vc.params.Cols, vc.params.Rows = p.Cols, p.Rows
 	}
 	vc.mu.Unlock()
+	v, err := vc.call(method, p)
+	if isNoViewClient(err) {
+		// The server restarted and this console is not yet back in its
+		// view: wait for the rejoin, then try once with the new id.
+		if client = vc.waitRejoin(client, viewRejoinWait); client != "" {
+			p.Client = client
+			v, err = vc.call(method, p)
+		}
+	}
+	if err != nil {
+		return vc.View(), err
+	}
+	vc.set(v)
+	return vc.View(), nil
+}
+
+// isNoViewClient says whether err is the server not knowing the client.
+func isNoViewClient(err error) bool {
+	var perr *proto.Error
+	return errors.As(err, &perr) && perr.Code == proto.ErrBadParams &&
+		strings.HasPrefix(perr.Message, "no view client")
+}
+
+// viewRejoinWait is how long a call waits for the console to join the
+// view again after the server forgot it.
+const viewRejoinWait = 10 * time.Second
+
+// waitRejoin waits up to d for the console to be joined with an id other
+// than old, and returns it, or "" when it did not happen or the
+// connection was closed.
+func (vc *ViewConn) waitRejoin(old string, d time.Duration) string {
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		vc.mu.Lock()
+		client, up, closed := vc.client, vc.up, vc.closed
+		vc.mu.Unlock()
+		if closed {
+			return ""
+		}
+		if up && client != old {
+			return client
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return ""
+}
+
+// call makes one call on the call connection.
+func (vc *ViewConn) call(method string, p proto.ViewParams) (view.View, error) {
 	vc.callMu.Lock()
 	defer vc.callMu.Unlock()
 	if vc.ctl == nil {
 		c, err := server.Connect(vc.paths, false)
 		if err != nil {
-			return vc.View(), err
+			return view.View{}, err
 		}
 		vc.ctl = c
 	}
@@ -191,10 +246,9 @@ func (vc *ViewConn) Do(method string, p proto.ViewParams) (view.View, error) {
 			vc.ctl.Close()
 			vc.ctl = nil
 		}
-		return vc.View(), err
+		return view.View{}, err
 	}
-	vc.set(v)
-	return vc.View(), nil
+	return v, nil
 }
 
 // dropCtl closes the call connection, after the server changed.
