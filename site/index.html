@@ -45,7 +45,7 @@
     <a class="btn primary" href="#install">Install with Homebrew</a>
     <a class="btn" href="https://github.com/theclifmeister/terminatr">Source on GitHub</a>
   </div>
-  <p class="meta">macOS 13+ · Linux · one binary, <code>tm</code> · MIT · Claude Code today, other agents by manifest</p>
+  <p class="meta">macOS 13+ · Linux · one binary, <code>tm</code> · MIT · Claude Code only for now, more agents to follow</p>
 
   <figure class="term hero-term">
     <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span>~ — tm</span></div>
@@ -118,8 +118,12 @@
       <p>One Go binary. macOS builds are signed with a Developer ID and notarised. Install from the Homebrew tap; <code>tm update</code> upgrades it and <code>tm doctor</code> checks the setup.</p>
     </li>
     <li>
+      <h3><span class="glyph" aria-hidden="true">◈</span> Built on Claude Code mods</h3>
+      <p>tm loads its own <strong>mod</strong> (Claude Code's plugin hooks, early access, Claude Code 2.1.289 or newer) to set and read state: whether a session is working or blocked, its context use, open questions and approvals, and the guard. No screen-scraping; a few screen rules only cross-check.</p>
+    </li>
+    <li>
       <h3><span class="glyph" aria-hidden="true">⚙</span> Agents as data</h3>
-      <p>Claude Code is the reference agent, with live state, todos, resume and a mod that shows the task in its pane. Other agents plug in through a TOML manifest that says how to launch and resume them and read their state.</p>
+      <p>Claude Code today, more agents next: Codex and pi will follow. Agents plug in through a TOML manifest that says how to launch and resume them and read their state, so adding one is data, not a rewrite.</p>
     </li>
   </ul>
 </section>
