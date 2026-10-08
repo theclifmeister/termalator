@@ -6,8 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/theclifmeister/terminatr/internal/guard"
 )
 
 func claude(t *testing.T) Agent {
@@ -163,7 +166,7 @@ func contains(list []string, s string) bool {
 // states returns the state signals of an event as "state/reason" strings.
 func states(t *testing.T, a Agent, event string, payload map[string]any) []string {
 	t.Helper()
-	sigs, _, err := a.Hook(HookEvent{Event: event, Payload: payload}, nil)
+	sigs, _, err := a.Hook(HookEvent{Event: event, Payload: payload}, HookEnv{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,13 +205,13 @@ func TestClaudeHookStates(t *testing.T) {
 
 func TestClaudeSessionIDAndCounters(t *testing.T) {
 	a := claude(t)
-	sigs, _, _ := a.Hook(HookEvent{Event: "UserPromptSubmit", Payload: map[string]any{"session_id": "new-after-clear"}}, nil)
+	sigs, _, _ := a.Hook(HookEvent{Event: "UserPromptSubmit", Payload: map[string]any{"session_id": "new-after-clear"}}, HookEnv{})
 	if len(sigs) == 0 || sigs[0].AgentSID != "new-after-clear" {
 		t.Fatalf("session id must be read from every event, got %+v", sigs)
 	}
 
 	counter := func(event string, payload map[string]any) string {
-		sigs, _, _ := a.Hook(HookEvent{Event: event, Payload: payload}, nil)
+		sigs, _, _ := a.Hook(HookEvent{Event: event, Payload: payload}, HookEnv{})
 		for _, s := range sigs {
 			if s.Counter != "" {
 				return s.Counter + ":" + s.CounterKey
@@ -230,7 +233,7 @@ func TestClaudeSessionIDAndCounters(t *testing.T) {
 func TestClaudeContextResponse(t *testing.T) {
 	a := claude(t)
 	_, res, err := a.Hook(HookEvent{Event: "SessionStart", Payload: map[string]any{"session_id": "x", "source": "clear"}},
-		func() ([]byte, error) { return []byte("# Context\n\"quoted\""), nil })
+		HookEnv{Context: func() ([]byte, error) { return []byte("# Context\n\"quoted\""), nil }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,10 +248,54 @@ func TestClaudeContextResponse(t *testing.T) {
 	}
 }
 
+// TestClaudeGuardResponse: without the mod, PreToolUse answers the
+// guard's refusal as a deny, judged once; an allowed call gets no output.
+func TestClaudeGuardResponse(t *testing.T) {
+	a := claude(t)
+	var calls []string
+	env := HookEnv{Guard: func(tool string, input map[string]any) *guard.Denial {
+		calls = append(calls, tool+" "+input["command"].(string))
+		if input["command"] == "gh pr merge 1" {
+			return &guard.Denial{Rule: "merge", Message: `terminatr guard (merge): "no"`, Summary: "gh pr merge"}
+		}
+		return nil
+	}}
+	call := func(cmd string) []byte {
+		_, res, err := a.Hook(HookEvent{Event: "PreToolUse", Payload: map[string]any{
+			"session_id": "x", "tool_name": "Bash", "tool_input": map[string]any{"command": cmd}}}, env)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res.Stdout
+	}
+	var out struct {
+		HookSpecificOutput struct {
+			HookEventName, PermissionDecision, PermissionDecisionReason string
+		} `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal(call("gh pr merge 1"), &out); err != nil {
+		t.Fatal(err)
+	}
+	if h := out.HookSpecificOutput; h.HookEventName != "PreToolUse" || h.PermissionDecision != "deny" || h.PermissionDecisionReason != `terminatr guard (merge): "no"` {
+		t.Errorf("deny = %+v", h)
+	}
+	if got := call("gh pr view 1"); len(got) != 0 {
+		t.Errorf("allowed call answered %q", got)
+	}
+	if want := []string{"Bash gh pr merge 1", "Bash gh pr view 1"}; !slices.Equal(calls, want) {
+		t.Errorf("judged %q, want %q", calls, want)
+	}
+	// Without a guard (the mod judges), nothing is answered.
+	_, res, _ := a.Hook(HookEvent{Event: "PreToolUse", Payload: map[string]any{"tool_name": "Bash", "tool_input": map[string]any{"command": "gh pr merge 1"}}}, HookEnv{})
+	if len(res.Stdout) != 0 {
+		t.Errorf("no guard answered %q", res.Stdout)
+	}
+}
+
 // todo applies one hook event to list and returns the result.
 func todo(t *testing.T, a Agent, list []Todo, event string, payload map[string]any) []Todo {
 	t.Helper()
-	sigs, _, err := a.Hook(HookEvent{Event: event, Payload: payload}, nil)
+	sigs, _, err := a.Hook(HookEvent{Event: event, Payload: payload}, HookEnv{})
 	if err != nil {
 		t.Fatal(err)
 	}

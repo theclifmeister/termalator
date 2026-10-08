@@ -126,11 +126,25 @@ func setSafety(table, key string, value any) error {
 	if n, ok := value.(int); slices.Contains(ArchiveKeys, key) && (!ok || n < 1 || n > MaxArchiveDays) {
 		return fmt.Errorf("archive days must be 1 to %d", MaxArchiveDays)
 	}
+	if v, ok := value.(string); (key == "thread_agent" || key == "coordinator_agent") && (!ok || CheckAgent(v) != nil) {
+		return fmt.Errorf("the agent %w", CheckAgent(v))
+	}
 	if v, ok := value.([]string); key == "models" && (!ok || CheckModels(v) != nil) {
 		if ok {
 			return fmt.Errorf("models %w", CheckModels(v))
 		}
 		return errors.New("models must be a list of names")
+	}
+	if key == "coordinator_agent" && table == DefaultsTable {
+		// [defaults] coordinator_agent replaces the older top-level
+		// default_agent: it goes in the same write.
+		return edit(func(data []byte) ([]byte, error) {
+			out, err := Edit(data, table, key, value)
+			if err != nil {
+				return nil, err
+			}
+			return Remove(out, "", "default_agent"), nil
+		})
 	}
 	if key == "auto_close" {
 		// auto_close replaces the older auto_resolve: its line goes in the
@@ -158,7 +172,7 @@ func validKey(key string) bool {
 
 // ProjectKeys are the settings of a [projects.<slug>] table; all but
 // ProjectOnly are also those of [defaults].
-var ProjectKeys = []string{"start_threads", "yolo", "coordinator_approves", "parallel_threads", "auto_close", "auto_close_days", "auto_resolve", "pr_followup", "pr_poll_seconds", "complete_tasks", "coordinator_remote_control", "auto_clear", "coordinator_merges", "fast_forward_checkout", "models", "paused", "archived",
+var ProjectKeys = []string{"start_threads", "yolo", "coordinator_approves", "parallel_threads", "auto_close", "auto_close_days", "auto_resolve", "pr_followup", "pr_poll_seconds", "complete_tasks", "coordinator_remote_control", "auto_clear", "coordinator_merges", "fast_forward_checkout", "thread_agent", "coordinator_agent", "models", "paused", "archived",
 	"archive_tasks_days", "archive_threads_days", "archive_inbox_days", "archive_journal_days"}
 
 // ProjectOnly are a project's own state, never all projects': a paused

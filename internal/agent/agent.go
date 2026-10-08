@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 	"time"
+
+	"github.com/theclifmeister/terminatr/internal/guard"
 )
 
 // State is the harness-neutral state of an agent session.
@@ -174,6 +176,18 @@ type HookResult struct {
 	Stdout []byte
 }
 
+// HookEnv is what the core gives a hook's response, on demand, so agents
+// never build it themselves. Either may be nil.
+type HookEnv struct {
+	// Context renders `tm context` (coordinator) or the brief pointer
+	// (thread).
+	Context func() ([]byte, error)
+	// Guard judges a tool call against the session's guard rules
+	// (docs/SPEC.md §8.6, Guard) and records a refusal: the refusal, or
+	// nil.
+	Guard func(tool string, input map[string]any) *guard.Denial
+}
+
 // Injector says how follow-up prompts reach a running session.
 type Injector string
 
@@ -216,10 +230,9 @@ type Agent interface {
 	Launch(spec LaunchSpec) (Launch, error)
 
 	// Hook maps one structured event to zero or more signals, and to the
-	// output the harness expects back (context re-injection goes here).
-	// ctxFn renders `tm context` (coordinator) or the brief pointer
-	// (thread) on demand, so agents never build context themselves.
-	Hook(ev HookEvent, ctxFn func() ([]byte, error)) ([]Signal, HookResult, error)
+	// output the harness expects back (context re-injection and guard
+	// refusals go here), drawing on what env gives.
+	Hook(ev HookEvent, env HookEnv) ([]Signal, HookResult, error)
 
 	// Rules returns the screen rules that cross-check hook state. The
 	// core's rule engine (package detect) evaluates them; agents never

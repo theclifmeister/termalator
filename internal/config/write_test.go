@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -113,16 +114,57 @@ func TestSetProject(t *testing.T) {
 	}
 }
 
-func TestDefaultAgent(t *testing.T) {
+// agents are slug's thread_agent and coordinator_agent.
+func agents(t *testing.T, slug string) (thread, coordinator string) {
+	t.Helper()
+	c, _ := Load()
+	s, _ := c.Safety(slug)
+	return s.ThreadAgent, s.CoordinatorAgent
+}
+
+// TestAgents: thread_agent and coordinator_agent are claude unless set;
+// a project's own wins over [defaults], which wins over the older
+// top-level default_agent (coordinators only), and saving [defaults]
+// coordinator_agent drops that line; a name must be one word.
+func TestAgents(t *testing.T) {
 	write(t, "")
-	if got := DefaultAgent("claude"); got != "claude" {
-		t.Fatalf("unset: %q", got)
+	if th, co := agents(t, "demo"); th != "claude" || co != "claude" {
+		t.Fatalf("unset: %q %q", th, co)
 	}
-	if err := Set("", "default_agent", "pi"); err != nil {
+	write(t, "default_agent = \"pi\"\n# mine\n[projects.demo]\nthread_agent = \"codex\"\n")
+	if th, co := agents(t, "demo"); th != "codex" || co != "pi" {
+		t.Fatalf("project and default_agent: %q %q", th, co)
+	}
+	if th, co := agents(t, "other"); th != "claude" || co != "pi" {
+		t.Fatalf("other project: %q %q", th, co)
+	}
+	if err := SetDefaults("coordinator_agent", "codex"); err != nil {
 		t.Fatal(err)
 	}
-	if got := DefaultAgent("claude"); got != "pi" {
-		t.Fatalf("set: %q", got)
+	if err := SetProject("demo", "coordinator_agent", "claude"); err != nil {
+		t.Fatal(err)
+	}
+	path, _ := Path()
+	data, _ := os.ReadFile(path)
+	if want := "# mine\n[projects.demo]\nthread_agent = \"codex\"\ncoordinator_agent = \"claude\"\n\n[defaults]\ncoordinator_agent = \"codex\"\n"; string(data) != want {
+		t.Fatalf("file:\n%s", data)
+	}
+	if _, co := agents(t, "other"); co != "codex" {
+		t.Fatalf("all projects' coordinator agent: %q", co)
+	}
+	if _, co := agents(t, "demo"); co != "claude" {
+		t.Fatalf("demo's own coordinator agent: %q", co)
+	}
+	c, _ := Load()
+	if own := c.Own("demo"); !slices.Equal(own, []string{"thread_agent", "coordinator_agent"}) {
+		t.Fatalf("own: %v", own)
+	}
+	if err := SetProject("demo", "thread_agent", "two words"); err == nil {
+		t.Fatal("two words saved")
+	}
+	write(t, "[defaults]\nthread_agent = \"\"\n")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "defaults.thread_agent") {
+		t.Fatalf("empty name: %v", err)
 	}
 }
 

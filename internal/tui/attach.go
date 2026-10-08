@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -98,15 +97,10 @@ type SidebarOptions struct {
 	// UIFile is ui.json, where its width is kept as the default of new
 	// views; empty keeps it nowhere.
 	UIFile string
-	// Agent runs the coordinator a click starts; empty is DefaultAgent.
-	Agent string
 	// Focus starts the attach with the keyboard in the sidebar: it had it
 	// on the dashboard, a click on one of its rows, say (docs/SPEC.md §4).
 	Focus bool
 }
-
-// DefaultAgent runs coordinators.
-const DefaultAgent = "claude"
 
 // Result says how an attach ended.
 type Result struct {
@@ -174,7 +168,7 @@ func Attach(opts Options) (res Result, err error) {
 	if so == nil {
 		so = &SidebarOptions{}
 	}
-	c.side = &sidebar{uiFile: so.UIFile, agent: cmp.Or(so.Agent, DefaultAgent), projects: loadSideProjects()}
+	c.side = &sidebar{uiFile: so.UIFile, projects: loadSideProjects()}
 	c.info = &infoPanel{}
 	c.setWindow(cols, rows)
 	if so.Focus && c.sideW > 0 {

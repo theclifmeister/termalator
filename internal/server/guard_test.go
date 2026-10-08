@@ -162,6 +162,74 @@ func TestGuardRoutes(t *testing.T) {
 	}
 }
 
+// TestHookGuard: without a mod, the server judges the tool calls a
+// session's hooks report against its rules and records each refusal as
+// POST /v1/denied does; with a mod there is no hook guard.
+func TestHookGuard(t *testing.T) {
+	testPaths(t)
+	p := newWatchProject(t)
+	wt := t.TempDir()
+	s := &Server{log: log.New(os.Stderr, "", 0), records: map[string]SessionRecord{}}
+	if s.hookGuardOf("s-2", true) != nil {
+		t.Fatal("a mod session got a hook guard")
+	}
+	judge := s.hookGuardOf("s-2", false)
+	if d := judge("Bash", map[string]any{"command": "gh pr merge 1"}); d != nil {
+		t.Fatalf("no record: %+v", d)
+	}
+	s.records["s-2"] = SessionRecord{ID: "s-2", Role: proto.RoleThread, Project: p.Slug, Thread: "t-0001", Cwd: wt}
+	clock := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
+	guardNow = func() time.Time { return clock }
+	t.Cleanup(func() { guardNow = time.Now })
+
+	d := judge("Bash", map[string]any{"command": "cd x && gh pr merge 1 --squash"})
+	if d == nil || d.Rule != "merge" || !strings.HasPrefix(d.Message, "terminatr guard (merge): ") {
+		t.Fatalf("merge: %+v", d)
+	}
+	if d := judge("apply_patch", map[string]any{"command": "*** Begin Patch\n*** Add File: x.go\n+package x\n*** End Patch"}); d != nil {
+		t.Errorf("patch in the worktree: %+v", d)
+	}
+	if d := judge("apply_patch", map[string]any{"command": "*** Begin Patch\n*** Update File: /etc/hosts\n*** End Patch"}); d == nil || d.Rule != "worktree-only" {
+		t.Errorf("patch outside the worktree: %+v", d)
+	}
+	if d := judge("Bash", map[string]any{"command": "git push -u origin tm/x"}); d != nil {
+		t.Errorf("own branch: %+v", d)
+	}
+	lines, _, _ := p.JournalTail(20)
+	var got []string
+	for _, l := range lines {
+		if strings.Contains(l, "guard.deny") {
+			got = append(got, l[strings.Index(l, "guard.deny"):])
+		}
+	}
+	want := []string{"guard.deny t-0001 merge Bash: gh pr merge", "guard.deny t-0001 worktree-only apply_patch: apply_patch of /etc/hosts"}
+	if !slices.Equal(got, want) {
+		t.Errorf("journal %q, want %q", got, want)
+	}
+
+	// The rules are kept a minute: the human's settings reach the
+	// session's hooks after that.
+	writeConfig(t, "[projects."+p.Slug+"]\nguard_off = [\"merge\"]\n")
+	if judge("Bash", map[string]any{"command": "gh pr merge 1"}) == nil {
+		t.Error("rules changed within the minute")
+	}
+	clock = clock.Add(hookRulesFor)
+	if d := judge("Bash", map[string]any{"command": "gh pr merge 1"}); d != nil {
+		t.Errorf("merge turned off: %+v", d)
+	}
+	// The third refusal within ten minutes filed one inbox item.
+	items, _ := p.Inbox()
+	n := 0
+	for _, it := range items {
+		if it.Kind == "guard" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("%d guard inbox items", n)
+	}
+}
+
 // TestAccessMergeCommands: coordinator_merges (off by default) allows the
 // coordinator's PR merge commands, only while merge = coordinator, and a
 // thread never gets them.
