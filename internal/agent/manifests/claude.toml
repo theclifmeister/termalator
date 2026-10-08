@@ -237,6 +237,10 @@ state = "working"
 event = "PreToolUse"
 state = "working"
 transient = true
+# Without the mod, the server's guard (internal/guard) judges each call
+# and a refusal is the hook's answer, before any dialog. Allowed: no
+# output, so Claude's own permission check decides.
+respond = '''{{with .Guard}}{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":{{json .Message}}}}{{end}}'''
 
 [[hooks]]
 event = "PostToolUse"

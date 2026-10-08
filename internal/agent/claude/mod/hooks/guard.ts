@@ -10,6 +10,10 @@
 // sudo, git -C). That catches what agents type; the sandbox and the
 // permission rules stay the backstop for what is written to hide.
 // Plain functions of the rules and the call, for the tests.
+//
+// Agents without a mod get the same guard from its Go port
+// (internal/guard), judged by the server on their PreToolUse hook. Both
+// pass the shared vectors in tests/guard-vectors.ts: change them together.
 
 // The rules as the server sends them (server.GuardRules).
 export type Rules = {
@@ -58,6 +62,15 @@ export function judge(r: Rules, tool: string, input: Record<string, unknown>): D
       }
       return null
     }
+    case 'apply_patch': {
+      // Codex (for pi and the Go port, internal/guard): the patch is the
+      // command; each file it adds, updates, deletes or moves to is a write.
+      if (!has('worktree-only')) return null
+      for (const p of patchPaths(str('command'))) {
+        if (!(r.writable ?? []).some(w => under(abs(r, p), w))) return deny(r, 'worktree-only', `${tool} of ${safe(abs(r, p))}`)
+      }
+      return null
+    }
     case 'Read':
     case 'Grep':
     case 'Glob': {
@@ -69,6 +82,11 @@ export function judge(r: Rules, tool: string, input: Record<string, unknown>): D
     }
   }
   return null
+}
+
+// patchPaths are the files a Codex patch (*** Begin Patch …) writes.
+export function patchPaths(patch: string): string[] {
+  return [...patch.matchAll(/^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+?)\s*$/gm)].map(m => m[1])
 }
 
 // The sentence the model reads for each rule; the end says what to do,

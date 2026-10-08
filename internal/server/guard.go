@@ -22,38 +22,17 @@ import (
 
 	"github.com/theclifmeister/terminatr/internal/caller"
 	"github.com/theclifmeister/terminatr/internal/config"
+	"github.com/theclifmeister/terminatr/internal/guard"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/worktree"
 )
 
 // GuardRules is the body of GET /v1/rules: what the session's mod
-// refuses. Off, the mod refuses nothing and the agent's own permission
-// rules decide alone, as without the mod.
-type GuardRules struct {
-	On   bool   `json:"on"`
-	Role string `json:"role,omitempty"`
-	// Rules are the config.GuardRules ids in force.
-	Rules []string `json:"rules,omitempty"`
-	// Home is the user's home directory, for ~ in paths and commands;
-	// Cwd the folder the session started in, for relative paths.
-	Home string `json:"home,omitempty"`
-	Cwd  string `json:"cwd,omitempty"`
-	// Writable are the folders the file tools may write in under
-	// worktree-only: the thread's worktree first, then the temporary
-	// folders and Claude's own (plans, memory). Each as given and
-	// with its symlinks resolved.
-	Writable []string `json:"writable,omitempty"`
-	// Worktrees is tm's worktrees folder: under delete-branch, no rm -r
-	// takes it, a project's folder in it or a worktree.
-	Worktrees string `json:"worktrees,omitempty"`
-	// Protected are the branches no push may target: the repos' default
-	// branches, main and master.
-	Protected []string `json:"protected,omitempty"`
-	// Secrets are the files and folders no tool may read under
-	// credentials.
-	Secrets []string `json:"secrets,omitempty"`
-}
+// refuses, and what the server judges a hook's tool call by
+// (guard.Rules.Judge). Off, nothing is refused and the agent's own
+// permission rules decide alone, as without the mod.
+type GuardRules = guard.Rules
 
 // GuardDenial is the body of POST /v1/denied.
 type GuardDenial struct {
@@ -210,6 +189,67 @@ func (s *Server) guardRoutes(mux *http.ServeMux, id string) {
 		s.guardDenied(rec, d)
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+// hookGuardOf judges the tool calls session id's hooks report against
+// its rules (agent.HookEnv.Guard: agents without a mod, which answer
+// PreToolUse with the refusal) and records a refusal as POST /v1/denied
+// does. With a mod, the mod judges: nil.
+func (s *Server) hookGuardOf(id string, mod bool) func(string, map[string]any) *guard.Denial {
+	if mod {
+		return nil
+	}
+	return func(tool string, input map[string]any) *guard.Denial {
+		s.mu.Lock()
+		rec, ok := s.records[id]
+		s.mu.Unlock()
+		if !ok {
+			return nil
+		}
+		d := s.hookRules(rec).Judge(tool, input)
+		if d != nil {
+			s.guardDenied(rec, GuardDenial{Rule: d.Rule, Tool: tool, Summary: d.Summary})
+		}
+		return d
+	}
+}
+
+// hookRulesFor is how long a session's rules are kept for its hooks: a
+// tool call must not wait on config.toml and git each time, and a
+// change of the human's settings still reaches running sessions.
+const hookRulesFor = time.Minute
+
+// hookRulesCache holds each session's rules for its hooks.
+var hookRulesCache = struct {
+	sync.Mutex
+	m map[string]hookRulesEntry
+}{m: map[string]hookRulesEntry{}}
+
+type hookRulesEntry struct {
+	rules GuardRules
+	at    time.Time
+}
+
+// hookRules is session r's rules, worked out at most once per
+// hookRulesFor.
+func (s *Server) hookRules(r SessionRecord) GuardRules {
+	now := guardNow()
+	hookRulesCache.Lock()
+	e, ok := hookRulesCache.m[r.ID]
+	hookRulesCache.Unlock()
+	if ok && now.Sub(e.at) < hookRulesFor {
+		return e.rules
+	}
+	g := s.guardRulesFor(r)
+	hookRulesCache.Lock()
+	for id, old := range hookRulesCache.m {
+		if now.Sub(old.at) >= hookRulesFor {
+			delete(hookRulesCache.m, id)
+		}
+	}
+	hookRulesCache.m[r.ID] = hookRulesEntry{rules: g, at: now}
+	hookRulesCache.Unlock()
+	return g
 }
 
 // guardRecent is when each session was last refused, within the window.
