@@ -9,10 +9,12 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/guard"
 )
 
 func load(t *testing.T) agent.Agent {
@@ -175,5 +177,34 @@ func TestProbe(t *testing.T) {
 	}
 	if live, err := a.Probe(context.Background(), agent.PromptTarget{}); live != agent.LiveUnknown || !errors.Is(err, ErrNoSocket) {
 		t.Fatalf("no socket in the status file: %q %v", live, err)
+	}
+}
+
+// TestGuard: PreToolUse keeps the tool's input through the hook's trim (so
+// the guard judges Bash and file tools with mods off), and the guard's
+// refusal is answered as a deny.
+func TestGuard(t *testing.T) {
+	a := load(t)
+	payload := a.Sources().Hook.Trim(map[string]any{
+		"hook_event_name": "PreToolUse", "session_id": "x", "tool_name": "Bash",
+		"tool_input": map[string]any{"command": "gh pr merge 1"},
+	})
+	var judged string
+	env := agent.HookEnv{Guard: func(tool string, input map[string]any) *guard.Denial {
+		judged = tool + ": " + input["command"].(string)
+		return guard.Rules{On: true, Role: "thread", Rules: []string{"merge"}}.Judge(tool, input)
+	}}
+	_, res, err := a.Hook(agent.HookEvent{Event: "PreToolUse", Payload: payload}, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if judged != "Bash: gh pr merge 1" {
+		t.Errorf("judged %q", judged)
+	}
+	if !strings.Contains(string(res.Stdout), `"permissionDecision":"deny"`) {
+		t.Errorf("no deny: %s", res.Stdout)
+	}
+	if p := a.Sources().Hook.Trim(map[string]any{"hook_event_name": "PostToolUse", "tool_input": map[string]any{}}); p["tool_input"] != nil {
+		t.Error("tool_input kept beyond PreToolUse")
 	}
 }
