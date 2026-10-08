@@ -1,11 +1,17 @@
 package doctor
 
 import (
+	"bufio"
+	"encoding/json"
 	"errors"
+	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -174,10 +180,13 @@ func TestCodeHosts(t *testing.T) {
 	d := testDeps(t)
 	d.LookPath = func(n string) (string, error) { return "/bin/" + n, nil }
 	var ran []string
+	var mu sync.Mutex // the checks run at once
 	fail := ""
 	d.Run = func(dir, name string, args ...string) (string, error) {
 		line := name + " " + strings.Join(args, " ")
+		mu.Lock()
 		ran = append(ran, dir+"|"+line)
+		mu.Unlock()
 		if fail != "" && strings.Contains(line, fail) {
 			return "boom", errors.New("exit 1")
 		}
@@ -189,6 +198,8 @@ func TestCodeHosts(t *testing.T) {
 	d.Getenv = func(k string) string { return env[k] }
 	var patAsked []string
 	d.PATGet = func(u, pat string) ([]byte, error) {
+		mu.Lock()
+		defer mu.Unlock()
 		patAsked = append(patAsked, u)
 		return nil, &codehost.CLIError{CLI: "az", Problem: "Azure DevOps refused AZURE_DEVOPS_EXT_PAT (401/403)", Err: errors.New("HTTP 401")}
 	}
@@ -197,12 +208,18 @@ func TestCodeHosts(t *testing.T) {
 	if len(find(cs, "gh")) != 0 || len(find(cs, "gh auth")) != 0 {
 		t.Fatalf("gh checked with only an Azure repo: %+v", cs)
 	}
-	for _, n := range []string{"az", "az azure-devops", "az login", "az repo Shop/web", "git origin Shop/web"} {
-		if c := find(cs, n); len(c) != 1 || c[0].Status != OK || c[0].Group != "toolchain" {
+	for _, n := range []string{"az", "az login", "az repo Shop/web", "git origin Shop/web"} {
+		if c := find(cs, n); len(c) != 1 || c[0].Status != OK || c[0].Group != "code host" {
 			t.Errorf("%s: %+v", n, c)
 		}
 	}
+	if len(find(cs, "az azure-devops")) != 0 {
+		t.Errorf("checked the azure-devops extension: %+v", cs)
+	}
 	got := strings.Join(ran, "\n")
+	if strings.Contains(got, "extension") {
+		t.Errorf("asked about the azure-devops extension:\n%s", got)
+	}
 	for _, want := range []string{"/bin/az rest --method get --resource 499b84ac-1321-427f-aa17-267ca6975798 --url https://dev.azure.com/acme/Shop/_apis/git/repositories/web?api-version=7.1 ", "/r/web|git ls-remote origin HEAD"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("didn't run %q:\n%s", want, got)
@@ -681,5 +698,91 @@ func TestCodeHostsServerContext(t *testing.T) {
 	authed = false
 	if c := find(codeHosts(d, Live{}), "gh auth"); len(c) != 1 || c[0].Status != Warn || c[0].Source != "local" {
 		t.Errorf("no server: %+v", c)
+	}
+}
+
+// TestEachStreams: the groups come out one by one in order while the
+// code hosts are still being checked; those come last, after waiting
+// names their group.
+func TestEachStreams(t *testing.T) {
+	d := testDeps(t)
+	d.LookPath = func(n string) (string, error) { return "/bin/" + n, nil }
+	release := make(chan struct{})
+	d.Run = func(dir, name string, args ...string) (string, error) {
+		if name == "/bin/gh" {
+			<-release // a slow gh
+		}
+		return "ok", nil
+	}
+	d.Hosts = func() []RepoHost { return nil }
+	var groups []string
+	waited := false
+	Each(d, func(cs []Check) {
+		for _, c := range cs {
+			if len(groups) == 0 || groups[len(groups)-1] != c.Group {
+				groups = append(groups, c.Group)
+			}
+		}
+	}, func(g string) {
+		if g != "code host" || slices.Contains(groups, "code host") {
+			t.Errorf("waiting %q after %q", g, groups)
+		}
+		waited = true
+		close(release)
+	})
+	if !waited || len(groups) < 3 || groups[0] != "toolchain" || groups[len(groups)-1] != "code host" || slices.Index(groups, "code host") != len(groups)-1 {
+		t.Fatalf("waited %v, groups %q", waited, groups)
+	}
+}
+
+// TestServerHangs: a server that holds the lock and answers the
+// handshake but never a call: doctor's calls give up (callTimeout,
+// codeHostTimeout) instead of waiting for ever.
+func TestServerHangs(t *testing.T) {
+	d := testDeps(t)
+	defer func(a, b time.Duration) { callTimeout, codeHostTimeout = a, b }(callTimeout, codeHostTimeout)
+	callTimeout, codeHostTimeout = 200*time.Millisecond, 200*time.Millisecond
+	lk, err := os.OpenFile(d.Paths.Lock, os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lk.Close()
+	if err := unix.Flock(int(lk.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		t.Fatal(err)
+	}
+	ln, err := net.Listen("unix", d.Paths.Socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer c.Close()
+				br := bufio.NewReader(c)
+				br.ReadBytes('\n') // the client's hello
+				b, _ := json.Marshal(proto.Hello{Protocol: proto.Protocol, Version: "v0", Build: "b0"})
+				c.Write(append(b, '\n'))
+				io.Copy(io.Discard, br) // and never an answer
+			}()
+		}
+	}()
+	start := time.Now()
+	cs, _ := Server(d)
+	if c := find(cs, "server"); len(c) != 1 || c[0].Status != Fail || !strings.Contains(c[0].Detail, "server.status") {
+		t.Errorf("server: %+v", cs)
+	}
+	if ch := serverCodeHost(d.Paths); ch != nil {
+		t.Errorf("server.codehost: %+v", ch)
+	}
+	if l := sessionsNow(d.Paths); l != nil {
+		t.Errorf("session.list: %v", l)
+	}
+	if took := time.Since(start); took > 5*time.Second {
+		t.Errorf("took %s", took)
 	}
 }

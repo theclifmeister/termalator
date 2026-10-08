@@ -517,12 +517,9 @@ func TestAzureDoctor(t *testing.T) {
 			},
 		}
 	}
-	checks := Azure{Target: shop}.Doctor(deps("", false))
-	if len(checks) != 3 || !checks[0].OK || !checks[1].OK || !checks[2].OK || checks[1].Name != "az login" {
-		t.Fatalf("%+v", checks)
-	}
-	// the extension is optional
-	if checks := (Azure{}).Doctor(deps("extension", false)); !checks[2].OK || !strings.Contains(checks[2].Detail, "optional") {
+	// no line about the azure-devops extension: tm doesn't need it
+	checks := Azure{Target: shop}.Doctor(deps("extension", false))
+	if len(checks) != 2 || !checks[0].OK || !checks[1].OK || checks[1].Name != "az login" {
 		t.Fatalf("%+v", checks)
 	}
 	if checks := (Azure{}).Doctor(deps("account", false)); checks[1].OK || !strings.Contains(checks[1].Detail, "az login") {
@@ -544,10 +541,9 @@ func TestAzureDoctor(t *testing.T) {
 	}
 }
 
-// TestAzureAccess: a readable repo; az login's twin under the
-// extension (the TF400813 of az rest with X-VSS-ForceMsaPassThrough,
-// captured from a live organization); refusals with the tenant to log
-// in to; the PAT; a wrong name.
+// TestAzureAccess: a readable repo, with no probe of the azure-devops
+// extension; refusals (the TF400813 captured from a live organization)
+// with the tenant to log in to; the PAT; a wrong name.
 func TestAzureAccess(t *testing.T) {
 	const tf400813 = `ERROR: Unauthorized({"$id":"1","innerException":null,"message":"TF400813: The user '39b70f09-0000-0000-0000-000000000000' is not authorized to access this resource.","typeName":"Microsoft.TeamFoundation.Framework.Server.UnauthorizedRequestException"})`
 	type answer struct {
@@ -577,23 +573,17 @@ func TestAzureAccess(t *testing.T) {
 		}
 	}
 	var ran []string
-	ok := map[string]answer{"rest": {out: `{"id":"x","name":"web"}`}, "extension": {}, "msa": {}}
+	ok := map[string]answer{"rest": {out: `{"id":"x","name":"web"}`}}
 	if c := (Azure{Target: shop}).Access(deps(ok, &ran)); len(c) != 1 || !c[0].OK || c[0].Name != "az repo Shop/web" {
 		t.Fatalf("%+v", c)
 	}
 	if !strings.HasPrefix(ran[0], "rest --method get --resource "+azResource+" --url "+shopRepo+"?api-version=7.1 ") {
 		t.Fatalf("ran %q", ran)
 	}
-	// the extension's twin
-	ok["msa"] = answer{err: tf400813}
-	if c := (Azure{Target: shop}).Access(deps(ok, &ran)); len(c) != 2 || !c[0].OK || c[1].OK || !strings.Contains(c[1].Detail, "personal Microsoft account") ||
-		!strings.Contains(c[1].Detail, "az devops login --organization "+shop.OrgURL) {
-		t.Fatalf("%+v", c)
-	}
-	// no extension: no probe
-	ok["extension"] = answer{err: "ERROR: extension not installed"}
-	if c := (Azure{Target: shop}).Access(deps(ok, &ran)); len(c) != 1 || !c[0].OK {
-		t.Fatalf("%+v", c)
+	for _, r := range ran {
+		if strings.Contains(r, "extension") || strings.Contains(r, "X-VSS-ForceMsaPassThrough") {
+			t.Fatalf("probed the azure-devops extension: %q", ran)
+		}
 	}
 
 	// refused, the organization in a tenant az has no account in

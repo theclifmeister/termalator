@@ -265,6 +265,15 @@ func (c *Client) Call(method string, params, result any) error {
 	return nil
 }
 
+// CallWithin is Call that gives up after d: Dial clears the
+// connection's deadline after the handshake, so a plain Call waits as
+// long as the server takes. The deadline is cleared again after.
+func (c *Client) CallWithin(d time.Duration, method string, params, result any) error {
+	c.conn.SetDeadline(time.Now().Add(d))
+	defer c.conn.SetDeadline(time.Time{})
+	return c.Call(method, params, result)
+}
+
 // Close closes the connection.
 func (c *Client) Close() error { return c.conn.Close() }
 

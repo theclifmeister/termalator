@@ -610,9 +610,8 @@ func (a Azure) Hints(n int) Hints {
 
 // Doctor checks that az is installed and logged in, or that
 // AZURE_DEVOPS_EXT_PAT is set (never printed): without one the ticker's
-// PR polls fail. The azure-devops extension is optional: tm asks the
-// REST API with az rest; threads may open PRs with az repos pr create.
-// Access to one repo is Access.
+// PR polls fail. tm doesn't need the azure-devops extension: it asks the
+// REST API with az rest, and so may threads. Access to one repo is Access.
 func (a Azure) Doctor(d DoctorDeps) []Check {
 	pat := d.Getenv != nil && d.Getenv(patEnv) != ""
 	p, err := d.LookPath("az")
@@ -631,21 +630,14 @@ func (a Azure) Doctor(d DoctorDeps) []Check {
 			auth = Check{Name: "az login", Detail: "not logged in: run az login (PR follow-up, auto-close and completing tasks need it)"}
 		}
 	}
-	ext := Check{Name: "az azure-devops", OK: true, Detail: "extension installed (threads may open PRs with az repos pr create)"}
-	if _, err := d.Run("", p, "extension", "show", "--name", "azure-devops", "--only-show-errors", "--output", "none"); err != nil {
-		ext.Detail = "extension not installed: optional, tm and threads use az rest"
-	}
-	return append(checks, auth, ext)
+	return append(checks, auth)
 }
 
 // Access checks that tm can read this repo as it asks Azure DevOps (az
 // rest, else the PAT), which proves the login reaches its organization
 // and project, and names the cure when it can't: az login, the
-// organization's tenant, the origin URL. When the extension is
-// installed and az login reads the repo, it also checks that the
-// extension's az repos does: it signs in a login whose email is also a
-// personal Microsoft account as that account (TF400813). A Target az
-// can't be given safely (an odd name) is skipped.
+// organization's tenant, the origin URL. A Target az can't be given
+// safely (an odd name) is skipped.
 func (a Azure) Access(d DoctorDeps) []Check {
 	t := a.Target
 	if !azOrgURLRE.MatchString(t.OrgURL) || !azNameRE.MatchString(t.Project) || !azNameRE.MatchString(t.Repo) {
@@ -674,18 +666,7 @@ func (a Azure) Access(d DoctorDeps) []Check {
 	u := b.repoURL() + "?api-version=7.1"
 	_, err := b.get("", u)
 	if err == nil {
-		out := []Check{{Name: name, OK: true, Detail: "readable"}}
-		if lerr == nil {
-			if _, err := d.Run("", p, "extension", "show", "--name", "azure-devops", "--only-show-errors", "--output", "none"); err == nil {
-				if _, err := b.rest("", u); err == nil {
-					if _, err := b.rest("", u, "X-VSS-ForceMsaPassThrough=true", "X-TFS-FedAuthRedirect=Suppress"); err != nil && strings.Contains(err.Error(), "TF400813") {
-						out = append(out, Check{Name: "az repos " + t.Project + "/" + t.Repo, Detail: "the azure-devops extension signs you in as the personal Microsoft account of your email, which " + t.OrgURL +
-							" doesn't have (TF400813): tm doesn't need it, and threads fall back to az rest; for az repos yourself, run az devops login --organization " + t.OrgURL + " with a PAT"})
-					}
-				}
-			}
-		}
-		return out
+		return []Check{{Name: name, OK: true, Detail: "readable"}}
 	}
 	var ce *CLIError
 	errors.As(err, &ce)

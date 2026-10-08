@@ -21,10 +21,21 @@ type Live struct {
 	Running bool
 	// Sessions are the ids of the server's sessions; nil when unknown.
 	Sessions map[string]bool
-	// CodeHost is the server's answer to server.codehost; nil when it
-	// is not running or can't tell (an older server).
+	// CodeHost is the server's answer to server.codehost
+	// (serverCodeHost); nil when it is not running or can't tell (an
+	// older server).
 	CodeHost *proto.CodeHostStatus
 }
+
+// callTimeout bounds each of doctor's calls to the server; a server
+// that holds the lock and answers the handshake may still hang on one.
+var callTimeout = 15 * time.Second
+
+// codeHostTimeout bounds server.codehost, which runs every code-host
+// check in the server (several az and git calls per Azure repo, each up
+// to codehost's execTimeout, a few repos at once); past it doctor shows
+// this shell's checks instead.
+var codeHostTimeout = 3 * time.Minute
 
 // lockHeld reports whether some process holds the server lock. It never
 // creates the lock file.
@@ -116,7 +127,7 @@ func Server(d Deps) ([]Check, Live) {
 	}
 	defer c.Close()
 	var st proto.ServerStatus
-	if err := c.Call(proto.MethodServerStatus, nil, &st); err != nil {
+	if err := c.CallWithin(callTimeout, proto.MethodServerStatus, nil, &st); err != nil {
 		return append(out, Check{Group: g, Name: "server", Status: Fail, Detail: fmt.Sprintf("pid %d: server.status: %v", pid, err)}), live
 	}
 	out = append(out, Check{Group: g, Name: "server", Status: OK,
@@ -127,12 +138,8 @@ func Server(d Deps) ([]Check, Live) {
 	}
 	if d.GOOS == "darwin" {
 		var ks proto.KeychainStatus
-		err := c.Call(proto.MethodServerKeychain, nil, &ks)
+		err := c.CallWithin(callTimeout, proto.MethodServerKeychain, nil, &ks)
 		out = append(out, keychainCheck(d, ks, err)...)
-	}
-	var ch proto.CodeHostStatus
-	if err := c.Call(proto.MethodServerCodeHost, nil, &ch); err == nil {
-		live.CodeHost = &ch
 	}
 	if st.PreviousShutdown == "crash" {
 		detail := "the previous server crashed"
@@ -142,7 +149,7 @@ func Server(d Deps) ([]Check, Live) {
 		out = append(out, Check{Group: g, Name: "last shutdown", Status: Warn, Detail: detail + "; see " + p.Log})
 	}
 	var list proto.SessionListResult
-	if err := c.Call(proto.MethodSessionList, nil, &list); err == nil {
+	if err := c.CallWithin(callTimeout, proto.MethodSessionList, nil, &list); err == nil {
 		live.Sessions = map[string]bool{}
 		for _, s := range list.Sessions {
 			live.Sessions[s.ID] = true
@@ -244,6 +251,25 @@ func runtimeDirs(p server.Paths, live Live) []Check {
 	return out
 }
 
+// serverCodeHost asks a running server for its code-host checks
+// (server.codehost) on a connection of its own, so Each can run it
+// beside the other checks; nil when no server answers.
+func serverCodeHost(p server.Paths) *proto.CodeHostStatus {
+	if held, _ := lockHeld(p.Lock); !held {
+		return nil
+	}
+	c, err := server.Dial(p, proto.KindControl)
+	if err != nil {
+		return nil
+	}
+	defer c.Close()
+	var ch proto.CodeHostStatus
+	if err := c.CallWithin(codeHostTimeout, proto.MethodServerCodeHost, nil, &ch); err != nil {
+		return nil
+	}
+	return &ch
+}
+
 // sessionsNow asks the server for its sessions; nil if it can't.
 func sessionsNow(p server.Paths) map[string]bool {
 	c, err := server.Dial(p, proto.KindControl)
@@ -255,7 +281,7 @@ func sessionsNow(p server.Paths) map[string]bool {
 	}
 	defer c.Close()
 	var list proto.SessionListResult
-	if err := c.Call(proto.MethodSessionList, nil, &list); err != nil {
+	if err := c.CallWithin(callTimeout, proto.MethodSessionList, nil, &list); err != nil {
 		return nil
 	}
 	m := map[string]bool{}

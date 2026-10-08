@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -22,7 +24,9 @@ type RepoHost struct {
 // installed, marked unused), then each Azure repo's access and
 // git's credentials for its origin. Both tm doctor and the server run
 // it, the server so that it answers from the context its sessions have
-// (docs/SPEC.md §3.3 server.codehost).
+// (docs/SPEC.md §3.3 server.codehost). The CLI checks and the repos run
+// at once, each repo holding one of azSlots, so a machine with many
+// repos waits about as long as for one or two; the lines keep this order.
 func Checks(d DoctorDeps, hosts []RepoHost) []Check {
 	github, azure := len(hosts) == 0, false
 	for _, h := range hosts {
@@ -33,24 +37,34 @@ func Checks(d DoctorDeps, hosts []RepoHost) []Check {
 			github = true
 		}
 	}
-	var out []Check
+	var jobs []func() []Check
 	if github {
-		out = append(out, GitHub{}.Doctor(d)...)
+		jobs = append(jobs, func() []Check { return GitHub{}.Doctor(d) })
 	}
 	if !azure {
-		return append(out, unusedAzure(d)...)
+		jobs = append(jobs, func() []Check { return unusedAzure(d) })
+	} else {
+		jobs = append(jobs, func() []Check { return Azure{}.Doctor(d) })
 	}
-	out = append(out, Azure{}.Doctor(d)...)
 	seen := map[Target]bool{}
 	for _, h := range hosts {
 		if h.Target.Kind != AzureKind || seen[h.Target] {
 			continue
 		}
 		seen[h.Target] = true
-		out = append(out, Azure{Target: h.Target}.Access(d)...)
-		out = append(out, gitCredentials(d, h))
+		jobs = append(jobs, func() []Check {
+			azSlots <- struct{}{}
+			defer func() { <-azSlots }()
+			return append(Azure{Target: h.Target}.Access(d), gitCredentials(d, h))
+		})
 	}
-	return out
+	parts := make([][]Check, len(jobs))
+	var wg sync.WaitGroup
+	for i, job := range jobs {
+		wg.Go(func() { parts[i] = job() })
+	}
+	wg.Wait()
+	return slices.Concat(parts...)
 }
 
 // unusedAzure is the az and az login lines when no repo uses Azure

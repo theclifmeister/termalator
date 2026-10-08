@@ -19,6 +19,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/codehost"
@@ -138,22 +139,54 @@ func firstLine(s string) string {
 	return s
 }
 
-// Run runs every check, in a stable order.
+// Run runs every check, in a stable order (Each's).
 func Run(d Deps) []Check {
 	var out []Check
-	srv, live := Server(d)
-	out = append(out, toolchain(d)...)
-	out = append(out, codeHosts(d, live)...)
-	out = append(out, Install(d)...)
-	out = append(out, srv...)
-	out = append(out, Agents(d)...)
-	out = append(out, Plugins(d)...)
-	out = append(out, Sandbox(d)...)
-	out = append(out, Leftovers(d, live)...)
-	out = append(out, Launchd(d)...)
-	out = append(out, Settings(d)...)
-	out = append(out, Upkeep(d)...)
+	Each(d, func(cs []Check) { out = append(out, cs...) }, nil)
 	return out
+}
+
+// Each runs every check and hands emit each group's checks as soon as
+// they are known, so a slow group doesn't make doctor look frozen. The
+// code hosts (gh, az and each Azure repo, here and in the server's
+// context) are the slow ones: they run in the background from the start
+// and come last; waiting, when not nil, is called with their group
+// before Each blocks on them. The other groups run in order, the
+// install check (a network call) in the background too.
+func Each(d Deps, emit func([]Check), waiting func(group string)) {
+	hosts := make(chan []Check, 1)
+	go func() {
+		var local []Check
+		var live Live
+		var wg sync.WaitGroup
+		wg.Go(func() { local = localCodeHosts(d) })
+		wg.Go(func() { live.CodeHost = serverCodeHost(d.Paths) })
+		wg.Wait()
+		hosts <- mergeCodeHosts(d, local, live)
+	}()
+	install := make(chan []Check, 1)
+	go func() { install <- Install(d) }()
+
+	emit(toolchain(d))
+	emit(<-install)
+	srv, live := Server(d)
+	emit(srv)
+	emit(Agents(d))
+	emit(Plugins(d))
+	emit(Sandbox(d))
+	emit(Leftovers(d, live))
+	emit(Launchd(d))
+	emit(Settings(d))
+	emit(Upkeep(d))
+	select {
+	case cs := <-hosts:
+		emit(cs)
+	default:
+		if waiting != nil {
+			waiting(codeHostGroup)
+		}
+		emit(<-hosts)
+	}
 }
 
 // Worst is the worst status among checks.
@@ -206,6 +239,9 @@ func toolchain(d Deps) []Check {
 	return out
 }
 
+// codeHostGroup is the group of the code-host checks.
+const codeHostGroup = "code host"
+
 // codeHosts shows the CLI, login and access of each code host kind among
 // the repos in use, whose PR polls fail without them (a gh-failing inbox
 // item, §7.5). With a server running they are its results (server.codehost):
@@ -215,24 +251,31 @@ func toolchain(d Deps) []Check {
 // server passes, a "local shell" note says so instead of a warning. With
 // no server (or an older one) the checks run here, labelled local.
 func codeHosts(d Deps, live Live) []Check {
-	const g = "toolchain"
+	return mergeCodeHosts(d, localCodeHosts(d), live)
+}
+
+// localCodeHosts is the code-host checks in this process, labelled local.
+func localCodeHosts(d Deps) []Check {
 	var hosts []RepoHost
 	if d.Hosts != nil {
 		hosts = d.Hosts()
 	}
 	dd := codehost.DoctorDeps{LookPath: d.LookPath, Run: d.Run, Getenv: d.Getenv, PATGet: d.PATGet}
-	convert := func(cs []codehost.Check, source string) []Check {
-		var out []Check
-		for _, c := range cs {
-			st := Warn
-			if c.OK {
-				st = OK
-			}
-			out = append(out, Check{Group: g, Name: c.Name, Status: st, Detail: c.Detail, Source: source})
+	var out []Check
+	for _, c := range codehost.Checks(dd, hosts) {
+		st := Warn
+		if c.OK {
+			st = OK
 		}
-		return out
+		out = append(out, Check{Group: codeHostGroup, Name: c.Name, Status: st, Detail: c.Detail, Source: "local"})
 	}
-	local := convert(codehost.Checks(dd, hosts), "local")
+	return out
+}
+
+// mergeCodeHosts is the server's code-host checks when it gave them,
+// with the "local shell" note, else local's (codeHosts).
+func mergeCodeHosts(d Deps, local []Check, live Live) []Check {
+	const g = codeHostGroup
 	if live.CodeHost == nil {
 		return local
 	}

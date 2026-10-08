@@ -8,11 +8,13 @@ package codehost
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // Host kinds (Host.Kind, Config.CodeHost).
@@ -166,9 +168,16 @@ func origin(repo string) string {
 	return out
 }
 
-// git runs git in dir and returns its trimmed stdout.
+// gitTimeout bounds git: local reads only, but a log --grep that finds
+// nothing walks all of a big repo's history.
+var gitTimeout = 30 * time.Second
+
+// git runs git in dir, for at most gitTimeout, and returns its trimmed
+// stdout.
 func git(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
+	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	var out bytes.Buffer
