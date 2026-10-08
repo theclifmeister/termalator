@@ -197,12 +197,18 @@ func TestCodeHosts(t *testing.T) {
 	if len(find(cs, "gh")) != 0 || len(find(cs, "gh auth")) != 0 {
 		t.Fatalf("gh checked with only an Azure repo: %+v", cs)
 	}
-	for _, n := range []string{"az", "az azure-devops", "az login", "az repo Shop/web", "git origin Shop/web"} {
+	for _, n := range []string{"az", "az login", "az repo Shop/web", "git origin Shop/web"} {
 		if c := find(cs, n); len(c) != 1 || c[0].Status != OK || c[0].Group != "toolchain" {
 			t.Errorf("%s: %+v", n, c)
 		}
 	}
+	if len(find(cs, "az azure-devops")) != 0 {
+		t.Errorf("checked the azure-devops extension: %+v", cs)
+	}
 	got := strings.Join(ran, "\n")
+	if strings.Contains(got, "extension") {
+		t.Errorf("asked about the azure-devops extension:\n%s", got)
+	}
 	for _, want := range []string{"/bin/az rest --method get --resource 499b84ac-1321-427f-aa17-267ca6975798 --url https://dev.azure.com/acme/Shop/_apis/git/repositories/web?api-version=7.1 ", "/r/web|git ls-remote origin HEAD"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("didn't run %q:\n%s", want, got)

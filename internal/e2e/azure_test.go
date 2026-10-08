@@ -45,7 +45,6 @@ case "$1 $path" in
 "rest "*/_apis/git/repositories/*)
 	[ -z "$AZ_NOACCESS" ] || { echo 'ERROR: Not Found({"message":"TF401019: The Git repository with name or identifier web does not exist or you do not have permissions for the operation you are attempting."})' >&2; exit 1; }
 	echo '{"name":"web"}' ;;
-"extension "*) ;;
 "account "*) [ -z "$AZ_NOLOGIN" ] || { echo "ERROR: Please run 'az login' to setup account." >&2; exit 1; } ;;
 *) echo "ERROR: the fake az doesn't know: $*" >&2; exit 2 ;;
 esac
@@ -330,7 +329,7 @@ func TestSmokeTickerAzureCompleteOnMerge(t *testing.T) {
 }
 
 // TestDoctorAzure: with an Azure DevOps repo among the project's, tm
-// doctor checks az, its extension, the login, access to the repo and
+// doctor checks az, the login, access to the repo and
 // git's credentials, and not gh; the --json shape is the usual one. A
 // logged-out az and an unreadable repo are warnings with their way out.
 func TestDoctorAzure(t *testing.T) {
@@ -359,7 +358,7 @@ func TestDoctorAzure(t *testing.T) {
 		return ""
 	}
 	res := doctor()
-	for name, want := range map[string]string{"az": "ok found", "az azure-devops": "ok ", "az login": "ok logged in",
+	for name, want := range map[string]string{"az": "ok found", "az azure-devops": "", "az login": "ok logged in",
 		"az repo Shop/web": "ok readable", "git origin Shop/web": "ok readable", "gh": ""} {
 		if got := status(res, name); !strings.HasPrefix(got, want) || (want == "" && got != "") {
 			t.Errorf("%s: %q, want %q", name, got, want)
