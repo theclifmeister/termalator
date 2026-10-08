@@ -38,6 +38,10 @@ type Manifest struct {
 	Identify struct {
 		Argv0       []string `toml:"argv0"`        // basenames of argv[0] after unwrapping
 		VersionArgs []string `toml:"version_args"` // e.g. ["--version"], for tm doctor
+		// MinVersion is the oldest agent version terminatr's generated
+		// files work with (tested_versions is a prefix and can't say it);
+		// tm doctor warns below it. Empty: no minimum.
+		MinVersion string `toml:"min_version"`
 	} `toml:"identify"`
 
 	Launch struct {

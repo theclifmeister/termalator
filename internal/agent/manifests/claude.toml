@@ -22,6 +22,9 @@ ignore_fields = ["agent_id"]
 [identify]
 argv0 = ["claude"]
 version_args = ["--version"]
+# Exec-form hooks (command + args) need Claude Code 2.1.139; tested_versions'
+# 2.1. prefix can't say so. tm doctor warns below this.
+min_version = "2.1.139"
 
 [launch]
 command = "claude"
