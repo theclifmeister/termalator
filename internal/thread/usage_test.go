@@ -1,6 +1,7 @@
 package thread
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/theclifmeister/terminatr/internal/project"
@@ -37,5 +38,22 @@ func TestUsageTotals(t *testing.T) {
 	}
 	if got := turn.Detail(); got != "370 tokens (10 in, 20 out, 300 cache read, 40 cache write), $0.25, 1 turn" {
 		t.Fatalf("Detail: %q", got)
+	}
+}
+
+// TestUsagePlan: an agent that reports a plan limit shows it in place of
+// the dollar cost; the latest report wins, and a turn without one keeps it.
+func TestUsagePlan(t *testing.T) {
+	u := Usage{Turns: 1, Input: 900, Output: 100, PlanPct: 3, HasPlan: true}
+	u = u.Add(Usage{Input: 1000, Output: 500, PlanPct: 4, HasPlan: true})
+	u = u.Add(Usage{Turns: 1})
+	if u.PlanPct != 4 || !u.HasPlan {
+		t.Errorf("plan after adds: %+v", u)
+	}
+	if got, want := u.String(), "2.5k tokens, plan 4%"; got != want {
+		t.Errorf("String = %q, want %q", got, want)
+	}
+	if got := u.Detail(); strings.Contains(got, "$") || !strings.Contains(got, "plan 4%, 2 turns") {
+		t.Errorf("Detail = %q", got)
 	}
 }

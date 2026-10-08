@@ -115,6 +115,7 @@ output = "payload.info.last_token_usage.output_tokens"
 input_includes_cache = true
 context = "payload.info.last_token_usage.input_tokens"
 context_window = "payload.info.model_context_window"
+plan_percent = "payload.rate_limits.primary.used_percent"
 key = "payload.info.total_token_usage.total_tokens"
 turn = { type = "event_msg", "payload.type" = "task_complete" }
 `
@@ -145,9 +146,9 @@ func TestTailUsageCodex(t *testing.T) {
 	want := []*Usage{
 		nil,
 		nil, // no info yet
-		{Turns: 0, Input: 12034 - 3456, CacheRead: 3456, Output: 210, Context: 12034, ContextWindow: 258400, Key: "12244"},
-		{Turns: 0, Input: 12856 - 11776, CacheRead: 11776, Output: 302, Context: 12856, ContextWindow: 258400, Key: "25402"},
-		{Turns: 0, Input: 12856 - 11776, CacheRead: 11776, Output: 302, Context: 12856, ContextWindow: 258400, Key: "25402"},
+		{Turns: 0, Input: 12034 - 3456, CacheRead: 3456, Output: 210, Context: 12034, ContextWindow: 258400, PlanPct: 3, HasPlan: true, Key: "12244"},
+		{Turns: 0, Input: 12856 - 11776, CacheRead: 11776, Output: 302, Context: 12856, ContextWindow: 258400, PlanPct: 4, HasPlan: true, Key: "25402"},
+		{Turns: 0, Input: 12856 - 11776, CacheRead: 11776, Output: 302, Context: 12856, ContextWindow: 258400, PlanPct: 4, HasPlan: true, Key: "25402"},
 		{Turns: 1},
 		nil,
 	}
