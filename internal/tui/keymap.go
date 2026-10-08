@@ -38,11 +38,13 @@ var sessionKeys = []keyHelp{
 // popupKeys are the project popup's own keys (projectView). None is a
 // prefix command (TestNoPlainKeyIsAPrefixCommand).
 var popupKeys = []keyHelp{
-	{"← → 1-6", "previous / next tab, or pick one"},
+	{"← → 1-7", "previous / next tab, or pick one"},
 	{"↑ ↓ pgup pgdown", "move in the tab, or scroll it (Keys, Memory)"},
 	{"enter space + - x", "on the Settings tab: as in the settings, below"},
 	{"+ x", "on the overview: add a repository / remove the selected one (asks first)"},
 	{"enter", "on a task (Tasks tab): show it, with what it is blocked on, or how to check it and whether its pull request merged"},
+	{"enter", "on a file (Library tab): read it, read-only: text as it is, JSON indented, other files by name and size"},
+	{"d D", "on a file (Library tab): delete it / all of its thread's files (asks first, journaled)"},
 	{"b", "on the Tasks tab: list the done tasks (collapsed to a line by default), or collapse them again"},
 	{"D", "on an open, ready or blocked task (Tasks tab): delegate it; the coordinator starts a thread for it (asks first)"},
 	{"A", "on a task in review (Tasks tab): accept it; the coordinator marks it done (asks first)"},

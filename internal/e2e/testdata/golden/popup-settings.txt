@@ -3,7 +3,7 @@
  └─ coordinator              · │  coordinator                        —           not running; enter starts it
                                │  tasks: 0 need you · 1 in motion · 1 on deck
             ╭─ demo ───────────────────────────────────────────────────────────────────────────────────────╮────────────
-            │  1 overview   2 inbox   3 tasks   4 settings   5 keys   6 memory                             │
+            │  1 overview   2 inbox   3 tasks   4 settings   5 keys   6 memory   7 library                 │
             │                                                                                              │
             │ Start threads                ask first · all projects                                        │
             │ Ask first: the coordinator proposes threads and starts them after your go-ahead.             │

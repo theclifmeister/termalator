@@ -13,7 +13,7 @@ import (
 // forwarded are the project commands an agent runs through the server
 // (docs/SPEC.md §11.1).
 var forwarded = map[string]bool{
-	"project": true, "task": true, "context": true, "inbox": true,
+	"project": true, "task": true, "context": true, "inbox": true, "library": true,
 	"thread": true, "report": true, "status": true, "done": true,
 }
 

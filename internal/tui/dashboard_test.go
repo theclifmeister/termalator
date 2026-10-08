@@ -38,14 +38,17 @@ type fakeSource struct {
 	repos    []string // +path or -path
 	// delegated are the tasks asked to be delegated: "slug T12"; asked
 	// the other asks: "accept slug T12", "send-back slug T12 note".
-	delegated []string
-	asked     []string
-	adopted   []string // "slug s-3"
-	reviews   map[int]Review
-	agents    []string
-	remote    []string // "slug on" or "slug off"
-	lifecycle []string // "slug verb"
-	memory    project.Memory
+	delegated  []string
+	asked      []string
+	adopted    []string // "slug s-3"
+	reviews    map[int]Review
+	agents     []string
+	remote     []string // "slug on" or "slug off"
+	lifecycle  []string // "slug verb"
+	memory     project.Memory
+	library    []thread.LibFile
+	libFiles   map[string]string // "t-0001/name" -> content
+	libRemoved []string          // "t-0001/name", "t-0001/" for all
 }
 
 func (f *fakeSource) SetRemote(slug string, on bool) (string, error) {
@@ -140,6 +143,24 @@ func (f *fakeSource) Ask(slug string, id int, kind, note string) (bool, error) {
 		}
 	}
 	return true, nil
+}
+func (f *fakeSource) Library(string) ([]thread.LibFile, error) { return f.library, nil }
+func (f *fakeSource) LibraryRead(_, id, name string, max int64) ([]byte, bool, error) {
+	return []byte(f.libFiles[id+"/"+name]), false, nil
+}
+func (f *fakeSource) LibraryRemove(_, id, name string) (int, error) {
+	f.libRemoved = append(f.libRemoved, id+"/"+name)
+	var keep []thread.LibFile
+	n := 0
+	for _, l := range f.library {
+		if l.Thread == id && (name == "" || l.Name == name) {
+			n++
+			continue
+		}
+		keep = append(keep, l)
+	}
+	f.library = keep
+	return n, nil
 }
 func (f *fakeSource) Review(slug string, t *tasks.Task) Review { return f.reviews[t.ID] }
 func (f *fakeSource) Memory(string) (project.Memory, error)    { return f.memory, nil }

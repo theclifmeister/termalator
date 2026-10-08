@@ -1,7 +1,7 @@
  PROJECTS                    1 │ tm dashboard                                ● server ok · 1 session
  ■ demo                    0 ⚑ │ NEEDS YOU 1 ───────────────────────────────────────────────────────
  └─ coordi╭─ demo ───────────────────────────────────────────────────────────────────────╮/2
-          │  1 overview   2 inbox   3 tasks   4 settings   5 keys   6 memory             │──────────
+          │  1 overview   2 inbox   3 tasks   4 settings   5 keys   6 memory   7 librar… │──────────
           │                                                                              │ starts it
           │ NEEDS YOU ────────────────────────────────────────────────────────────────── │eck
           │ T1     Write the README           ◆ review    ▱▱▱▱▱  0/2                     │──────────

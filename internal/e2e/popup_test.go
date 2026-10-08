@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/emu"
+	"github.com/theclifmeister/terminatr/internal/project"
+	"github.com/theclifmeister/terminatr/internal/thread"
 )
 
 // popupBody is the text inside the popup's box: the lines between its
@@ -88,6 +90,24 @@ func TestSmokeProjectPopup(t *testing.T) {
 	env.MustCLI("task", "status", "T1", "started", "--project", slug)
 	env.MustCLI("task", "add", "Ship it", "--status", "ready", "--project", slug)
 
+	// A resolved thread with two library files, for the Library tab.
+	t.Setenv("TERMINATR_HOME", env.Home)
+	p, err := project.Open(slug)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done, err := thread.Create(p, thread.Record{Title: "Research the options", Task: "T1", State: thread.Resolved})
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.MkdirAll(thread.Path(p, done.ID, "library"), 0o755)
+	at := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+	for name, text := range map[string]string{"options.md": "# Options\n\nUse the first one.\n", "data.json": `{"a":[1,2]}`} {
+		f := thread.Path(p, done.ID, "library", name)
+		os.WriteFile(f, []byte(text), 0o644)
+		os.Chtimes(f, at, at)
+	}
+
 	const cols = 120
 	w := env.Window(cols, 40)
 	w.WaitFor("SESSIONS", wait)
@@ -106,6 +126,24 @@ func TestSmokeProjectPopup(t *testing.T) {
 	w.Key(emu.Key{Special: emu.KeyRight})
 	w.WaitFor("Start threads", wait)
 	w.Golden("popup-settings.txt", popupMasks...)
+
+	// Library: the resolved thread's files by name and size, one read
+	// in the popup, the rest deleted after y.
+	w.Type("7")
+	w.WaitFor("options.md", wait)
+	w.Golden("popup-library.txt", popupMasks...)
+	w.Key(Enter)
+	w.WaitFor(`"a": [`, wait) // data.json is first (equal times, by name), indented
+	w.Key(emu.Key{Special: emu.KeyEscape})
+	w.WaitFor("options.md", wait)
+	w.Type("D")
+	w.WaitFor("Delete all 2 library files of thread "+done.ID, wait)
+	w.Type("y")
+	w.WaitFor("no files", wait)
+	if out := env.MustCLI("library", "list", "--project", slug); out != "" {
+		t.Fatalf("library after D:\n%s", out)
+	}
+	w.Type("4")
 
 	// Start threads: ask first → automatically, saved and in the
 	// coordinator's context.

@@ -95,6 +95,11 @@ checkout when safe (`tm context`'s repo line says when it is behind).
   files and the branch; tm does it, refusing when the branch has commits
   no remote has): use it only when the user says in chat to throw that
   thread's work away, never on your own.
+- `tm library list` shows the files threads attached to reports (name
+  and size, newest first, archived threads too). `tm library rm <thread>
+  <file>` (or `--all`) deletes them: only when the user says in chat to
+  clean them up, never on your own; the user can also do it in the
+  project popup's library tab.
 - A thread's question menu (`tm thread show <id>`, else `tm thread read
   <id>`) waits for the user: put it and its options to them in chat,
   then relay with `tm thread answer <id> --choice N` or `--option
