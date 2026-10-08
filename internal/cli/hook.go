@@ -22,9 +22,10 @@ var (
 	hookWrite    = 100 * time.Millisecond
 	hookAck      = 250 * time.Millisecond // total, for events nobody answers
 	hookResponse = 500 * time.Millisecond // total, when a response is expected
-	// hookContext is the total for SessionStart: its response is the
-	// session's brief and context, and a loaded machine after /clear can
-	// miss 500 ms, which would leave the session without them.
+	// hookContext is the total for a [[hooks]] entry with timeout =
+	// "context" (SessionStart): its response is the session's brief and
+	// context, and a loaded machine after /clear can miss 500 ms, which
+	// would leave the session without them.
 	hookContext = 3 * time.Second
 )
 
@@ -58,30 +59,37 @@ func runHook(e *Env, args []string) error {
 	if json.Unmarshal(data, &payload) != nil {
 		return nil
 	}
-	event, _ := payload["hook_event_name"].(string)
-	respond, token := false, ""
 	paths, err := server.ResolvePaths()
 	if err != nil {
 		return nil
 	}
+	// The event's name is in [hook] event_field (default hook_event_name),
+	// and its [[hooks]] entries say whether a response is expected and how
+	// long to wait for it (timeout).
+	var hook agent.HookTrim
+	var hooks []agent.HookMap
+	token := ""
 	if reg, _ := agent.Load(paths.AgentsDir()); reg != nil {
 		if a, ok := reg.Get(name); ok {
-			payload = a.Sources().Hook.Trim(payload)
+			hook = a.Sources().Hook
 			if m := agent.ManifestOf(a); m != nil {
 				if m.Inject.TokenEnv != "" {
 					token = e.Getenv(m.Inject.TokenEnv)
 				}
-				for _, h := range m.Hooks {
-					respond = respond || (h.Event == event && h.Respond != "")
-				}
+				hooks = m.Hooks
 			}
 		}
 	}
+	event, _ := payload[hook.EventField()].(string)
+	payload = hook.Trim(payload)
 	total := hookAck
-	if respond {
-		total = hookResponse
-		if event == "SessionStart" {
-			total = hookContext
+	for _, h := range hooks {
+		if h.Event != event || h.Respond == "" {
+			continue
+		}
+		total = max(total, hookResponse)
+		if h.Timeout == agent.HookTimeoutContext {
+			total = max(total, hookContext)
 		}
 	}
 	params := proto.HookEventParams{Session: session, Agent: name, Event: event,

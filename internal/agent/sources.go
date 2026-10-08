@@ -75,7 +75,14 @@ type HookTrim struct {
 	// template). Empty: tool_name and tool_input.
 	Tool  string `toml:"tool_field"`
 	Input string `toml:"input_field"`
+	// Event names the payload field holding the event's name, which
+	// [[hooks]] event matches. Empty: hook_event_name (docs/SPEC.md §8.2,
+	// the canonical hook wire format).
+	Event string `toml:"event_field"`
 }
+
+// EventField is the payload field naming the hook event.
+func (h HookTrim) EventField() string { return cmp.Or(h.Event, "hook_event_name") }
 
 // ToolField is the payload field naming a tool call's tool.
 func (h HookTrim) ToolField() string { return cmp.Or(h.Tool, "tool_name") }
@@ -89,13 +96,13 @@ type KeepWhen struct {
 	Fields []string          `toml:"fields"`
 }
 
-// Trim returns the trimmed payload. hook_event_name is always kept.
+// Trim returns the trimmed payload. The event field is always kept.
 func (h HookTrim) Trim(payload map[string]any) map[string]any {
 	if len(h.Keep) == 0 && len(h.Truncate) == 0 && len(h.KeepWhen) == 0 {
 		return payload
 	}
 	out := map[string]any{}
-	keep := append([]string{"hook_event_name"}, h.Keep...)
+	keep := append([]string{h.EventField()}, h.Keep...)
 	if len(h.Keep) == 0 {
 		keep = nil
 		for k := range payload {

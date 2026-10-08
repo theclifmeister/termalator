@@ -321,7 +321,17 @@ type HookMap struct {
 	// .Guard (the guard's refusal of the payload's tool call, or nil;
 	// judged only when the template uses it).
 	Respond string `toml:"respond"`
+	// Timeout is how long tm hook waits for the response: "" (the
+	// default, 500 ms) or "context" (3 s, for the event whose response
+	// carries the session's context). See HookTimeout.
+	Timeout string `toml:"timeout"`
 }
+
+// Hook timeouts a [[hooks]] entry may ask for.
+const (
+	HookTimeoutResponse = "response"
+	HookTimeoutContext  = "context"
+)
 
 // RendersAccess reports whether the manifest turns the access policy
 // (LaunchSpec.Access) into the harness's own settings. `tm agent list`
@@ -440,6 +450,14 @@ func (m *Manifest) validate() error {
 		}
 		if h.Counter != "" && (len(h.Counter) < 2 || (h.Counter[0] != '+' && h.Counter[0] != '-') || h.CounterKey == "") {
 			errs = append(errs, fmt.Errorf("hooks[%d]: counter must be +name or -name, with counter_key", i))
+		}
+		switch h.Timeout {
+		case "", HookTimeoutResponse, HookTimeoutContext:
+			if h.Timeout != "" && h.Respond == "" {
+				errs = append(errs, fmt.Errorf("hooks[%d]: timeout needs respond", i))
+			}
+		default:
+			errs = append(errs, fmt.Errorf("hooks[%d]: timeout %q is not response|context", i, h.Timeout))
 		}
 	}
 	for i, t := range m.Todos {

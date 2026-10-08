@@ -504,6 +504,41 @@ func TestHookTrim(t *testing.T) {
 	}
 }
 
+// [hook] event_field names the event field, which trimming always keeps,
+// and [[hooks]] timeout is checked at load.
+func TestHookWireFormat(t *testing.T) {
+	if f := claude(t).Sources().Hook.EventField(); f != "hook_event_name" {
+		t.Fatalf("default event field %q", f)
+	}
+	trim := HookTrim{Keep: []string{"a"}, Event: "type"}
+	if got := trim.Trim(map[string]any{"type": "start", "a": 1, "b": 2}); got["type"] != "start" || got["b"] != nil {
+		t.Fatalf("trim with event_field = %v", got)
+	}
+	for _, name := range []string{"claude", "codex"} {
+		data, _ := builtin.ReadFile("manifests/" + name + ".toml")
+		m, err := ParseManifest(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, h := range m.Hooks {
+			if want := map[bool]string{true: HookTimeoutContext}[h.Event == "SessionStart"]; h.Timeout != want {
+				t.Errorf("%s %s: timeout %q, want %q", name, h.Event, h.Timeout, want)
+			}
+		}
+	}
+	const base = "manifest_version = 1\nname = \"a\"\n[launch]\ncommand = \"a\"\n[[hooks]]\nevent = \"E\"\n"
+	for in, ok := range map[string]bool{
+		"respond = \"x\"\ntimeout = \"context\"\n":  true,
+		"respond = \"x\"\ntimeout = \"response\"\n": true,
+		"respond = \"x\"\ntimeout = \"3s\"\n":       false,
+		"timeout = \"context\"\n":                   false,
+	} {
+		if _, err := ParseManifest([]byte(base + in)); (err == nil) != ok {
+			t.Errorf("%q: err %v", in, err)
+		}
+	}
+}
+
 func TestFilterEnv(t *testing.T) {
 	env := []string{"PATH=/bin", "CLAUDECODE=1", "CLAUDE_CODE_SESSION_ID=x", "CLAUDE_CODE_USE_BEDROCK=1", "CLAUDE_CODE_MESSAGING_TOKEN=t"}
 	l, err := claude(t).Launch(threadSpec())
