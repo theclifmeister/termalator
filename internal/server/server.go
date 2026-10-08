@@ -24,6 +24,7 @@ import (
 	"github.com/theclifmeister/terminatr/internal/codehost"
 	"github.com/theclifmeister/terminatr/internal/emu"
 	"github.com/theclifmeister/terminatr/internal/keychain"
+	"github.com/theclifmeister/terminatr/internal/plat/fsx"
 	"github.com/theclifmeister/terminatr/internal/plat/ipc"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
@@ -158,8 +159,8 @@ func Run(ctx context.Context, opts Options) error {
 	// The run dir holds the socket, the lock and the pid file. Bind before
 	// anything else can start: a server that cannot listen must not own
 	// processes nobody can reach.
-	if err := ensurePrivateDir(p.RunDir); err != nil {
-		return err
+	if err := fsx.EnsurePrivateDir(p.RunDir); err != nil {
+		return fmt.Errorf("refusing to use the run dir: %w", err)
 	}
 	lock, err := takeLock(p)
 	if err != nil {

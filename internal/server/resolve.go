@@ -61,26 +61,3 @@ func ResolvePaths() (Paths, error) {
 		Sessions: filepath.Join(stateDir, "state", "sessions.json"),
 	}, nil
 }
-
-// ensurePrivateDir creates dir (mode 0700) if needed and refuses a
-// directory that is a symlink, belongs to someone else or is accessible to
-// group or others.
-func ensurePrivateDir(dir string) error {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	fi, err := os.Lstat(dir)
-	if err != nil {
-		return err
-	}
-	if !fi.IsDir() {
-		return fmt.Errorf("refusing to use %s: not a directory", dir)
-	}
-	if uid, ok := fileOwner(fi); ok && uid != os.Getuid() {
-		return fmt.Errorf("refusing to use %s: owned by uid %d, not %d", dir, uid, os.Getuid())
-	}
-	if fi.Mode().Perm()&0o077 != 0 {
-		return fmt.Errorf("refusing to use %s: mode %04o, want 0700 (chmod 700 it)", dir, fi.Mode().Perm())
-	}
-	return nil
-}

@@ -8,13 +8,13 @@ import (
 	"io"
 	"net"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/plat/fsx"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/session"
 	"github.com/theclifmeister/terminatr/internal/view"
@@ -151,28 +151,11 @@ func (vs *views) saveLocked() {
 	sort.Slice(f.Views, func(i, j int) bool { return f.Views[i].Name < f.Views[j].Name })
 	b, err := json.MarshalIndent(f, "", "  ")
 	if err == nil {
-		err = writeAtomic(vs.path, append(b, '\n'))
+		err = fsx.WriteAtomic(vs.path, append(b, '\n'), 0o600)
 	}
 	if err != nil {
 		vs.logf("views.json: %v", err)
 	}
-}
-
-// writeAtomic writes path through a temp file and a rename.
-func writeAtomic(path string, b []byte) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+"-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.Write(b); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
 }
 
 // changedLocked publishes lv's new version: Seq goes up, the file is

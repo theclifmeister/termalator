@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"math"
 	"os"
-	"path/filepath"
 
+	"github.com/theclifmeister/terminatr/internal/plat/fsx"
 	"github.com/theclifmeister/terminatr/internal/view"
 )
 
@@ -63,19 +63,7 @@ func SaveLayout(path string, l Layout) error {
 	if err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".ui-*.json")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.Write(append(b, '\n')); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
+	return fsx.WriteAtomic(path, append(b, '\n'), 0o600)
 }
 
 // clampSplit keeps a split in range, to two decimals.

@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/theclifmeister/terminatr/internal/plat/fsx"
 )
 
 // ErrNoConsole means nobody is logged in at the Mac's console, so there is
@@ -115,11 +117,7 @@ func (c Config) writeLaunchFile() error {
 	if err != nil {
 		return err
 	}
-	tmp := c.LaunchFile() + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, c.LaunchFile())
+	return fsx.WriteAtomic(c.LaunchFile(), data, 0o600)
 }
 
 // ApplyLaunchFile sets this process's environment from the launch file at
