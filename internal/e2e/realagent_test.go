@@ -53,7 +53,10 @@ func realAgentEnv(t *testing.T, name string, loginCheck func(bin string) string)
 func pinClaudePermissionMode(t *testing.T, bin string) string {
 	t.Helper()
 	dir := t.TempDir()
-	script := "#!/bin/sh\n" +
+	// CLAUDE_CODE_ENABLE_TODO_TOOLS: claude 2.1.295 offers TaskCreate and
+	// TaskUpdate only to legacy or unset models; the suite's haiku (5.x)
+	// gets no todo tool without it, and the todos scenario needs one.
+	script := "#!/bin/sh\nexport CLAUDE_CODE_ENABLE_TODO_TOOLS=1\n" +
 		"for a in \"$@\"; do case \"$a\" in --dangerously-skip-permissions|--permission-mode|--permission-mode=*) exec '" + bin + "' \"$@\";; esac; done\n" +
 		"exec '" + bin + "' --permission-mode default \"$@\"\n"
 	if err := os.WriteFile(filepath.Join(dir, "claude"), []byte(script), 0o755); err != nil {
