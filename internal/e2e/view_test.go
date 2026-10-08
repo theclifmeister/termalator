@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/theclifmeister/terminatr/internal/emu"
 )
 
 // TestSmokeViewsShared: two consoles on view main. Opening a project's
@@ -54,6 +56,17 @@ func TestSmokeViewsShared(t *testing.T) {
 	})
 	// And typing in w1 claims it back.
 	w1.Type("y")
+	waitPaneSize(t, env, a, threadCols(120), 28)
+
+	// A window gaining the terminal's focus claims like typing does;
+	// losing it, or the pointer moving over it, doesn't.
+	w2.Type("\x1b[O")
+	w2.Mouse(emu.Mouse{Action: emu.MouseMotion, X: 50, Y: 10})
+	w2.Quiet(400 * time.Millisecond)
+	assertPaneSize(t, env, a, threadCols(120), 28)
+	w2.Type("\x1b[I")
+	waitPaneSize(t, env, a, threadCols(100), 24)
+	w1.Type("\x1b[I")
 	waitPaneSize(t, env, a, threadCols(120), 28)
 
 	// The sidebar: prefix } in w2 widens it in w1 too, by 2 columns.
