@@ -43,6 +43,22 @@ var commandLine = regexp.MustCompile(`(?m)^command = "claude"$`)
 // within its trust debounce are dropped, as with Claude; tests shorten it.
 func (e *Env) FakeClaude(edit ...func(string) string) {
 	e.T.Helper()
+	e.fakeManifest("claude", edit...)
+	e.Setenv("FAKEAGENT_TRUST_DEBOUNCE_MS", "100")
+}
+
+// FakeAgent installs the fake agent under another name as well: the
+// claude manifest renamed, so tests can pick between two agents. It has
+// none of claude's Go code (the trust of worktrees, say).
+func (e *Env) FakeAgent(name string) {
+	e.T.Helper()
+	e.fakeManifest(name, func(m string) string {
+		return strings.Replace(m, `name = "claude"`, "name = "+strconv.Quote(name), 1)
+	})
+}
+
+func (e *Env) fakeManifest(name string, edit ...func(string) string) {
+	e.T.Helper()
 	b, ok := agent.Builtin("claude")
 	if !ok {
 		e.T.Fatal("no built-in claude manifest")
@@ -58,10 +74,9 @@ func (e *Env) FakeClaude(edit ...func(string) string) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		e.T.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "claude.toml"), []byte(m), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, name+".toml"), []byte(m), 0o600); err != nil {
 		e.T.Fatal(err)
 	}
-	e.Setenv("FAKEAGENT_TRUST_DEBOUNCE_MS", "100")
 }
 
 // Trust marks dir as trusted in the fake's ~/.claude.json, as accepting

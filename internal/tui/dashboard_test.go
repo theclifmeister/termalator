@@ -701,7 +701,7 @@ func TestDashboardPopups(t *testing.T) {
 
 	press(m, ",")
 	out = screen(m)
-	for _, want := range []string{"Settings", "Prefix key", "ctrl+b", "Default agent", "Details panel", "List width", "Sidebar"} {
+	for _, want := range []string{"Settings", "Prefix key", "ctrl+b", "Details panel", "List width", "Sidebar"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("settings lack %q:\n%s", want, out)
 		}

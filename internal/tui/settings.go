@@ -17,12 +17,11 @@ import (
 
 // Settings (docs/SPEC.md §4, §11.2): plain labels, each with a line on
 // what it does, changed in place with enter or space. The , popup has the
-// settings of every project (the prefix key, the default agent, the
-// layout); a project's own are the Settings tab of its popup (a). The UI
-// never names the file or its keys.
+// settings of every project (the prefix key, the layout, and the project
+// settings all projects follow); a project's own are the Settings tab of
+// its popup (a). The UI never names the file or its keys.
 //
-// Where they live: the prefix key, the default agent and the projects'
-// settings are the human's, in the settings file, shared by every
+// Where they live: the prefix key and the projects' settings are the human's, in the settings file, shared by every
 // console; the details panel and list width are this console's (ui.json);
 // the sidebar is the view's. Which popup is open is each console's own.
 
@@ -249,18 +248,6 @@ func globalSettings() []setting {
 		{label: "Prefix key", help: "Starts the session commands, written prefix+<key> in hints. Inside tmux, which takes ctrl+b, pick another. Enter, then press the new one.",
 			value:  func(m *dash) string { return m.prefix },
 			change: func(m *dash) tea.Cmd { m.push(&captureView{}); return nil }},
-		{label: "Default agent", help: "The agent new coordinators run. Enter picks the next one tm knows.",
-			value: func(m *dash) string { return config.DefaultAgent(DefaultAgent) },
-			change: func(m *dash) tea.Cmd {
-				names := m.src.Agents()
-				if len(names) < 2 {
-					m.msg = "tm knows one agent; add others to choose between them (tm agent)"
-					return nil
-				}
-				i := slices.Index(names, config.DefaultAgent(DefaultAgent))
-				next := names[(i+1)%len(names)]
-				return m.setSetting("", "default_agent", next, "new coordinators run "+next)
-			}},
 		{label: "Details panel", help: "The panel beside the list, in windows 120 columns or wider (| on the dashboard). This console only.",
 			value: func(m *dash) string { return onOff(m.layout.Details) },
 			change: func(m *dash) tea.Cmd {
@@ -611,6 +598,28 @@ func safetySettings(slug string) []setting {
 		}
 		return "ask first"
 	}
+	// agentRow is an agent setting: enter picks the next agent tm knows
+	// (tm agent list), so the file only ever names a known one.
+	agentRow := func(label, help, key string, get func(config.Safety) string, put func(*config.Safety, string), msg string) setting {
+		return setting{label: label, help: help,
+			value: func(m *dash) string { return get(safety(m)) },
+			change: func(m *dash) tea.Cmd {
+				names := m.src.Agents()
+				cur := get(safety(m))
+				if len(names) == 0 || len(names) == 1 && names[0] == cur {
+					m.msg = "tm knows one agent; add others to choose between them (tm agent)"
+					return nil
+				}
+				next := names[(slices.Index(names, cur)+1)%len(names)]
+				return set(m, key, next, msg+next, func(s *config.Safety) { put(s, next) })
+			},
+			note: func(m *dash) []string {
+				if names := m.src.Agents(); len(names) > 0 && !slices.Contains(names, get(safety(m))) {
+					return []string{styleWarn.Render("tm knows no agent " + get(safety(m)) + " (tm agent list); enter picks one it knows")}
+				}
+				return nil
+			}}
+	}
 	yoloQ := "Turn yolo mode on for " + slug + "? Threads started from now on skip the agent's permission prompts (the file rules and the sandbox still hold)."
 	rows := []setting{
 		{label: "Start threads", help: "Ask first: the coordinator proposes threads and starts them after your go-ahead. Automatically: it starts them itself.",
@@ -712,6 +721,10 @@ func safetySettings(slug string) []setting {
 			value: func(m *dash) string { return onOff(safety(m).FastForwardCheckout) },
 			change: toggle("fast_forward_checkout", func(s config.Safety) bool { return s.FastForwardCheckout },
 				func(s *config.Safety, on bool) { s.FastForwardCheckout = on }, "keeping your checkout current")},
+		agentRow("Thread agent", "The agent new threads run; the coordinator may still name another for one thread. Enter picks the next one tm knows.",
+			"thread_agent", func(s config.Safety) string { return s.ThreadAgent }, func(s *config.Safety, a string) { s.ThreadAgent = a }, "new threads "+ofWho+" run "),
+		agentRow("Coordinator agent", "The agent a new coordinator runs; a running one keeps its agent until it is started anew. Enter picks the next one tm knows.",
+			"coordinator_agent", func(s config.Safety) string { return s.CoordinatorAgent }, func(s *config.Safety, a string) { s.CoordinatorAgent = a }, "new coordinators "+ofWho+" run "),
 		{label: "Thread models", help: "The models the coordinator may pick for a thread. Enter lists them to allow or leave out; with none left out it chooses from all. A model it may not pick is refused (haiku has no auto mode, so its threads stop at every permission prompt).",
 			value: func(m *dash) string { return modelWords(safety(m).Models) },
 			change: func(m *dash) tea.Cmd {
@@ -763,7 +776,7 @@ func safetySettings(slug string) []setting {
 		}})
 	rows = scope(rows,
 		[][]string{{"start_threads"}, {"yolo"}, {"coordinator_approves"}, {"parallel_threads"}, {"auto_close", "auto_close_days"},
-			{"complete_tasks"}, {"pr_followup"}, {"coordinator_remote_control"}, {"auto_clear"}, {"coordinator_merges"}, {"fast_forward_checkout"}, {"models"}, config.ArchiveKeys},
+			{"complete_tasks"}, {"pr_followup"}, {"coordinator_remote_control"}, {"auto_clear"}, {"coordinator_merges"}, {"fast_forward_checkout"}, {"thread_agent"}, {"coordinator_agent"}, {"models"}, config.ArchiveKeys},
 		[]func(config.Safety) string{startWords, onOffOf(func(s config.Safety) bool { return s.Yolo }),
 			onOffOf(func(s config.Safety) bool { return s.CoordinatorApproves }),
 			func(s config.Safety) string { return fmt.Sprint(s.ParallelThreads) }, closeWords,
@@ -773,6 +786,7 @@ func safetySettings(slug string) []setting {
 			onOffOf(func(s config.Safety) bool { return s.AutoClear }),
 			onOffOf(func(s config.Safety) bool { return s.CoordinatorMerges }),
 			onOffOf(func(s config.Safety) bool { return s.FastForwardCheckout }),
+			func(s config.Safety) string { return s.ThreadAgent }, func(s config.Safety) string { return s.CoordinatorAgent },
 			func(s config.Safety) string { return modelWords(s.Models) }, historyWords})
 	if all {
 		return rows

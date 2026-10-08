@@ -11,7 +11,6 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/server"
@@ -87,7 +86,7 @@ func attachCmd(e *Env, args []string) int {
 	if err != nil {
 		return e.srvFail("attach", err)
 	}
-	res, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Agent: config.DefaultAgent(defaultAgent)}, "", "", []string{"attach", id})
+	res, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile}, "", "", []string{"attach", id})
 	vc.Close()
 	if code != ExitOK {
 		return code
@@ -95,7 +94,7 @@ func attachCmd(e *Env, args []string) int {
 	if res.GoTo != nil {
 		// A click on the sidebar: this console becomes a full one of view
 		// main, which opens what was clicked (docs/SPEC.md §3.3).
-		return e.fullConsole(false, res.GoTo, config.DefaultAgent(defaultAgent))
+		return e.fullConsole(false, res.GoTo)
 	}
 	if res.Detached {
 		fmt.Fprintf(e.Stdout, "[%s from %s]\n", res.Reason, id)

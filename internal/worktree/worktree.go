@@ -154,12 +154,34 @@ func Reconnect(dir string) error {
 	return err
 }
 
-// CommonDir is the git directory a worktree's commits go to (the main
-// repo's .git), which a sandboxed thread must be able to write.
-func CommonDir(dir string) (string, error) {
-	d, err := git(dir, "rev-parse", "--path-format=absolute", "--git-common-dir")
+// Dirs are the git directories of a checkout.
+type Dirs struct {
+	// GitDir is the checkout's own git dir: <repo>/.git/worktrees/<name>
+	// for a linked worktree (its HEAD and index), the repo's .git for the
+	// main checkout.
+	GitDir string
+	// CommonDir is where the commits go: the main repo's .git. A
+	// sandboxed thread must be able to write both.
+	CommonDir string
+	// RepoRoot is the main checkout's folder, the common dir's parent;
+	// the common dir itself for a bare repo.
+	RepoRoot string
+}
+
+// GitDirs returns the git directories of the checkout dir is in, as
+// absolute paths.
+func GitDirs(dir string) (Dirs, error) {
+	out, err := git(dir, "rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir")
 	if err != nil {
-		return "", err
+		return Dirs{}, err
+	}
+	gd, cd, ok := strings.Cut(out, "\n")
+	if !ok || !filepath.IsAbs(gd) || !filepath.IsAbs(cd) {
+		return Dirs{}, fmt.Errorf("git rev-parse: unexpected output %q", out)
+	}
+	d := Dirs{GitDir: gd, CommonDir: cd, RepoRoot: cd}
+	if filepath.Base(cd) == ".git" {
+		d.RepoRoot = filepath.Dir(cd)
 	}
 	return d, nil
 }

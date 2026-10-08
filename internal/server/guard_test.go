@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -266,5 +267,35 @@ func TestAccessMergeCommands(t *testing.T) {
 	writeConfig(t, "[defaults]\ncoordinator_merges = true\n[projects."+p.Slug+"]\ncoordinator_merges = false\n")
 	if got := cmds(proto.RoleCoordinator); got != nil {
 		t.Errorf("project off: coordinator commands %q", got)
+	}
+}
+
+// TestAccessThreadGitDirs: a thread in a linked worktree may write the
+// main repo's git dir and, by name, the worktree's own git dir below it.
+func TestAccessThreadGitDirs(t *testing.T) {
+	testPaths(t)
+	p := newWatchProject(t)
+	s := &Server{opts: Options{Paths: Paths{Home: os.Getenv("TERMINATR_HOME")}}}
+	root := realPath(t.TempDir())
+	repo, wt := filepath.Join(root, "repo"), filepath.Join(root, "wt")
+	for _, args := range [][]string{
+		{"init", "-q", repo},
+		{"-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "c"},
+		{"-C", repo, "worktree", "add", "-q", "-b", "x", wt},
+	} {
+		if b, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, b)
+		}
+	}
+	a, err := s.accessFor(proto.RoleThread, p.Slug, wt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{filepath.Join(repo, ".git"), filepath.Join(repo, ".git", "worktrees", "wt")}
+	if !slices.Equal(a.Write, want) {
+		t.Errorf("worktree: write %q, want %q", a.Write, want)
+	}
+	if a, _ := s.accessFor(proto.RoleThread, p.Slug, repo); !slices.Equal(a.Write, want[:1]) {
+		t.Errorf("main checkout: write %q, want %q", a.Write, want[:1])
 	}
 }

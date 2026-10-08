@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/theclifmeister/terminatr/internal/caller"
-	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/home"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
@@ -15,15 +14,12 @@ import (
 	"github.com/theclifmeister/terminatr/internal/view"
 )
 
-// defaultAgent runs coordinators and the dashboard's c key.
-const defaultAgent = "claude"
-
 // dashboardCmd is `tm` with no arguments, or `tm --own`: a console of
 // the server-owned view (docs/SPEC.md §3.3, §4), view main unless own.
 // It shows the view's screen, the dashboard or the attached layout, and
 // follows it when this console or another changes it.
 func (e *Env) dashboardCmd(own bool) int {
-	return e.fullConsole(own, nil, config.DefaultAgent(defaultAgent))
+	return e.fullConsole(own, nil)
 }
 
 // uiFile is ui.json, the console's layout (docs/SPEC.md §5.1); "" when
@@ -39,7 +35,7 @@ func uiFile() string {
 // layout of view main (own: a view of its own). goTo, from a sidebar
 // click in tm attach or tm project open, is opened first: that bare view
 // hands its console over to this one (docs/SPEC.md §3.3).
-func (e *Env) fullConsole(own bool, goTo *tui.Target, agentName string) int {
+func (e *Env) fullConsole(own bool, goTo *tui.Target) int {
 	if !isTTY(os.Stdin) || !isTTY(os.Stdout) {
 		fmt.Fprintln(e.Stderr, "tm: the dashboard needs a terminal; see tm session list")
 		return ExitUsage
@@ -58,7 +54,7 @@ func (e *Env) fullConsole(own bool, goTo *tui.Target, agentName string) int {
 			who = caller.Narrower(who, c)
 		}
 	}
-	src := &tui.ServerSource{Paths: p, Agent: agentName, Caller: who}
+	src := &tui.ServerSource{Paths: p, Caller: who}
 	defer src.Close()
 	uiFile := uiFile()
 	cols, rows, ok := termSize()
@@ -78,7 +74,7 @@ func (e *Env) fullConsole(own bool, goTo *tui.Target, agentName string) int {
 	}
 	var st tui.DashState
 	if goTo != nil {
-		if err := tui.OpenTarget(p, vc, agentName, *goTo); err != nil {
+		if err := tui.OpenTarget(p, vc, *goTo); err != nil {
 			st.Message = err.Error()
 		}
 	}
@@ -89,7 +85,7 @@ func (e *Env) fullConsole(own bool, goTo *tui.Target, agentName string) int {
 	for {
 		var over *tui.Over
 		if attach {
-			ares, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Agent: agentName, Focus: sideFocus}, flash, command, args)
+			ares, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Focus: sideFocus}, flash, command, args)
 			if code != ExitOK {
 				return code
 			}
@@ -153,13 +149,17 @@ func (e *Env) openCmd(slug, agentName string) error {
 	if err != nil {
 		return err
 	}
-	res, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile, Agent: agentName}, "", "", []string{"project", "open", slug, "--agent", agentName})
+	args := []string{"project", "open", slug}
+	if agentName != "" {
+		args = append(args, "--agent", agentName)
+	}
+	res, code := e.attach(p, vc, &tui.SidebarOptions{UIFile: uiFile}, "", "", args)
 	vc.Close()
 	if code != ExitOK {
 		return &exitError{code}
 	}
 	if res.GoTo != nil {
-		return codeErr(e.fullConsole(false, res.GoTo, agentName))
+		return codeErr(e.fullConsole(false, res.GoTo))
 	}
 	fmt.Fprintf(e.Stdout, "[%s: %s]\n", id, res.Reason)
 	return nil

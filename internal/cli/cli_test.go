@@ -447,6 +447,34 @@ func TestThreadModelAllowList(t *testing.T) {
 	}
 }
 
+// TestThreadAgentSetting: tm thread start runs the user's thread_agent
+// unless --agent names another, refuses one tm doesn't know, and tm
+// context names the agents the coordinator may start.
+func TestThreadAgentSetting(t *testing.T) {
+	h := newHarness(t)
+	h.ok(human, "project", "new", "demo")
+	cfg := filepath.Join(h.root, "config.toml")
+	if err := os.WriteFile(cfg, []byte("[projects.demo]\nthread_agent = \"pi\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.expect(1, "the user's settings name thread agent \"pi\"", coord, "thread", "start", "Fix it", "--project", "demo")
+	if out := h.ok(coord, "context", "--project", "demo"); !strings.Contains(out, "Thread agent: pi (config.toml; the human's), which tm doesn't know") {
+		t.Fatalf("context:\n%s", out)
+	}
+	// A second agent: claude's manifest under another name.
+	os.MkdirAll(filepath.Join(h.root, "agents"), 0o700)
+	b, _ := agentBuiltin("claude")
+	b = strings.Replace(b, "name = \"claude\"", "name = \"pi\"", 1)
+	os.WriteFile(filepath.Join(h.root, "agents", "pi.toml"), []byte(b), 0o600)
+	if err := checkAgent("pi", true); err != nil {
+		t.Fatal(err)
+	}
+	if out := h.ok(coord, "context", "--project", "demo"); !strings.Contains(out, "Thread agent: pi (config.toml; the human's): tm thread start runs it; --agent may name another: claude") {
+		t.Fatalf("context:\n%s", out)
+	}
+	h.expect(1, "no agent \"nope\" (tm agent list)", coord, "thread", "start", "Fix it", "--agent", "nope", "--project", "demo")
+}
+
 func agentBuiltin(name string) (string, bool) {
 	b, ok := agent.Builtin(name)
 	return string(b), ok

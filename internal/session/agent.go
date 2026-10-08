@@ -44,6 +44,9 @@ type AgentConfig struct {
 	// OnChange is called (without locks held) when the merged state or
 	// the agent's session id changes.
 	OnChange func(*Session)
+	// OnUsage is called (without locks held) with what the agent used,
+	// as its JSONL file reports it ([jsonl_tail.usage]).
+	OnUsage func(*Session, agent.Usage)
 	// PromptHold bounds how long a queued prompt may be held while the
 	// agent is idle (a prompt box with text in it, a dialog on screen)
 	// before it is resolved: sent through the agent's channel when it
@@ -146,6 +149,7 @@ type agentRT struct {
 	mu         sync.Mutex
 	tailPath   string
 	tailOff    int64
+	usageKey   string // the last counted usage line's key (agent.TailUsage.Key)
 	statusMod  time.Time
 	statusSize int64
 	statusRead time.Time
@@ -352,7 +356,7 @@ func (rt *agentRT) setTail(p string) {
 	if p == rt.tailPath {
 		return
 	}
-	rt.tailPath, rt.tailOff = p, 0
+	rt.tailPath, rt.tailOff, rt.usageKey = p, 0, ""
 	if fi, err := os.Stat(p); err == nil {
 		rt.tailOff = fi.Size()
 	}
@@ -505,48 +509,64 @@ func (rt *agentRT) channelGone() error {
 	return nil
 }
 
-// readTail reads lines appended to the JSONL file since the last call.
-func (rt *agentRT) readTail() {
+// readTail reads lines appended to the JSONL file since the last call,
+// and returns the usage they report.
+func (rt *agentRT) readTail() []agent.Usage {
 	t := rt.src.JSONLTail
 	if t == nil {
-		return
+		return nil
 	}
 	rt.mu.Lock()
 	p, off := rt.tailPath, rt.tailOff
 	rt.mu.Unlock()
 	if p == "" {
-		return
+		return nil
 	}
 	f, err := os.Open(p)
 	if err != nil {
-		return
+		return nil
 	}
 	defer f.Close()
 	if fi, err := f.Stat(); err == nil && fi.Size() < off {
 		off = 0 // truncated or replaced
 	}
 	if _, err := f.Seek(off, io.SeekStart); err != nil {
-		return
+		return nil
 	}
 	data, err := io.ReadAll(io.LimitReader(f, 8<<20))
 	if err != nil {
-		return
+		return nil
 	}
 	// Only whole lines; a partial last line is read again next time.
 	end := bytes.LastIndexByte(data, '\n')
 	if end < 0 {
-		return
+		return nil
 	}
+	var used []agent.Usage
+	rt.mu.Lock()
+	key := rt.usageKey
+	rt.mu.Unlock()
 	for _, line := range bytes.Split(data[:end], []byte{'\n'}) {
-		if sig, ok := t.Line(line); ok {
-			rt.tr.Tail(sig)
+		l := t.Parse(line)
+		if l.HasSignal {
+			rt.tr.Tail(l.Signal)
 		}
+		u := l.Usage
+		if u == nil || (u.Key != "" && u.Key == key) {
+			continue // none, or a repeat of the last report
+		}
+		if u.Key != "" {
+			key = u.Key
+		}
+		used = append(used, *u)
 	}
 	rt.mu.Lock()
 	if rt.tailPath == p {
 		rt.tailOff = off + int64(end) + 1
+		rt.usageKey = key
 	}
 	rt.mu.Unlock()
+	return used
 }
 
 // evalScreen runs the screen rules on the emulator's current text.
@@ -617,7 +637,11 @@ func (s *Session) runAgent(rt *agentRT) {
 		case now := <-tick.C:
 			s.probeAgent(rt, now)
 			rt.pollStatus(now)
-			rt.readTail()
+			for _, u := range rt.readTail() {
+				if rt.cfg.OnUsage != nil {
+					rt.cfg.OnUsage(s, u)
+				}
+			}
 			dirty := s.output.Swap(false)
 			if (dirty && now.Sub(lastEval) >= screenInterval) || now.Sub(lastEval) >= screenIdleEval {
 				s.evalScreen(rt)

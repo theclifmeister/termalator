@@ -12,7 +12,6 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 
-	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/emu"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
@@ -556,10 +555,11 @@ func (r treeRow) target() (t Target, ok bool, why string) {
 }
 
 // OpenTarget opens t in the view vc: shows the project's dashboard, or
-// attaches the coordinator (started first, by agentName, when none runs)
+// attaches the coordinator (started first, by the project's
+// coordinator_agent, when none runs)
 // or the session. A bare view's console hands over to view main with it
 // (docs/SPEC.md §3.3); a full one opens it in place.
-func OpenTarget(p server.Paths, vc *ViewConn, agentName string, t Target) error {
+func OpenTarget(p server.Paths, vc *ViewConn, t Target) error {
 	switch {
 	case t.Session != "":
 		_, err := vc.Do(proto.MethodViewAttach, proto.ViewParams{Session: t.Session, Project: t.Project})
@@ -575,7 +575,7 @@ func OpenTarget(p server.Paths, vc *ViewConn, agentName string, t Target) error 
 			cols, rows = 80, 24
 		}
 		area := v.Lay(cols, rows).Area
-		id, err := OpenCoordinator(c.Call, t.Project, agentName, area.W, area.H)
+		id, err := OpenCoordinator(c.Call, t.Project, "", area.W, area.H)
 		c.Close()
 		if err != nil {
 			return err
@@ -618,7 +618,6 @@ func loadSideProjects() []ProjectData {
 // tree state are the view's. Guarded by client.mu.
 type sidebar struct {
 	uiFile   string
-	agent    string // starts a clicked project's coordinator
 	projects []ProjectData
 	sessions []proto.SessionInfo
 	ctxHint  int      // [ui] context_hint
@@ -867,7 +866,7 @@ func (c *client) sideGo(t Target) {
 		return
 	}
 	go func() {
-		if err := OpenTarget(c.paths, c.vc, config.DefaultAgent(c.side.agent), t); err != nil {
+		if err := OpenTarget(c.paths, c.vc, t); err != nil {
 			var perr *proto.Error
 			msg := err.Error()
 			if errors.As(err, &perr) {
