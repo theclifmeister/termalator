@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -76,5 +77,105 @@ func TestTOMLString(t *testing.T) {
 	var v struct{ K string }
 	if _, err := toml.Decode("K = "+tomlString("a\xffb"), &v); err != nil || v.K != "a�b" {
 		t.Errorf("invalid UTF-8 -> %q %v", v.K, err)
+	}
+}
+
+// codexUsage is the [jsonl_tail] a Codex manifest would carry: usage
+// from event_msg/token_count, one turn per task_complete.
+const codexUsage = `manifest_version = 1
+name = "codex"
+[launch]
+command = "codex"
+[jsonl_tail]
+path_field = "transcript_path"
+[[jsonl_tail.rules]]
+match = { type = "event_msg", "payload.type" = "task_complete" }
+state = "idle"
+[jsonl_tail.usage]
+match = { type = "event_msg", "payload.type" = "token_count" }
+input = "payload.info.last_token_usage.input_tokens"
+cache_read = "payload.info.last_token_usage.cached_input_tokens"
+output = "payload.info.last_token_usage.output_tokens"
+input_includes_cache = true
+context = "payload.info.last_token_usage.input_tokens"
+context_window = "payload.info.model_context_window"
+key = "payload.info.total_token_usage.total_tokens"
+turn = { type = "event_msg", "payload.type" = "task_complete" }
+`
+
+// Lines in the shape of a Codex 0.160 rollout (~/.codex/sessions/…/
+// rollout-*.jsonl), numbers made up: a turn with two requests, where the
+// first token_count has no info yet and the second request's count is
+// written twice.
+var codexLines = []string{
+	`{"timestamp":"2026-10-06T20:18:01.002Z","type":"event_msg","payload":{"type":"task_started","model_context_window":258400}}`,
+	`{"timestamp":"2026-10-06T20:18:01.010Z","type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":{"primary":{"used_percent":3.0,"window_minutes":300,"resets_in_seconds":9000},"secondary":{"used_percent":1.0,"window_minutes":10080,"resets_in_seconds":500000}}}}`,
+	`{"timestamp":"2026-10-06T20:18:04.551Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":12034,"cached_input_tokens":3456,"output_tokens":210,"reasoning_output_tokens":128,"total_tokens":12244},"last_token_usage":{"input_tokens":12034,"cached_input_tokens":3456,"output_tokens":210,"reasoning_output_tokens":128,"total_tokens":12244},"model_context_window":258400},"rate_limits":{"primary":{"used_percent":3.0,"window_minutes":300,"resets_in_seconds":8996}}}}`,
+	`{"timestamp":"2026-10-06T20:18:09.120Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":24890,"cached_input_tokens":15232,"output_tokens":512,"reasoning_output_tokens":256,"total_tokens":25402},"last_token_usage":{"input_tokens":12856,"cached_input_tokens":11776,"output_tokens":302,"reasoning_output_tokens":128,"total_tokens":13158},"model_context_window":258400},"rate_limits":{"primary":{"used_percent":4.0,"window_minutes":300,"resets_in_seconds":8991}}}}`,
+	`{"timestamp":"2026-10-06T20:18:09.121Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":24890,"cached_input_tokens":15232,"output_tokens":512,"reasoning_output_tokens":256,"total_tokens":25402},"last_token_usage":{"input_tokens":12856,"cached_input_tokens":11776,"output_tokens":302,"reasoning_output_tokens":128,"total_tokens":13158},"model_context_window":258400},"rate_limits":{"primary":{"used_percent":4.0,"window_minutes":300,"resets_in_seconds":8991}}}}`,
+	`{"timestamp":"2026-10-06T20:18:09.300Z","type":"event_msg","payload":{"type":"task_complete","last_agent_message":"Done."}}`,
+	`{"timestamp":"2026-10-06T20:18:09.301Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Done."}]}}`,
+}
+
+// TestTailUsageCodex: the usage table reads Codex's token_count lines:
+// the uncached input, the cache reads, the output and the context, and
+// a turn from task_complete. Repeats are the tailer's to drop, by Key.
+func TestTailUsageCodex(t *testing.T) {
+	m, err := ParseManifest([]byte(codexUsage))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tail := m.JSONLTail
+	want := []*Usage{
+		nil,
+		nil, // no info yet
+		{Turns: 0, Input: 12034 - 3456, CacheRead: 3456, Output: 210, Context: 12034, ContextWindow: 258400, Key: "12244"},
+		{Turns: 0, Input: 12856 - 11776, CacheRead: 11776, Output: 302, Context: 12856, ContextWindow: 258400, Key: "25402"},
+		{Turns: 0, Input: 12856 - 11776, CacheRead: 11776, Output: 302, Context: 12856, ContextWindow: 258400, Key: "25402"},
+		{Turns: 1},
+		nil,
+	}
+	for i, line := range codexLines {
+		l := tail.Parse([]byte(line))
+		if (l.Usage == nil) != (want[i] == nil) || (l.Usage != nil && *l.Usage != *want[i]) {
+			t.Errorf("line %d: usage %+v, want %+v", i, l.Usage, want[i])
+		}
+		if idle := l.HasSignal && l.Signal.State == StateIdle; idle != (i == 5) {
+			t.Errorf("line %d: signal %+v %v", i, l.Signal, l.HasSignal)
+		}
+	}
+}
+
+// TestTailUsageTable: without a turn match every usage line is a turn;
+// cost and the model are read; bad numbers read as 0; and the table is
+// validated.
+func TestTailUsageTable(t *testing.T) {
+	u := &TailUsage{Match: map[string]string{"type": "usage"}, Input: "u.in", Output: "u.out",
+		CacheCreation: "u.cw", CostUSD: "cost", Model: "model"}
+	var obj map[string]any
+	json.Unmarshal([]byte(`{"type":"usage","u":{"in":5,"out":-3,"cw":"7"},"cost":0.25,"model":"m-1"}`), &obj)
+	if got := u.read(obj); got == nil || *got != (Usage{Turns: 1, Input: 5, CostUSD: 0.25, Model: "m-1"}) {
+		t.Errorf("usage line: %+v", got)
+	}
+	json.Unmarshal([]byte(`{"type":"other","u":{"in":5}}`), &obj)
+	if got := u.read(obj); got != nil {
+		t.Errorf("a line the match leaves out: %+v", got)
+	}
+
+	const base = "manifest_version = 1\nname = \"a\"\n[launch]\ncommand = \"a\"\n[jsonl_tail]\npath_field = \"p\"\n"
+	for _, c := range []struct {
+		table string
+		ok    bool
+	}{
+		{"[jsonl_tail.usage]\nmatch = { t = \"u\" }\noutput = \"o\"\n", true},
+		{"", false}, // neither rules nor usage
+		{"[jsonl_tail.usage]\noutput = \"o\"\n", false},
+		{"[jsonl_tail.usage]\nmatch = { t = \"u\" }\nmodel = \"m\"\n", false},
+		{"[jsonl_tail.usage]\nmatch = { t = \"u\" }\ninput = \"i\"\ninput_includes_cache = true\n", false},
+		{"[jsonl_tail.usage]\nmatch = { t = \"u\" }\noutput = \"o\"\nsurprise = 1\n", false},
+	} {
+		if _, err := ParseManifest([]byte(base + c.table)); (err == nil) != c.ok {
+			t.Errorf("%q: err = %v, want ok %v", c.table, err, c.ok)
+		}
 	}
 }

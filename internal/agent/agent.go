@@ -25,10 +25,10 @@ const RoleThread Role = "thread"
 
 // LaunchSpec is what the core asks an agent to start. All paths are absolute.
 type LaunchSpec struct {
-	Role       Role
-	SessionID  string // terminatr session id, exported as TERMINATR_SESSION
-	AgentSID   string // agent's own session id, pre-assigned when the agent allows it
-	Cwd        string
+	Role      Role
+	SessionID string // terminatr session id, exported as TERMINATR_SESSION
+	AgentSID  string // agent's own session id, pre-assigned when the agent allows it
+	Cwd       string
 	// RepoRoot is the main checkout's folder of the git repo Cwd is in
 	// (a linked worktree's main repo, e.g. for a folder-trust key), and
 	// GitDir the checkout's own git dir (<repo>/.git/worktrees/<name>
