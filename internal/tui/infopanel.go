@@ -4,8 +4,6 @@ import (
 	"cmp"
 	"fmt"
 	"os"
-	"os/exec"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/theclifmeister/terminatr/internal/emu"
+	"github.com/theclifmeister/terminatr/internal/plat/open"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/server"
@@ -532,13 +531,7 @@ func (c *client) infoTask(id int) {
 }
 
 // openURL opens a web address in the browser (a variable for tests).
-var openURL = func(url string) error {
-	name := "xdg-open"
-	if runtime.GOOS == "darwin" {
-		name = "open"
-	}
-	return exec.Command(name, url).Start()
-}
+var openURL = open.URL
 
 // infoMouse handles the mouse over the panel or dragging its border: the
 // border drags, a click on the task or the PR opens it, any other click
