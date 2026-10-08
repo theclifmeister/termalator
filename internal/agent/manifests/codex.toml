@@ -44,6 +44,18 @@ args = [
   "-c", 'mcp_servers.terminatr.env_vars=["TERMINATR_HOME"]',
   "-c", 'mcp_servers.terminatr.default_tools_approval_mode="approve"',
   "{{if and (eq .Role \"coordinator\") (not .Yolo)}}--approve-for-me{{end}}",
+  # Thread sandbox (T99).
+  # A thread runs in permission profile "tm", the access policy
+  # (docs/SPEC.md §5.2) on top of Codex's workspace-write: Read is read,
+  # Write is write, NoWrite and NoWriteFiles are read ("deny" would block
+  # reading too). A linked worktree's git dirs need write by name: Codex
+  # carves git dirs out of every broader grant, and --add-dir and
+  # writable_roots don't reopen them. tm.sock needs the network on, which
+  # also opens HTTPS (user, 2026-10-07: open for now). Yolo has no
+  # sandbox to shape.
+  "{{if and (eq .Role \"thread\") (not .Yolo)}}-c{{end}}", "{{if and (eq .Role \"thread\") (not .Yolo)}}default_permissions=\"tm\"{{end}}",
+  "{{if and (eq .Role \"thread\") (not .Yolo)}}-c{{end}}",
+  '''{{if and (eq .Role "thread") (not .Yolo)}}permissions={tm={extends=":workspace",filesystem={{pathmodes .Access}},network={enabled=true,unix_sockets={ {{- toml .Socket}}="allow"}}}}{{end}}''',
 ]
 yolo_args = ["--dangerously-bypass-approvals-and-sandbox"]
 model_args = ["-m", "{{.Model}}"]
@@ -119,6 +131,12 @@ input_includes_cache = true
 context = "payload.info.last_token_usage.input_tokens"
 context_window = "payload.info.model_context_window"
 key = "payload.info.total_token_usage.total_tokens"
+# A ChatGPT plan has no dollar cost: the plan limit's use (the primary
+# window, 0-100) is shown in its place (T101). The context is the whole
+# last request's input over the window; Codex's own "context left"
+# takes a 12000-token baseline off both, which isn't done here: the
+# hint and auto-/clear want the real fill.
+plan_percent = "payload.rate_limits.primary.used_percent"
 turn = { type = "event_msg", "payload.type" = "task_complete" }
 
 [[jsonl_tail.rules]]

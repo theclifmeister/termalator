@@ -91,5 +91,6 @@ func (s *Server) tailUsage(sess *session.Session, u agent.Usage) { s.agentUsage(
 func (s *Server) agentUsage(id string, u agent.Usage) {
 	s.setContext(id, u.Model, u.Context, u.ContextWindow)
 	s.addUsage(id, thread.Usage{Turns: u.Turns, Input: u.Input, Output: u.Output,
-		CacheRead: u.CacheRead, CacheCreation: u.CacheCreation, CostUSD: u.CostUSD})
+		CacheRead: u.CacheRead, CacheCreation: u.CacheCreation, CostUSD: u.CostUSD,
+		PlanPct: u.PlanPct, HasPlan: u.HasPlan})
 }
