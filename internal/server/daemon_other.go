@@ -4,7 +4,6 @@ package server
 
 import (
 	"errors"
-	"io/fs"
 	"syscall"
 )
 
@@ -17,4 +16,3 @@ func Detach() error                          { return errors.ErrUnsupported }
 func newSession() *syscall.SysProcAttr       { return nil }
 func kill(pid int, sig syscall.Signal) error { return errors.ErrUnsupported }
 func alive(pid int) bool                     { return false }
-func fileOwner(fi fs.FileInfo) (int, bool)   { return 0, false }

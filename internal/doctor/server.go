@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/plat/flock"
+	"github.com/theclifmeister/terminatr/internal/plat/fsx"
 
 	"github.com/theclifmeister/terminatr/internal/keychain"
 	"github.com/theclifmeister/terminatr/internal/proto"
@@ -67,13 +68,10 @@ func Server(d Deps) ([]Check, Live) {
 	p := d.Paths
 	var out []Check
 	live := Live{}
-	if fi, err := os.Stat(p.RunDir); err == nil {
-		if fi.Mode().Perm() != 0o700 {
-			out = append(out, Check{Group: g, Name: "run dir", Status: Fail,
-				Detail: fmt.Sprintf("%s has mode %o; the server needs 0700 (chmod 700 %s)", p.RunDir, fi.Mode().Perm(), p.RunDir)})
-		} else {
-			out = append(out, Check{Group: g, Name: "run dir", Status: OK, Detail: p.RunDir})
-		}
+	if err := fsx.CheckPrivate(p.RunDir); err == nil {
+		out = append(out, Check{Group: g, Name: "run dir", Status: OK, Detail: p.RunDir})
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		out = append(out, Check{Group: g, Name: "run dir", Status: Fail, Detail: err.Error() + "; the server needs a private run dir"})
 	}
 	held, err := lockHeld(p.Lock)
 	if err != nil {

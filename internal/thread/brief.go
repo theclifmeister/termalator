@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/theclifmeister/terminatr/internal/mdfile"
+	"github.com/theclifmeister/terminatr/internal/plat/fsx"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/tasks"
 )
@@ -121,7 +122,7 @@ func WriteBrief(p *project.Project, r *Record, restart bool) (string, error) {
 	}
 	b.WriteString(strings.TrimSpace(string(task)) + "\n\n")
 	fmt.Fprintf(&b, "Follow-ups from the coordinator are appended to %s.\n", Path(p, r.ID, "task.md"))
-	return path, mdfile.WriteAtomic(path, []byte(b.String()), 0o644)
+	return path, fsx.WriteAtomic(path, []byte(b.String()), 0o644)
 }
 
 // ResetContext is what a thread gets back after /clear or compaction

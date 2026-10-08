@@ -458,11 +458,7 @@ func (s *ServerSource) AskAdopt(slug string, sess proto.SessionInfo) (bool, erro
 // adoptWhere says what runs in session s and where, for an adopt ask:
 // "claude in /src/app on fix-login"; home, when set, is shortened to ~.
 func adoptWhere(s proto.SessionInfo, home string) string {
-	where := s.Cwd
-	if home != "" && strings.HasPrefix(where, home) {
-		where = "~" + where[len(home):]
-	}
-	out := s.Agent + " in " + where
+	out := s.Agent + " in " + shortHome(s.Cwd, home)
 	if pl, ok := worktree.Locate(s.Cwd); ok && pl.Branch != "" {
 		out += " on " + pl.Branch
 	}

@@ -427,3 +427,16 @@ func TestGuardRefusals(t *testing.T) {
 		t.Errorf("other thread: %+v", got)
 	}
 }
+
+func TestShortHome(t *testing.T) {
+	for _, c := range []struct{ p, home, want string }{
+		{"/Users/u/src/x", "/Users/u", "~/src/x"},
+		{"/Users/u", "/Users/u", "~"},
+		{"/Users/u2/x", "/Users/u", "/Users/u2/x"},
+		{"/Users/u/x", "", "/Users/u/x"},
+	} {
+		if got := shortHome(c.p, c.home); got != c.want {
+			t.Errorf("shortHome(%q, %q) = %q, want %q", c.p, c.home, got, c.want)
+		}
+	}
+}

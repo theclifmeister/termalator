@@ -15,6 +15,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/theclifmeister/terminatr/internal/mdfile"
+	"github.com/theclifmeister/terminatr/internal/plat/fsx"
 )
 
 // Writing settings (docs/SPEC.md §11.2). Only the TUI's settings popups
@@ -215,7 +216,7 @@ func edit(fn func(data []byte) ([]byte, error)) error {
 	if bytes.Equal(old, data) {
 		return nil
 	}
-	return mdfile.WriteAtomic(path, data, perm)
+	return fsx.WriteAtomic(path, data, perm)
 }
 
 // Edit returns data with key in table set to value, everything else kept.

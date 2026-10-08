@@ -17,6 +17,7 @@ import (
 	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/home"
 	"github.com/theclifmeister/terminatr/internal/mdfile"
+	"github.com/theclifmeister/terminatr/internal/plat/fsx"
 	"github.com/theclifmeister/terminatr/internal/tasks"
 )
 
@@ -209,7 +210,7 @@ func (p *Project) scaffold() error {
 	if err != nil {
 		return err
 	}
-	if err := mdfile.WriteAtomic(p.Path("PROJECT.md"), project, 0o644); err != nil {
+	if err := fsx.WriteAtomic(p.Path("PROJECT.md"), project, 0o644); err != nil {
 		return err
 	}
 	if err := p.WriteRoleFile(); err != nil {
@@ -223,7 +224,7 @@ func (p *Project) scaffold() error {
 	}
 	for name, body := range files {
 		// A fresh folder has no other writers yet: no lock needed.
-		if err := mdfile.WriteAtomic(p.Path(name), []byte(body), 0o644); err != nil {
+		if err := fsx.WriteAtomic(p.Path(name), []byte(body), 0o644); err != nil {
 			return err
 		}
 	}
@@ -233,7 +234,7 @@ func (p *Project) scaffold() error {
 // WriteRoleFile (re)generates AGENTS.md, the coordinator's role file, and
 // links the agents' role_files (CLAUDE.md) to it (§5.2, §7.8).
 func (p *Project) WriteRoleFile() error {
-	if err := mdfile.WriteAtomic(p.Path("AGENTS.md"), []byte(roleFile(p)), 0o644); err != nil {
+	if err := fsx.WriteAtomic(p.Path("AGENTS.md"), []byte(roleFile(p)), 0o644); err != nil {
 		return err
 	}
 	dir, _ := home.AgentsDir()
@@ -242,12 +243,7 @@ func (p *Project) WriteRoleFile() error {
 		if name == "AGENTS.md" || name != filepath.Base(name) {
 			continue
 		}
-		link := p.Path(name)
-		if target, err := os.Readlink(link); err == nil && target == "AGENTS.md" {
-			continue
-		}
-		os.Remove(link)
-		if err := os.Symlink("AGENTS.md", link); err != nil {
+		if err := fsx.LinkRoleFile(p.Dir, name, "AGENTS.md"); err != nil {
 			return err
 		}
 	}
@@ -263,7 +259,7 @@ func (p *Project) RefreshRoleFile() error {
 		return nil
 	}
 	if text := roleFile(p); string(old) != text {
-		return mdfile.WriteAtomic(p.Path("AGENTS.md"), []byte(text), 0o644)
+		return fsx.WriteAtomic(p.Path("AGENTS.md"), []byte(text), 0o644)
 	}
 	return nil
 }
