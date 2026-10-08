@@ -327,17 +327,6 @@ func TestCodexQueueAndClear(t *testing.T) {
 	a.waitEvent("Stop", 4)
 }
 
-// rolloutOf is the rollout the hooks named for a thread.
-func (a *agent) rolloutOf(thread string) string {
-	for _, h := range a.hooks() {
-		if h["session_id"] == thread {
-			p, _ := h["transcript_path"].(string)
-			return p
-		}
-	}
-	return ""
-}
-
 // TestCodexResume: `resume <id>` continues the rollout; SessionStart
 // (resume) at the first prompt. An unknown id fails.
 func TestCodexResume(t *testing.T) {
