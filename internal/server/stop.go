@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"syscall"
 
+	"github.com/theclifmeister/terminatr/internal/plat/pty"
 	"github.com/theclifmeister/terminatr/internal/proto"
-	"github.com/theclifmeister/terminatr/internal/pty"
 )
 
 // Stopped says how Stop stopped a server.

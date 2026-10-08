@@ -52,8 +52,6 @@ var allowed = map[string][]string{
 	"internal/e2e/input.go":                   {"syscall"},
 	"internal/e2e/stale.go":                   {"syscall"},
 	"internal/e2e/window.go":                  {"syscall"},
-	"internal/pty/procargs_darwin.go":         {"golang.org/x/sys/unix"},
-	"internal/pty/pty_unix.go":                {"syscall", "golang.org/x/sys/unix", "github.com/creack/pty"},
 	"internal/server/client.go":               {"syscall", goos},
 	"internal/server/clone_darwin.go":         {"golang.org/x/sys/unix"},
 	"internal/server/daemon_other.go":         {"syscall"},

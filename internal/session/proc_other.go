@@ -2,8 +2,6 @@
 
 package session
 
-// Not yet ported: sessions don't start without a pty (internal/pty).
+// Not yet ported: sessions don't start without a pty (internal/plat/pty).
 
-func hangup(pid int)    {}
-func kill(pid int)      {}
 func gone(pid int) bool { return false }

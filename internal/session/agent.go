@@ -18,7 +18,8 @@ import (
 	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/detect"
 	"github.com/theclifmeister/terminatr/internal/guard"
-	"github.com/theclifmeister/terminatr/internal/pty"
+	"github.com/theclifmeister/terminatr/internal/plat/pty"
+	"github.com/theclifmeister/terminatr/internal/plat/shell"
 )
 
 // AgentConfig attaches an agent to a session: the session then runs the
@@ -933,8 +934,8 @@ func (s *Session) identifyLoop() {
 			return
 		case <-tick.C:
 		}
-		pgrp, err := pty.Foreground(s.ptmx)
-		if err != nil || pgrp == s.cmd.Process.Pid || pgrp <= 0 {
+		pgrp, err := s.con.Foreground()
+		if err != nil || pgrp == s.con.PID() || pgrp <= 0 {
 			pgrp = 0
 		}
 		if pgrp == cur {
@@ -959,7 +960,7 @@ func (s *Session) identifyLoop() {
 		if err != nil {
 			continue
 		}
-		a := s.cfg.Identify(agent.ProcessInfo{Argv: agent.UnwrapArgv(argv)})
+		a := s.cfg.Identify(agent.ProcessInfo{Argv: shell.Unwrap(argv)})
 		if a == nil {
 			continue
 		}
