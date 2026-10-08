@@ -76,6 +76,7 @@ var commands = map[string]command{
 	"report":  runReport,
 	"status":  runStatus,
 	"done":    runDone,
+	"mcp":     runMCPCmd,
 }
 
 // Commands returns the names of this package's commands, sorted, for

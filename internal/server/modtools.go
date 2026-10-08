@@ -91,22 +91,26 @@ func (s *Server) modTool(w http.ResponseWriter, r *http.Request, id string) {
 		toolReply(w, http.StatusGone, ModToolResult{Error: "session " + id + " is gone"})
 		return
 	}
+	code, res := s.runTool(rec, r.PathValue("name"), b)
+	toolReply(w, code, res)
+}
+
+// runTool runs tool name with input b as the thread of session record
+// rec, and answers with the HTTP status the mod socket sends.
+func (s *Server) runTool(rec SessionRecord, name string, b []byte) (int, ModToolResult) {
 	if rec.Role != proto.RoleThread || !thread.ValidID(rec.Thread) {
-		toolReply(w, http.StatusForbidden, ModToolResult{Error: "these tools are a thread's"})
-		return
+		return http.StatusForbidden, ModToolResult{Error: "these tools are a thread's"}
 	}
 	if s.opts.RunCLI == nil {
-		toolReply(w, http.StatusServiceUnavailable, ModToolResult{Error: "this server runs no project commands"})
-		return
+		return http.StatusServiceUnavailable, ModToolResult{Error: "this server runs no project commands"}
 	}
-	runs, err := toolRuns(r.PathValue("name"), b, func() string { return s.taskRef(rec.Project, rec.Thread) })
+	runs, err := toolRuns(name, b, func() string { return s.taskRef(rec.Project, rec.Thread) })
 	if err != nil {
 		code := http.StatusBadRequest
 		if !errors.Is(err, errModTool) {
 			code = http.StatusNotFound
 		}
-		toolReply(w, code, ModToolResult{Error: err.Error()})
-		return
+		return code, ModToolResult{Error: err.Error()}
 	}
 	c := caller.Caller{Kind: caller.Thread, Project: rec.Project, Thread: rec.Thread}
 	var out strings.Builder
@@ -123,11 +127,41 @@ func (s *Server) modTool(w http.ResponseWriter, r *http.Request, id string) {
 			if done := strings.TrimSpace(out.String()); done != "" {
 				msg = done + "\n" + msg
 			}
-			toolReply(w, http.StatusUnprocessableEntity, ModToolResult{Error: msg})
-			return
+			return http.StatusUnprocessableEntity, ModToolResult{Error: msg}
 		}
 	}
-	toolReply(w, http.StatusOK, ModToolResult{Text: strings.TrimSpace(out.String())})
+	return http.StatusOK, ModToolResult{Text: strings.TrimSpace(out.String())}
+}
+
+// toolRunRPC serves tool.run: the thread is the caller's, found from the
+// peer pid, and its live session gives the cwd.
+func (s *Server) toolRunRPC(p proto.ToolRunParams, peerPID int) (any, *proto.Error) {
+	c := s.callerOf(peerPID)
+	if c.Kind != caller.Thread {
+		return nil, proto.Errorf(proto.ErrRefused, "these tools are a thread's")
+	}
+	s.mu.Lock()
+	var rec SessionRecord
+	found := false
+	for id, r := range s.records {
+		if _, live := s.sessions[id]; live && r.Role == proto.RoleThread && r.Project == c.Project && r.Thread == c.Thread {
+			rec, found = r, true
+			break
+		}
+	}
+	s.mu.Unlock()
+	if !found {
+		return nil, proto.Errorf(proto.ErrRefused, "thread %s has no live session", c.Thread)
+	}
+	_, res := s.runTool(rec, p.Name, p.Input)
+	return proto.ToolRunResult{Text: firstNonEmpty(res.Error, res.Text), IsError: res.Error != ""}, nil
+}
+
+func firstNonEmpty(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
 }
 
 func toolReply(w http.ResponseWriter, code int, r ModToolResult) {
