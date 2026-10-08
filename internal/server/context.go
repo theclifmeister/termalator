@@ -57,6 +57,11 @@ func (s *Server) setContext(id, model string, tokens, window int64) {
 	}
 }
 
+// clearContext forgets session id's context use: after /clear the
+// conversation holds none, and the next turn's report sets it anew (a
+// crossing of the hint then rings again).
+func (s *Server) clearContext(id string) { s.ctxOf.Delete(id) }
+
 // crossedContext reports whether now is at or past [ui] context_hint
 // where the use before (was, when had) was below it: one alert per
 // crossing, none while it stays above.

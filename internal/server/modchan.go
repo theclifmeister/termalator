@@ -184,6 +184,15 @@ func (s *Server) modHandler(id string) http.Handler {
 			CacheRead: u.CacheRead, CacheCreation: u.CacheCreation, CostUSD: u.CostUSD})
 		w.WriteHeader(http.StatusNoContent)
 	})
+	// /clear: the context use is gone with the conversation; session.end
+	// starts no session.start, so no turn would say so.
+	mux.HandleFunc("POST /v1/context/clear", func(w http.ResponseWriter, r *http.Request) {
+		if s.modSession(w, id) == nil {
+			return
+		}
+		s.clearContext(id)
+		w.WriteHeader(http.StatusNoContent)
+	})
 	// The head of the prompt queue once the mod delivers it, or 204 after
 	// the wait.
 	mux.HandleFunc("GET /v1/prompts", func(w http.ResponseWriter, r *http.Request) {

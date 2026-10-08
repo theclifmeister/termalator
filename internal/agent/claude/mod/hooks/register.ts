@@ -246,11 +246,24 @@ export const register: Register = on => {
   // at most.
   on('session.end', async ($, e, next) => {
     const { sent } = await saw($, e.reason === 'clear' ? { kind: 'clear' } : { kind: 'end' }, 'session.end')
-    await Promise.race([sent, $.clock.sleep(END_WAIT_MS)])
+    const cleared = e.reason === 'clear' ? clearedContext($) : Promise.resolve()
+    await Promise.race([Promise.all([sent, cleared]), $.clock.sleep(END_WAIT_MS)])
     return next(e)
   })
 
   registerPane(on)
+}
+
+// clearedContext tells the server the context is gone after /clear, so
+// the panes show it at once; failures are logged and dropped.
+async function clearedContext($: EngineInterface) {
+  if (!socket) return
+  try {
+    const r = await $.http.fetch('http://terminatr/v1/context/clear', { method: 'POST', socketPath: socket })
+    if (!r.ok) $.ui.log(`terminatr: context clear: ${r.status} ${r.text}`, { to: 'debug' })
+  } catch (err) {
+    $.ui.log(`terminatr: context clear: ${String(err)}`, { to: 'debug' })
+  }
 }
 
 // spent sends what the turn cost, numbers only, a subagent's turns

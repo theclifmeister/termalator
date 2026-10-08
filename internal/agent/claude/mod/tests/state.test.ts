@@ -24,10 +24,15 @@ async function start($: Engine, on: On, env: Record<string, string> = { TERMINAT
   mock.env(on, { TERMINATR_BIN: '/opt/tm', TERMINATR_SESSION: 's-7', ...env })
   const reports: Report[] = []
   const sockets: (string | undefined)[] = []
+  const clears: string[] = []
   on('http.fetch', async (_$, e) => {
     // No prompts queued: polls come back empty (deliver.test.ts); no
     // guard rules (guard.test.ts).
     if (e.url.includes('/v1/prompts') || e.url.endsWith('/v1/rules')) return { value: { status: 204, ok: true, headers: {}, text: '' } }
+    if (e.url.endsWith('/v1/context/clear')) {
+      clears.push(e.url)
+      return { value: { status: 204, ok: true, headers: {}, text: '' } }
+    }
     sockets.push(e.init?.socketPath)
     reports.push(JSON.parse(e.init?.body ?? '{}') as Report)
     if (beneath.wedged) await clock.sleep(60_000)
@@ -49,7 +54,7 @@ async function start($: Engine, on: On, env: Record<string, string> = { TERMINAT
   on('classic.PermissionDenied', async () => ({}))
   await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
   await clock.settle()
-  return { clock, reports, sockets }
+  return { clock, reports, sockets, clears }
 }
 
 const states = (rs: Report[]) => rs.map(r => (r.reason ? `${r.state}/${r.reason}` : r.state))
@@ -115,6 +120,16 @@ test("a subagent's run doesn't end the turn; /clear starts idle; exit is reporte
   await $.session.end({ reason: 'prompt_input_exit', sessionId: 'y', resume: { id: 'y' } })
   await clock.settle()
   expect(states(reports)).toEqual(['idle', 'working', 'idle', 'exited'])
+})
+
+test('/clear tells the server the context is gone at once; exit does not', async ($, on) => {
+  const { clock, clears } = await start($, on)
+  await $.session.end({ reason: 'prompt_input_exit', sessionId: 'y', resume: { id: 'y' } })
+  await clock.settle()
+  expect(clears).toEqual([])
+  await $.session.end({ reason: 'clear', sessionId: 'x', resume: { id: 'x' } })
+  await clock.settle()
+  expect(clears).toEqual(['http://terminatr/v1/context/clear'])
 })
 
 test("a wedged server holds no hook up, and the exit waits half a second for it", async ($, on) => {

@@ -128,6 +128,13 @@ func TestModChannel(t *testing.T) {
 	if v, ok := s.ctxOf.Load("s-1"); !ok || v.(ctxUse).tokens != 84000 || v.(ctxUse).window != windowStandard {
 		t.Fatalf("context kept: %v", v)
 	}
+	// /clear: the context use goes at once, not with the next turn.
+	if code := postMod(t, c, "/v1/context/clear", ``); code != http.StatusNoContent {
+		t.Fatalf("context clear: %d", code)
+	}
+	if v, ok := s.ctxOf.Load("s-1"); ok {
+		t.Fatalf("context kept after /clear: %v", v)
+	}
 	for _, bad := range []string{`{"context":-1}`, `{"input":-1}`, `{"cost_usd":-0.5}`, `{"model":"` + strings.Repeat("x", 100) + `"}`, `{"output":"many"}`} {
 		if code := postMod(t, c, "/v1/usage", bad); code != http.StatusBadRequest {
 			t.Fatalf("%s: %d", bad, code)
