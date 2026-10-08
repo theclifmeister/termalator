@@ -44,7 +44,7 @@ func TestLaunchMods(t *testing.T) {
 		}
 		// With the mod, only what it doesn't report stays a command
 		// hook, the todo tools alone on PostToolUse.
-		want := 16
+		want := 13
 		if mods {
 			want = 5
 		}

@@ -76,6 +76,9 @@ template = '''
 # Mods), so only what it doesn't cover stays a process spawn: the
 # context at SessionStart, the todo tools, the background counters and
 # the exit.
+# Without the mod, every event the [[hooks]], [[todos]] and
+# todos_snapshot below name (.HookEvents), and no other: an event no
+# entry maps would be a process spawn for nothing.
 [[launch.files]]
 path = "claude-plugin/hooks/hooks.json"
 template = '''
@@ -87,11 +90,9 @@ template = '''
   "SubagentStart": {{$h}}, "SubagentStop": {{$h}}, "SessionEnd": {{$h}}
 }}
 {{- else}}{"hooks": {
-  "SessionStart": {{$h}}, "UserPromptSubmit": {{$h}},
-  "PreToolUse": {{$h}}, "PostToolUse": {{$h}}, "PostToolUseFailure": {{$h}},
-  "PermissionRequest": {{$h}}, "PermissionDenied": {{$h}}, "Notification": {{$h}},
-  "Stop": {{$h}}, "StopFailure": {{$h}}, "SubagentStart": {{$h}}, "SubagentStop": {{$h}},
-  "TaskCreated": {{$h}}, "TaskCompleted": {{$h}}, "PreCompact": {{$h}}, "SessionEnd": {{$h}}
+{{- range $i, $ev := .HookEvents}}{{if $i}},{{end}}
+  {{json $ev}}: {{$h}}
+{{- end}}
 }}
 {{- end}}
 '''
