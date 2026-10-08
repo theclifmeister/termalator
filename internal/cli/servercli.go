@@ -12,8 +12,6 @@ import (
 	"os"
 	"runtime"
 
-	"golang.org/x/sys/unix"
-
 	"github.com/theclifmeister/terminatr/internal/caller"
 	"github.com/theclifmeister/terminatr/internal/keychain"
 	"github.com/theclifmeister/terminatr/internal/proto"
@@ -95,22 +93,6 @@ func warnSSH(w io.Writer, goos string, getenv func(string) string) {
 	if msg := keychain.StartWarning(goos, getenv); msg != "" {
 		fmt.Fprintln(w, "tm: "+msg)
 	}
-}
-
-func isTTY(f *os.File) bool {
-	_, err := unix.IoctlGetTermios(int(f.Fd()), ioctlGetTermios)
-	return err == nil
-}
-
-// termSize returns the size of the terminal on stdout or stdin, if any.
-func termSize() (cols, rows uint16, ok bool) {
-	for _, f := range []*os.File{os.Stdout, os.Stdin} {
-		ws, err := unix.IoctlGetWinsize(int(f.Fd()), unix.TIOCGWINSZ)
-		if err == nil && ws.Col > 0 && ws.Row > 0 {
-			return ws.Col, ws.Row, true
-		}
-	}
-	return 0, 0, false
 }
 
 // identifyByServer asks a running server who this process is, from its

@@ -2,23 +2,13 @@ package server
 
 import (
 	"errors"
-	"io/fs"
 	"os"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/plat/flock"
 )
-
-func fileOwner(fi fs.FileInfo) (int, bool) {
-	st, ok := fi.Sys().(*syscall.Stat_t)
-	if !ok {
-		return 0, false
-	}
-	return int(st.Uid), true
-}
 
 // ErrLocked means another process holds the server lock.
 var ErrLocked = flock.ErrLocked
@@ -80,12 +70,4 @@ func readPID(path string) int {
 	}
 	pid, _ := strconv.Atoi(strings.TrimSpace(string(b)))
 	return pid
-}
-
-func alive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	err := syscall.Kill(pid, 0)
-	return err == nil || errors.Is(err, syscall.EPERM)
 }

@@ -13,7 +13,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
@@ -486,7 +485,7 @@ func (s *Session) probeAgent(rt *agentRT, now time.Time) {
 	rt.probedAt = now
 	rt.mu.Unlock()
 	pidGone := ""
-	if rt.pid > 0 && errors.Is(syscall.Kill(rt.pid, 0), syscall.ESRCH) {
+	if rt.pid > 0 && gone(rt.pid) {
 		pidGone = fmt.Sprintf("pid %d is gone", rt.pid)
 	}
 	live, why := agent.LiveUnknown, ""

@@ -1,4 +1,4 @@
-//go:build realclaude
+//go:build unix && realclaude
 
 package e2e
 

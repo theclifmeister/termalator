@@ -1,3 +1,5 @@
+//go:build unix
+
 // Command printer is the e2e harness's first deterministic app: it prints
 // a known screen, optionally streams numbered lines, and then waits.
 // Real programs (vim, htop, shells) vary between machines; scenarios use

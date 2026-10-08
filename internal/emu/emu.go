@@ -1,3 +1,5 @@
+//go:build cgo
+
 // Package emu wraps libghostty-vt, the terminal emulator the server keeps for
 // every pane. The rest of terminatr talks to this package, never to the
 // bindings directly, so a binding API change stays in one place.
@@ -25,39 +27,11 @@ const (
 	cellHeightPx = 16
 )
 
-// DefaultScrollback is the number of scrollback lines a pane keeps.
-const DefaultScrollback = 10000
-
 // Terminal is one emulated screen. It is not safe for concurrent use; the
 // owning session serialises every call.
 type Terminal struct {
 	t *libghostty.Terminal
 }
-
-// Options configure a new Terminal.
-type Options struct {
-	Cols, Rows uint16
-	// Scrollback is the scrollback limit in lines; 0 means DefaultScrollback.
-	Scrollback uint
-	// WritePty receives the emulator's answers to terminal queries. Only
-	// the server's emulator sets it. It is called synchronously from Write
-	// and must not block.
-	WritePty func([]byte)
-	// Xtversion is the name reported for XTVERSION queries.
-	Xtversion string
-	// ColorScheme answers colour-scheme queries (CSI ? 996 n) when
-	// WritePty is set: the scheme, and false while it is unknown (the
-	// query then goes unanswered).
-	ColorScheme func() (Scheme, bool)
-}
-
-// Scheme is a light or dark colour scheme (mode 2031 reports).
-type Scheme uint8
-
-const (
-	SchemeDark  Scheme = 1
-	SchemeLight Scheme = 2
-)
 
 func (s Scheme) lib() libghostty.ColorScheme {
 	if s == SchemeLight {

@@ -1,3 +1,5 @@
+//go:build unix
+
 package e2e
 
 // TestShots captures every screen, panel and popup of the dashboard and

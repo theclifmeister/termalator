@@ -1,3 +1,5 @@
+//go:build unix
+
 package e2e
 
 // M8 scenarios: crash and restart resume end to end (docs/SPEC.md §3.6,

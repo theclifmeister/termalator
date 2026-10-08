@@ -1,3 +1,5 @@
+//go:build unix
+
 package e2e
 
 // The project popup (a, prefix+a) and the settings (docs/SPEC.md §4,

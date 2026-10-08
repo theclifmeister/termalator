@@ -1,23 +1,11 @@
+//go:build cgo
+
 package emu
 
 import "go.mitchellh.com/libghostty"
 
 // What an attach client's mirror needs beyond feeding bytes: the modes it
 // copies onto the outer terminal, its own viewport, and mode-2026 holds.
-
-// Modes are the program's terminal modes that matter to an attach client.
-type Modes struct {
-	NormalMouse       bool // 1000
-	ButtonMouse       bool // 1002
-	AnyMouse          bool // 1003
-	Focus             bool // 1004
-	BracketedPaste    bool // 2004
-	ColorSchemeReport bool // 2031
-	AltScreen         bool // the alternate screen is active
-}
-
-// MouseTracking reports whether the program asked for any mouse reports.
-func (m Modes) MouseTracking() bool { return m.NormalMouse || m.ButtonMouse || m.AnyMouse }
 
 // Modes returns the program's current modes.
 func (t *Terminal) Modes() Modes {

@@ -1,3 +1,5 @@
+//go:build unix
+
 package e2e
 
 // The mouse (docs/SPEC.md §4): every key has a mouse path. These drive

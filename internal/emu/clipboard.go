@@ -1,10 +1,8 @@
+//go:build cgo
+
 package emu
 
-import (
-	"encoding/base64"
-
-	"go.mitchellh.com/libghostty"
-)
+import "go.mitchellh.com/libghostty"
 
 // Text selection and the clipboard (docs/SPEC.md §4): the attach client
 // selects text in a mirror with the mouse and copies it to the outer
@@ -70,28 +68,4 @@ func (t *Terminal) OnClipboard(fn func(which byte, data []byte)) {
 		fn(which, data)
 		return libghostty.ClipboardWriteReply{Result: libghostty.ClipboardWriteSuccess}
 	})
-}
-
-// The clipboards of OSC 52, by their letter there.
-const (
-	ClipboardStandard  = 'c'
-	ClipboardPrimary   = 'p'
-	ClipboardSelection = 's'
-)
-
-// MaxClipboard caps the text one OSC 52 write carries, so a runaway
-// selection or program can't flood the outer terminal. Some terminals
-// take less (tmux and xterm by default around 100 KB).
-const MaxClipboard = 1 << 20
-
-// OSC52 is the sequence that puts data on the outer terminal's clipboard
-// which (Clipboard*), or clears it when data is empty; nil when data is
-// over MaxClipboard.
-func OSC52(which byte, data []byte) []byte {
-	if len(data) > MaxClipboard {
-		return nil
-	}
-	b := append([]byte("\x1b]52;"), which, ';')
-	b = base64.StdEncoding.AppendEncode(b, data)
-	return append(b, '\a')
 }

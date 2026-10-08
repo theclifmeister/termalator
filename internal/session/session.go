@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
@@ -421,16 +420,14 @@ func (s *Session) RequestDigest(sub *Subscriber) error {
 // or the kill did not help within a few more seconds.
 func (s *Session) Stop(grace time.Duration) {
 	pid := s.cmd.Process.Pid
-	syscall.Kill(-pid, syscall.SIGHUP)
-	syscall.Kill(pid, syscall.SIGHUP)
+	hangup(pid)
 	select {
 	case <-s.done:
 		return
 	case <-time.After(grace):
 	}
 	s.cfg.Logf("session %s: still running %v after SIGHUP; sending SIGKILL", s.cfg.ID, grace)
-	syscall.Kill(-pid, syscall.SIGKILL)
-	syscall.Kill(pid, syscall.SIGKILL)
+	kill(pid)
 	select {
 	case <-s.done:
 	case <-time.After(3 * time.Second):

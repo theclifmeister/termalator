@@ -1,3 +1,5 @@
+//go:build cgo
+
 package emu
 
 import (
@@ -12,51 +14,6 @@ import (
 // (its kitty flags, DECCKM, mouse tracking and format, bracketed paste).
 // That is how Shift+Enter reaches a program as CSI 13;2u when it asked
 // for kitty keys, and as plain CR when it didn't.
-
-// Mods are key modifiers.
-type Mods uint8
-
-const (
-	ModShift Mods = 1 << iota
-	ModCtrl
-	ModAlt
-	ModSuper
-)
-
-// SpecialKey names a key that has no text of its own.
-type SpecialKey uint8
-
-const (
-	KeyNone SpecialKey = iota
-	KeyEnter
-	KeyTab
-	KeyBackspace
-	KeyEscape
-	KeySpace
-	KeyUp
-	KeyDown
-	KeyLeft
-	KeyRight
-	KeyHome
-	KeyEnd
-	KeyPageUp
-	KeyPageDown
-	KeyInsert
-	KeyDelete
-	KeyKpEnter
-	KeyF1
-	KeyF2
-	KeyF3
-	KeyF4
-	KeyF5
-	KeyF6
-	KeyF7
-	KeyF8
-	KeyF9
-	KeyF10
-	KeyF11
-	KeyF12
-)
 
 var specialKeys = [...]libghostty.Key{
 	KeyNone: libghostty.KeyUnidentified, KeyEnter: libghostty.KeyEnter,
@@ -102,53 +59,11 @@ var printableKeys = func() map[rune]libghostty.Key {
 	return m
 }()
 
-// Key is one key press, as decoded from the outer terminal.
-type Key struct {
-	// Special is set for named keys; otherwise Rune is the key's
-	// unshifted character ('a' for Shift+A).
-	Special SpecialKey
-	Rune    rune
-	Mods    Mods
-	// Text is what the key types, if anything ("A" for Shift+A).
-	Text string
-}
-
-// MouseButton is a mouse button or wheel direction.
-type MouseButton uint8
-
-const (
-	MouseNone MouseButton = iota
-	MouseLeft
-	MouseMiddle
-	MouseRight
-	MouseWheelUp
-	MouseWheelDown
-	MouseWheelLeft
-	MouseWheelRight
-)
-
 var mouseButtons = [...]libghostty.MouseButton{
 	MouseNone: libghostty.MouseButtonUnknown, MouseLeft: libghostty.MouseButtonLeft,
 	MouseMiddle: libghostty.MouseButtonMiddle, MouseRight: libghostty.MouseButtonRight,
 	MouseWheelUp: libghostty.MouseButtonFour, MouseWheelDown: libghostty.MouseButtonFive,
 	MouseWheelLeft: libghostty.MouseButtonSix, MouseWheelRight: libghostty.MouseButtonSeven,
-}
-
-// MouseAction is what happened to a button.
-type MouseAction uint8
-
-const (
-	MousePress MouseAction = iota
-	MouseRelease
-	MouseMotion
-)
-
-// Mouse is one mouse event in pane cells (0-based).
-type Mouse struct {
-	Action MouseAction
-	Button MouseButton
-	Mods   Mods
-	X, Y   int
 }
 
 // Encoder encodes input for the program in one terminal. It is not safe

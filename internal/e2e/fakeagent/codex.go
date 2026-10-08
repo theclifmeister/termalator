@@ -1,3 +1,5 @@
+//go:build unix
+
 package main
 
 // The Codex flavour: the fake as Codex CLI 0.160 (T91, T98-T104),

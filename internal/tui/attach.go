@@ -12,7 +12,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -208,7 +207,7 @@ func Attach(opts Options) (res Result, err error) {
 	// SIGHUP (the window closed), SIGTERM and SIGINT detach. The server
 	// lives in its own session and never sees these.
 	sigs := make(chan os.Signal, 4)
-	signal.Notify(sigs, syscall.SIGHUP, syscall.SIGTERM, syscall.SIGINT, syscall.SIGWINCH, syscall.SIGUSR1)
+	signal.Notify(sigs, attachSignals...)
 	defer signal.Stop(sigs)
 	go c.signals(sigs, fd)
 
@@ -881,7 +880,7 @@ func (c *client) act(method string, p proto.ViewParams) {
 func (c *client) signals(sigs <-chan os.Signal, fd int) {
 	for sig := range sigs {
 		switch sig {
-		case syscall.SIGWINCH:
+		case sigResize:
 			// The user really resized the window: the view takes its size
 			// and its panes follow, whoever typed last (docs/SPEC.md §3.3).
 			cols, rows, err := term.GetSize(fd)
@@ -896,7 +895,7 @@ func (c *client) signals(sigs <-chan os.Signal, fd int) {
 			c.mu.Unlock()
 			c.act(proto.MethodViewSize, proto.ViewParams{Cols: uint16(cols), Rows: uint16(rows), Resize: true})
 			c.poke()
-		case syscall.SIGUSR1:
+		case sigDigest:
 			// Consistency check: the server puts its digest into the
 			// stream, readLoop compares it with the mirror's.
 			if c.lock() {

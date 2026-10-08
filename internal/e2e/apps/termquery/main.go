@@ -1,3 +1,5 @@
+//go:build unix
+
 // Command termquery is the e2e harness's stand-in for a prompt program
 // such as starship, run from a shell's PROMPT_COMMAND before every prompt:
 // it asks the terminal for its colour scheme (CSI ? 996 n), the cursor

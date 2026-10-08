@@ -1,3 +1,5 @@
+//go:build unix
+
 package e2e
 
 // Codex scenarios (T105): agent sessions under the real codex.toml and

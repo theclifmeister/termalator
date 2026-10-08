@@ -1,3 +1,5 @@
+//go:build unix
+
 package e2e
 
 // Upgrades (docs/SPEC.md §3.6, Upgrade; §10.1 tm update).

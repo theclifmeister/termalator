@@ -1,3 +1,5 @@
+//go:build unix
+
 package cli
 
 // Integration tests: they build the real tm binary and run it as a
