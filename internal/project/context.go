@@ -263,7 +263,11 @@ func modelLines(allow []string) []string {
 			if len(allow) > 0 && !slices.Contains(allow, m.Name) {
 				continue
 			}
-			out = append(out, "  "+m.Name+": "+m.About)
+			line := "  " + m.Name + ": " + m.About
+			if m.Default {
+				line += " (default)"
+			}
+			out = append(out, line)
 			shown++
 		}
 		if shown == 0 {

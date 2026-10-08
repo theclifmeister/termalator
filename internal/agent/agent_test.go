@@ -709,6 +709,8 @@ func TestManifestModels(t *testing.T) {
 		{args + "[[models]]\nname = \"big\"\n", 0, false}, // no about
 		{args + "[[models]]\nname = \"big\"\nabout = \"a\\nb\"\n", 0, false},
 		{args + "[[models]]\nname = \"big\"\nabout = \"x\"\n[[models]]\nname = \"big\"\nabout = \"y\"\n", 0, false},
+		{args + "[[models]]\nname = \"a\"\nabout = \"x\"\ndefault = true\n[[models]]\nname = \"b\"\nabout = \"y\"\n", 2, true},
+		{args + "[[models]]\nname = \"a\"\nabout = \"x\"\ndefault = true\n[[models]]\nname = \"b\"\nabout = \"y\"\ndefault = true\n", 0, false},
 	} {
 		m, err := ParseManifest([]byte(base + c.toml))
 		if (err == nil) != c.ok {
@@ -732,6 +734,20 @@ func TestManifestModels(t *testing.T) {
 	l, err := claude.Launch(LaunchSpec{Role: RoleThread, Cwd: "/w", RuntimeDir: "/r", AgentSID: "x", Model: "haiku"})
 	if err != nil || !strings.Contains(strings.Join(l.Argv, " "), "--model haiku") {
 		t.Fatalf("launch with a model: %v %q", err, l.Argv)
+	}
+	// Claude names no default: nothing is passed without --model.
+	if l, err := claude.Launch(LaunchSpec{Role: RoleThread, Cwd: "/w", RuntimeDir: "/r", AgentSID: "x"}); err != nil || slices.Contains(l.Argv, "--model") {
+		t.Fatalf("claude launch without a model: %v %q", err, l.Argv)
+	}
+	// Codex passes its manifest's default when none is chosen (T158).
+	codex, _ := reg.Get("codex")
+	spec := LaunchSpec{Role: "coordinator", Cwd: "/w", RuntimeDir: "/r", AgentSID: "x"}
+	if l, err := codex.Launch(spec); err != nil || !strings.Contains(strings.Join(l.Argv, " "), "-m gpt-6-luna") {
+		t.Fatalf("codex launch without a model: %v %q", err, l.Argv)
+	}
+	spec.Model = "gpt-5.6-terra"
+	if l, err := codex.Launch(spec); err != nil || !strings.Contains(strings.Join(l.Argv, " "), "-m gpt-5.6-terra") || strings.Contains(strings.Join(l.Argv, " "), "gpt-6-luna") {
+		t.Fatalf("codex launch with a model: %v %q", err, l.Argv)
 	}
 }
 
