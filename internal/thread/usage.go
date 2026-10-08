@@ -13,12 +13,31 @@ type Usage struct {
 	CacheRead     int64   `toml:"cache_read" json:"cache_read"`
 	CacheCreation int64   `toml:"cache_creation" json:"cache_creation"`
 	CostUSD       float64 `toml:"cost_usd" json:"cost_usd"`
+	// PlanPct is how much of the agent's plan limit (a subscription's
+	// window, e.g. Codex on ChatGPT) was used when last reported: the
+	// latest, not a sum. HasPlan says one was reported; such an agent
+	// has no dollar cost, so none is shown.
+	PlanPct float64 `toml:"plan_pct,omitempty" json:"plan_pct,omitempty"`
+	HasPlan bool    `toml:"has_plan,omitempty" json:"has_plan,omitempty"`
 }
 
 // Add is u and o summed.
 func (u Usage) Add(o Usage) Usage {
-	return Usage{u.Turns + o.Turns, u.Input + o.Input, u.Output + o.Output,
-		u.CacheRead + o.CacheRead, u.CacheCreation + o.CacheCreation, u.CostUSD + o.CostUSD}
+	r := Usage{u.Turns + o.Turns, u.Input + o.Input, u.Output + o.Output,
+		u.CacheRead + o.CacheRead, u.CacheCreation + o.CacheCreation, u.CostUSD + o.CostUSD, u.PlanPct, u.HasPlan}
+	if o.HasPlan {
+		r.PlanPct, r.HasPlan = o.PlanPct, true
+	}
+	return r
+}
+
+// money is the cost part of the short form: "$3.41", or the plan limit
+// ("plan 12%") for an agent that reports one instead of a cost.
+func (u Usage) money() string {
+	if u.HasPlan {
+		return fmt.Sprintf("plan %.0f%%", u.PlanPct)
+	}
+	return fmt.Sprintf("$%.2f", u.CostUSD)
 }
 
 // Tokens is every token counted: read from the cache or not.
@@ -27,12 +46,12 @@ func (u Usage) Tokens() int64 { return u.Input + u.Output + u.CacheRead + u.Cach
 // Zero reports whether nothing was used.
 func (u Usage) Zero() bool { return u == Usage{} }
 
-// String is the short form: "1.2M tokens, $3.41"; "" for none.
+// String is the short form: "1.2M tokens, $3.41" or "1.2M tokens, plan 12%"; "" for none.
 func (u Usage) String() string {
 	if u.Zero() {
 		return ""
 	}
-	return fmt.Sprintf("%s tokens, $%.2f", Compact(u.Tokens()), u.CostUSD)
+	return fmt.Sprintf("%s tokens, %s", Compact(u.Tokens()), u.money())
 }
 
 // Detail is String with the split: "1.2M tokens (12k in, 240k out, 900k
@@ -41,9 +60,9 @@ func (u Usage) Detail() string {
 	if u.Zero() {
 		return ""
 	}
-	return fmt.Sprintf("%s tokens (%s in, %s out, %s cache read, %s cache write), $%.2f, %d turn%s",
+	return fmt.Sprintf("%s tokens (%s in, %s out, %s cache read, %s cache write), %s, %d turn%s",
 		Compact(u.Tokens()), Compact(u.Input), Compact(u.Output), Compact(u.CacheRead), Compact(u.CacheCreation),
-		u.CostUSD, u.Turns, map[bool]string{true: "s"}[u.Turns != 1])
+		u.money(), u.Turns, map[bool]string{true: "s"}[u.Turns != 1])
 }
 
 // Compact writes n as 940, 12.3k or 1.2M.
