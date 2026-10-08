@@ -15,6 +15,7 @@ import (
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/tasks"
+	"github.com/theclifmeister/terminatr/internal/thread"
 	"github.com/theclifmeister/terminatr/internal/view"
 )
 
@@ -279,6 +280,11 @@ type boardMsg struct {
 	// tab (loadPopup), nil when not loaded; memErr is why it failed.
 	memory *project.Memory
 	memErr error
+	// library is the project's library files (the Library tab); libErr
+	// is why they didn't load.
+	library []thread.LibFile
+	libOK   bool
+	libErr  error
 }
 
 // actionMsg is the outcome of a key's action: attach to a session, or a
@@ -320,6 +326,8 @@ func (m *dash) loadPopup(slug string) tea.Cmd {
 		msg := board().(boardMsg)
 		mem, err := src.Memory(slug)
 		msg.memory, msg.memErr = &mem, err
+		msg.library, msg.libErr = src.Library(slug)
+		msg.libOK = true
 		return msg
 	}
 }
@@ -526,6 +534,10 @@ func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.memory != nil {
 				pv.memory, pv.memErr = msg.memory, msg.memErr
 			}
+			if msg.libOK {
+				pv.library, pv.libErr, pv.libOK = msg.library, msg.libErr, true
+				pv.sel[tabLibrary] = min(pv.sel[tabLibrary], max(len(pv.library)-1, 0))
+			}
 		}
 		return m, nil
 	case actionMsg:
@@ -572,7 +584,7 @@ func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		cmds := []tea.Cmd{m.load()}
 		if pv := m.projectPopupView(); pv != nil {
-			cmds = append(cmds, m.loadBoard(pv.slug))
+			cmds = append(cmds, m.loadPopup(pv.slug))
 		}
 		return m, tea.Batch(cmds...)
 	case tea.KeyPressMsg:

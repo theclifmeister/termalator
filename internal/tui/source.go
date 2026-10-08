@@ -129,6 +129,14 @@ type Source interface {
 	// Memory is the project's CONTEXT.md, MEMORY.md and memory notes'
 	// titles, for the project popup's Memory tab.
 	Memory(slug string) (project.Memory, error)
+	// Library lists the files of every thread's library, newest first,
+	// for the project popup's Library tab; LibraryRead reads up to max
+	// bytes of one (truncated says it was longer); LibraryRemove
+	// deletes one of thread id's files, or all of them when name is
+	// "", journaled, saying how many went.
+	Library(slug string) ([]thread.LibFile, error)
+	LibraryRead(slug, id, name string, max int64) (data []byte, truncated bool, err error)
+	LibraryRemove(slug, id, name string) (int, error)
 }
 
 // Review is what the user needs to review a task: how to check it (the
@@ -266,6 +274,33 @@ func (s *ServerSource) Memory(slug string) (project.Memory, error) {
 		return project.Memory{}, err
 	}
 	return p.ReadMemory()
+}
+
+func (s *ServerSource) Library(slug string) ([]thread.LibFile, error) {
+	p, err := project.Open(slug)
+	if err != nil {
+		return nil, err
+	}
+	return thread.Library(p)
+}
+
+func (s *ServerSource) LibraryRead(slug, id, name string, max int64) ([]byte, bool, error) {
+	p, err := project.Open(slug)
+	if err != nil {
+		return nil, false, err
+	}
+	return thread.ReadLibraryFile(p, id, name, max)
+}
+
+func (s *ServerSource) LibraryRemove(slug, id, name string) (int, error) {
+	if s.Caller.IsAgent() {
+		return 0, errors.New("human-only: library files are deleted by the human")
+	}
+	p, err := project.Open(slug)
+	if err != nil {
+		return 0, err
+	}
+	return thread.RemoveLibrary(p, s.Caller, id, name)
 }
 
 func (s *ServerSource) NewProject(slug string) (string, error) {

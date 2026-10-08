@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -1040,6 +1041,10 @@ func TestMemoryTab(t *testing.T) {
 		}
 	}
 	keyPress(m, "right")
+	if pv.tab != tabLibrary {
+		t.Fatalf("right from Memory: %d", pv.tab)
+	}
+	keyPress(m, "right")
 	if pv.tab != tabOverview {
 		t.Fatalf("right from the last tab: %d", pv.tab)
 	}
@@ -1395,5 +1400,90 @@ func TestTaskKeyOpensTasksTab(t *testing.T) {
 	pv, ok := m.top().(*projectView)
 	if !ok || pv.tab != tabTasks {
 		t.Fatalf("t opened %T", m.top())
+	}
+}
+
+// TestLibraryTab: tab 7 lists every thread's library files grouped by
+// task and thread, newest group first, by name and size and never a
+// path; enter reads one (text as it is, JSON indented, a binary by name
+// and size); d and D delete a file or a thread's files after y.
+func TestLibraryTab(t *testing.T) {
+	src, m := popupData(t)
+	day := func(d int) time.Time { return time.Date(2026, 10, d, 12, 0, 0, 0, time.UTC) }
+	src.library = []thread.LibFile{
+		{Thread: "t-0002", Task: "T2", Title: "Newer", State: "running", Name: "notes.md", Size: 1500, Time: day(8)},
+		{Thread: "t-0001", Task: "T1", Title: "Older", State: "archived", Name: "data.json", Size: 7, Time: day(7)},
+		{Thread: "t-0002", Task: "T2", Title: "Newer", State: "running", Name: "shot.png", Size: 2_500_000, Time: day(6)},
+		{Thread: "t-0001", Task: "T1", Title: "Older", State: "archived", Name: "log.txt", Size: 4, Time: day(5)},
+	}
+	src.libFiles = map[string]string{
+		"t-0002/notes.md": "# Notes\n\nhello\n", "t-0001/data.json": `{"a":[1,2]}`, "t-0002/shot.png": "\x89PNG\x00\x01",
+	}
+	m.Update(keyPress(m, "a")())
+	pv := m.top().(*projectView)
+	keyPress(m, "7")
+	if pv.tab != tabLibrary {
+		t.Fatalf("7: tab %d", pv.tab)
+	}
+	out := screen(m)
+	for _, want := range []string{"7 library", "T2  Newer · t-0002 · 2026-10-08", "T1  Older · t-0001 · 2026-10-07 · archived",
+		"notes.md", "1.5 KB", "shot.png", "2.5 MB", "data.json", "7 B", "enter read · d delete"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("library tab lacks %q:\n%s", want, out)
+		}
+	}
+	// Grouped: t-0002's two files, then t-0001's, though data.json is newer than shot.png.
+	if a, b, c := strings.Index(out, "shot.png"), strings.Index(out, "T1  Older"), strings.Index(out, "data.json"); !(a < b && b < c) {
+		t.Errorf("not grouped by thread:\n%s", out)
+	}
+	if strings.Contains(out, "/library") || strings.Contains(out, "threads/") {
+		t.Errorf("a path shows:\n%s", out)
+	}
+	// Reading: markdown as it is.
+	keyPress(m, "enter")
+	if out := screen(m); !strings.Contains(out, "notes.md · 1.5 KB") || !strings.Contains(out, "# Notes") || !strings.Contains(out, "hello") {
+		t.Fatalf("viewer:\n%s", out)
+	}
+	keyPress(m, "esc")
+	if _, ok := m.top().(*projectView); !ok {
+		t.Fatalf("esc didn't come back: %T", m.top())
+	}
+	// A binary shows by name and size; JSON is indented.
+	keyPress(m, "down")
+	keyPress(m, "enter")
+	if out := screen(m); !strings.Contains(out, "shot.png · 2.5 MB") || !strings.Contains(out, "not text") {
+		t.Fatalf("binary viewer:\n%s", out)
+	}
+	keyPress(m, "esc")
+	keyPress(m, "down")
+	keyPress(m, "enter")
+	if out := screen(m); !strings.Contains(out, "  \"a\": [") {
+		t.Fatalf("json viewer:\n%s", out)
+	}
+	keyPress(m, "esc")
+
+	// d: asks, n keeps, y deletes.
+	keyPress(m, "d")
+	if out := screen(m); !strings.Contains(out, "Delete data.json (7 B) of thread t-0001?") {
+		t.Fatalf("d:\n%s", out)
+	}
+	keyPress(m, "n")
+	if len(src.libRemoved) != 0 {
+		t.Fatalf("n deleted: %v", src.libRemoved)
+	}
+	keyPress(m, "d")
+	run(m, keyPress(m, "y"))
+	if !slices.Equal(src.libRemoved, []string{"t-0001/data.json"}) {
+		t.Fatalf("y: %v", src.libRemoved)
+	}
+	// D: the thread's remaining files.
+	m.Update(m.loadPopup("alpha")())
+	keyPress(m, "D")
+	if out := screen(m); !strings.Contains(out, "Delete all 1 library files of thread t-0001?") {
+		t.Fatalf("D:\n%s", out)
+	}
+	run(m, keyPress(m, "y"))
+	if !slices.Equal(src.libRemoved, []string{"t-0001/data.json", "t-0001/"}) {
+		t.Fatalf("after D: %v", src.libRemoved)
 	}
 }
