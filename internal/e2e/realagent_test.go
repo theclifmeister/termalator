@@ -38,8 +38,31 @@ func realAgentEnv(t *testing.T, name string, loginCheck func(bin string) string)
 	if h := os.Getenv("CODEX_HOME"); h != "" {
 		env.Setenv("CODEX_HOME", h)
 	}
-	env.Setenv("PATH", filepath.Dir(bin)+":"+filepath.Dir(env.Bin)+":/usr/bin:/bin:/usr/sbin:/sbin")
+	binDir := filepath.Dir(bin)
+	if name == "claude" {
+		binDir = pinClaudePermissionMode(t, bin) + ":" + binDir
+	}
+	env.Setenv("PATH", binDir+":"+filepath.Dir(env.Bin)+":/usr/bin:/bin:/usr/sbin:/sbin")
 	return env
+}
+
+// pinClaudePermissionMode returns a folder holding a `claude` that runs
+// bin with --permission-mode default, so the permission scenarios don't
+// depend on a defaultMode (auto, say) in the user's own settings, which
+// stay untouched. Launches that already choose a mode (yolo) pass through.
+func pinClaudePermissionMode(t *testing.T, bin string) string {
+	t.Helper()
+	dir := t.TempDir()
+	// CLAUDE_CODE_ENABLE_TODO_TOOLS: claude 2.1.295 offers TaskCreate and
+	// TaskUpdate only to legacy or unset models; the suite's haiku (5.x)
+	// gets no todo tool without it, and the todos scenario needs one.
+	script := "#!/bin/sh\nexport CLAUDE_CODE_ENABLE_TODO_TOOLS=1\n" +
+		"for a in \"$@\"; do case \"$a\" in --dangerously-skip-permissions|--permission-mode|--permission-mode=*) exec '" + bin + "' \"$@\";; esac; done\n" +
+		"exec '" + bin + "' --permission-mode default \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "claude"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return dir
 }
 
 // realStart starts the agent with model in a fresh folder and waits for
