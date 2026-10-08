@@ -279,7 +279,7 @@ func TestCodexQueueAndClear(t *testing.T) {
 	}
 
 	a.send("\x1b[200~/clear\x1b[201~\r")
-	waitUntil(t, "the thread left", func() bool { return a.rolloutOf(sid) != "" && len(a.logKinds("slash")) > 0 })
+	waitUntil(t, "the thread left", func() bool { return len(a.logKinds("cleared")) > 0 })
 	if _, err := a.queue(sid, "lost"); err != nil {
 		t.Fatal(err)
 	}
@@ -323,6 +323,8 @@ func TestCodexQueueAndClear(t *testing.T) {
 	if last["source"] != "compact" || last["session_id"] != start["session_id"] {
 		t.Fatalf("after /compact %v", last)
 	}
+	// No hook still writing into home when the test's dirs go.
+	a.waitEvent("Stop", 4)
 }
 
 // rolloutOf is the rollout the hooks named for a thread.
