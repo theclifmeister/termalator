@@ -25,55 +25,10 @@ import (
 	"github.com/theclifmeister/terminatr/internal/agent"
 )
 
-const realWait = 90 * time.Second
-
-// realEnv is an isolated terminatr with the user's real HOME (Claude's
-// login lives there) and claude on PATH.
-func realEnv(t *testing.T) *Env {
-	t.Helper()
-	bin, err := exec.LookPath("claude")
-	if err != nil {
-		t.Skip("claude is not on PATH")
-	}
-	env := New(t)
-	env.Setenv("HOME", os.Getenv("HOME"))
-	env.Setenv("PATH", filepath.Dir(bin)+":"+filepath.Dir(env.Bin)+":/usr/bin:/bin:/usr/sbin:/sbin")
-	return env
-}
-
-// realDir is a fresh directory, trusted the way the user would trust it:
-// through Claude's own dialog, driven by the screen rules.
-func realStart(t *testing.T, env *Env, args ...string) (*Session, string) {
-	t.Helper()
-	dir := env.Workdir()
-	s := env.StartAgent("claude", dir, append([]string{"--model", "haiku"}, args...)...)
-	if !Poll(realWait, func() bool {
-		i, _ := env.Info(s)
-		return i.State == "idle" || i.Reason == "trust"
-	}) {
-		t.Fatalf("claude never came up:\n%s", env.CLI("session", "read", s.ID).Stdout)
-	}
-	if i, _ := env.Info(s); i.Reason == "trust" {
-		time.Sleep(time.Second) // keys within ~0.5 s of the dialog are dropped
-		if strings.Contains(env.Screen(s), "Yes, I accept") {
-			env.Keys(s, "2") // the bypass warning (yolo)
-		} else {
-			env.Keys(s, "\x1b[B")
-			time.Sleep(200 * time.Millisecond)
-			env.Keys(s, "\r")
-		}
-	}
-	env.WaitState(s, "idle", realWait)
-	return s, dir
-}
-
-// events lists the hook events the server received for a session.
-func events(env *Env, s *Session) []string {
-	var out []string
-	for _, ev := range env.Explain(s).Events {
-		out = append(out, ev.Event)
-	}
-	return out
+// claudeEvents lists all the hook events the server received for a session.
+func claudeEvents(env *Env, s *Session) []string {
+	got, _ := agentEvents(env, s, 0)
+	return got
 }
 
 // assertSubsequence reports drift: want (from the fake's script) must
@@ -112,8 +67,8 @@ func TestRealVersion(t *testing.T) {
 // approve, permission Esc (no hook), session file fields, the screen
 // rules, todos and /clear with context re-injection.
 func TestRealSession(t *testing.T) {
-	env := realEnv(t)
-	s, dir := realStart(t, env)
+	env := realAgentEnv(t, "claude", nil)
+	s, dir := realStart(t, env, "claude", "haiku")
 
 	env.Prompt(s, "Reply with just the word READY.")
 	env.WaitState(s, "working", realWait)
@@ -131,7 +86,7 @@ func TestRealSession(t *testing.T) {
 			t.Errorf("session file lacks %q: %v", k, file)
 		}
 	}
-	assertSubsequence(t, "a turn", events(env, s), []string{"SessionStart", "UserPromptSubmit", "Stop"})
+	assertSubsequence(t, "a turn", claudeEvents(env, s), []string{"SessionStart", "UserPromptSubmit", "Stop"})
 
 	// Approve a permission dialog.
 	env.Prompt(s, "Create a file named a.txt containing hi, using the Write tool. Nothing else.")
@@ -146,16 +101,16 @@ func TestRealSession(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "a.txt")); err != nil {
 		t.Errorf("approved write: %v", err)
 	}
-	assertSubsequence(t, "permission approve", events(env, s), []string{"UserPromptSubmit", "PreToolUse", "PermissionRequest", "PostToolUse", "Stop"})
+	assertSubsequence(t, "permission approve", claudeEvents(env, s), []string{"UserPromptSubmit", "PreToolUse", "PermissionRequest", "PostToolUse", "Stop"})
 
 	// Esc on another: no hook fires, the state still comes back.
 	env.Prompt(s, "Create a file named b.txt containing hi, using the Write tool. Nothing else.")
 	env.WaitState(s, "blocked/permission", realWait)
-	n := len(events(env, s))
+	n := len(claudeEvents(env, s))
 	time.Sleep(500 * time.Millisecond)
 	env.Keys(s, "\x1b")
 	env.WaitState(s, "idle", 10*time.Second)
-	if got := events(env, s); len(got) > n {
+	if got := claudeEvents(env, s); len(got) > n {
 		t.Logf("note: Claude now fires %v after an Esc on a dialog", got[n:])
 	}
 	env.Keys(s, "\x15") // the cancelled prompt is back in the box
@@ -177,14 +132,14 @@ func TestRealSession(t *testing.T) {
 	if !Poll(20*time.Second, func() bool { i, _ := env.Info(s); return i.AgentSID != before.AgentSID && i.TodosTotal == 0 }) {
 		t.Errorf("/clear: agent session id or todos unchanged")
 	}
-	assertSubsequence(t, "/clear", events(env, s), []string{"SessionEnd", "SessionStart"})
+	assertSubsequence(t, "/clear", claudeEvents(env, s), []string{"SessionEnd", "SessionStart"})
 }
 
 // TestRealThreadAccess: a thread can read the project but not write it,
 // interactively and under yolo (docs/SPEC.md §5.2), with the settings
 // terminatr generates.
 func TestRealThreadAccess(t *testing.T) {
-	env := realEnv(t)
+	env := realAgentEnv(t, "claude", nil)
 	var p struct{ Slug, Dir string }
 	if err := json.Unmarshal([]byte(env.MustCLI("project", "new", "real", "--json")), &p); err != nil {
 		t.Fatal(err)
@@ -194,7 +149,7 @@ func TestRealThreadAccess(t *testing.T) {
 		if yolo {
 			args = append(args, "--yolo")
 		}
-		s, _ := realStart(t, env, args...)
+		s, _ := realStart(t, env, "claude", "haiku", args...)
 		target := filepath.Join(p.Dir, "x.txt")
 		env.Prompt(s, "Use the Write tool to create the file "+target+" containing hi. If that is refused, try once with Bash echo. Then stop.")
 		env.WaitState(s, "working", realWait)
@@ -217,7 +172,7 @@ func TestRealThreadAccess(t *testing.T) {
 // typed there blocks on a permission dialog; Ctrl+B d shows it under NEEDS
 // YOU; enter attaches again to approve; the session survives the window.
 func TestRealFirstLocalRun(t *testing.T) {
-	env := realEnv(t)
+	env := realAgentEnv(t, "claude", nil)
 	env.Setenv("ANTHROPIC_MODEL", "haiku") // tm session start passes no --model
 	dir := env.Workdir()
 

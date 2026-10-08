@@ -33,67 +33,23 @@ import (
 	"github.com/theclifmeister/terminatr/internal/agent"
 )
 
-const codexRealWait = 120 * time.Second
-
-// codexRealEnv is an isolated terminatr with the user's real HOME
-// (Codex's login lives in ~/.codex) and codex on PATH.
-func codexRealEnv(t *testing.T) *Env {
-	t.Helper()
-	bin, err := exec.LookPath("codex")
-	if err != nil {
-		t.Skip("codex is not on PATH")
-	}
+// codexLoggedIn is realAgentEnv's login check: why codex can't run, or "".
+func codexLoggedIn(bin string) string {
 	out, _ := exec.Command(bin, "login", "status").CombinedOutput()
 	if !strings.Contains(string(out), "Logged in") {
-		t.Skipf("codex is not logged in (CODEX_HOME=%q): log in once with `codex login`", os.Getenv("CODEX_HOME"))
+		return "codex is not logged in (CODEX_HOME=" + os.Getenv("CODEX_HOME") + "): log in once with `codex login`"
 	}
-	env := New(t)
-	env.Setenv("HOME", os.Getenv("HOME"))
-	if h := os.Getenv("CODEX_HOME"); h != "" {
-		env.Setenv("CODEX_HOME", h)
-	}
-	env.Setenv("PATH", filepath.Dir(bin)+":"+filepath.Dir(env.Bin)+":/usr/bin:/bin:/usr/sbin:/sbin")
-	return env
-}
-
-// codexRealStart starts codex in a fresh folder and waits for its
-// composer. tm trusts the folder for the run (-c projects) and answers
-// "Hooks need review" itself; a dialog left on screen fails here.
-func codexRealStart(t *testing.T, env *Env, args ...string) (*Session, string) {
-	t.Helper()
-	dir := env.Workdir()
-	s := env.StartAgent("codex", dir, append([]string{"--model", "gpt-6-luna"}, args...)...)
-	if !Poll(codexRealWait, func() bool {
-		i, _ := env.Info(s)
-		return i.State == "idle"
-	}) {
-		t.Fatalf("codex never came up idle:\n%s\nexplain:\n%s", env.Screen(s), env.CLI("agent", "explain", s.ID).Stdout)
-	}
-	return s, dir
-}
-
-// codexEvents lists the hook events the server received for a session
-// after seq, and the last seq.
-func codexEvents(env *Env, s *Session, after uint64) ([]string, uint64) {
-	var out []string
-	last := after
-	for _, ev := range env.Explain(s).Events {
-		if ev.Seq > after {
-			out = append(out, ev.Event)
-			last = ev.Seq
-		}
-	}
-	return out, last
+	return ""
 }
 
 // codexEventsUntil waits until last is among the events after seq (the
 // rollout can say idle before the Stop hook is in), then returns them.
 func codexEventsUntil(env *Env, s *Session, after uint64, last string) ([]string, uint64) {
 	Poll(30*time.Second, func() bool {
-		g, _ := codexEvents(env, s, after)
+		g, _ := agentEvents(env, s, after)
 		return strings.Contains(","+strings.Join(g, ",")+",", ","+last+",")
 	})
-	return codexEvents(env, s, after)
+	return agentEvents(env, s, after)
 }
 
 // codexDrift reports drift: want (what the fake sends) must appear in
@@ -153,15 +109,15 @@ func TestRealCodexVersion(t *testing.T) {
 // thread), a question in plan mode, and last the SessionEnd of the
 // thread /clear left, which must change nothing.
 func TestRealCodexSession(t *testing.T) {
-	env := codexRealEnv(t)
-	s, dir := codexRealStart(t, env)
+	env := realAgentEnv(t, "codex", codexLoggedIn)
+	s, dir := realStart(t, env, "codex", "gpt-6-luna")
 	if i, _ := env.Info(s); i.AgentSID != "" {
 		t.Errorf("a thread id before the first hook: %q", i.AgentSID)
 	}
 
 	env.Prompt(s, "Reply with just the word READY.")
-	env.WaitState(s, "working", codexRealWait)
-	info := env.WaitState(s, "idle", codexRealWait)
+	env.WaitState(s, "working", realWait)
+	info := env.WaitState(s, "idle", realWait)
 	if info.AgentSID == "" {
 		t.Fatal("no thread id after the first turn")
 	}
@@ -171,11 +127,11 @@ func TestRealCodexSession(t *testing.T) {
 	// Approve: through the channel now.
 	outside := filepath.Join(filepath.Dir(dir), "outside-a.txt")
 	env.Prompt(s, "Create the file "+outside+" containing hi with one shell command, requesting escalated permissions for it. Nothing else.")
-	env.WaitState(s, "blocked/permission", codexRealWait)
+	env.WaitState(s, "blocked/permission", realWait)
 	codexRuleMatched(t, env, s, "blocked-permission-dialog")
 	time.Sleep(500 * time.Millisecond)
 	env.Keys(s, "y")
-	env.WaitState(s, "idle", codexRealWait)
+	env.WaitState(s, "idle", realWait)
 	if _, err := os.Stat(outside); err != nil {
 		t.Errorf("approved command: %v", err)
 	}
@@ -185,7 +141,7 @@ func TestRealCodexSession(t *testing.T) {
 	// Esc on an approval: Interrupt.
 	outside = filepath.Join(filepath.Dir(dir), "outside-b.txt")
 	env.Prompt(s, "Create the file "+outside+" containing hi with one shell command, requesting escalated permissions for it. Nothing else.")
-	env.WaitState(s, "blocked/permission", codexRealWait)
+	env.WaitState(s, "blocked/permission", realWait)
 	time.Sleep(500 * time.Millisecond)
 	env.Keys(s, "\x1b")
 	env.WaitState(s, "idle", 20*time.Second)
@@ -199,17 +155,17 @@ func TestRealCodexSession(t *testing.T) {
 	// SessionStart (compact) at the next prompt.
 	thread := info.AgentSID
 	env.Prompt(s, "/compact")
-	if !Poll(codexRealWait, func() bool {
-		g, _ := codexEvents(env, s, seq)
+	if !Poll(realWait, func() bool {
+		g, _ := agentEvents(env, s, seq)
 		return strings.Contains(strings.Join(g, ","), "PreCompact")
 	}) {
 		t.Errorf("/compact: no PreCompact\n%s", env.Screen(s))
 	}
 	time.Sleep(2 * time.Second)
-	env.WaitState(s, "idle", codexRealWait)
+	env.WaitState(s, "idle", realWait)
 	env.Prompt(s, "Reply with just the word COMPACTED.")
-	env.WaitState(s, "working", codexRealWait)
-	env.WaitState(s, "idle", codexRealWait)
+	env.WaitState(s, "working", realWait)
+	env.WaitState(s, "idle", realWait)
 	got, seq = codexEventsUntil(env, s, seq, "Stop")
 	codexDrift(t, "/compact", got, []string{"PreCompact", "SessionStart", "UserPromptSubmit", "Stop"})
 	if i, _ := env.Info(s); i.AgentSID != thread {
@@ -218,13 +174,13 @@ func TestRealCodexSession(t *testing.T) {
 
 	// /clear: the new thread reports itself at its first prompt.
 	env.Prompt(s, "/clear")
-	env.WaitState(s, "idle", codexRealWait)
+	env.WaitState(s, "idle", realWait)
 	time.Sleep(time.Second)
 	env.Prompt(s, "Reply with just the word AGAIN.")
-	if !Poll(codexRealWait, func() bool { i, _ := env.Info(s); return i.AgentSID != thread && i.AgentSID != "" }) {
+	if !Poll(realWait, func() bool { i, _ := env.Info(s); return i.AgentSID != thread && i.AgentSID != "" }) {
 		t.Errorf("/clear: the thread id stayed %q", thread)
 	}
-	env.WaitState(s, "idle", codexRealWait)
+	env.WaitState(s, "idle", realWait)
 	got, seq = codexEventsUntil(env, s, seq, "Stop")
 	codexDrift(t, "/clear", got, []string{"SessionStart", "UserPromptSubmit", "Stop"})
 	cleared := time.Now()
@@ -241,16 +197,16 @@ func TestRealCodexSession(t *testing.T) {
 		"Ask me now with the request_user_input tool (the blocking one, not request_user_input_async) to pick red, green or blue for the setting.",
 	} {
 		codexType(env, s, p)
-		asked = Poll(codexRealWait, func() bool {
+		asked = Poll(realWait, func() bool {
 			i, _ := env.Info(s)
-			g, _ := codexEvents(env, s, seq)
+			g, _ := agentEvents(env, s, seq)
 			return i.Reason == "question" || slices.Contains(g, "Stop")
 		}) && func() bool { i, _ := env.Info(s); return i.Reason == "question" }()
 		if asked {
 			break
 		}
 		_, seq = codexEventsUntil(env, s, seq, "Stop")
-		env.WaitState(s, "idle", codexRealWait)
+		env.WaitState(s, "idle", realWait)
 	}
 	if !asked {
 		t.Fatalf("no question menu in plan mode:\n%s", env.Screen(s))
@@ -259,7 +215,7 @@ func TestRealCodexSession(t *testing.T) {
 	asking := func() bool { return slices.Contains(env.Explain(s).Matches, "blocked-question") }
 	deadline := time.Now().Add(4 * time.Minute)
 	for {
-		if got, _ := codexEvents(env, s, seq); slices.Contains(got, "Stop") {
+		if got, _ := agentEvents(env, s, seq); slices.Contains(got, "Stop") {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -305,17 +261,17 @@ func TestRealCodexSession(t *testing.T) {
 // TestRealCodexResume: a server restart resumes the thread (codex
 // resume <id>); it reports itself again at the next prompt.
 func TestRealCodexResume(t *testing.T) {
-	env := codexRealEnv(t)
-	s, _ := codexRealStart(t, env)
+	env := realAgentEnv(t, "codex", codexLoggedIn)
+	s, _ := realStart(t, env, "codex", "gpt-6-luna")
 	env.Prompt(s, "Reply with just the word READY.")
-	env.WaitState(s, "working", codexRealWait)
-	thread := env.WaitState(s, "idle", codexRealWait).AgentSID
+	env.WaitState(s, "working", realWait)
+	thread := env.WaitState(s, "idle", realWait).AgentSID
 
 	env.MustCLI("server", "restart", "--yes")
-	env.WaitState(s, "idle", codexRealWait)
+	env.WaitState(s, "idle", realWait)
 	env.Prompt(s, "Reply with just the word RESUMED.")
-	env.WaitState(s, "working", codexRealWait)
-	info := env.WaitState(s, "idle", codexRealWait)
+	env.WaitState(s, "working", realWait)
+	info := env.WaitState(s, "idle", realWait)
 	if info.AgentSID != thread {
 		t.Errorf("resumed as %q, want %q", info.AgentSID, thread)
 	}
