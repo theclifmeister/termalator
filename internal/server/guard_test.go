@@ -299,3 +299,32 @@ func TestAccessThreadGitDirs(t *testing.T) {
 		t.Errorf("main checkout: write %q, want %q", a.Write, want[:1])
 	}
 }
+
+// TestGuardSecrets: Codex's login is a credential store, in ~/.codex or
+// $CODEX_HOME, and a Codex thread's hooks refuse reading it.
+func TestGuardSecrets(t *testing.T) {
+	testPaths(t)
+	p := newWatchProject(t)
+	home, codexHome := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", codexHome)
+	s := &Server{log: log.New(os.Stderr, "", 0), records: map[string]SessionRecord{}}
+	rec := SessionRecord{ID: "s-2", Role: proto.RoleThread, Agent: "codex", Project: p.Slug, Thread: "t-0001", Cwd: t.TempDir()}
+	g := s.guardRulesFor(rec)
+	for _, want := range []string{filepath.Join(home, ".codex", "auth.json"), filepath.Join(codexHome, "auth.json"), filepath.Join(home, ".claude", ".credentials.json")} {
+		if !slices.Contains(g.Secrets, want) {
+			t.Errorf("secrets %q lack %s", g.Secrets, want)
+		}
+	}
+	s.records["s-2"] = rec
+	judge := s.hookGuardOf("s-2", false)
+	if d := judge("Bash", map[string]any{"command": "cat " + filepath.Join(codexHome, "auth.json")}); d == nil || d.Rule != "credentials" {
+		t.Errorf("cat of $CODEX_HOME/auth.json: %+v", d)
+	}
+	if d := judge("Bash", map[string]any{"command": "cat ~/.codex/auth.json"}); d == nil || d.Rule != "credentials" {
+		t.Errorf("cat of ~/.codex/auth.json: %+v", d)
+	}
+	if d := judge("Bash", map[string]any{"command": "cat ~/.codex/config.toml"}); d != nil {
+		t.Errorf("cat of ~/.codex/config.toml: %+v", d)
+	}
+}

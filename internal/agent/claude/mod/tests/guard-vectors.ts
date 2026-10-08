@@ -6,9 +6,9 @@
 // so (double quotes, no trailing commas, no comments). One case a line.
 export default {
 "rules": {
- "thread": {"on": true, "role": "thread", "rules": ["force-push", "push-default", "worktree-only", "delete-branch", "merge", "credentials"], "home": "/h", "cwd": "/h/.terminatr/worktrees/demo/t-0001-fix", "writable": ["/h/.terminatr/worktrees/demo/t-0001-fix", "/tmp", "/private/tmp"], "worktrees": "/h/.terminatr/worktrees", "protected": ["main", "master"], "secrets": ["/h/.ssh", "/h/.aws", "/h/.config/gh"]},
- "coordinator": {"on": true, "role": "coordinator", "rules": ["force-push", "push-default", "delete-branch", "credentials"], "home": "/h", "cwd": "/h/.terminatr/projects/demo", "worktrees": "/h/.terminatr/worktrees", "protected": ["main", "master"], "secrets": ["/h/.ssh", "/h/.aws", "/h/.config/gh"]},
- "thread-no-merge": {"on": true, "role": "thread", "rules": ["force-push", "push-default", "worktree-only", "delete-branch", "credentials"], "home": "/h", "cwd": "/h/.terminatr/worktrees/demo/t-0001-fix", "writable": ["/h/.terminatr/worktrees/demo/t-0001-fix", "/tmp", "/private/tmp"], "worktrees": "/h/.terminatr/worktrees", "protected": ["main", "master"], "secrets": ["/h/.ssh", "/h/.aws", "/h/.config/gh"]},
+ "thread": {"on": true, "role": "thread", "rules": ["force-push", "push-default", "worktree-only", "delete-branch", "merge", "credentials"], "home": "/h", "cwd": "/h/.terminatr/worktrees/demo/t-0001-fix", "writable": ["/h/.terminatr/worktrees/demo/t-0001-fix", "/tmp", "/private/tmp"], "worktrees": "/h/.terminatr/worktrees", "protected": ["main", "master"], "secrets": ["/h/.ssh", "/h/.aws", "/h/.config/gh", "/h/.codex/auth.json", "/ch/auth.json"]},
+ "coordinator": {"on": true, "role": "coordinator", "rules": ["force-push", "push-default", "delete-branch", "credentials"], "home": "/h", "cwd": "/h/.terminatr/projects/demo", "worktrees": "/h/.terminatr/worktrees", "protected": ["main", "master"], "secrets": ["/h/.ssh", "/h/.aws", "/h/.config/gh", "/h/.codex/auth.json", "/ch/auth.json"]},
+ "thread-no-merge": {"on": true, "role": "thread", "rules": ["force-push", "push-default", "worktree-only", "delete-branch", "credentials"], "home": "/h", "cwd": "/h/.terminatr/worktrees/demo/t-0001-fix", "writable": ["/h/.terminatr/worktrees/demo/t-0001-fix", "/tmp", "/private/tmp"], "worktrees": "/h/.terminatr/worktrees", "protected": ["main", "master"], "secrets": ["/h/.ssh", "/h/.aws", "/h/.config/gh", "/h/.codex/auth.json", "/ch/auth.json"]},
  "off": {"on": false}
 },
 "cases": [
@@ -133,6 +133,9 @@ export default {
  {"rules": "thread", "tool": "Read", "input": {"file_path": "/h/.terminatr/worktrees/demo/t-0001-fix/README.md"}, "rule": null},
  {"rules": "thread", "tool": "Bash", "input": {"command": "cat ~/.ssh/id_rsa"}, "rule": "credentials", "summary": "cat of /h/.ssh/id_rsa"},
  {"rules": "thread", "tool": "Bash", "input": {"command": "base64 < $HOME/.aws/credentials"}, "rule": "credentials", "summary": "base64 of /h/.aws/credentials"},
+ {"rules": "thread", "tool": "Bash", "input": {"command": "cat ~/.codex/auth.json"}, "rule": "credentials", "summary": "cat of /h/.codex/auth.json"},
+ {"rules": "coordinator", "tool": "Read", "input": {"file_path": "/ch/auth.json"}, "rule": "credentials", "summary": "Read of /ch/auth.json"},
+ {"rules": "thread", "tool": "Read", "input": {"file_path": "/h/.codex/config.toml"}, "rule": null},
  {"rules": "thread", "tool": "Bash", "input": {"command": "gh auth token"}, "rule": "credentials", "summary": "gh auth token"},
  {"rules": "thread", "tool": "Bash", "input": {"command": "gh auth status --show-token"}, "rule": "credentials", "summary": "gh auth status --show-token"},
  {"rules": "thread", "tool": "Bash", "input": {"command": "security find-generic-password -s x -w"}, "rule": "credentials", "summary": "security find-generic-password"},

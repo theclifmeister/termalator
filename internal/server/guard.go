@@ -56,7 +56,7 @@ var guardNow = time.Now
 var guardSecrets = []string{
 	".ssh", ".aws", ".gnupg", ".netrc", ".git-credentials", ".npmrc", ".pypirc",
 	".config/gh", ".config/gcloud", ".azure", ".azure-devops", ".docker/config.json", ".kube",
-	".claude/.credentials.json",
+	".claude/.credentials.json", ".codex/auth.json",
 }
 
 // guardSettings is a project's resolved settings; a config.toml that
@@ -129,6 +129,10 @@ func (s *Server) guardRulesFor(r SessionRecord) GuardRules {
 	if home != "" {
 		for _, p := range guardSecrets {
 			g.Secrets = append(g.Secrets, filepath.Join(home, p))
+		}
+		// Codex keeps its login in $CODEX_HOME/auth.json, ~/.codex by default.
+		if ch := os.Getenv("CODEX_HOME"); ch != "" {
+			g.Secrets = append(g.Secrets, filepath.Join(ch, "auth.json"))
 		}
 		g.Secrets = withReal(g.Secrets)
 	}
