@@ -114,6 +114,7 @@ func (s *Server) guardRulesFor(r SessionRecord) GuardRules {
 		dirs = append(dirs, agent.GuardWritable(reg, r.Agent, home, os.Getenv)...)
 		g.Writable = withReal(dirs)
 	}
+	g.Tools = agent.GuardTools(reg, r.Agent)
 	g.Protected = []string{"main", "master"}
 	repos := []string{r.Cwd}
 	if r.Role == proto.RoleCoordinator {

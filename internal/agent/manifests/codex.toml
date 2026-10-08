@@ -94,6 +94,12 @@ about = "older balanced model for straightforward work"
 [guard]
 secrets = [".codex/auth.json", "$CODEX_HOME/auth.json"]
 
+# The tools the guard judges, by kind, and the input fields each reads:
+# the shell's command line, and apply_patch's patch text (its command).
+[guard.tools]
+Bash = { kind = "shell", fields = ["command"] }
+apply_patch = { kind = "patch", fields = ["command"] }
+
 # Prompts go through `codex queue --thread <id> --message <text>` (the
 # Go agent's Prompt), paste when it fails. Checked on 0.160 (T100) with
 # a live TUI, with and without the shared app-server daemon (0.161)

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/theclifmeister/terminatr/internal/guard"
 	"github.com/theclifmeister/terminatr/internal/proto"
 )
 
@@ -22,13 +23,20 @@ func TestGuardRulesFor(t *testing.T) {
 	p := newWatchProject(t)
 	s := &Server{log: log.New(os.Stderr, "", 0)}
 	wt := t.TempDir()
-	thread := SessionRecord{ID: "s-2", Role: proto.RoleThread, Project: p.Slug, Thread: "t-0001", Cwd: wt}
+	thread := SessionRecord{ID: "s-2", Role: proto.RoleThread, Agent: "claude", Project: p.Slug, Thread: "t-0001", Cwd: wt}
 	g := s.guardRulesFor(thread)
 	if !g.On || !slices.Equal(g.Rules, []string{"force-push", "push-default", "worktree-only", "delete-branch", "merge", "credentials"}) {
 		t.Fatalf("thread %+v", g)
 	}
 	if g.Writable[0] != wt || g.Cwd != wt || !slices.Contains(g.Protected, "main") || len(g.Secrets) == 0 {
 		t.Errorf("thread %+v", g)
+	}
+	// The session agent's tools, from its manifest's [guard.tools].
+	if g.Tools["Bash"].Kind != guard.KindShell || g.Tools["Edit"].Kind != guard.KindWrite {
+		t.Errorf("claude tools %+v", g.Tools)
+	}
+	if g := s.guardRulesFor(SessionRecord{ID: "s-4", Role: proto.RoleThread, Agent: "codex", Project: p.Slug, Cwd: wt}); g.Tools["apply_patch"].Kind != guard.KindPatch || g.Tools["Edit"].Kind != "" {
+		t.Errorf("codex tools %+v", g.Tools)
 	}
 	coord := SessionRecord{ID: "s-1", Role: proto.RoleCoordinator, Project: p.Slug, Cwd: p.Dir}
 	if g := s.guardRulesFor(coord); !slices.Equal(g.Rules, []string{"force-push", "push-default", "delete-branch", "credentials"}) || g.Writable != nil {
@@ -90,7 +98,7 @@ func TestGuardRoutes(t *testing.T) {
 		t.Fatalf("no record: %d", resp.StatusCode)
 	}
 	s.mu.Lock()
-	s.records["s-2"] = SessionRecord{ID: "s-2", Role: proto.RoleThread, Project: p.Slug, Thread: "t-0001", Cwd: rt}
+	s.records["s-2"] = SessionRecord{ID: "s-2", Role: proto.RoleThread, Agent: "claude", Project: p.Slug, Thread: "t-0001", Cwd: rt}
 	s.mu.Unlock()
 	resp, err = c.Get("http://terminatr/v1/rules")
 	if err != nil {
@@ -99,7 +107,7 @@ func TestGuardRoutes(t *testing.T) {
 	var g GuardRules
 	err = json.NewDecoder(resp.Body).Decode(&g)
 	resp.Body.Close()
-	if err != nil || !g.On || !slices.Contains(g.Rules, "merge") {
+	if err != nil || !g.On || !slices.Contains(g.Rules, "merge") || g.Tools["Bash"].Kind != guard.KindShell {
 		t.Fatalf("rules %+v, %v", g, err)
 	}
 
@@ -177,7 +185,7 @@ func TestHookGuard(t *testing.T) {
 	if d := judge("Bash", map[string]any{"command": "gh pr merge 1"}); d != nil {
 		t.Fatalf("no record: %+v", d)
 	}
-	s.records["s-2"] = SessionRecord{ID: "s-2", Role: proto.RoleThread, Project: p.Slug, Thread: "t-0001", Cwd: wt}
+	s.records["s-2"] = SessionRecord{ID: "s-2", Role: proto.RoleThread, Agent: "codex", Project: p.Slug, Thread: "t-0001", Cwd: wt}
 	clock := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
 	guardNow = func() time.Time { return clock }
 	t.Cleanup(func() { guardNow = time.Now })

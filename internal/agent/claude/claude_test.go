@@ -192,7 +192,7 @@ func TestGuard(t *testing.T) {
 	var judged string
 	env := agent.HookEnv{Guard: func(tool string, input map[string]any) *guard.Denial {
 		judged = tool + ": " + input["command"].(string)
-		return guard.Rules{On: true, Role: "thread", Rules: []string{"merge"}}.Judge(tool, input)
+		return guard.Rules{On: true, Role: "thread", Rules: []string{"merge"}, Tools: agent.GuardTools(nil, "claude")}.Judge(tool, input)
 	}}
 	_, res, err := a.Hook(agent.HookEvent{Event: "PreToolUse", Payload: payload}, env)
 	if err != nil {

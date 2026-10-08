@@ -10,6 +10,7 @@ import (
 
 // vectors are the shared test vectors, which hooks/guard.ts passes too.
 type vectors struct {
+	Tools map[string]Tool  `json:"tools"`
 	Rules map[string]Rules `json:"rules"`
 	Cases []struct {
 		Rules   string         `json:"rules"`
@@ -40,6 +41,11 @@ func loadVectors(t *testing.T) vectors {
 	}
 	if len(v.Cases) < 100 {
 		t.Fatalf("guard-vectors.ts: only %d cases", len(v.Cases))
+	}
+	// The tools go with every rule set.
+	for name, r := range v.Rules {
+		r.Tools = v.Tools
+		v.Rules[name] = r
 	}
 	return v
 }
@@ -108,7 +114,8 @@ func FuzzJudge(f *testing.F) {
 	f.Add("git push -f origin 'x' && echo \"$(gh pr merge 1)\" `x` \\")
 	f.Add("rm -rf ~/.terminatr/worktrees/../x; cat <~/.ssh/k")
 	r := Rules{On: true, Role: "thread", Rules: []string{"force-push", "push-default", "worktree-only", "delete-branch", "merge", "credentials"},
-		Home: "/h", Cwd: "/w", Writable: []string{"/w"}, Worktrees: "/h/wt", Protected: []string{"main"}, Secrets: []string{"/h/.ssh"}}
+		Home: "/h", Cwd: "/w", Writable: []string{"/w"}, Worktrees: "/h/wt", Protected: []string{"main"}, Secrets: []string{"/h/.ssh"},
+		Tools: map[string]Tool{"Bash": {KindShell, []string{"command"}}, "apply_patch": {KindPatch, []string{"command"}}, "Glob": {KindGlob, []string{"pattern"}}}}
 	f.Fuzz(func(t *testing.T, s string) {
 		r.Judge("Bash", map[string]any{"command": s})
 		r.Judge("apply_patch", map[string]any{"command": s})

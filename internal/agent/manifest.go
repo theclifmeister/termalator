@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -150,6 +151,11 @@ type Guard struct {
 	// Writable are the agent's own folders its threads write to besides
 	// the worktree and the temporary folders (the worktree-only rule).
 	Writable []string `toml:"writable"`
+	// Tools are the agent's tools the guard judges, by name: each one's
+	// kind (shell, write, patch, read, glob) and the input fields that
+	// kind reads, e.g. Bash = { kind = "shell", fields = ["command"] }.
+	// A tool not listed is not judged.
+	Tools map[string]guard.Tool `toml:"tools"`
 }
 
 // GuardPaths resolves [guard] entries to absolute paths, against home
@@ -406,6 +412,15 @@ func (m *Manifest) validate() error {
 			errs = append(errs, fmt.Errorf("guard.writable: %q is not relative to home or under $VAR", e))
 		}
 	}
+	for _, name := range slices.Sorted(maps.Keys(m.Guard.Tools)) {
+		t := m.Guard.Tools[name]
+		if !slices.Contains(guard.Kinds, t.Kind) {
+			errs = append(errs, fmt.Errorf("guard.tools.%s: kind %q is not shell|write|patch|read|glob", name, t.Kind))
+		}
+		if len(t.Fields) == 0 || slices.Contains(t.Fields, "") {
+			errs = append(errs, fmt.Errorf("guard.tools.%s: fields must name the input fields the guard reads", name))
+		}
+	}
 	switch m.Screen.Resize {
 	case "", ResizeFollow, ResizeExplicit:
 	default:
@@ -652,7 +667,7 @@ func (a *manifestAgent) Hook(ev HookEvent, env HookEnv) ([]Signal, HookResult, e
 			sigs = append(sigs, sig)
 		}
 		if h.Respond != "" && res.Stdout == nil {
-			out, err := renderRespond(h.Respond, ev, env)
+			out, err := renderRespond(h.Respond, ev, env, a.m.Hook)
 			if err != nil {
 				return sigs, res, err
 			}
@@ -828,14 +843,15 @@ func render(tmpl string, data any) (string, error) {
 // renderRespond renders a hook response. .Context and .Guard are
 // methods so the (possibly expensive) context is rendered, and the call
 // judged, only if the template uses them.
-func renderRespond(tmpl string, ev HookEvent, env HookEnv) ([]byte, error) {
-	s, err := render(tmpl, &respondData{ev: ev, env: env})
+func renderRespond(tmpl string, ev HookEvent, env HookEnv, hook HookTrim) ([]byte, error) {
+	s, err := render(tmpl, &respondData{ev: ev, env: env, hook: hook})
 	return []byte(s), err
 }
 
 type respondData struct {
 	ev     HookEvent
 	env    HookEnv
+	hook   HookTrim
 	judged bool
 	denial *guard.Denial
 }
@@ -850,8 +866,8 @@ func (d *respondData) Context() (string, error) {
 	return string(b), err
 }
 
-// Guard is the guard's refusal of the tool call in the payload
-// (tool_name, tool_input), or nil: a template answers with it, e.g.
+// Guard is the guard's refusal of the tool call in the payload (the
+// [hook] tool_field and input_field), or nil: a template answers with it, e.g.
 // {{with .Guard}}…{{json .Message}}…{{end}}. The call is judged (and a
 // refusal recorded) once however often the template asks.
 func (d *respondData) Guard() *guard.Denial {
@@ -859,8 +875,8 @@ func (d *respondData) Guard() *guard.Denial {
 		return d.denial
 	}
 	d.judged = true
-	tool, _ := d.ev.Payload["tool_name"].(string)
-	input, _ := d.ev.Payload["tool_input"].(map[string]any)
+	tool, _ := d.ev.Payload[d.hook.ToolField()].(string)
+	input, _ := d.ev.Payload[d.hook.InputField()].(map[string]any)
 	if tool != "" {
 		d.denial = d.env.Guard(tool, input)
 	}
