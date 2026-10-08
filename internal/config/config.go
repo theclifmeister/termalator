@@ -1,8 +1,8 @@
 // Package config reads and writes ~/.terminatr/config.toml, the human's
 // settings (docs/SPEC.md §5.1, §11.2): the per-project safety settings
 // under [projects.<slug>], the all-projects ones under [defaults] that a
-// project follows for every key it doesn't set, the default agent, and
-// the TUI's prefix key ([keys] prefix) and icon set ([ui] icons), whose
+// project follows for every key it doesn't set (among them the agents
+// threads and coordinators run), and the TUI's prefix key ([keys] prefix) and icon set ([ui] icons), whose
 // values the TUI checks, and whether sessions load terminatr's mod
 // ([mods] enabled, docs/SPEC.md §8.6).
 //
@@ -132,6 +132,13 @@ type Safety struct {
 	// checkout of a project repo to origin's default branch when that
 	// branch is checked out, clean and only behind (§7.5).
 	FastForwardCheckout bool `json:"fast_forward_checkout"`
+	// ThreadAgent is the agent tm thread start runs without --agent, and
+	// CoordinatorAgent the one a new coordinator runs (§8, §11.2): names
+	// from the agent registry (tm agent list), DefaultAgent unless set.
+	// The registry is checked where they are used (CheckAgent's callers),
+	// since config doesn't read the manifests.
+	ThreadAgent      string `json:"thread_agent"`
+	CoordinatorAgent string `json:"coordinator_agent"`
 	// Models is the allow-list of the models the coordinator may pick for
 	// a thread (tm thread start --model, §8.2): names from the agents'
 	// manifests. nil allows every model the manifest lists.
@@ -189,9 +196,13 @@ func (s *Safety) SetArchiveDays(key string, n int) {
 	}
 }
 
+// DefaultAgent is the agent threads and coordinators run when the
+// settings name none, and what a session record without an agent ran.
+const DefaultAgent = "claude"
+
 // Defaults are the settings of a project that neither its own table nor
 // [defaults] (all projects) name.
-var Defaults = Safety{StartThreads: StartPropose, Yolo: false, CoordinatorApproves: true,
+var Defaults = Safety{ThreadAgent: DefaultAgent, CoordinatorAgent: DefaultAgent, StartThreads: StartPropose, Yolo: false, CoordinatorApproves: true,
 	ParallelThreads: 10, AutoClose: CloseMerged, AutoCloseDays: 7, PRFollowup: true, PRPollSeconds: DefaultPRPollSeconds,
 	CompleteTasks: CompleteUser, FastForwardCheckout: true, Merge: MergeCoordinator, Guard: true,
 	ArchiveTasksDays: 30, ArchiveThreadsDays: 30, ArchiveInboxDays: 30, ArchiveJournalDays: 30}
@@ -213,6 +224,8 @@ type rawSafety struct {
 	AutoClear      *bool     `toml:"auto_clear"`
 	CoordMerges    *bool     `toml:"coordinator_merges"`
 	FastForward    *bool     `toml:"fast_forward_checkout"`
+	ThreadAgent    *string   `toml:"thread_agent"`
+	CoordAgent     *string   `toml:"coordinator_agent"`
 	Models         *[]string `toml:"models"`
 	Paused         *bool     `toml:"paused"`
 	Archived       *bool     `toml:"archived"`
@@ -223,6 +236,15 @@ type rawSafety struct {
 	ArchiveThreads *int      `toml:"archive_threads_days"`
 	ArchiveInbox   *int      `toml:"archive_inbox_days"`
 	ArchiveJournal *int      `toml:"archive_journal_days"`
+}
+
+// CheckAgent checks an agent name's shape: one word. Whether the
+// registry has it is checked where it is used.
+func CheckAgent(name string) error {
+	if name == "" || strings.ContainsAny(name, " \t\n\r\"\\") {
+		return fmt.Errorf("must be one agent's name, not %q", name)
+	}
+	return nil
 }
 
 // CheckModels checks a models allow-list's shape: at least one name,
@@ -381,6 +403,11 @@ func (c *Config) AllProjects() (Safety, error) {
 	if c == nil {
 		return s, nil
 	}
+	// The older top-level default_agent named the coordinators' agent;
+	// [defaults] coordinator_agent wins over it.
+	if c.agent != "" {
+		s.CoordinatorAgent = c.agent
+	}
 	// Pausing or archiving is a project's own state: in [defaults] it
 	// would stop or hide every project.
 	if c.defaults.Paused != nil || c.defaults.Archived != nil {
@@ -405,7 +432,7 @@ func (c *Config) Own(slug string) []string {
 		"auto_close": r.AutoClose != nil || r.AutoResolve != nil, "auto_close_days": r.AutoCloseDays != nil,
 		"pr_followup": r.PRFollowup != nil, "pr_poll_seconds": r.PRPoll != nil, "complete_tasks": r.CompleteTasks != nil,
 		"coordinator_remote_control": r.CoordinatorRC != nil, "auto_clear": r.AutoClear != nil, "coordinator_merges": r.CoordMerges != nil, "fast_forward_checkout": r.FastForward != nil,
-		"models": r.Models != nil, "archive_tasks_days": r.ArchiveTasks != nil, "archive_threads_days": r.ArchiveThreads != nil,
+		"thread_agent": r.ThreadAgent != nil, "coordinator_agent": r.CoordAgent != nil, "models": r.Models != nil, "archive_tasks_days": r.ArchiveTasks != nil, "archive_threads_days": r.ArchiveThreads != nil,
 		"archive_inbox_days": r.ArchiveInbox != nil, "archive_journal_days": r.ArchiveJournal != nil,
 	}
 	var out []string
@@ -488,6 +515,19 @@ func (r rawSafety) apply(s *Safety, path, table string) error {
 	if r.FastForward != nil {
 		s.FastForwardCheckout = *r.FastForward
 	}
+	for _, a := range []struct {
+		key string
+		v   *string
+		to  *string
+	}{{"thread_agent", r.ThreadAgent, &s.ThreadAgent}, {"coordinator_agent", r.CoordAgent, &s.CoordinatorAgent}} {
+		if a.v == nil {
+			continue
+		}
+		if err := CheckAgent(*a.v); err != nil {
+			return fmt.Errorf("%s: %s.%s %w", path, table, a.key, err)
+		}
+		*a.to = *a.v
+	}
 	if r.Models != nil {
 		if err := CheckModels(*r.Models); err != nil {
 			return fmt.Errorf("%s: %s.models %w", path, table, err)
@@ -554,21 +594,16 @@ func (c *Config) Removed() []string {
 // AllProjectsName is how the UI and tm doctor name [defaults].
 const AllProjectsName = "all projects"
 
-// DefaultAgent is the agent new coordinators run (default_agent), or
-// fallback when the file doesn't set one.
-func (c *Config) DefaultAgent(fallback string) string {
-	if c == nil || c.agent == "" {
-		return fallback
+// Agents returns the agents slug's threads and coordinator run
+// (thread_agent, coordinator_agent): DefaultAgent where the file sets
+// none or can't be read, so a broken file never keeps an agent from
+// starting (tm doctor and the settings popup show it).
+func Agents(slug string) (thread, coordinator string) {
+	s := Defaults
+	if c, err := Load(); c != nil && err == nil {
+		if got, err := c.Safety(slug); err == nil {
+			s = got
+		}
 	}
-	return c.agent
-}
-
-// DefaultAgent reads the default agent from the file; fallback when it
-// is unset or the file can't be read.
-func DefaultAgent(fallback string) string {
-	c, err := Load()
-	if err != nil {
-		return fallback
-	}
-	return c.DefaultAgent(fallback)
+	return s.ThreadAgent, s.CoordinatorAgent
 }
