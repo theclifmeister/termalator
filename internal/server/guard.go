@@ -22,38 +22,17 @@ import (
 
 	"github.com/theclifmeister/terminatr/internal/caller"
 	"github.com/theclifmeister/terminatr/internal/config"
+	"github.com/theclifmeister/terminatr/internal/guard"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/worktree"
 )
 
 // GuardRules is the body of GET /v1/rules: what the session's mod
-// refuses. Off, the mod refuses nothing and the agent's own permission
-// rules decide alone, as without the mod.
-type GuardRules struct {
-	On   bool   `json:"on"`
-	Role string `json:"role,omitempty"`
-	// Rules are the config.GuardRules ids in force.
-	Rules []string `json:"rules,omitempty"`
-	// Home is the user's home directory, for ~ in paths and commands;
-	// Cwd the folder the session started in, for relative paths.
-	Home string `json:"home,omitempty"`
-	Cwd  string `json:"cwd,omitempty"`
-	// Writable are the folders the file tools may write in under
-	// worktree-only: the thread's worktree first, then the temporary
-	// folders and Claude's own (plans, memory). Each as given and
-	// with its symlinks resolved.
-	Writable []string `json:"writable,omitempty"`
-	// Worktrees is tm's worktrees folder: under delete-branch, no rm -r
-	// takes it, a project's folder in it or a worktree.
-	Worktrees string `json:"worktrees,omitempty"`
-	// Protected are the branches no push may target: the repos' default
-	// branches, main and master.
-	Protected []string `json:"protected,omitempty"`
-	// Secrets are the files and folders no tool may read under
-	// credentials.
-	Secrets []string `json:"secrets,omitempty"`
-}
+// refuses, and what the server judges a hook's tool call by
+// (guard.Rules.Judge). Off, nothing is refused and the agent's own
+// permission rules decide alone, as without the mod.
+type GuardRules = guard.Rules
 
 // GuardDenial is the body of POST /v1/denied.
 type GuardDenial struct {
