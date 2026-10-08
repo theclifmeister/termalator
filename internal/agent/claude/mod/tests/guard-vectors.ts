@@ -32,6 +32,8 @@ export default {
  "thread": {"on": true, "role": "thread", "rules": ["force-push", "push-default", "worktree-only", "delete-branch", "merge", "credentials"], "home": "/h", "cwd": "/h/.terminatr/worktrees/demo/t-0001-fix", "writable": ["/h/.terminatr/worktrees/demo/t-0001-fix", "/tmp", "/private/tmp"], "worktrees": "/h/.terminatr/worktrees", "protected": ["main", "master"], "secrets": ["/h/.ssh", "/h/.aws", "/h/.config/gh", "/h/.codex/auth.json", "/ch/auth.json"]},
  "coordinator": {"on": true, "role": "coordinator", "rules": ["force-push", "push-default", "delete-branch", "credentials"], "home": "/h", "cwd": "/h/.terminatr/projects/demo", "worktrees": "/h/.terminatr/worktrees", "protected": ["main", "master"], "secrets": ["/h/.ssh", "/h/.aws", "/h/.config/gh", "/h/.codex/auth.json", "/ch/auth.json"]},
  "thread-no-merge": {"on": true, "role": "thread", "rules": ["force-push", "push-default", "worktree-only", "delete-branch", "credentials"], "home": "/h", "cwd": "/h/.terminatr/worktrees/demo/t-0001-fix", "writable": ["/h/.terminatr/worktrees/demo/t-0001-fix", "/tmp", "/private/tmp"], "worktrees": "/h/.terminatr/worktrees", "protected": ["main", "master"], "secrets": ["/h/.ssh", "/h/.aws", "/h/.config/gh", "/h/.codex/auth.json", "/ch/auth.json"]},
+ "thread-casefold": {"on": true, "role": "thread", "rules": ["force-push", "push-default", "worktree-only", "delete-branch", "merge", "credentials"], "home": "/h", "cwd": "/h/.terminatr/worktrees/demo/t-0001-fix", "writable": ["/h/.terminatr/worktrees/demo/t-0001-fix", "/tmp", "/private/tmp"], "worktrees": "/h/.terminatr/worktrees", "protected": ["main", "master"], "secrets": ["/h/.ssh", "/h/.aws", "/h/.config/gh", "/h/.codex/auth.json", "/ch/auth.json"], "caseFold": true},
+ "coordinator-casefold": {"on": true, "role": "coordinator", "rules": ["force-push", "push-default", "delete-branch", "credentials"], "home": "/h", "cwd": "/h/.terminatr/projects/demo", "worktrees": "/h/.terminatr/worktrees", "protected": ["main", "master"], "secrets": ["/h/.ssh", "/h/.aws", "/h/.config/gh", "/h/.codex/auth.json", "/ch/auth.json"], "caseFold": true},
  "off": {"on": false}
 },
 "cases": [
@@ -210,7 +212,21 @@ export default {
  {"rules": "thread", "tool": "Bash", "input": {"command": "cat < ~/.ssh/id_rsa"}, "rule": "credentials", "summary": "cat of /h/.ssh/id_rsa"},
  {"rules": "thread", "tool": "Bash", "input": {"command": "cat <~/.ssh/id_rsa"}, "rule": "credentials", "summary": "cat of /h/.ssh/id_rsa"},
  {"rules": "thread", "tool": "Bash", "input": {"command": "grep -r key /h/.aws"}, "rule": "credentials", "summary": "grep of /h/.aws"},
- {"rules": "thread", "tool": "Bash", "input": {"command": "security dump-keychain"}, "rule": "credentials", "summary": "security dump-keychain"}
+ {"rules": "thread", "tool": "Bash", "input": {"command": "security dump-keychain"}, "rule": "credentials", "summary": "security dump-keychain"},
+ {"rules": "coordinator", "tool": "Bash", "input": {"command": "rm -rf ~/.Terminatr/worktrees"}, "rule": null},
+ {"rules": "coordinator-casefold", "tool": "Bash", "input": {"command": "rm -rf ~/.Terminatr/worktrees"}, "rule": "delete-branch", "summary": "rm -r of /h/.Terminatr/worktrees"},
+ {"rules": "coordinator-casefold", "tool": "Bash", "input": {"command": "rm -rf /H/.TERMINATR"}, "rule": "delete-branch", "summary": "rm -r of /H/.TERMINATR"},
+ {"rules": "coordinator-casefold", "tool": "Bash", "input": {"command": "rm -r /h/.terminatr/Worktrees/Demo/T-0001-fix"}, "rule": "delete-branch", "summary": "rm -r of /h/.terminatr/Worktrees/Demo/T-0001-fix"},
+ {"rules": "coordinator-casefold", "tool": "Bash", "input": {"command": "rm -r /h/.terminatr/Worktrees/demo/t-0001-fix/Build"}, "rule": null},
+ {"rules": "thread-casefold", "tool": "Bash", "input": {"command": "rm -rf /h/.terminatr/worktrees/demo/T-0001-FIX"}, "rule": "delete-branch", "summary": "rm -r of /h/.terminatr/worktrees/demo/T-0001-FIX"},
+ {"rules": "thread", "tool": "Read", "input": {"file_path": "/h/.SSH/id_rsa"}, "rule": null},
+ {"rules": "thread-casefold", "tool": "Read", "input": {"file_path": "/h/.SSH/id_rsa"}, "rule": "credentials", "summary": "Read of /h/.SSH/id_rsa"},
+ {"rules": "thread-casefold", "tool": "Bash", "input": {"command": "cat ~/.Aws/credentials"}, "rule": "credentials", "summary": "cat of /h/.Aws/credentials"},
+ {"rules": "thread-casefold", "tool": "Glob", "input": {"pattern": "/H/*"}, "rule": null},
+ {"rules": "thread-casefold", "tool": "Glob", "input": {"pattern": "/h/.Config/*"}, "rule": "credentials", "summary": "Glob of /h/.Config/*"},
+ {"rules": "thread", "tool": "Write", "input": {"file_path": "/h/.terminatr/worktrees/demo/T-0001-FIX/main.go"}, "rule": "worktree-only", "summary": "Write of /h/.terminatr/worktrees/demo/T-0001-FIX/main.go"},
+ {"rules": "thread-casefold", "tool": "Write", "input": {"file_path": "/h/.terminatr/worktrees/demo/T-0001-FIX/main.go"}, "rule": null},
+ {"rules": "thread-casefold", "tool": "Write", "input": {"file_path": "/h/.terminatr/worktrees/demo/t-0002-other/main.go"}, "rule": "worktree-only", "summary": "Write of /h/.terminatr/worktrees/demo/t-0002-other/main.go"}
 ],
 "messages": {
  "thread": {
