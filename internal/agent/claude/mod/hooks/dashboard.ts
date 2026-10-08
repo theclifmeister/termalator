@@ -161,19 +161,22 @@ export function ageWords(ms: number): string {
   return m % 60 ? `${Math.floor(m / 60)}h${m % 60}m` : `${Math.floor(m / 60)}h`
 }
 
-// tickerLine is the ticker's timers in a line: "ticker · PRs checked 40s
-// ago, next 1m20s · synced 1m ago · PR host ok"; tone is error while the PR host fails.
-export function tickerLine(t: TerminatrTicker, now = Date.now()): { text: string; tone: 'ok' | 'error' } {
-  const parts = ['ticker']
+// TickerRow is one row of the ticker's section; bad is red.
+export interface TickerRow { label: string; value: string; bad: boolean }
+
+// tickerRows are the ticker's timers, a row each: "PRs  40s ago · next
+// 1m20s", "synced  1m ago", "PR host  ok". A timer not known yet has no row.
+export function tickerRows(t: TerminatrTicker, now = Date.now()): TickerRow[] {
+  const rows: TickerRow[] = []
   if (t.pr_checked) {
     const at = Date.parse(t.pr_checked)
     const next = at + t.pr_poll_seconds * 1000 - now
-    parts.push(`PRs checked ${ageWords(now - at)} ago, ` + (next > 0 ? `next ${ageWords(next)}` : 'due'))
+    rows.push({ label: 'PRs', value: `${ageWords(now - at)} ago · ` + (next > 0 ? `next ${ageWords(next)}` : 'due'), bad: false })
   }
-  if (t.synced) parts.push(`synced ${ageWords(now - Date.parse(t.synced))} ago`)
-  if (t.gh_failing) parts.push('PR host failing')
-  else if (t.pr_checked) parts.push('PR host ok')
-  return { text: parts.join(' · '), tone: t.gh_failing ? 'error' : 'ok' }
+  if (t.synced) rows.push({ label: 'synced', value: `${ageWords(now - Date.parse(t.synced))} ago`, bad: false })
+  if (t.gh_failing) rows.push({ label: 'PR host', value: 'failing', bad: true })
+  else if (t.pr_checked) rows.push({ label: 'PR host', value: 'ok', bad: false })
+  return rows
 }
 
 // threadState is a thread's state in a word: the session's, "done" for a

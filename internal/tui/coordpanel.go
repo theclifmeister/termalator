@@ -106,13 +106,6 @@ func coordLines(pw *proto.ProjectWatch, w int, now time.Time) ([]string, []infoH
 
 	line(styleTitle.Render(oneLine(pw.Project)), infoHit{})
 	line(styleFaint.Render(coordSummary(pw)), infoHit{})
-	if tk := pw.Ticker; tk != nil {
-		look := styleFaint
-		if tk.GHFailing {
-			look = styleBad
-		}
-		wrapped("", look.Render(tk.Line(now)), infoHit{})
-	}
 	if c := pw.Context; c != nil {
 		text, look, hint := contextWords(c)
 		line(look.Render(text), infoHit{})
@@ -263,6 +256,25 @@ func coordLines(pw *proto.ProjectWatch, w int, now time.Time) ([]string, []infoH
 			text += styleFaint.Render(" · asked the coordinator: " + kindWord(t.Asked))
 		}
 		item(styleHead.Render(t.Task)+" "+text, taskHit(t.Task))
+	}
+
+	// The ticker's timers, a row each, labels in a column
+	// (docs/STYLE.md S4); the PR host red on its own row while it fails.
+	if tk := pw.Ticker; tk != nil {
+		if rows := tk.Rows(now); len(rows) > 0 {
+			heading("TICKER")
+			lw := 0
+			for _, r := range rows {
+				lw = max(lw, ansi.StringWidth(r.Label))
+			}
+			for _, r := range rows {
+				look := styleFaint
+				if r.Bad {
+					look = styleBad
+				}
+				line(styleFaint.Render(r.Label+strings.Repeat(" ", lw-ansi.StringWidth(r.Label)+2))+look.Render(r.Value), infoHit{})
+			}
+		}
 	}
 	for len(hits) < len(pl.lines) {
 		hits = append(hits, infoHit{})

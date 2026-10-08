@@ -166,7 +166,11 @@ func projectWatchLine(w proto.ProjectWatch) string {
 	line := fmt.Sprintf("%s · %d need you · %d in inbox · %d threads · %d on deck",
 		w.Project, len(w.NeedsYou), len(w.Inbox), len(w.Threads), len(w.Ready))
 	if w.Ticker != nil {
-		line += " · " + w.Ticker.Line(time.Now())
+		parts := []string{"ticker"}
+		for _, r := range w.Ticker.Rows(time.Now()) {
+			parts = append(parts, r.Label+" "+r.Value)
+		}
+		line += " · " + strings.Join(parts, " · ")
 	}
 	return line
 }

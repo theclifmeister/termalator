@@ -2,7 +2,6 @@ package proto
 
 import (
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -187,30 +186,37 @@ func CheckedWords(t, now time.Time) string {
 	return "checked " + AgeWords(now.Sub(t)) + " ago"
 }
 
-// Line is the ticker's timers in one line: "ticker · PRs checked 40s
-// ago, next 1m20s · synced 1m ago · PR host ok"; "PR host failing" when PR polls
-// fail. now is the reader's clock.
-func (t WatchTicker) Line(now time.Time) string {
-	parts := []string{"ticker"}
+// TickerRow is one row of the ticker's section: a label and its value.
+// Bad marks a row that is red (the PR host failing).
+type TickerRow struct {
+	Label, Value string
+	Bad          bool
+}
+
+// Rows are the ticker's timers, a row each: "PRs  40s ago · next 1m20s",
+// "synced  1m ago", "PR host  ok" (or "failing", Bad). A timer not
+// known yet has no row. now is the reader's clock.
+func (t WatchTicker) Rows(now time.Time) []TickerRow {
+	var rows []TickerRow
 	if !t.PRChecked.IsZero() {
-		s := "PRs checked " + AgeWords(now.Sub(t.PRChecked)) + " ago"
+		v := AgeWords(now.Sub(t.PRChecked)) + " ago"
 		if t.PRPollSeconds > 0 {
 			next := t.PRChecked.Add(time.Duration(t.PRPollSeconds) * time.Second).Sub(now)
 			if next > 0 {
-				s += ", next " + AgeWords(next)
+				v += " · next " + AgeWords(next)
 			} else {
-				s += ", due"
+				v += " · due"
 			}
 		}
-		parts = append(parts, s)
+		rows = append(rows, TickerRow{Label: "PRs", Value: v})
 	}
 	if !t.Synced.IsZero() {
-		parts = append(parts, "synced "+AgeWords(now.Sub(t.Synced))+" ago")
+		rows = append(rows, TickerRow{Label: "synced", Value: AgeWords(now.Sub(t.Synced)) + " ago"})
 	}
 	if t.GHFailing {
-		parts = append(parts, "PR host failing")
+		rows = append(rows, TickerRow{Label: "PR host", Value: "failing", Bad: true})
 	} else if !t.PRChecked.IsZero() {
-		parts = append(parts, "PR host ok")
+		rows = append(rows, TickerRow{Label: "PR host", Value: "ok"})
 	}
-	return strings.Join(parts, " · ")
+	return rows
 }
