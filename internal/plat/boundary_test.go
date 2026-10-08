@@ -30,7 +30,6 @@ const goos = "runtime.GOOS"
 // into internal/plat and deletes their entries; the list ends empty. Never
 // add to it: put the new OS code in internal/plat instead.
 var allowed = map[string][]string{
-	"internal/cli/attach.go":                  {"syscall"},
 	"internal/cli/doctor.go":                  {goos},
 	"internal/cli/server.go":                  {"syscall", goos},
 	"internal/cli/servercli.go":               {goos},
@@ -50,17 +49,13 @@ var allowed = map[string][]string{
 	"internal/e2e/fakeagent/termios_bsd.go":   {"golang.org/x/sys/unix"},
 	"internal/e2e/fakeagent/termios_linux.go": {"golang.org/x/sys/unix"},
 	"internal/e2e/input.go":                   {"syscall"},
-	"internal/e2e/stale.go":                   {"syscall"},
 	"internal/e2e/window.go":                  {"syscall"},
-	"internal/pty/procargs_darwin.go":         {"golang.org/x/sys/unix"},
 	"internal/pty/pty_unix.go":                {"syscall", "golang.org/x/sys/unix", "github.com/creack/pty"},
-	"internal/server/client.go":               {"syscall", goos},
+	"internal/server/client.go":               {goos},
 	"internal/server/clone_darwin.go":         {"golang.org/x/sys/unix"},
-	"internal/server/daemon_other.go":         {"syscall"},
-	"internal/server/daemon_unix.go":          {"syscall", "golang.org/x/sys/unix"},
+	"internal/server/owner_unix.go":           {"syscall"},
 	"internal/server/resolve.go":              {goos},
 	"internal/server/server.go":               {goos},
-	"internal/server/stop.go":                 {"syscall"},
 	"internal/service/launchd.go":             {goos},
 	"internal/session/proc_unix.go":           {"syscall"},
 	"internal/tui/infopanel.go":               {goos},

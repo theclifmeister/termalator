@@ -4,13 +4,13 @@ package e2e
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
+
+	"github.com/theclifmeister/terminatr/internal/plat/proc"
 )
 
 // A run's binaries live in a tm-e2e-bin* temp dir with an owner file
@@ -101,24 +101,18 @@ func staleOwner(dir string) bool {
 // killUnder SIGKILLs every process whose executable lies in dir and
 // returns what it killed.
 func killUnder(dir string) []string {
-	out, err := exec.Command("ps", "-e", "-o", "pid=", "-o", "args=").Output()
+	procs, err := proc.List()
 	if err != nil {
 		return nil
 	}
 	var killed []string
 	prefix := dir + string(filepath.Separator)
-	for _, l := range strings.Split(string(out), "\n") {
-		pidStr, args, ok := strings.Cut(strings.TrimSpace(l), " ")
-		if !ok {
+	for _, p := range procs {
+		if p.PID == os.Getpid() || len(p.Argv) == 0 || !strings.HasPrefix(p.Argv[0], prefix) {
 			continue
 		}
-		args = strings.TrimSpace(args)
-		pid, err := strconv.Atoi(pidStr)
-		if err != nil || pid == os.Getpid() || !strings.HasPrefix(args, prefix) {
-			continue
-		}
-		if syscall.Kill(pid, syscall.SIGKILL) == nil {
-			killed = append(killed, strconv.Itoa(pid)+" "+args)
+		if proc.Kill(p.PID) == nil {
+			killed = append(killed, strconv.Itoa(p.PID)+" "+strings.Join(p.Argv, " "))
 		}
 	}
 	return killed

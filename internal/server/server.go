@@ -64,7 +64,7 @@ type Options struct {
 	// the tm that started it. A missing Source pins Bin.
 	Source string
 	// Exec, when set, runs the pinned binary in place of this process
-	// (syscall.Exec), with Args, so the server itself runs from the pin
+	// (proc.Exec), with Args, so the server itself runs from the pin
 	// (pinBinary). Nil keeps running the binary started.
 	Exec func(bin string, argv, env []string) error
 	// Args are the arguments Exec passes, after the binary.

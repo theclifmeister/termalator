@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/plat/flock"
+	"github.com/theclifmeister/terminatr/internal/plat/proc"
 )
 
 // ErrLocked means another process holds the server lock.
@@ -55,7 +56,7 @@ func takeLock(p Paths) (*lockFile, error) {
 			return lk, err
 		}
 		pid := readPID(p.PID)
-		if alive(pid) || time.Now().After(deadline) {
+		if proc.Alive(pid) || time.Now().After(deadline) {
 			return nil, &AlreadyRunningError{PID: pid}
 		}
 		time.Sleep(10 * time.Millisecond)
