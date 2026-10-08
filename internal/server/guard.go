@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/caller"
 	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/guard"
@@ -52,11 +53,11 @@ const (
 // guardNow is the clock of the inbox window (a variable for tests).
 var guardNow = time.Now
 
-// guardSecrets are the credential stores, relative to home.
+// guardSecrets are the credential stores, relative to home, that belong
+// to no agent; each agent's own are in its manifest ([guard] secrets).
 var guardSecrets = []string{
 	".ssh", ".aws", ".gnupg", ".netrc", ".git-credentials", ".npmrc", ".pypirc",
 	".config/gh", ".config/gcloud", ".azure", ".azure-devops", ".docker/config.json", ".kube",
-	".claude/.credentials.json",
 }
 
 // guardSettings is a project's resolved settings; a config.toml that
@@ -105,11 +106,12 @@ func (s *Server) guardRulesFor(r SessionRecord) GuardRules {
 		}
 		g.Rules = append(g.Rules, id)
 	}
+	s.mu.Lock()
+	reg := s.agents
+	s.mu.Unlock()
 	if slices.Contains(g.Rules, "worktree-only") {
 		dirs := []string{r.Cwd, os.TempDir(), "/tmp", "/private/tmp", "/var/folders", "/private/var/folders"}
-		if home != "" {
-			dirs = append(dirs, filepath.Join(home, ".claude", "plans"), filepath.Join(home, ".claude", "projects"))
-		}
+		dirs = append(dirs, agent.GuardWritable(reg, r.Agent, home, os.Getenv)...)
 		g.Writable = withReal(dirs)
 	}
 	g.Protected = []string{"main", "master"}
@@ -130,8 +132,8 @@ func (s *Server) guardRulesFor(r SessionRecord) GuardRules {
 		for _, p := range guardSecrets {
 			g.Secrets = append(g.Secrets, filepath.Join(home, p))
 		}
-		g.Secrets = withReal(g.Secrets)
 	}
+	g.Secrets = withReal(append(g.Secrets, agent.GuardSecrets(reg, home, os.Getenv)...))
 	return g
 }
 

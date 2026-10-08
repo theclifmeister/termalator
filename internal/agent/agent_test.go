@@ -745,3 +745,62 @@ func TestRuleKeys(t *testing.T) {
 		t.Error("an idle rule with keys passed")
 	}
 }
+
+// TestManifestGuard: [guard] paths are relative to home or under a
+// variable, left out while it is unset; every known agent's secrets
+// count, a user manifest replacing a built-in one doesn't drop them, and
+// the writable folders are the session agent's own.
+func TestManifestGuard(t *testing.T) {
+	const base = "manifest_version = 1\nname = \"a\"\n[launch]\ncommand = \"a\"\n[guard]\n"
+	for _, c := range []struct {
+		guard string
+		ok    bool
+	}{
+		{`secrets = [".a/key", "~/.a/token", "$A_HOME/key"]`, true},
+		{`writable = [".a/plans"]`, true},
+		{`secrets = ["/etc/a/key"]`, false},
+		{`secrets = ["../x"]`, false},
+		{`writable = ["$A_HOME/../x"]`, false},
+		{`secrets = [""]`, false},
+	} {
+		if _, err := ParseManifest([]byte(base + c.guard + "\n")); (err == nil) != c.ok {
+			t.Errorf("%s: err = %v, want ok %v", c.guard, err, c.ok)
+		}
+	}
+	env := map[string]string{"A_HOME": "/ah"}
+	got := GuardPaths([]string{".a/key", "~/.a/token", "$A_HOME/key", "$UNSET/key"}, "/h", func(k string) string { return env[k] })
+	if want := []string{"/h/.a/key", "/h/.a/token", "/ah/key"}; !slices.Equal(got, want) {
+		t.Errorf("GuardPaths = %q, want %q", got, want)
+	}
+	if got := GuardPaths([]string{".a/key", "$A_HOME/key"}, "", func(k string) string { return env[k] }); !slices.Equal(got, []string{"/ah/key"}) {
+		t.Errorf("GuardPaths without a home = %q", got)
+	}
+
+	env = map[string]string{"CODEX_HOME": "/ch"}
+	getenv := func(k string) string { return env[k] }
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "claude.toml"), []byte("manifest_version = 1\nname = \"claude\"\n[launch]\ncommand = \"claude\"\n[guard]\nwritable = [\".my/plans\"]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reg, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range []*Registry{nil, reg} {
+		s := GuardSecrets(r, "/h", getenv)
+		for _, want := range []string{"/h/.claude/.credentials.json", "/h/.codex/auth.json", "/ch/auth.json"} {
+			if !slices.Contains(s, want) {
+				t.Errorf("GuardSecrets(%v) = %q, lacks %s", r != nil, s, want)
+			}
+		}
+	}
+	if got := GuardWritable(nil, "claude", "/h", getenv); !slices.Equal(got, []string{"/h/.claude/plans", "/h/.claude/projects"}) {
+		t.Errorf("built-in claude writable = %q", got)
+	}
+	if got := GuardWritable(reg, "claude", "/h", getenv); !slices.Equal(got, []string{"/h/.my/plans"}) {
+		t.Errorf("user claude writable = %q", got)
+	}
+	if got := GuardWritable(reg, "codex", "/h", getenv); got != nil {
+		t.Errorf("codex writable = %q", got)
+	}
+}
