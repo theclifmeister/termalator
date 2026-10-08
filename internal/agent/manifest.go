@@ -626,6 +626,10 @@ var funcs = template.FuncMap{
 	// toml quotes a string as a TOML basic string, for a CLI that parses
 	// a -c key=value as TOML (Codex's developer_instructions).
 	"toml": tomlString,
+	// pathmodes is the file grants of an access policy as a TOML inline
+	// table of path = "read" | "write", for a sandbox that takes one
+	// mode per path (Codex's permission profile filesystem).
+	"pathmodes": pathModes,
 	// concat joins lists, for building one JSON array from several grants.
 	"concat": func(lists ...[]string) []string {
 		out := []string{}
@@ -634,6 +638,35 @@ var funcs = template.FuncMap{
 		}
 		return out
 	},
+}
+
+// pathModes renders a's paths as {"/p"="read","/q"="write",…}: Read
+// is read, Write is write, NoWrite and NoWriteFiles are read and win
+// over a Write of the same path. Each path appears once, in policy
+// order.
+func pathModes(a Access) string {
+	var order []string
+	mode := map[string]string{}
+	set := func(paths []string, m string, wins bool) {
+		for _, p := range paths {
+			old, seen := mode[p]
+			if !seen {
+				order = append(order, p)
+			}
+			if !seen || wins || old == "read" && m == "write" {
+				mode[p] = m
+			}
+		}
+	}
+	set(a.Read, "read", false)
+	set(a.Write, "write", false)
+	set(a.NoWrite, "read", true)
+	set(a.NoWriteFiles, "read", true)
+	parts := make([]string, len(order))
+	for i, p := range order {
+		parts[i] = tomlString(p) + "=" + tomlString(mode[p])
+	}
+	return "{" + strings.Join(parts, ",") + "}"
 }
 
 // maxFileText bounds what the file template func reads: it ends up in

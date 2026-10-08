@@ -191,6 +191,12 @@ fields = ["tool_input", "tool_response"]
 match = { tool_name = "TodoWrite" }
 fields = ["tool_input"]
 
+# The guard judges each tool call from its input (Bash's command, the file
+# tools' paths), also with mods off, where the hook is the only way in.
+[[hook.keep_when]]
+match = { hook_event_name = "PreToolUse" }
+fields = ["tool_input"]
+
 # Primary state: Claude's own session file, written atomically on every
 # change. It clears the cases where no hook fires (Esc on a dialog, while
 # streaming, during a tool).

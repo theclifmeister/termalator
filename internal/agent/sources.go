@@ -213,6 +213,10 @@ type TailUsage struct {
 	CacheRead     string            `toml:"cache_read"`
 	CacheCreation string            `toml:"cache_creation"`
 	CostUSD       string            `toml:"cost_usd"`
+	// PlanPercent is the plan limit used so far (0-100), for an agent on
+	// a subscription that has no dollar cost (Codex on ChatGPT). Alone
+	// it doesn't make a line report usage.
+	PlanPercent string `toml:"plan_percent"`
 	// Context is what the request read as context, ContextWindow the
 	// model's window and Model its id, for the context use (§8.6).
 	Context       string `toml:"context"`
@@ -252,6 +256,8 @@ type Usage struct {
 	CacheRead     int64
 	CacheCreation int64
 	CostUSD       float64
+	PlanPct       float64
+	HasPlan       bool
 	Context       int64
 	ContextWindow int64
 	Model         string
@@ -331,6 +337,13 @@ func (u *TailUsage) read(obj map[string]any) *Usage {
 		return nil
 	}
 	r.ContextWindow = int64(num(u.ContextWindow))
+	if u.PlanPercent != "" {
+		if v, ok := lookup(obj, u.PlanPercent); ok {
+			if f, isNum := v.(float64); isNum && f >= 0 && f <= 100 {
+				r.PlanPct, r.HasPlan = f, true
+			}
+		}
+	}
 	if u.InputIncludesCache {
 		r.Input = max(0, r.Input-r.CacheRead)
 	}
