@@ -578,14 +578,20 @@ func (cx *codexState) queueCmd(logPath string) int {
 // (after the running turn), a left thread's run out of sight.
 func (a *app) pollQueue() {
 	for range time.Tick(100 * time.Millisecond) {
+		// Taken under the lock, so /clear can't move a thread between
+		// the ids read and its queue taken.
 		a.mu.Lock()
-		cur, left := a.sid, append([]string(nil), a.cx.left...)
+		cur := takeQueue(a.cx.codexHome, a.sid)
+		hidden := map[string][]string{}
+		for _, t := range a.cx.left {
+			hidden[t] = takeQueue(a.cx.codexHome, t)
+		}
 		a.mu.Unlock()
-		for _, m := range takeQueue(a.cx.codexHome, cur) {
+		for _, m := range cur {
 			a.enqueue(job{kind: "prompt", text: m, via: "queue"})
 		}
-		for _, t := range left {
-			for _, m := range takeQueue(a.cx.codexHome, t) {
+		for t, ms := range hidden {
+			for _, m := range ms {
 				a.log("queue-hidden", map[string]any{"thread": t, "text": m})
 			}
 		}
@@ -613,7 +619,8 @@ func takeQueue(codexHome, thread string) []string {
 
 // codexClear is /clear: a new thread whose SessionStart (clear) waits
 // for its first prompt. The thread left stays loaded, and is unloaded
-// later with its own SessionEnd.
+// later with its own SessionEnd. "cleared" is logged once the thread
+// left takes its queue out of sight.
 func (a *app) codexClear() {
 	a.mu.Lock()
 	old, oldRollout := a.sid, a.cx.rollout
@@ -624,6 +631,7 @@ func (a *app) codexClear() {
 	a.cx.pendingStart = "clear"
 	a.conv = nil
 	a.mu.Unlock()
+	a.log("cleared", map[string]any{"left": old})
 	a.requestRedraw()
 }
 
