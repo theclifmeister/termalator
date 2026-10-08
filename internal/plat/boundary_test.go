@@ -63,7 +63,6 @@ var allowed = map[string][]string{
 	"internal/server/stop.go":                 {"syscall"},
 	"internal/service/launchd.go":             {goos},
 	"internal/session/proc_unix.go":           {"syscall"},
-	"internal/tui/infopanel.go":               {goos},
 	"internal/tui/signals_unix.go":            {"syscall"},
 	"internal/update/update.go":               {goos},
 }
