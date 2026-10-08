@@ -15,7 +15,10 @@ package main
 //     hooks.state, or wrong, is untrusted: "Hooks need review" shows, and
 //     "Continue without trusting" runs only the trusted ones;
 //   - SessionStart fires at the first prompt (source startup or resume),
-//     at the first prompt after /clear (clear), and on /compact;
+//     and at the next prompt after /clear (clear) or /compact (compact);
+//   - /clear fires no SessionEnd; the thread it left is unloaded later
+//     (a minute live, FAKEAGENT_CODEX_UNLOAD_MS here, 1 s by default),
+//     with SessionEnd reason "other" and that thread's id;
 //   - each turn writes task_started, token_count and task_complete to
 //     the rollout; Esc (or an approval's "No") fires Interrupt and writes
 //     turn_aborted;
@@ -599,12 +602,14 @@ func takeQueue(codexHome, thread string) []string {
 	return out
 }
 
-// codexClear is /clear: SessionEnd for the thread left, a new thread
-// whose SessionStart (clear) waits for its first prompt.
+// codexClear is /clear: a new thread whose SessionStart (clear) waits
+// for its first prompt. The thread left stays loaded, and is unloaded
+// later with its own SessionEnd.
 func (a *app) codexClear() {
-	_, _ = a.fireHook(context.Background(), "SessionEnd", map[string]any{"reason": "clear"})
 	a.mu.Lock()
+	old, oldRollout := a.sid, a.cx.rollout
 	a.cx.left = append(a.cx.left, a.sid)
+	go a.codexUnload(old, oldRollout)
 	a.sid = newUUID()
 	a.cx.rollout = ""
 	a.cx.pendingStart = "clear"
@@ -613,20 +618,24 @@ func (a *app) codexClear() {
 	a.requestRedraw()
 }
 
-// codexCompact is /compact: PreCompact, PostCompact and SessionStart
-// (compact), same thread.
+// codexCompact is /compact, as 0.160 runs it (seen live, T105): a turn
+// in the rollout (task_started, task_complete) with PreCompact and
+// PostCompact, same thread, no Stop; SessionStart (compact) waits for
+// the next prompt.
 func (a *app) codexCompact() {
 	a.mu.Lock()
 	label, spin := a.spinLabel, a.spinning
 	a.spinLabel, a.spinning = "Compacting", true
 	a.mu.Unlock()
 	a.requestRedraw()
+	a.rolloutAppend("event_msg", map[string]any{"type": "task_started", "model_context_window": codexContext})
+	defer a.rolloutAppend("event_msg", map[string]any{"type": "task_complete", "last_agent_message": nil})
 	_, _ = a.fireHook(context.Background(), "PreCompact", map[string]any{"trigger": "manual"})
 	_ = sleepCtx(context.Background(), 300*time.Millisecond)
 	a.rolloutAppend("compacted", map[string]any{"message": "compacted"})
 	_, _ = a.fireHook(context.Background(), "PostCompact", map[string]any{"trigger": "manual"})
-	a.sessionStart("compact")
 	a.mu.Lock()
+	a.cx.pendingStart = "compact"
 	a.spinLabel, a.spinning = label, spin
 	a.conv = append(a.conv, &convLine{prefix: "• ", text: "Context compacted"})
 	a.mu.Unlock()
@@ -831,4 +840,15 @@ func (a *app) codexQuestion(ctx context.Context, st step, opts []string) error {
 	a.say("  └ ", st.Question+" → "+answer)
 	a.setInTool(false)
 	return nil
+}
+
+// codexUnload ends a thread /clear left: SessionEnd (reason "other")
+// with its id and rollout.
+func (a *app) codexUnload(thread, rollout string) {
+	d := time.Second
+	if ms, err := strconv.Atoi(os.Getenv("FAKEAGENT_CODEX_UNLOAD_MS")); err == nil {
+		d = time.Duration(ms) * time.Millisecond
+	}
+	time.Sleep(d)
+	_, _ = a.fireHook(context.Background(), "SessionEnd", map[string]any{"reason": "other", "session_id": thread, "transcript_path": rollout})
 }

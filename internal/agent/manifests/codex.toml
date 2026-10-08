@@ -15,6 +15,11 @@ tested_versions = ["0.160."]
 # ahead: it is learnt from the first hook, which fires at the first
 # prompt (for a thread, the kickoff in argv).
 session_field = "session_id"
+# Only SessionStart switches to another thread. After /clear the TUI
+# keeps the thread it left loaded and unloads it about a minute later
+# with SessionEnd (reason "other", the old id), seen live (T105): any
+# event naming a thread but the current one is ignored.
+session_starts = ["SessionStart"]
 
 [identify]
 argv0 = ["codex"]
@@ -160,8 +165,9 @@ reason = "interrupted"
 [[hooks]]
 event = "SessionStart"
 state = "idle"
-# Fires for startup and resume (at the first prompt), and again for
-# clear and compact: the context goes back in every time.
+# Fires at the first prompt for startup and resume, and at the next
+# prompt after /clear (clear, the new thread) and /compact (compact; seen
+# live, T105): the context goes back in every time.
 respond = '''{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":{{json .Context}}}}'''
 
 [[hooks]]
@@ -214,10 +220,12 @@ event = "SubagentStop"
 counter = "-bg"
 counter_key = "agent_id"
 
+# Codex also ends the thread a /clear left with SessionEnd, a minute
+# later (reason "other", that thread's id; seen live, T105), maybe
+# before the new thread has reported itself. So it sets no state: the
+# process's exit says when the session ended.
 [[hooks]]
 event = "SessionEnd"
-match = { reason = "!clear" }
-state = "exited"
 
 # Screen rules (0.160, threads/t-0083/library/T91-codex-screens.md):
 # blockers and the screens before the first hook. Highest priority wins.
@@ -254,13 +262,17 @@ region = "screen"
 contains = ["Update available", "Skip until next version"]
 keys = "2"
 
+# "Would you like to run the following command?" … "Press enter to
+# confirm or esc to cancel". A long command wraps the dialog past any
+# fixed height (T105), so only its footer, which is always at the
+# bottom, is matched.
 [[rules]]
 id = "blocked-permission-dialog"
 state = "blocked"
 reason = "permission"
 priority = 40
-region = "bottom:16"
-contains = ["Would you like to", "Press enter to confirm or esc to cancel"]
+region = "bottom:4"
+contains = ["Press enter to confirm or esc to cancel"]
 
 # request_user_input (plan mode): "Question 1/2 (2 unanswered)".
 [[rules]]
@@ -281,6 +293,16 @@ text_option = "None of the above"
 text_focus = "\u001b[B"
 text_key = "\t"
 submit = "\r"
+
+# A plan-mode turn that ends with a plan asks "Implement this plan?"
+# (seen live, T105): Codex waits for the user, no hook says so.
+[[rules]]
+id = "blocked-plan-implement"
+state = "blocked"
+reason = "question"
+priority = 40
+region = "bottom:8"
+contains = ["Implement this plan?", "enter select"]
 
 # /new: "Where should the new conversation run?"
 [[rules]]

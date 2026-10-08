@@ -14,6 +14,7 @@
 #   make e2e-smoke  the core scenarios (every PR)
 #   make e2e-smoke-race  the same with tm built with -race (weekly in CI)
 #   make test-claude  the scenarios against the real claude (needs a login; costs cents)
+#   make test-codex   the scenarios against the real codex (needs a ChatGPT login)
 #   make fuzz       run every fuzz target for FUZZTIME each (weekly)
 #   make vet        go vet ./... and staticcheck ./...
 #   make toolchain  check Go, Zig, pkg-config and git
@@ -86,7 +87,7 @@ export CGO_ENABLED := 1
 CGO_CFLAGS ?= -O2 -g
 export CGO_CFLAGS += -DTM_LIBGHOSTTY=$(GHOSTTY_OUT)
 
-.PHONY: all build run test test-race test-claude e2e e2e-smoke e2e-smoke-race fuzz vet ghostty toolchain env clean distclean zig-path release-ghostty release-snapshot release
+.PHONY: all build run test test-race test-claude test-codex e2e e2e-smoke e2e-smoke-race fuzz vet ghostty toolchain env clean distclean zig-path release-ghostty release-snapshot release
 
 all: build
 
@@ -142,6 +143,12 @@ e2e-smoke-race:
 # claude on PATH, Haiku. On demand, and on a machine with a login.
 test-claude: $(READY)
 	E2E=1 $(GO) test -tags realclaude -count=1 -timeout 30m -run '^TestReal' -v ./internal/e2e $(E2E_FLAGS)
+
+# The real-Codex suite (T105): build tag realcodex, the codex on PATH
+# logged in with ChatGPT, gpt-6-luna. On demand only, never in CI or the
+# weekly job (user, 2026-10-08).
+test-codex: $(READY)
+	E2E=1 $(GO) test -tags realcodex -count=1 -timeout 30m -run '^TestRealCodex' -v ./internal/e2e $(E2E_FLAGS)
 
 vet: $(READY)
 	$(GO) vet ./...

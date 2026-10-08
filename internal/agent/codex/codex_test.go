@@ -230,8 +230,7 @@ func TestHooks(t *testing.T) {
 		{"Stop", nil, agent.StateIdle, ""},
 		{"SubagentStart", map[string]any{"agent_id": "a1"}, "", ""},
 		{"SubagentStop", map[string]any{"agent_id": "a1"}, "", ""},
-		{"SessionEnd", map[string]any{"reason": "exit"}, agent.StateExited, ""},
-		{"SessionEnd", map[string]any{"reason": "clear"}, "", ""},
+		{"SessionEnd", map[string]any{"reason": "other"}, "", ""}, // a thread /clear left, or the end: the exit says which
 	}
 	for _, ev := range a.Events() {
 		if !slices.ContainsFunc(cases, func(c hookCase) bool { return c.event == ev }) {
@@ -325,5 +324,27 @@ func TestGuard(t *testing.T) {
 	}
 	if p := a.Sources().Hook.Trim(map[string]any{"hook_event_name": "PostToolUse", "tool_input": map[string]any{}}); p["tool_input"] != nil {
 		t.Error("tool_input kept beyond PreToolUse")
+	}
+}
+
+// TestLeftThread: once the session is on a thread, events naming another
+// one are from a thread it left, except SessionStart, which switches.
+func TestLeftThread(t *testing.T) {
+	src := load(t).Sources()
+	end := map[string]any{"session_id": "old", "reason": "other"}
+	if sid, ok := src.Foreign("SessionEnd", end, "new"); !ok || sid != "old" {
+		t.Errorf("SessionEnd of the thread left: %q %v", sid, ok)
+	}
+	for _, c := range []struct {
+		event, sid, current string
+	}{
+		{"SessionStart", "new", "old"}, // the switch itself
+		{"Stop", "new", "new"},
+		{"Stop", "new", ""}, // no thread yet
+		{"Stop", "", "new"},
+	} {
+		if _, ok := src.Foreign(c.event, map[string]any{"session_id": c.sid}, c.current); ok {
+			t.Errorf("%+v: ignored", c)
+		}
 	}
 }

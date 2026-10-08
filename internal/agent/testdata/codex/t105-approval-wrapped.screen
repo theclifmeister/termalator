@@ -1,0 +1,34 @@
+# source: T105 realcodex run, codex-cli 0.160.0, tm pane 100x30; the command and option 2 wrap, so the dialog is taller than 16 rows
+# want: blocked-permission-dialog
+# also: idle-composer
+---
+› Reply with just the word READY.
+  Worked for 2s • 18:24
+
+
+› Create the file /var/folders/yj/_ng3_hr92mv4mcrfm6b45jm80000gn/T/
+  TestRealCodexSession3992168027/002/outside-a.txt containing hi with one shell command, requesting
+  escalated permissions for it. Nothing else.
+
+
+• Running printf hi > /var/folders/yj/_ng3_hr92mv4mcrfm6b45jm80000gn/T/TestRealCodexSession39921680…
+    + Show details
+
+
+  Would you like to run the following command?
+
+  Environment: local
+
+  Reason: May I create the requested file outside the workspace with the contents hi?
+
+  $ printf hi >
+  /var/folders/yj/_ng3_hr92mv4mcrfm6b45jm80000gn/T/TestRealCodexSession3992168027/002/outside-a.tx
+  t
+
+
+› 1. Yes, proceed (y)
+  2. Yes, and don't ask again for commands that start with `printf hi > /var/folders/yj/
+     _ng3_hr92mv4mcrfm6b45jm80000gn/T/TestRealCodexSession3992168027/002/outside-a.txt` (p)
+  3. No, and tell Codex what to do differently (esc)
+
+  Press enter to confirm or esc to cancel

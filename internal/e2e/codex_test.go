@@ -54,10 +54,12 @@ func (e *Env) lastPrompt() FakeRecord {
 // hook), later ones go through `codex queue`; an approval approved and
 // one cancelled with Esc (the Interrupt hook); a plan-mode question,
 // which no hook reports; /clear, after which prompts are pasted until
-// the new thread reports itself; /compact.
+// the new thread reports itself, and the thread left ends later with a
+// SessionEnd that changes nothing; /compact.
 func TestSmokeCodexSession(t *testing.T) {
 	env := New(t)
 	env.FakeCodex()
+	env.Setenv("FAKEAGENT_CODEX_UNLOAD_MS", "3000") // after the new thread's first prompt
 	dir := env.Workdir()
 	s := env.StartAgent("codex", dir)
 	info := env.WaitState(s, "idle", agentWait)
@@ -118,10 +120,7 @@ func TestSmokeCodexSession(t *testing.T) {
 	// /clear is pasted; the next prompt too, until SessionStart (clear)
 	// gives the new thread's id; then the channel again.
 	env.Prompt(s, "/clear")
-	end := env.waitHook("SessionEnd", 1)
-	if hookField(end, "reason") != "clear" {
-		t.Errorf("SessionEnd %v", end)
-	}
+	env.WaitFake("slash", agentWait, func(r FakeRecord) bool { return r.Str("text") == "/clear" })
 	env.WaitState(s, "idle", agentWait)
 	env.Prompt(s, "after clear")
 	sst = env.waitHook("SessionStart", 2)
@@ -136,6 +135,27 @@ func TestSmokeCodexSession(t *testing.T) {
 	if info.AgentSID != hookField(sst, "session_id") {
 		t.Errorf("thread after /clear %q, want %q", info.AgentSID, hookField(sst, "session_id"))
 	}
+
+	// The thread left ends later with its own SessionEnd: the session
+	// neither exits nor goes back to that thread.
+	end := env.waitHook("SessionEnd", 1)
+	if hookField(end, "session_id") != thread || hookField(end, "reason") != "other" {
+		t.Errorf("SessionEnd %v", end)
+	}
+	if !Poll(5*time.Second, func() bool {
+		for _, ev := range env.Explain(s).Events {
+			if ev.Event == "SessionEnd" && strings.Contains(strings.Join(ev.Signals, ","), "ignored: session "+thread+" was left") {
+				return true
+			}
+		}
+		return false
+	}) {
+		t.Errorf("the left thread's SessionEnd wasn't ignored:\n%s", env.CLI("agent", "explain", s.ID).Stdout)
+	}
+	if i, _ := env.Info(s); i.State != "idle" || i.AgentSID != info.AgentSID {
+		t.Errorf("after the left thread's SessionEnd: %s, thread %q (want %q)\n%s", i.State, i.AgentSID, info.AgentSID,
+			env.CLI("agent", "explain", s.ID).Stdout)
+	}
 	env.Prompt(s, "on the new thread")
 	env.waitHook("Stop", 5)
 	if p := env.lastPrompt(); p.Str("via") != "queue" {
@@ -145,12 +165,20 @@ func TestSmokeCodexSession(t *testing.T) {
 		t.Errorf("a prompt ran on the thread /clear left: %v", h)
 	}
 
+	// /compact: PreCompact, same thread; SessionStart (compact) at the
+	// next prompt.
 	env.Prompt(s, "/compact")
+	env.waitHook("PreCompact", 1)
+	env.WaitState(s, "idle", agentWait)
+	env.Prompt(s, "after compact")
 	sst = env.waitHook("SessionStart", 3)
 	if hookField(sst, "source") != "compact" || hookField(sst, "session_id") != info.AgentSID {
 		t.Errorf("SessionStart after /compact %v", sst)
 	}
-	env.WaitState(s, "idle", agentWait)
+	env.waitHook("Stop", 6)
+	if i := env.WaitState(s, "idle", agentWait); i.AgentSID != info.AgentSID {
+		t.Errorf("/compact changed the thread: %q", i.AgentSID)
+	}
 }
 
 // TestSmokeCodexResume: a server restart resumes Codex with `codex

@@ -42,7 +42,7 @@ func TestCodexTrustHash(t *testing.T) {
 	}
 }
 
-var codexEvents = []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PreCompact",
+var codexEvents = []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PreCompact", "PostCompact",
 	"PermissionRequest", "Stop", "Interrupt", "SubagentStart", "SubagentStop", "SessionEnd"}
 
 type codexOpt struct {
@@ -275,10 +275,7 @@ func TestCodexQueueAndClear(t *testing.T) {
 	}
 
 	a.send("\x1b[200~/clear\x1b[201~\r")
-	a.waitEvent("SessionEnd", 1)
-	if h := a.hooks(); h[len(h)-1]["reason"] != "clear" {
-		t.Fatalf("SessionEnd %v", h[len(h)-1])
-	}
+	waitUntil(t, "the thread left", func() bool { return a.rolloutOf(sid) != "" && len(a.logKinds("slash")) > 0 })
 	if _, err := a.queue(sid, "lost"); err != nil {
 		t.Fatal(err)
 	}
@@ -298,11 +295,35 @@ func TestCodexQueueAndClear(t *testing.T) {
 		t.Fatalf("SessionStart after /clear %v (old %s)", start, sid)
 	}
 
+	// The thread left is unloaded later, under its own id.
+	a.waitEvent("SessionEnd", 1)
+	for _, h := range a.hooks() {
+		if h["hook_event_name"] == "SessionEnd" && (h["reason"] != "other" || h["session_id"] != sid) {
+			t.Fatalf("SessionEnd %v, want reason other for %s", h, sid)
+		}
+	}
+
 	a.send("\x1b[200~/compact\x1b[201~\r")
+	a.waitEvent("PostCompact", 1)
+	if n := count(a.events(), "SessionStart"); n != 2 {
+		t.Fatalf("SessionStart on /compact: %v", a.events())
+	}
+	a.send("\x1b[200~fourth\x1b[201~\r")
 	a.waitEvent("SessionStart", 3)
 	if h := a.hooks(); h[len(h)-1]["source"] != "compact" || h[len(h)-1]["session_id"] != start["session_id"] {
 		t.Fatalf("after /compact %v", h[len(h)-1])
 	}
+}
+
+// rolloutOf is the rollout the hooks named for a thread.
+func (a *agent) rolloutOf(thread string) string {
+	for _, h := range a.hooks() {
+		if h["session_id"] == thread {
+			p, _ := h["transcript_path"].(string)
+			return p
+		}
+	}
+	return ""
 }
 
 // TestCodexResume: `resume <id>` continues the rollout; SessionStart
