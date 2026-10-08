@@ -66,8 +66,17 @@ about = "Codex's default: fast and affordable, everyday coding tasks"
 name = "gpt-5.6-terra"
 about = "older balanced model for straightforward work"
 
+# Prompts go through `codex queue --thread <id> --message <text>` (the
+# Go agent's Prompt), paste when it fails. Checked on 0.160 (T100) with
+# a live TUI, with and without the shared app-server daemon (0.161)
+# running: 20-100 ms, exit 0; the TUI shows it as the user's own prompt
+# within seconds when idle; mid-turn it is held, out of sight, and runs
+# as its own turn once the turn ends; a draft in the composer stays. A
+# queued slash command (/clear) reaches the model as text, so the Go
+# agent refuses those and they are pasted. The queue is durable: a
+# message for a thread with no TUI still exits 0 and runs on resume.
 [inject]
-prompt = "paste"
+prompt = "channel"
 empty_rule = "idle-empty-box"
 # /clear starts over in place; /new first asks where to run.
 clear = "/clear"
