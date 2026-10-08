@@ -27,6 +27,16 @@ type Live struct {
 	CodeHost *proto.CodeHostStatus
 }
 
+// callTimeout bounds each of doctor's calls to the server; a server
+// that holds the lock and answers the handshake may still hang on one.
+var callTimeout = 15 * time.Second
+
+// codeHostTimeout bounds server.codehost, which runs every code-host
+// check in the server (several az and git calls per Azure repo, each up
+// to codehost's execTimeout, a few repos at once); past it doctor shows
+// this shell's checks instead.
+var codeHostTimeout = 3 * time.Minute
+
 // lockHeld reports whether some process holds the server lock. It never
 // creates the lock file.
 func lockHeld(path string) (bool, error) {
@@ -117,7 +127,7 @@ func Server(d Deps) ([]Check, Live) {
 	}
 	defer c.Close()
 	var st proto.ServerStatus
-	if err := c.Call(proto.MethodServerStatus, nil, &st); err != nil {
+	if err := c.CallWithin(callTimeout, proto.MethodServerStatus, nil, &st); err != nil {
 		return append(out, Check{Group: g, Name: "server", Status: Fail, Detail: fmt.Sprintf("pid %d: server.status: %v", pid, err)}), live
 	}
 	out = append(out, Check{Group: g, Name: "server", Status: OK,
@@ -128,7 +138,7 @@ func Server(d Deps) ([]Check, Live) {
 	}
 	if d.GOOS == "darwin" {
 		var ks proto.KeychainStatus
-		err := c.Call(proto.MethodServerKeychain, nil, &ks)
+		err := c.CallWithin(callTimeout, proto.MethodServerKeychain, nil, &ks)
 		out = append(out, keychainCheck(d, ks, err)...)
 	}
 	if st.PreviousShutdown == "crash" {
@@ -139,7 +149,7 @@ func Server(d Deps) ([]Check, Live) {
 		out = append(out, Check{Group: g, Name: "last shutdown", Status: Warn, Detail: detail + "; see " + p.Log})
 	}
 	var list proto.SessionListResult
-	if err := c.Call(proto.MethodSessionList, nil, &list); err == nil {
+	if err := c.CallWithin(callTimeout, proto.MethodSessionList, nil, &list); err == nil {
 		live.Sessions = map[string]bool{}
 		for _, s := range list.Sessions {
 			live.Sessions[s.ID] = true
@@ -254,7 +264,7 @@ func serverCodeHost(p server.Paths) *proto.CodeHostStatus {
 	}
 	defer c.Close()
 	var ch proto.CodeHostStatus
-	if err := c.Call(proto.MethodServerCodeHost, nil, &ch); err != nil {
+	if err := c.CallWithin(codeHostTimeout, proto.MethodServerCodeHost, nil, &ch); err != nil {
 		return nil
 	}
 	return &ch
@@ -271,7 +281,7 @@ func sessionsNow(p server.Paths) map[string]bool {
 	}
 	defer c.Close()
 	var list proto.SessionListResult
-	if err := c.Call(proto.MethodSessionList, nil, &list); err != nil {
+	if err := c.CallWithin(callTimeout, proto.MethodSessionList, nil, &list); err != nil {
 		return nil
 	}
 	m := map[string]bool{}

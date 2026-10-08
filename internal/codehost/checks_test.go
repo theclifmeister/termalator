@@ -2,6 +2,8 @@ package codehost
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -49,5 +51,23 @@ func TestChecksConcurrent(t *testing.T) {
 	}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Errorf("order:\n%s\nwant\n%s", strings.Join(names, ","), strings.Join(want, ","))
+	}
+}
+
+// TestGitTimeout: a git that hangs is given up on after gitTimeout.
+func TestGitTimeout(t *testing.T) {
+	defer func(d time.Duration) { gitTimeout = d }(gitTimeout)
+	gitTimeout = 100 * time.Millisecond
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte("#!/bin/sh\nexec /bin/sleep 30\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	start := time.Now()
+	if _, err := git(t.TempDir(), "log"); err == nil {
+		t.Fatal("no error")
+	}
+	if took := time.Since(start); took > 5*time.Second {
+		t.Fatalf("took %s", took)
 	}
 }

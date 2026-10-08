@@ -1,7 +1,11 @@
 package doctor
 
 import (
+	"bufio"
+	"encoding/json"
 	"errors"
+	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -728,5 +732,57 @@ func TestEachStreams(t *testing.T) {
 	})
 	if !waited || len(groups) < 3 || groups[0] != "toolchain" || groups[len(groups)-1] != "code host" || slices.Index(groups, "code host") != len(groups)-1 {
 		t.Fatalf("waited %v, groups %q", waited, groups)
+	}
+}
+
+// TestServerHangs: a server that holds the lock and answers the
+// handshake but never a call: doctor's calls give up (callTimeout,
+// codeHostTimeout) instead of waiting for ever.
+func TestServerHangs(t *testing.T) {
+	d := testDeps(t)
+	defer func(a, b time.Duration) { callTimeout, codeHostTimeout = a, b }(callTimeout, codeHostTimeout)
+	callTimeout, codeHostTimeout = 200*time.Millisecond, 200*time.Millisecond
+	lk, err := os.OpenFile(d.Paths.Lock, os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lk.Close()
+	if err := unix.Flock(int(lk.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		t.Fatal(err)
+	}
+	ln, err := net.Listen("unix", d.Paths.Socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer c.Close()
+				br := bufio.NewReader(c)
+				br.ReadBytes('\n') // the client's hello
+				b, _ := json.Marshal(proto.Hello{Protocol: proto.Protocol, Version: "v0", Build: "b0"})
+				c.Write(append(b, '\n'))
+				io.Copy(io.Discard, br) // and never an answer
+			}()
+		}
+	}()
+	start := time.Now()
+	cs, _ := Server(d)
+	if c := find(cs, "server"); len(c) != 1 || c[0].Status != Fail || !strings.Contains(c[0].Detail, "server.status") {
+		t.Errorf("server: %+v", cs)
+	}
+	if ch := serverCodeHost(d.Paths); ch != nil {
+		t.Errorf("server.codehost: %+v", ch)
+	}
+	if l := sessionsNow(d.Paths); l != nil {
+		t.Errorf("session.list: %v", l)
+	}
+	if took := time.Since(start); took > 5*time.Second {
+		t.Errorf("took %s", took)
 	}
 }
