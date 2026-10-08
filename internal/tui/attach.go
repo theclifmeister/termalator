@@ -1486,7 +1486,13 @@ func (c *client) focusReport(gained bool) {
 		return
 	}
 	b := emu.Focus(p.mirror, gained)
+	// Gaining the window's focus claims the size like typing does
+	// (docs/SPEC.md §3.3); losing it does nothing.
+	claim := gained && c.needClaim()
 	c.mu.Unlock()
+	if claim {
+		c.claim(p.info.ID)
+	}
 	if b != nil {
 		c.send(p, proto.FrameInput, b)
 	}
