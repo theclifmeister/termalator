@@ -55,7 +55,9 @@ func (a *Agent) Manifest() *agent.Manifest { return a.m }
 // command hook for every event the manifest maps, and hooks.state, which
 // marks each as trusted for this session only. Without it Codex shows
 // "Hooks need review" and runs none of them; nothing is written to the
-// user's ~/.codex. They go before the kickoff, which ends the argv.
+// user's ~/.codex. They go before the kickoff, which ends the argv. A
+// coordinator's sandbox profile stays only when it holds on this Codex
+// (probe.go).
 func (a *Agent) Launch(spec agent.LaunchSpec) (agent.Launch, error) {
 	l, err := a.Agent.Launch(spec)
 	if err != nil {
@@ -71,6 +73,9 @@ func (a *Agent) Launch(spec agent.LaunchSpec) (agent.Launch, error) {
 	}
 	extra := []string{"-c", hooks, "-c", state}
 	l.Argv = append(l.Argv[:at:at], append(extra, l.Argv[at:]...)...)
+	if spec.Role == "coordinator" {
+		l = sandboxed(l, spec) // probe.go
+	}
 	return l, nil
 }
 

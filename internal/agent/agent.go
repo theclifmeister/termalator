@@ -90,6 +90,16 @@ type Launch struct {
 	// Kickoff says the kickoff prompt is in Argv: the agent starts on it
 	// by itself.
 	Kickoff bool
+	// Warnings are what the launch fell back from, for the server's log,
+	// e.g. a sandbox that doesn't hold on this agent version.
+	Warnings []string
+}
+
+// A SandboxProber checks, on the installed agent, that the sandbox tm
+// gives a coordinator holds (Codex's profile, docs/SPEC.md §8.6), for tm
+// doctor: the agent's version and why it doesn't, if it doesn't.
+type SandboxProber interface {
+	ProbeSandbox(tmBin string) (version string, err error)
 }
 
 // ProcessInfo describes the foreground process of a PTY, used to recognise

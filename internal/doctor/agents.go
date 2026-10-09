@@ -34,9 +34,32 @@ func Agents(d Deps) []Check {
 		if m == nil {
 			continue
 		}
-		out = append(out, agentCheck(d, name, reg.Source[name], m))
+		c := agentCheck(d, name, reg.Source[name], m)
+		out = append(out, c)
+		if p, ok := a.(agent.SandboxProber); ok && d.SandboxProbe != nil && !strings.Contains(c.Detail, "not found on PATH") {
+			out = append(out, sandboxCheck(d, name, m, p))
+		}
 	}
 	return out
+}
+
+// sandboxCheck runs the agent's coordinator sandbox probe: a newer Codex
+// may rename or change the experimental network proxy or the profile
+// syntax tm relies on, and then the coordinator runs without its sandbox
+// (docs/SPEC.md §8.6, Codex).
+func sandboxCheck(d Deps, name string, m *agent.Manifest, p agent.SandboxProber) Check {
+	c := Check{Group: "agents", Name: name + " coordinator sandbox"}
+	v, err := d.SandboxProbe(p)
+	if v == "" {
+		v = "(version unknown)"
+	}
+	if err != nil {
+		c.Status = Warn
+		c.Detail = fmt.Sprintf("%s %s: the coordinator's sandbox doesn't hold (%v); a %s coordinator runs without it (auto-review, workspace-write, network off)", m.Launch.Command, v, err, m.Display)
+		return c
+	}
+	c.Status, c.Detail = OK, fmt.Sprintf("%s %s: the network reaches only tm's socket", m.Launch.Command, v)
+	return c
 }
 
 func agentCheck(d Deps, name, source string, m *agent.Manifest) Check {

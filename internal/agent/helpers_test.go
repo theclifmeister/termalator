@@ -91,6 +91,21 @@ func TestPathModes(t *testing.T) {
 	if got := pathModes(a); got != want {
 		t.Errorf("pathModes = %s, want %s", got, want)
 	}
+	// A write dir beats a Read of the same path, not a NoWrite.
+	b := Access{Read: []string{"/r", "/n"}, NoWrite: []string{"/n"}}
+	if got, want := pathModes(b, "/r", "/n", "/x"), `{"/r"="write","/n"="read","/x"="write"}`; got != want {
+		t.Errorf("pathModes with write dirs = %s, want %s", got, want)
+	}
+	// A write dir goes by its real path, as the policy names its own.
+	dir := t.TempDir()
+	real, _ := filepath.EvalSymlinks(dir)
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(dir, link); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := pathModes(Access{Read: []string{real}}, link), "{"+TOMLString(real)+`="write"}`; got != want {
+		t.Errorf("pathModes via a link = %s, want %s", got, want)
+	}
 	if got := pathModes(Access{}); got != "{}" {
 		t.Errorf("empty policy = %s", got)
 	}

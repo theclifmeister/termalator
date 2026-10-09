@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/codehost"
 	"github.com/theclifmeister/terminatr/internal/keychain"
 	"github.com/theclifmeister/terminatr/internal/project"
@@ -65,7 +66,10 @@ type Fix struct {
 // tests can replace it.
 type Deps struct {
 	Paths server.Paths
-	GOOS  string
+	// SandboxProbe checks an agent's coordinator sandbox on the installed
+	// agent (agent.SandboxProber); nil skips.
+	SandboxProbe func(agent.SandboxProber) (version string, err error)
+	GOOS         string
 	// LookPath finds a program on PATH.
 	LookPath func(string) (string, error)
 	// Run runs a program in dir and returns its combined, trimmed output.

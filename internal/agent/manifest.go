@@ -877,7 +877,8 @@ var funcs = template.FuncMap{
 	"toml": TOMLString,
 	// pathmodes is the file grants of an access policy as a TOML inline
 	// table of path = "read" | "write", for a sandbox that takes one
-	// mode per path (Codex's permission profile filesystem).
+	// mode per path (Codex's permission profile filesystem); any more
+	// arguments are directories to write besides (a coordinator's cwd).
 	"pathmodes": pathModes,
 	// concat joins lists, for building one JSON array from several grants.
 	"concat": func(lists ...[]string) []string {
@@ -890,10 +891,10 @@ var funcs = template.FuncMap{
 }
 
 // pathModes renders a's paths as {"/p"="read","/q"="write",…}: Read
-// is read, Write is write, NoWrite and NoWriteFiles are read and win
-// over a Write of the same path. Each path appears once, in policy
-// order.
-func pathModes(a Access) string {
+// is read, Write and the write dirs (by real path, as the policy names
+// them) are write, NoWrite and NoWriteFiles are read and win over a
+// write of the same path. Each path appears once, in policy order.
+func pathModes(a Access, write ...string) string {
 	var order []string
 	mode := map[string]string{}
 	set := func(paths []string, m string, wins bool) {
@@ -909,6 +910,12 @@ func pathModes(a Access) string {
 	}
 	set(a.Read, "read", false)
 	set(a.Write, "write", false)
+	for _, d := range write {
+		if r, err := filepath.EvalSymlinks(d); err == nil {
+			d = r
+		}
+		set([]string{d}, "write", false)
+	}
 	set(a.NoWrite, "read", true)
 	set(a.NoWriteFiles, "read", true)
 	parts := make([]string, len(order))

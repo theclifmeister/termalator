@@ -338,6 +338,9 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		s.closeModLocked(r.ID)
 		return nil, proto.Errorf(proto.ErrRefused, "%v", err)
 	}
+	for _, w := range launch.Warnings {
+		s.log.Printf("session %s: %s", r.ID, w)
+	}
 	if err := writeLaunchFiles(rt, launch.Files); err != nil {
 		s.closeModLocked(r.ID)
 		os.RemoveAll(rt)
