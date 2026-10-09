@@ -1,4 +1,4 @@
-//go:build !unix
+//go:build !unix && !windows
 
 package ipc
 
@@ -8,8 +8,7 @@ import (
 	"net"
 )
 
-// Not yet ported: every call fails with errors.ErrUnsupported. The
-// Windows port replaces this with named pipes (doc in ipc.go).
+// Not ported: every call fails with errors.ErrUnsupported.
 
 func Listen(a Addr) (net.Listener, error)                { return nil, errors.ErrUnsupported }
 func Dial(ctx context.Context, a Addr) (net.Conn, error) { return nil, errors.ErrUnsupported }
