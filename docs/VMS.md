@@ -15,6 +15,13 @@ Each script takes `setup` (install tools), `sync` (put this checkout's HEAD in
 
     prlctl exec "Ubuntu 26.04 ARM64" --current-user 'cmd'   # as user parallels
     prlctl exec "Ubuntu 26.04 ARM64" 'cmd'                  # as root (apt, no password)
+    echo 'script' | prlctl exec macOS --current-user /bin/bash -s
+
+On macOS prlctl strips the quotes from a quoted argument (`sh -c '...'`
+fails with PrlJob_GetRetCode), so pass scripts over stdin. Root exec also
+works there; the setup uses it for the command line tools and `/opt/homebrew`
+instead of a sudo password. Long jobs die with the exec session: run them as
+a `launchctl submit` job.
 
 `--current-user` is the logged-in user; without it the command runs as root
 (Linux) with a bare PATH (`/bin:/usr/bin`), so tools are linked into
@@ -37,7 +44,8 @@ Linux: git, build-essential, pkg-config, socat, bubblewrap, curl, gh, node 22,
 Go 1.26.x (`/usr/local/go`), Claude Code (`~/.local/bin`), Codex (npm,
 global). Zig 0.16.0 is downloaded by `make` into `.build/`.
 
-macOS: Xcode command line tools, Homebrew, go, git, pkgconf, node, gh,
+macOS (user `clifford`): Xcode command line tools, Homebrew (`/opt/homebrew`),
+go@1.26 (as CI), git, pkgconf, node, gh,
 Claude Code, Codex. `terminatr` itself is not installed, so a clean
 `brew install terminatr` can be tested.
 

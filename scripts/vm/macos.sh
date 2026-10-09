@@ -5,35 +5,63 @@
 #   sync   push this checkout's HEAD into ~/tm-test/terminatr in the VM
 #   test   build tm, run tm doctor and the unit tests in the VM
 # Needs Parallels Tools in the guest and a logged-in user. See docs/VMS.md.
+#
+# Scripts go in over stdin (`bash -s`): prlctl strips the quotes from a
+# quoted argument. Without --current-user the command runs as root, which
+# is how the command line tools and /opt/homebrew get set up with no sudo
+# password.
 set -euo pipefail
 VM="macOS"
-user() { prlctl exec "$VM" --current-user "$@"; }
-ENVP='export PATH=$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH'
+GUSER="${GUSER:-clifford}"
+root() { prlctl exec "$VM" /bin/bash -s; }
+user() { prlctl exec "$VM" --current-user /bin/bash -s; }
+ENVP='export PATH=$HOME/.local/bin:/opt/homebrew/bin:$PATH HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1'
 
 setup() {
-  user 'xcode-select -p >/dev/null 2>&1 || {
-    touch /tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress
-    p=$(softwareupdate -l | sed -n "s/^\* Label: \(Command Line Tools.*\)/\1/p" | tail -1)
-    sudo -n softwareupdate -i "$p" --verbose; }'
-  user 'command -v brew >/dev/null || NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
-  # Go as go.mod/CI; Zig is fetched by make; a clean `brew install terminatr`
-  # is tested later, so terminatr itself is not installed here.
-  user "$ENVP"'; brew install go git pkgconf node gh'
-  user "$ENVP"'; npm i -g --prefix ~/.local @openai/codex'
-  user "$ENVP"'; curl -fsSL https://claude.ai/install.sh | bash'
-  user 'mkdir -p ~/tm-test'
+  # Xcode command line tools. A long softwareupdate dies with the exec
+  # session, so it runs as a launchd job and is polled.
+  root <<'SH'
+if ! xcode-select -p >/dev/null 2>&1; then
+  touch /tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress
+  l=$(softwareupdate -l 2>&1 | sed -n 's/^\* Label: \(Command Line Tools.*\)/\1/p' | tail -1)
+  launchctl remove cltinstall 2>/dev/null
+  launchctl submit -l cltinstall -o /tmp/clt.log -e /tmp/clt.log -- /usr/sbin/softwareupdate -i "$l"
+fi
+SH
+  until echo 'xcode-select -p >/dev/null 2>&1 && /usr/bin/git --version >/dev/null 2>&1 && echo DONE' | root | grep -q DONE; do sleep 15; done
+  # Homebrew into /opt/homebrew (the installer wants sudo; this does not).
+  root <<SH
+mkdir -p /opt/homebrew && chown -R $GUSER:admin /opt/homebrew
+SH
+  user <<SH
+set -e
+cd /opt/homebrew
+[ -x bin/brew ] || curl -fsSL https://github.com/Homebrew/brew/tarball/main | tar xz --strip-components 1
+$ENVP
+brew install go@1.26 git pkgconf node gh
+brew list go >/dev/null 2>&1 && brew uninstall go
+brew link --force go@1.26
+mkdir -p ~/tm-test ~/.local
+npm i -g --prefix ~/.local @openai/codex
+curl -fsSL https://claude.ai/install.sh | bash
+SH
 }
 
 sync() {
   local b; b=$(mktemp -d)/tm.bundle
   git bundle create "$b" HEAD
-  user 'cat > ~/tm-test/tm.bundle' < "$b"
-  user 'cd ~/tm-test && rm -rf terminatr && git clone -q tm.bundle terminatr'
+  prlctl exec "$VM" --current-user /usr/bin/tee "/Users/$GUSER/tm-test/tm.bundle" < "$b" >/dev/null
+  user <<'SH'
+cd ~/tm-test && rm -rf terminatr && git clone -q tm.bundle terminatr
+SH
   rm -rf "$(dirname "$b")"
 }
 
 test_() {
-  user "$ENVP"'; cd ~/tm-test/terminatr && make && ./bin/tm doctor; make test'
+  user <<SH
+$ENVP
+cd ~/tm-test/terminatr && make && ./bin/tm doctor; make test
+SH
 }
 
 case "${1:-setup}" in
