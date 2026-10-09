@@ -6,11 +6,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"runtime"
 	"strings"
 	"sync"
 	"unicode"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/plat/shell"
 )
 
 func init() {
@@ -21,8 +23,18 @@ func init() {
 
 // HookCommand is the command of every hook tm gives Codex. It stays the
 // same text across tm versions and sessions, so its trust hash does too:
-// the shell expands TERMINATR_BIN, which the session sets.
-const HookCommand = `"$TERMINATR_BIN" hook --agent codex`
+// the shell expands TERMINATR_BIN, which the session sets. Codex runs a
+// hook in sh on Unix and always in PowerShell on Windows, where
+// "$TERMINATR_BIN" would be a plain string: it is & $env:TERMINATR_BIN.
+var HookCommand = hookCommand(runtime.GOOS)
+
+func hookCommand(goos string) string {
+	k := shell.Sh
+	if goos == "windows" {
+		k = shell.PowerShell
+	}
+	return shell.Command(k, goos, "$TERMINATR_BIN", "hook", "--agent", "codex")
+}
 
 // hookTimeout is a hook's timeout in seconds. Codex 0.160 clamps the
 // SessionEnd and Interrupt hooks to 3 s and warns about a longer one.

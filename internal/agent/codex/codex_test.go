@@ -411,3 +411,16 @@ func TestLeftThread(t *testing.T) {
 		}
 	}
 }
+
+// TestHookCommandPerOS: Unix hooks run in sh, Windows ones in PowerShell.
+func TestHookCommandPerOS(t *testing.T) {
+	for goos, want := range map[string]string{
+		"linux":   `"$TERMINATR_BIN" hook --agent codex`,
+		"darwin":  `"$TERMINATR_BIN" hook --agent codex`,
+		"windows": `& $env:TERMINATR_BIN hook --agent codex`,
+	} {
+		if got := hookCommand(goos); got != want {
+			t.Errorf("hookCommand(%s) = %s, want %s", goos, got, want)
+		}
+	}
+}
