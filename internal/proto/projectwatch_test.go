@@ -42,6 +42,9 @@ func TestWatchTickerRows(t *testing.T) {
 	if got := join(WatchTicker{Synced: now.Add(-time.Minute)}.Rows(now)); got != "synced|1m ago" {
 		t.Errorf("no PR check yet: %q", got)
 	}
+	if got := join(WatchTicker{Synced: now.Add(-time.Minute), NoPRHost: true, GHFailing: true}.Rows(now)); got != "synced|1m ago;PR host|none" {
+		t.Errorf("no PR host: %q", got)
+	}
 	if got := CheckedWords(time.Time{}, now); got != "" {
 		t.Errorf("never checked: %q", got)
 	}

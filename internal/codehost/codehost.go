@@ -21,6 +21,9 @@ import (
 const (
 	GitHubKind = "github"
 	AzureKind  = "azure"
+	// NoKind is a repo with no PR host to ask: no origin, a local one,
+	// or a well-known host that isn't GitHub or Azure DevOps.
+	NoKind = ""
 )
 
 // ErrNoPR means the host works but has no PR for what was asked. Errors
@@ -116,7 +119,8 @@ type Target struct {
 }
 
 // Detect tells which host repo's PRs live on, from cfg, else its origin
-// URL (ParseRemote); GitHub when neither says Azure DevOps.
+// URL (ParseRemote); GitHub when neither says Azure DevOps, unless the
+// repo has no origin or one on a host with no PRs to poll (NoKind).
 func Detect(repo string, cfg Config) Target {
 	url := origin(repo)
 	switch cfg.CodeHost {
@@ -136,16 +140,38 @@ func Detect(repo string, cfg Config) Target {
 	if t, ok := ParseRemote(url); ok {
 		return t
 	}
+	if !pollable(url) {
+		return Target{Kind: NoKind}
+	}
 	return Target{Kind: GitHubKind}
+}
+
+// otherHosts are well-known git hosts that are neither GitHub nor Azure
+// DevOps. Any other host may be a GitHub Enterprise server, which gh asks.
+var otherHosts = map[string]bool{
+	"gitlab.com": true, "bitbucket.org": true, "codeberg.org": true,
+	"git.sr.ht": true, "gitea.com": true, "gitee.com": true,
+}
+
+// pollable is whether an origin URL could be a GitHub's: false for none,
+// a local path or file:// URL, and a host in otherHosts.
+func pollable(url string) bool {
+	if strings.HasPrefix(strings.TrimSpace(url), "file://") {
+		return false
+	}
+	host, _, ok := splitRemote(url)
+	return ok && !otherHosts[host]
 }
 
 // Pick is the Host for repo (Detect). A repo on Azure DevOps gets GitHub
 // too until the Azure DevOps host is registered (newAzure), as before.
 func Pick(repo string, cfg Config) Host {
-	if newAzure != nil {
-		if t := Detect(repo, cfg); t.Kind == AzureKind {
-			return newAzure(t)
-		}
+	t := Detect(repo, cfg)
+	if t.Kind == NoKind {
+		return NoHost{}
+	}
+	if newAzure != nil && t.Kind == AzureKind {
+		return newAzure(t)
 	}
 	return GitHub{}
 }

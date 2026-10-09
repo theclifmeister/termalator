@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 )
@@ -72,26 +71,17 @@ esac
 // fetches from its local bare repo.
 func azureRepo(t *testing.T, projDir string) {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join(projDir, "PROJECT.md"))
-	if err != nil {
-		t.Fatal(err)
+	repo := projectRepo(t, projDir)
+	bare := repoGit(t, repo, "remote", "get-url", "origin")
+	if bare == ghOrigin { // tickerEnv's: the bare repo is what it rewrites to
+		key := repoGit(t, repo, "config", "--get-regexp", `^url\..*\.insteadof$`)
+		key, _, _ = strings.Cut(key, " ")
+		section := strings.TrimSuffix(key, ".insteadof")
+		bare = strings.TrimPrefix(section, "url.")
+		repoGit(t, repo, "config", "--remove-section", section)
 	}
-	m := regexp.MustCompile(`repos = \["([^"]+)"\]`).FindSubmatch(b)
-	if m == nil {
-		t.Fatalf("no repo in PROJECT.md:\n%s", b)
-	}
-	repo := string(m[1])
-	git := func(args ...string) string {
-		t.Helper()
-		out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput()
-		if err != nil {
-			t.Fatalf("git %v: %v\n%s", args, err, out)
-		}
-		return strings.TrimSpace(string(out))
-	}
-	bare := git("remote", "get-url", "origin")
-	git("remote", "set-url", "origin", azOrigin)
-	git("config", "url."+bare+".insteadOf", azOrigin)
+	repoGit(t, repo, "remote", "set-url", "origin", azOrigin)
+	repoGit(t, repo, "config", "url."+bare+".insteadOf", azOrigin)
 }
 
 // TestSmokeTickerAzurePR: on an Azure DevOps repo the ticker finds the

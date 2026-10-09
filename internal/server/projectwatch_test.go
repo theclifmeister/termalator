@@ -1,7 +1,9 @@
 package server
 
 import (
+	"github.com/theclifmeister/terminatr/internal/project"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -173,5 +175,40 @@ func TestProjectWatchStream(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("no line after the board changed")
+	}
+}
+
+// TestProjectWatchNoPRHost: a project whose only repo has no remote has
+// nothing to poll: its watch says so (never "failing", even with a
+// failure kept from before), and a project with a GitHub origin doesn't.
+func TestProjectWatchNoPRHost(t *testing.T) {
+	testPaths(t)
+	git := func(dir string, args ...string) {
+		t.Helper()
+		if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	repo := t.TempDir()
+	git(repo, "init", "-q")
+	p, err := project.New(project.Options{Slug: "demo", Repos: []string{repo}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := filepath.Join(t.TempDir(), "ticker.json")
+	if err := os.WriteFile(st, []byte(`{"projects": {"demo": {"gh_fails": 4, "synced": "2026-10-09T10:00:00Z"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	w := ProjectWatchOf(p, nil, st)
+	if w.Ticker == nil || !w.Ticker.NoPRHost || w.Ticker.GHFailing {
+		t.Fatalf("no remote: ticker %+v", w.Ticker)
+	}
+	if rows := w.Ticker.Rows(time.Now()); len(rows) == 0 || rows[len(rows)-1] != (proto.TickerRow{Label: "PR host", Value: "none"}) {
+		t.Errorf("rows %+v", rows)
+	}
+	git(repo, "remote", "add", "origin", "https://github.com/o/r.git")
+	w = ProjectWatchOf(p, nil, st)
+	if w.Ticker == nil || w.Ticker.NoPRHost || !w.Ticker.GHFailing {
+		t.Fatalf("github origin: ticker %+v", w.Ticker)
 	}
 }
