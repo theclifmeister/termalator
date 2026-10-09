@@ -6,7 +6,8 @@ package e2e
 // runs a shell under permission profile "tm" exactly as codex.toml
 // renders it for a thread, with no login and no model. Seatbelt on
 // macOS, bubblewrap or Landlock on Linux. It skips when codex isn't on
-// PATH; CI installs the tested version on Linux.
+// PATH; CI installs the tested version on Linux and sets
+// E2E_CODEX_SANDBOX=1, which makes a skip a failure.
 
 import (
 	"os"
@@ -43,17 +44,21 @@ func sandboxArgs(t *testing.T, spec agent.LaunchSpec) []string {
 }
 
 func TestSmokeCodexSandbox(t *testing.T) {
+	skip := t.Skip
+	if os.Getenv("E2E_CODEX_SANDBOX") == "1" {
+		skip = t.Fatal
+	}
 	bin, err := exec.LookPath("codex")
 	if err != nil {
-		t.Skip("codex is not on PATH")
+		skip("codex is not on PATH")
 	}
 	// `codex sandbox -P` and the ":workspace" profile the thread
 	// profile extends came in 0.128.
 	if help, _ := exec.Command(bin, "sandbox", "--help").CombinedOutput(); !strings.Contains(string(help), "--permission-profile") {
-		t.Skip("codex sandbox has no --permission-profile (Codex before 0.128): the thread profile needs 0.128 or later")
+		skip("codex sandbox has no --permission-profile (Codex before 0.128): the thread profile needs 0.128 or later")
 	}
 	if b, _ := os.ReadFile("/proc/sys/kernel/apparmor_restrict_unprivileged_userns"); strings.TrimSpace(string(b)) == "1" {
-		t.Skip("bwrap can't map a user namespace here: sysctl kernel.apparmor_restrict_unprivileged_userns=0 to run it")
+		skip("bwrap can't map a user namespace here: sysctl kernel.apparmor_restrict_unprivileged_userns=0 to run it")
 	}
 	env := New(t)
 	// Everything outside /tmp and $TMPDIR, which the profile makes

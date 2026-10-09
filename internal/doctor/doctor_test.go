@@ -321,6 +321,33 @@ func TestSandbox(t *testing.T) {
 	}
 }
 
+func TestSandboxUserns(t *testing.T) {
+	d := testDeps(t)
+	d.LookPath = func(n string) (string, error) { return "/usr/bin/" + n, nil }
+	old := procSys
+	t.Cleanup(func() { procSys = old })
+	procSys = t.TempDir()
+	set := func(name, v string) {
+		os.MkdirAll(filepath.Dir(filepath.Join(procSys, name)), 0o755)
+		os.WriteFile(filepath.Join(procSys, name), []byte(v+"\n"), 0o644)
+	}
+	if cs := find(Sandbox(d), "user namespaces"); len(cs) != 0 {
+		t.Fatalf("no /proc: %+v", cs)
+	}
+	set("user/max_user_namespaces", "63000")
+	if cs := find(Sandbox(d), "user namespaces"); len(cs) != 1 || cs[0].Status != OK {
+		t.Fatalf("allowed: %+v", cs)
+	}
+	set("kernel/apparmor_restrict_unprivileged_userns", "1")
+	if cs := find(Sandbox(d), "user namespaces"); len(cs) != 1 || cs[0].Status != Warn || !strings.Contains(cs[0].Detail, "apparmor_restrict_unprivileged_userns=0") {
+		t.Fatalf("apparmor: %+v", cs)
+	}
+	d.GOOS = "darwin"
+	if cs := find(Sandbox(d), "user namespaces"); len(cs) != 0 {
+		t.Fatalf("darwin: %+v", cs)
+	}
+}
+
 func git(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main"}, args...)...)

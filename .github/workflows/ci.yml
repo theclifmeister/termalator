@@ -74,6 +74,7 @@ jobs:
         run: make e2e-smoke
         env:
           E2E_ARTIFACTS: ${{ runner.temp }}/e2e-artifacts
+          E2E_CODEX_SANDBOX: "1"
 
       - name: Upload e2e artifacts
         if: failure()
