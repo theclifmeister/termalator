@@ -47,8 +47,8 @@ func Agents(d Deps) []Check {
 }
 
 // threadSandboxCheck runs the agent's thread sandbox probe on Windows,
-// where Codex's sandbox needs a one-time setup: without it a Codex thread
-// asks approval for every command, even an echo (docs/CODEX.md).
+// where Codex's sandbox is a separate piece (docs/CODEX.md): a thread whose
+// sandbox doesn't hold can't reach tm's socket.
 func threadSandboxCheck(d Deps, name string, m *agent.Manifest, p agent.ThreadSandboxProber) Check {
 	c := Check{Group: "agents", Name: name + " thread sandbox"}
 	v, err := d.ThreadSandboxProbe(p)
@@ -57,7 +57,7 @@ func threadSandboxCheck(d Deps, name string, m *agent.Manifest, p agent.ThreadSa
 	}
 	if err != nil {
 		c.Status = Warn
-		c.Detail = fmt.Sprintf("%s %s: the thread sandbox doesn't hold (%v); until %s's Windows sandbox is set up (once, docs/CODEX.md), a %s thread asks approval for every command", m.Launch.Command, v, err, m.Display, m.Display)
+		c.Detail = fmt.Sprintf("%s %s: the thread sandbox doesn't hold (%v); a %s thread runs without it or asks approval for every command (docs/CODEX.md)", m.Launch.Command, v, err, m.Display)
 		return c
 	}
 	c.Status, c.Detail = OK, fmt.Sprintf("%s %s: a thread's commands run sandboxed and reach tm's socket", m.Launch.Command, v)

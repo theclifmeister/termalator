@@ -887,7 +887,7 @@ func TestThreadSandboxCheck(t *testing.T) {
 		return "0.162.0", errors.New("codex sandbox refused it: setup required")
 	}
 	c := threadSandboxCheck(d, "codex", m, fakeThreadProber{})
-	if c.Status != Warn || c.Name != "codex thread sandbox" || !strings.Contains(c.Detail, "codex 0.162.0: the thread sandbox doesn't hold (codex sandbox refused it") || !strings.Contains(c.Detail, "asks approval for every command") {
+	if c.Status != Warn || c.Name != "codex thread sandbox" || !strings.Contains(c.Detail, "codex 0.162.0: the thread sandbox doesn't hold (codex sandbox refused it") || !strings.Contains(c.Detail, "runs without it or asks approval for every command") {
 		t.Errorf("%+v", c)
 	}
 	d.ThreadSandboxProbe = func(agent.ThreadSandboxProber) (string, error) { return "0.162.0", nil }

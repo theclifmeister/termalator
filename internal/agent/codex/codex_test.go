@@ -411,3 +411,16 @@ func TestLeftThread(t *testing.T) {
 		}
 	}
 }
+
+// TestSocketAccess: only on Windows does the socket's folder become
+// writable (Codex's sandbox there connects to a socket by file access).
+func TestSocketAccess(t *testing.T) {
+	spec := agent.LaunchSpec{Socket: filepath.Join("run", "tm.sock"), Access: agent.Access{Write: []string{"w"}}}
+	if got := socketAccess(spec, "linux"); len(got.Access.Write) != 1 {
+		t.Errorf("linux: %v", got.Access.Write)
+	}
+	got := socketAccess(spec, "windows")
+	if len(got.Access.Write) != 2 || got.Access.Write[1] != "run" || len(spec.Access.Write) != 1 {
+		t.Errorf("windows: %v (spec %v)", got.Access.Write, spec.Access.Write)
+	}
+}

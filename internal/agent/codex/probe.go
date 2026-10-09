@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -301,22 +302,22 @@ func (a *Agent) ProbeThreadSandbox(tmBin string) (string, error) {
 	if real, err := filepath.EvalSymlinks(base); err == nil {
 		base = real
 	}
-	work, outside := filepath.Join(base, "work"), filepath.Join(base, "outside")
-	for _, d := range []string{work, outside} {
+	work, outside, rundir := filepath.Join(base, "work"), filepath.Join(base, "outside"), filepath.Join(base, "run")
+	for _, d := range []string{work, outside, rundir} {
 		if err := os.Mkdir(d, 0o700); err != nil {
 			return "", err
 		}
 	}
-	sock := filepath.Join(base, "s.sock")
+	sock := filepath.Join(rundir, "s.sock")
 	ln, err := net.Listen("unix", sock)
 	if err != nil {
 		return "", err
 	}
 	defer ln.Close()
-	l, err := a.Agent.Launch(agent.LaunchSpec{
+	l, err := a.Agent.Launch(socketAccess(agent.LaunchSpec{
 		Role: "thread", Cwd: work, RuntimeDir: base, TMBin: tmBin, Socket: sock,
 		Access: agent.Access{Write: []string{work}, Read: []string{base}},
-	})
+	}, runtime.GOOS))
 	if err != nil {
 		return "", err
 	}

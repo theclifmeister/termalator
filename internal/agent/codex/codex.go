@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"unicode"
@@ -62,7 +64,7 @@ func (a *Agent) Manifest() *agent.Manifest { return a.m }
 // coordinator's sandbox profile stays only when it holds on this Codex
 // (probe.go).
 func (a *Agent) Launch(spec agent.LaunchSpec) (agent.Launch, error) {
-	l, err := a.Agent.Launch(spec)
+	l, err := a.Agent.Launch(socketAccess(spec, runtime.GOOS))
 	if err != nil {
 		return l, err
 	}
@@ -80,6 +82,21 @@ func (a *Agent) Launch(spec agent.LaunchSpec) (agent.Launch, error) {
 		l = sandboxed(l, spec) // probe.go
 	}
 	return l, nil
+}
+
+// socketAccess adds, on Windows, write access to the folder of tm's
+// socket. Codex's Windows sandbox (a restricted token) lets a command
+// connect to an AF_UNIX socket only when the token may write the socket's
+// folder: `network.unix_sockets` isn't what opens it (measured on Codex
+// 0.162, T204: write on the folder connects, read or write on the socket
+// file alone and the unix_sockets entry don't).
+func socketAccess(spec agent.LaunchSpec, goos string) agent.LaunchSpec {
+	if goos != "windows" || spec.Socket == "" {
+		return spec
+	}
+	dir := filepath.Dir(spec.Socket)
+	spec.Access.Write = append(spec.Access.Write[:len(spec.Access.Write):len(spec.Access.Write)], dir)
+	return spec
 }
 
 // Hook is the manifest's, after noting that a prompt ran on the thread
