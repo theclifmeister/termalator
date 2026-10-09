@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -55,6 +56,17 @@ func child(mode string) {
 		}
 		fmt.Printf("child %d\r\n", cmd.Process.Pid)
 		time.Sleep(time.Minute)
+	case "breakaway": // a child that leaves the job, as MSYS starts them
+		cmd := exec.Command(os.Args[0])
+		cmd.Env = append(os.Environ(), "PTY_TEST_CHILD=sleep")
+		cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_BREAKAWAY_FROM_JOB}
+		if err := cmd.Start(); err != nil {
+			fmt.Printf("child refused: %v\r\n", err)
+		} else {
+			fmt.Printf("child %d\r\n", cmd.Process.Pid)
+			defer cmd.Process.Kill()
+		}
+		time.Sleep(time.Minute)
 	case "title": // a title of its own
 		fmt.Print("\x1b]0;mine\x07titled\r\n")
 		time.Sleep(time.Second)
@@ -89,7 +101,7 @@ func startChild(t *testing.T, api *conptyAPI, mode string, cols, rows uint16) *c
 	t.Helper()
 	exe, _ := os.Executable()
 	env := append(os.Environ(), "PTY_TEST_CHILD="+mode, "PTY_TEST_VAR=v1")
-	c, err := start(api, []string{exe}, os.TempDir(), env, cols, rows)
+	c, err := start(api, []string{exe}, os.TempDir(), env, cols, rows, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,6 +244,42 @@ func TestHolds(t *testing.T) {
 	}
 	if c.Holds(os.Getpid()) {
 		t.Fatal("the console holds the test process")
+	}
+}
+
+// TestBreakaway: a session's job keeps a child that asks to leave it
+// (Cygwin and MSYS ask for every child), so Holds still sees it; a
+// terminal's lets it go.
+func TestBreakaway(t *testing.T) {
+	exe, _ := os.Executable()
+	env := append(os.Environ(), "PTY_TEST_CHILD=breakaway")
+	c, err := start(conpty(), []string{exe}, os.TempDir(), env, 80, 24, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := waitFor(t, c, "\r")
+	c.Stop(0)
+	c.Close()
+	c.Wait()
+	if !strings.Contains(out, "child refused") {
+		t.Fatalf("a session's child left its job: %q", out)
+	}
+
+	c, err = start(conpty(), []string{exe}, os.TempDir(), env, 80, 24, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { c.Stop(0); c.Close(); c.Wait() }()
+	out = waitFor(t, c, "\r")
+	if strings.Contains(out, "child refused") {
+		t.Skipf("this test's own job allows no breakaway: %q", out)
+	}
+	m := childRE.FindStringSubmatch(out)
+	if m == nil {
+		t.Fatalf("output %q", out)
+	}
+	if kid, _ := strconv.Atoi(m[1]); c.Holds(kid) {
+		t.Fatalf("a terminal's job kept child %d that left it", kid)
 	}
 }
 

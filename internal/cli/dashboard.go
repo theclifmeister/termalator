@@ -103,7 +103,10 @@ func (e *Env) fullConsole(own bool, goTo *tui.Target) int {
 			// which attaches again once it closes.
 			over = ares.Over
 		}
-		res, err := tui.Dashboard(tui.DashOptions{Source: src, In: os.Stdin, Out: os.Stdout,
+		// Start at the window's size now: waiting for the program's own
+		// size leaves the dashboard at 80×24 until it arrives (Windows).
+		wc, wr, _ := termSize()
+		res, err := tui.Dashboard(tui.DashOptions{Source: src, In: os.Stdin, Out: os.Stdout, Width: int(wc), Height: int(wr),
 			Cwd: e.Cwd, State: st, UIFile: uiFile, Prefix: tui.ConfigPrefix(), View: vc, Over: over})
 		if err != nil {
 			return e.srvFail("dashboard", err)

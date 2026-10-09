@@ -34,6 +34,12 @@ func Start(argv []string, dir string, env []string, cols, rows uint16) (Console,
 	return &console{File: f, cmd: cmd, exited: make(chan struct{})}, nil
 }
 
+// StartTerminal is Start: a Unix process leaves the terminal's session
+// on its own (setsid).
+func StartTerminal(argv []string, dir string, env []string, cols, rows uint16) (Console, error) {
+	return Start(argv, dir, env, cols, rows)
+}
+
 func (c *console) PID() int { return c.cmd.Process.Pid }
 
 func (c *console) Holds(pid int) bool { return false }

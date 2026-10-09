@@ -9,7 +9,8 @@
 set -euo pipefail
 VM="Ubuntu 26.04 ARM64"
 root() { prlctl exec "$VM" "$@"; }
-user() { prlctl exec "$VM" --current-user "$@"; }
+# Exec sessions run with umask 007 here: make it 022 so ~/.local/* is 755.
+user() { prlctl exec "$VM" --current-user "umask 022; $*"; }
 ENVP='export PATH=$HOME/.local/bin:/usr/local/go/bin:$PATH'
 
 setup() {
@@ -26,7 +27,11 @@ setup() {
   root 'ln -sf /usr/local/go/bin/go /usr/bin/go; ln -sf /usr/local/go/bin/gofmt /usr/bin/gofmt
     ln -sf /usr/local/lib/node_modules/@openai/codex/bin/codex.js /usr/bin/codex
     ln -sf /home/parallels/.local/bin/claude /usr/bin/claude'
-  user 'mkdir -p ~/tm-test'
+  # Login shells need ~/.local/bin on PATH (Ubuntu's .profile only adds it
+  # when it exists at login); fix folders an earlier run made group-writable.
+  user 'mkdir -p ~/tm-test ~/.local/bin
+    chmod 755 ~/.local ~/.local/bin ~/.local/share ~/.local/share/claude ~/.local/state
+    grep -qF "# terminatr-vm" ~/.profile || echo "export PATH=\"\$HOME/.local/bin:\$PATH\" # terminatr-vm" >> ~/.profile'
   echo "kernel.apparmor_restrict_unprivileged_userns = $(user 'sysctl -n kernel.apparmor_restrict_unprivileged_userns')"
 }
 

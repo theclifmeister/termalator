@@ -45,10 +45,18 @@ type console struct {
 // sets one is dropped, and its request for focus reports is answered
 // with "focused" (see filter).
 func Start(argv []string, dir string, env []string, cols, rows uint16) (Console, error) {
-	return start(conpty(), argv, dir, env, cols, rows)
+	return start(conpty(), argv, dir, env, cols, rows, false)
 }
 
-func start(api *conptyAPI, argv []string, dir string, env []string, cols, rows uint16) (c *console, err error) {
+// StartTerminal is Start for a terminal window rather than a session:
+// a process may leave its job (CREATE_BREAKAWAY_FROM_JOB), as one
+// started from a terminal emulator outlives it. A server the window's
+// tm starts does, so it survives the window closing.
+func StartTerminal(argv []string, dir string, env []string, cols, rows uint16) (Console, error) {
+	return start(conpty(), argv, dir, env, cols, rows, true)
+}
+
+func start(api *conptyAPI, argv []string, dir string, env []string, cols, rows uint16, breakaway bool) (c *console, err error) {
 	if len(argv) == 0 {
 		return nil, fmt.Errorf("pty: empty command")
 	}
@@ -92,7 +100,7 @@ func start(api *conptyAPI, argv []string, dir string, env []string, cols, rows u
 	}
 	undo = append(undo, func() { api.close(hpc) })
 
-	job, err := newJob()
+	job, err := newJob(breakaway)
 	if err != nil {
 		return nil, fmt.Errorf("pty: job object: %w", err)
 	}
@@ -304,16 +312,22 @@ func spawn(path string, argv []string, dir string, env []uint16, hpc, job window
 }
 
 // newJob makes a Job Object whose processes die when its last handle
-// closes, as a session's do when its PTY master closes. A process may
-// still leave it on purpose (CREATE_BREAKAWAY_FROM_JOB), as a detached
-// one on Unix leaves the session.
-func newJob() (windows.Handle, error) {
+// closes, as a session's do when its PTY master closes. With breakaway a
+// process may leave it on purpose (CREATE_BREAKAWAY_FROM_JOB), as a
+// detached one on Unix leaves the session. A session's job allows none:
+// Cygwin and MSYS (Git for Windows' sh) start every child with that flag
+// wherever the job allows it, so an agent's shell commands would leave
+// the job, and the server's caller check (Holds) with it.
+func newJob(breakaway bool) (windows.Handle, error) {
 	job, err := windows.CreateJobObject(nil, nil)
 	if err != nil {
 		return 0, err
 	}
 	var info windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION
-	info.BasicLimitInformation.LimitFlags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | windows.JOB_OBJECT_LIMIT_BREAKAWAY_OK
+	info.BasicLimitInformation.LimitFlags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+	if breakaway {
+		info.BasicLimitInformation.LimitFlags |= windows.JOB_OBJECT_LIMIT_BREAKAWAY_OK
+	}
 	if _, err := windows.SetInformationJobObject(job, windows.JobObjectExtendedLimitInformation,
 		uintptr(unsafe.Pointer(&info)), uint32(unsafe.Sizeof(info))); err != nil {
 		windows.CloseHandle(job)

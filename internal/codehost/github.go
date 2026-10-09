@@ -5,12 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/theclifmeister/terminatr/internal/plat/shell"
 )
 
 // GitHub is the GitHub host, through the gh CLI.
@@ -33,9 +33,9 @@ func (g GitHub) gh(dir string, args ...string) ([]byte, error) {
 func RunGH(dir string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "gh", args...)
+	cmd := shell.CLICommand(ctx, "gh", args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1", "NO_COLOR=1")
+	cmd.Env = append(cmd.Environ(), "GH_PROMPT_DISABLED=1", "NO_COLOR=1")
 	var errb bytes.Buffer
 	cmd.Stderr = &errb
 	out, err := cmd.Output()
