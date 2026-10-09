@@ -24,9 +24,11 @@ For Claude Code, tm uses its mods (plugin hooks, early access, Claude Code 2.1.2
 
 ## Requirements
 
-macOS 13+ or Linux with glibc 2.28+ (arm64 or x86_64), git, and at least one agent: [Claude Code](https://claude.com/claude-code) or [Codex](https://developers.openai.com/codex).
+macOS 13+, Linux with glibc 2.28+ or Windows (early support) (arm64 or x86_64), git, and at least one agent: [Claude Code](https://claude.com/claude-code) or [Codex](https://developers.openai.com/codex).
 
 ## Install
+
+**macOS and Linux, Homebrew:**
 
 ```sh
 brew tap theclifmeister/terminatr https://github.com/theclifmeister/terminatr
@@ -34,7 +36,19 @@ brew trust theclifmeister/terminatr
 brew install terminatr
 ```
 
-Newer Homebrew refuses formulas from a tap it doesn't trust, hence `brew trust` once. No Homebrew? See [Install in docs/OPERATIONS.md](docs/OPERATIONS.md#install) for the direct download. Then run `tm doctor` to check the setup.
+**Linux and macOS, no Homebrew** (installs `tm` into `~/.local/bin`, checks the download's sha256):
+
+```sh
+curl -fsSL https://github.com/theclifmeister/terminatr/releases/latest/download/install.sh | sh
+```
+
+**Windows** (PowerShell, no admin rights; early support):
+
+```powershell
+irm https://github.com/theclifmeister/terminatr/releases/latest/download/install.ps1 | iex
+```
+
+Newer Homebrew refuses formulas from a tap it doesn't trust, hence `brew trust` once. Then run `tm doctor` to check the setup. Options and manual downloads: [Install in docs/OPERATIONS.md](docs/OPERATIONS.md#install).
 
 ## First steps
 
