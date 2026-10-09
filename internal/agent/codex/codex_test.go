@@ -411,3 +411,59 @@ func TestLeftThread(t *testing.T) {
 		}
 	}
 }
+
+// TestSocketAccess: only on Windows does the socket's folder become
+// writable (Codex's sandbox there connects to a socket by file access).
+func TestSocketAccess(t *testing.T) {
+	spec := agent.LaunchSpec{Socket: filepath.Join("run", "tm.sock"), Access: agent.Access{Write: []string{"w"}}}
+	if got := socketAccess(spec, false); len(got.Access.Write) != 1 {
+		t.Errorf("linux: %v", got.Access.Write)
+	}
+	got := socketAccess(spec, true)
+	if len(got.Access.Write) != 2 || got.Access.Write[1] != "run" || len(spec.Access.Write) != 1 {
+		t.Errorf("windows: %v (spec %v)", got.Access.Write, spec.Access.Write)
+	}
+}
+
+// TestStateSourceFor: Windows keys carry the drive of the working directory.
+func TestStateSourceFor(t *testing.T) {
+	for _, c := range []struct {
+		cwd     string
+		windows bool
+		want    string
+	}{
+		{"/home/a", false, "/<session-flags>/config.toml"},
+		{`C:\Users\a\w`, true, `C:\<session-flags>\config.toml`},
+		{`D:\w`, true, `D:\<session-flags>\config.toml`},
+		{"", true, `C:\<session-flags>\config.toml`},
+	} {
+		if got := stateSourceFor(c.cwd, c.windows); got != c.want {
+			t.Errorf("stateSourceFor(%q, %v) = %q, want %q", c.cwd, c.windows, got, c.want)
+		}
+	}
+}
+
+// TestWindowsSandboxArgs: tm sets windows.sandbox on Windows unless the
+// user chose a mode, and not for a yolo launch.
+func TestWindowsSandboxArgs(t *testing.T) {
+	prof := []string{"codex", "-c", `default_permissions="tm"`, "-c", "permissions={tm={}}"}
+	home := t.TempDir()
+	t.Setenv("CODEX_HOME", home)
+	if windowsSandboxArgs(prof, false) {
+		t.Error(false)
+	}
+	if windowsSandboxArgs([]string{"codex", "--dangerously-bypass-approvals-and-sandbox"}, true) {
+		t.Error("yolo")
+	}
+	if !windowsSandboxArgs(prof, true) {
+		t.Error("no config.toml: want set")
+	}
+	os.WriteFile(filepath.Join(home, "config.toml"), []byte("[tui]\nx = 1\n"), 0o600)
+	if !windowsSandboxArgs(prof, true) {
+		t.Error("no [windows]: want set")
+	}
+	os.WriteFile(filepath.Join(home, "config.toml"), []byte("[windows]\nsandbox = \"elevated\"\n"), 0o600)
+	if windowsSandboxArgs(prof, true) {
+		t.Error("user chose elevated: want left alone")
+	}
+}

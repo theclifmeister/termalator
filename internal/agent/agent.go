@@ -102,6 +102,13 @@ type SandboxProber interface {
 	ProbeSandbox(tmBin string) (version string, err error)
 }
 
+// A ThreadSandboxProber checks the sandbox tm gives a thread, for tm
+// doctor where that sandbox needs a setup first (Codex on Windows): the
+// agent's version and why it doesn't hold, if it doesn't.
+type ThreadSandboxProber interface {
+	ProbeThreadSandbox(tmBin string) (version string, err error)
+}
+
 // ProcessInfo describes the foreground process of a PTY, used to recognise
 // an agent started by hand in a shell session.
 type ProcessInfo struct {

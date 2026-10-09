@@ -6,11 +6,16 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"unicode"
 
+	"github.com/BurntSushi/toml"
+
 	"github.com/theclifmeister/terminatr/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/plat/caps"
 	"github.com/theclifmeister/terminatr/internal/plat/shell"
 )
 
@@ -41,6 +46,21 @@ func hookTimeout(event string) int {
 // trust keys (codex-rs hooks discovery, 0.160).
 const stateSource = "/<session-flags>/config.toml"
 
+// stateSourceFor is that source as the session names it: on Windows
+// Codex makes the path absolute on the drive of its working directory, so
+// the trust key reads `C:\<session-flags>\config.toml:stop:0:0` and the
+// slash form stays untrusted (measured on Codex 0.162, T204).
+func stateSourceFor(cwd string, windows bool) string {
+	if !windows {
+		return stateSource
+	}
+	vol := "C:"
+	if len(cwd) >= 2 && cwd[1] == ':' && unicode.IsLetter(rune(cwd[0])) {
+		vol = cwd[:2]
+	}
+	return vol + `\<session-flags>\config.toml`
+}
+
 // Agent is the manifest agent with the session's hooks added to every
 // launch.
 type Agent struct {
@@ -62,11 +82,11 @@ func (a *Agent) Manifest() *agent.Manifest { return a.m }
 // coordinator's sandbox profile stays only when it holds on this Codex
 // (probe.go).
 func (a *Agent) Launch(spec agent.LaunchSpec) (agent.Launch, error) {
-	l, err := a.Agent.Launch(spec)
+	l, err := a.Agent.Launch(socketAccess(spec, caps.Windows))
 	if err != nil {
 		return l, err
 	}
-	hooks, state, err := HookArgs(a.Events())
+	hooks, state, err := hookArgs(a.Events(), stateSourceFor(spec.Cwd, caps.Windows))
 	if err != nil {
 		return l, err
 	}
@@ -75,11 +95,62 @@ func (a *Agent) Launch(spec agent.LaunchSpec) (agent.Launch, error) {
 		at -= len(a.m.Launch.KickoffArgs)
 	}
 	extra := []string{"-c", hooks, "-c", state}
+	if windowsSandboxArgs(l.Argv, caps.Windows) {
+		extra = append(extra, "-c", `windows.sandbox="unelevated"`)
+	}
 	l.Argv = append(l.Argv[:at:at], append(extra, l.Argv[at:]...)...)
 	if spec.Role == "coordinator" {
 		l = sandboxed(l, spec) // probe.go
 	}
 	return l, nil
+}
+
+// socketAccess adds, on Windows, write access to the folder of tm's
+// socket. Codex's Windows sandbox (a restricted token) lets a command
+// connect to an AF_UNIX socket only when the token may write the socket's
+// folder: `network.unix_sockets` isn't what opens it (measured on Codex
+// 0.162, T204: write on the folder connects, read or write on the socket
+// file alone and the unix_sockets entry don't).
+func socketAccess(spec agent.LaunchSpec, windows bool) agent.LaunchSpec {
+	if !windows || spec.Socket == "" {
+		return spec
+	}
+	dir := filepath.Dir(spec.Socket)
+	spec.Access.Write = append(spec.Access.Write[:len(spec.Access.Write):len(spec.Access.Write)], dir)
+	return spec
+}
+
+// windowsSandboxArgs says whether a launch on Windows needs
+// windows.sandbox set: Codex applies a permission profile there only when
+// [windows] sandbox is "elevated" or "unelevated". Unset, it runs commands
+// unsandboxed behind approvals ("Environment: local"; exec refuses them),
+// and `codex sandbox` alone, which doesn't read the key, proves nothing
+// (T204). "unelevated" (a restricted token) needs no administrator; a
+// user's own choice in $CODEX_HOME/config.toml stands.
+func windowsSandboxArgs(argv []string, windows bool) bool {
+	if !windows {
+		return false
+	}
+	if idx, _, _ := profileFlags(argv); len(idx) == 0 {
+		return false // yolo: no sandbox to shape
+	}
+	home := os.Getenv("CODEX_HOME")
+	if home == "" {
+		h, err := os.UserHomeDir()
+		if err != nil {
+			return true
+		}
+		home = filepath.Join(h, ".codex")
+	}
+	var cfg struct {
+		Windows struct {
+			Sandbox string `toml:"sandbox"`
+		} `toml:"windows"`
+	}
+	if _, err := toml.DecodeFile(filepath.Join(home, "config.toml"), &cfg); err != nil {
+		return true
+	}
+	return cfg.Windows.Sandbox == ""
 }
 
 // Hook is the manifest's, after noting that a prompt ran on the thread
@@ -101,6 +172,10 @@ func (a *Agent) Events() []string { return a.m.HookEvents() }
 //	hooks={Stop=[{hooks=[{type="command",command="…",timeout=5}]}],…}
 //	hooks.state={"/<session-flags>/config.toml:stop:0:0"={trusted_hash="sha256:…"},…}
 func HookArgs(events []string) (hooks, state string, err error) {
+	return hookArgs(events, stateSource)
+}
+
+func hookArgs(events []string, source string) (hooks, state string, err error) {
 	var h, s []string
 	for _, ev := range events {
 		if !validEvent(ev) {
@@ -112,7 +187,7 @@ func HookArgs(events []string) (hooks, state string, err error) {
 		if err != nil {
 			return "", "", err
 		}
-		key := fmt.Sprintf("%s:%s:0:0", stateSource, snake(ev))
+		key := fmt.Sprintf("%s:%s:0:0", source, snake(ev))
 		s = append(s, fmt.Sprintf(`%s={trusted_hash=%s}`, agent.TOMLString(key), agent.TOMLString(sum)))
 	}
 	return "hooks={" + strings.Join(h, ",") + "}", "hooks.state={" + strings.Join(s, ",") + "}", nil

@@ -47,6 +47,7 @@ func doctorCmd(e *Env, args []string) int {
 	in := update.Detect(exe, version.Channel)
 	d.Install = &in
 	d.SandboxProbe = func(p agent.SandboxProber) (string, error) { return p.ProbeSandbox(exe) }
+	d.ThreadSandboxProbe = func(p agent.ThreadSandboxProber) (string, error) { return p.ProbeThreadSandbox(exe) }
 	d.Latest = func() (string, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()

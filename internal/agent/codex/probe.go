@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/plat/caps"
 )
 
 // The coordinator's sandbox (docs/SPEC.md §8.6, Codex) rests on Codex's
@@ -36,11 +37,17 @@ const ProbeCommand = "codex-sandbox-probe"
 // probeWant is what the probe prints when the sandbox holds.
 const probeWant = "unix=ok tcp=refused"
 
+// threadWant is what a thread's probe prints when its sandbox holds:
+// tm's socket connects and a file outside the workspace can't be made.
+const threadWant = "unix=ok write=denied"
+
 // ProbeMain is the probe: it dials the unix socket and the TCP address
-// and prints how each went.
+// and prints how each went. With a third argument, a path to create, it
+// prints whether that write was denied instead of the TCP result (a
+// thread's network is open, so only its filesystem tells a sandbox).
 func ProbeMain(args []string) int {
-	if len(args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: tm "+ProbeCommand+" SOCKET HOST:PORT")
+	if len(args) != 2 && len(args) != 3 {
+		fmt.Fprintln(os.Stderr, "usage: tm "+ProbeCommand+" SOCKET HOST:PORT [WRITE-PATH]")
 		return 2
 	}
 	dial := func(network, addr string) string {
@@ -50,6 +57,16 @@ func ProbeMain(args []string) int {
 		}
 		c.Close()
 		return "ok"
+	}
+	if len(args) == 3 {
+		w := "denied"
+		if f, err := os.OpenFile(args[2], os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600); err == nil {
+			f.Close()
+			os.Remove(args[2])
+			w = "ok"
+		}
+		fmt.Printf("unix=%s write=%s\n", dial("unix", args[0]), w)
+		return 0
 	}
 	fmt.Printf("unix=%s tcp=%s\n", dial("unix", args[0]), dial("tcp", args[1]))
 	return 0
@@ -268,4 +285,68 @@ func (a *Agent) ProbeSandbox(tmBin string) (string, error) {
 		version = agent.ParseVersion(out)
 	}
 	return version, probeOnce(path, tmBin, dir, sock, name, flags)
+}
+
+// ProbeThreadSandbox checks a thread's profile under the installed Codex
+// (agent.ThreadSandboxProber, for tm doctor on Windows): Codex's Windows
+// sandbox needs a one-time setup, and without it every command of a
+// thread asks for approval (docs/CODEX.md). The probe runs inside the
+// profile, so it holds only when the sandbox applies and tm's socket
+// (AF_UNIX on Windows) is reachable from it.
+func (a *Agent) ProbeThreadSandbox(tmBin string) (string, error) {
+	base, err := os.MkdirTemp("", "tm-probe-")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(base)
+	if real, err := filepath.EvalSymlinks(base); err == nil {
+		base = real
+	}
+	work, outside, rundir := filepath.Join(base, "work"), filepath.Join(base, "outside"), filepath.Join(base, "run")
+	for _, d := range []string{work, outside, rundir} {
+		if err := os.Mkdir(d, 0o700); err != nil {
+			return "", err
+		}
+	}
+	sock := filepath.Join(rundir, "s.sock")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		return "", err
+	}
+	defer ln.Close()
+	l, err := a.Agent.Launch(socketAccess(agent.LaunchSpec{
+		Role: "thread", Cwd: work, RuntimeDir: base, TMBin: tmBin, Socket: sock,
+		Access: agent.Access{Write: []string{work}, Read: []string{base}},
+	}, caps.Windows))
+	if err != nil {
+		return "", err
+	}
+	idx, name, flags := profileFlags(l.Argv)
+	if len(idx) == 0 {
+		return "", errors.New("the manifest gives a thread no profile")
+	}
+	// A thread's profile is the one -c permissions=… flag; profileFlags
+	// takes it as it takes the coordinator's.
+	path, err := exec.LookPath(l.Argv[0])
+	if err != nil {
+		return "", err
+	}
+	version := ""
+	if out, err := run(path, nil, "--version"); err == nil {
+		version = agent.ParseVersion(out)
+	}
+	args := append([]string{"sandbox", "-P", name, "-C", work}, flags...)
+	args = append(args, "--", tmBin, ProbeCommand, sock, "127.0.0.1:1", filepath.Join(outside, "probe"))
+	out, err := run(path, flagsEnv(), args...)
+	switch last := lastLine(out); {
+	case err != nil:
+		return version, fmt.Errorf("codex sandbox refused it: %s", firstLine(out, err))
+	case last == threadWant:
+		return version, nil
+	case strings.HasPrefix(last, "unix=refused"):
+		return version, errors.New("tm's socket is unreachable from the sandbox")
+	case strings.HasSuffix(last, "write=ok"):
+		return version, errors.New("the sandbox doesn't apply: a file outside the workspace could be written")
+	}
+	return version, fmt.Errorf("unexpected probe output %q", firstLine(out, nil))
 }
