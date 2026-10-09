@@ -171,7 +171,7 @@ test('projectFeed joins split lines; threadLine is compact', () => {
 test('a coordinator follows its project, registers /tm and opens the pane where it docks', async ($, on) => {
   const { seen, clock } = await start($, on, 'coordinator', [project()])
   expect(seen.spawned).toContainEqual(['/opt/tm', 'watch', '--project', 'demo', '--json'])
-  expect(seen.commands).toEqual(['tm'])
+  expect(seen.commands).toEqual(['tm', 'answer'])
   expect(seen.opened).toEqual([])
   await draw($, true)
   await clock.advance(300)

@@ -35,10 +35,10 @@
 // same socket (hooks/tools.ts): typed, checked by the server, run as the
 // thread, and let through without a permission prompt.
 //
-// In a coordinator with open questions (tm ask) the band says so instead,
-// "2 questions waiting · a: Answer": a click, or a with the band focused,
-// runs `tm ask open`, which queues the prompt that has the coordinator
-// open them in its question dialog.
+// In a coordinator with open questions (tm ask) the status entry says so,
+// "2 questions · /answer": the entry cannot be pressed, so /answer runs
+// `tm ask open`, which queues the prompt that has the coordinator open
+// them in its question dialog.
 //
 // It sends each AskUserQuestion menu to the server (`tm session ask`) and
 // answers it with what `tm thread answer` gave, unless the user answers
@@ -55,7 +55,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { TerminatrTurn, TerminatrWatch } from '../types'
 import { answers, question } from './ask'
-import { drawBand, drawQuestions } from './band'
+import { drawBand } from './band'
 import { withBlock } from './context'
 import { errorText, handled, offerOf } from './deliver'
 import type { Ack, Offer } from './deliver'
@@ -67,7 +67,7 @@ import { initialTurn, stateOf, step, waitKey } from './turn'
 import { initialUsage, reportOf } from './usage'
 import type { TurnUsageIn, UsageReport } from './usage'
 import type { Seen } from './turn'
-import { answeredText, bandShows, ciToast, questions, statusText } from './view'
+import { answeredText, bandShows, ciToast, statusText } from './view'
 
 const watch = atom({ plugin: 'terminatr', key: 'watch' } as const, null)
 const band = atom({ plugin: 'terminatr', key: 'band' } as const, true)
@@ -111,7 +111,9 @@ export const register: Register = on => {
     const isBand = (await $.env.get('TERMINATR_BAND')) !== 'off'
     await update($, band, () => isBand)
     await startReports($)
-    if (socket && (await $.env.get('TERMINATR_ROLE')) === 'thread') await registerTools($)
+    const role = await $.env.get('TERMINATR_ROLE')
+    if (socket && role === 'thread') await registerTools($)
+    if (role === 'coordinator' && isBand) await $.command.register({ name: 'answer', description: "Open the coordinator's questions to you in a dialog" })
     if (bin && id) void follow($, bin, id, isBand)
     return started
   })
@@ -185,10 +187,14 @@ export const register: Register = on => {
     sawViewport(e.viewport)
     const w = await read($, watch)
     if (e.props.hasSurvey || !(await read($, band))) return next(e)
-    const n = questions(w)
-    if (n > 0) return drawQuestions($.ui.resolve(e), n, () => void answerQuestions($))
     if (!bandShows(w)) return next(e)
     return drawBand($.ui.resolve(e), e.props.bodyColumns, w)
+  })
+
+  // The status entry cannot be pressed, so a slash command opens them.
+  on('command.run', { command: 'answer' }, async $ => {
+    await answerQuestions($)
+    return { text: 'Asked the coordinator to open your questions.' }
   })
 
   on('turn.start', async ($, e, next) => {
