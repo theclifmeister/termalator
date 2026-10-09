@@ -1756,6 +1756,9 @@ func (c *client) pollState(ctx context.Context) {
 		if c.lock() {
 			if c.side != nil {
 				c.side.projects, c.side.sessions, c.side.ctxHint = projects, res.Sessions, ctxHint
+				if ctl != nil {
+					c.side.server = ServerInfo{Version: res.Version, Build: res.Build, Latest: res.Latest, Upgrade: res.Upgrade}
+				}
 			}
 			for _, p := range c.panes {
 				for _, s := range res.Sessions {

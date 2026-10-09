@@ -246,10 +246,14 @@ func sideTop(rows []treeRow, h int) int {
 // it has the keyboard focus (a row is the cursor) its border is in the
 // accent colour and the cursor's row is highlighted instead of the one
 // you are on.
-func sidebarLines(all []treeRow, w, h int) []string {
+func sidebarLines(all []treeRow, w, h int, foot []string) []string {
 	cw := max(w-1, 0) // less the border
 	slim := w <= sideSlim
 	rows := shownRows(all, w)
+	if len(foot) > 0 && h < len(foot)+4 {
+		foot = nil // no room: the tree comes first
+	}
+	h -= len(foot)
 	focused := slices.ContainsFunc(all, func(r treeRow) bool { return r.cursor })
 	border := styleFaint.Render("│")
 	if focused {
@@ -280,7 +284,11 @@ func sidebarLines(all []treeRow, w, h int) []string {
 	for len(out) < h {
 		out = append(out, strings.Repeat(" ", cw)+border)
 	}
-	return out[:h]
+	out = out[:h]
+	for _, f := range foot {
+		out = append(out, styleFaint.Render(fit(" "+f, cw-sideGap))+strings.Repeat(" ", sideGap)+reset+border)
+	}
+	return out
 }
 
 // sideHead is the sidebar's header, cw cells wide: " PROJECTS", its
@@ -621,9 +629,10 @@ type sidebar struct {
 	uiFile   string
 	projects []ProjectData
 	sessions []proto.SessionInfo
-	ctxHint  int      // [ui] context_hint
-	drag     bool     // the mouse is moving its border
-	drawn    []string // the lines on screen; nil repaints them all
+	ctxHint  int        // [ui] context_hint
+	server   ServerInfo // the running server
+	drag     bool       // the mouse is moving its border
+	drawn    []string   // the lines on screen; nil repaints them all
 }
 
 // sideCurrent is the attach view's current project: the focused pane's,
@@ -732,7 +741,7 @@ func (c *client) sideKeyboard(k uv.Key) {
 
 // appendSidebar draws the sidebar's changed lines. c.mu held.
 func (c *client) appendSidebar(b []byte, wrote bool) ([]byte, bool) {
-	lines := sidebarLines(c.sideTree(), c.sideW, c.rows)
+	lines := sidebarLines(c.sideTree(), c.sideW, c.rows, sideFoot(c.side.server, c.sideW-1))
 	for y, l := range lines {
 		if y < len(c.side.drawn) && c.side.drawn[y] == l {
 			continue

@@ -1,4 +1,4 @@
- PROJECTS                    1 │ tm dashboard                          ● server ok · 1 session · dev
+ PROJECTS                    1 │ tm dashboard                                ● server ok · 1 session
  ■ demo                    0 ⚑ │ NEEDS YOU 1 ───────────────────────────────────────────────────────
  └─ coordinator              · │  demo          T1 Write the README   ◆ review    ▱▱▱▱▱  0/2
                                │ demo ──────────────────────────────────────────────────────────────
@@ -21,4 +21,4 @@
                                │
                                │────────────────────────────────────────────────────────────────────
                                │ ≡ menu · enter open · a project · t tasks · i inbox · , settings ·…
-                               │
+ dev                           │

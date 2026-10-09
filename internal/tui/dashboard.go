@@ -993,7 +993,7 @@ func (m *dash) render() string {
 // withSide puts the sidebar beside the dashboard's lines s.
 func (m *dash) withSide(s string) string {
 	lines := strings.Split(s, "\n")
-	side := sidebarLines(m.tree(), m.sideW(), m.h)
+	side := sidebarLines(m.tree(), m.sideW(), m.h, m.sideFoot())
 	for i := range side {
 		var l string
 		if i < len(lines) {
@@ -1150,7 +1150,7 @@ func (m *dash) frame(title string, body []string, sel int, keys string) string {
 		right = styleBad.Render("▲ server down: " + oneLine(m.data.Err))
 	default:
 		n := len(m.data.Sessions)
-		right = styleGood.Render(ic().working) + " server ok" + styleFaint.Render(fmt.Sprintf(" · %d session%s", n, map[bool]string{true: "s"}[n != 1])+serverVersion(m.data.Server))
+		right = styleGood.Render(ic().working) + " server ok" + styleFaint.Render(fmt.Sprintf(" · %d session%s", n, map[bool]string{true: "s"}[n != 1]))
 	}
 	// The app, not a project: the project's own section is headed by its
 	// slug, which may well be "terminatr".
@@ -1196,14 +1196,14 @@ func (m *dash) frame(title string, body []string, sel int, keys string) string {
 	return strings.Join(out, "\n")
 }
 
-// serverVersion is the header's " · v0.15.0": the server's version, and
-// this tm's too when it differs (docs/SPEC.md §4). Empty from a server
-// too old to say.
+// serverVersion is the sidebar footer's "v0.15.0": the server's version,
+// and this tm's too when it differs (docs/SPEC.md §4). Empty from a
+// server too old to say.
 func serverVersion(s ServerInfo) string {
 	if s.Version == "" {
 		return ""
 	}
-	out := " · " + s.Version
+	out := s.Version
 	if version.Version != s.Version {
 		out += " (tm " + version.Version + ")"
 	}
@@ -1223,4 +1223,42 @@ func versionHint(s ServerInfo) string {
 		return "tm " + s.Latest + " is out: " + s.Upgrade
 	}
 	return ""
+}
+
+// versionHintShort is versionHint for a narrow sidebar.
+func versionHintShort(s ServerInfo) string {
+	switch {
+	case s.Build == "":
+		return ""
+	case s.Build != version.BuildID():
+		return "run tm server restart"
+	case s.Latest != "":
+		return s.Latest + " is out: " + s.Upgrade
+	}
+	return ""
+}
+
+// sideFoot is the sidebar's faint last lines, cw cells wide: the server's
+// version and, when there is one, the hint (short when the full one
+// doesn't fit). None in the slim strip, nor from a server too old to say.
+func sideFoot(s ServerInfo, cw int) []string {
+	if s.Version == "" || cw <= sideSlim {
+		return nil
+	}
+	foot := []string{serverVersion(s)}
+	if h := versionHint(s); h != "" {
+		if ansi.StringWidth(h) > cw-sideGap-1 {
+			h = versionHintShort(s)
+		}
+		foot = append(foot, h)
+	}
+	return foot
+}
+
+// sideFoot is the sidebar's footer once the server has answered.
+func (m *dash) sideFoot() []string {
+	if !m.loaded || !m.data.ServerOK {
+		return nil
+	}
+	return sideFoot(m.data.Server, m.sideW()-1)
 }
