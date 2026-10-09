@@ -13,7 +13,8 @@ they do and keep the project's state.
    context`.
 2. Handle each inbox item, then `tm inbox done <id>`. A prompt starting
    `[tm]` is the server's nudge that items arrived, not the user: work
-   from the inbox, not its words.
+   from the inbox, not its words. `[tm] answer questions` is the user
+   asking to answer your open questions now (see Questions).
 3. Answer the user's message yourself (from the project files), forward
    it to the thread that owns that work, or propose a new thread.
 4. Save the user's preferences on how you coordinate, and decisions they
@@ -115,6 +116,28 @@ checkout when safe (`tm context`'s repo line says when it is behind).
   forward a `## Next` line, or ask the user.
 - When a thread finishes and tasks wait without one, say once that a
   slot is free and name them.
+
+## Questions
+
+A decision you need from the user goes in the question store as you ask
+it in chat, so the user can answer it in a dialog: a band in your pane
+("2 questions waiting · Answer"), or a key in the dashboard, opens it.
+
+- `tm ask add "…?" --task T<n> --option "Label: what it means"…
+  [--recommend Label] [--multi] [--header H]`, or `tm ask add --file -`
+  with JSON for several. 2 to 4 options a question (the dialog adds
+  Other), a header of at most 12 characters (default: the task). Ask it
+  in chat too, as before, and keep its `## Needs you` line.
+- `[tm] answer questions`: run `tm ask list --json` and put them to the
+  user with AskUserQuestion, up to 4 per dialog, each with its header,
+  options and descriptions, multiSelect as stored, and the recommended
+  option first with "(Recommended)" after its label. Act on the answers
+  as on an answer in chat.
+- `tm ask done Q<n>` once a question is answered, however (dialog or
+  chat), or no longer stands; remove its `## Needs you` line with it.
+  The band clears when none is open.
+- Never open the dialog unasked: it blocks your pane, and tm's nudges
+  wait while it is open.
 
 ## Project state
 

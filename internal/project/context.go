@@ -154,6 +154,18 @@ func (p *Project) Context(seen Ticked) ([]Section, error) {
 		}
 		out = append(out, capLines(f.title, splitLines(string(data)), f.cap, f.file))
 	}
+	// The coordinator's stored questions (tm ask); only when some are open.
+	qs, err := p.Questions()
+	if err != nil {
+		return nil, err
+	}
+	if len(qs) > 0 {
+		sec := Section{Title: "Open questions (tm ask)"}
+		for _, q := range qs {
+			sec.Lines = append(sec.Lines, QuestionLine(q))
+		}
+		out = append(out, sec)
+	}
 	// Context files over their size budget (upkeep.go); only when some are.
 	over, err := p.Oversized()
 	if err != nil {

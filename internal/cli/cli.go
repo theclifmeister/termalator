@@ -70,6 +70,7 @@ var commands = map[string]command{
 	"task":    runTask,
 	"context": runContext,
 	"inbox":   runInbox,
+	"ask":     runAsk,
 	"library": runLibrary,
 	"skill":   runSkill,
 	"thread":  runThread,
@@ -92,7 +93,7 @@ func Commands() []string {
 
 // checked are the commands whose rights depend on the caller: for them
 // the server's view of the caller is combined with the environment's.
-var checked = map[string]bool{"project": true, "task": true, "inbox": true, "library": true}
+var checked = map[string]bool{"project": true, "task": true, "inbox": true, "library": true, "ask": true}
 
 // Run dispatches args (without the program name).
 func (e *Env) Run(args []string) (code int, handled bool) {
