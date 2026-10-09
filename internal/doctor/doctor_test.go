@@ -130,9 +130,10 @@ func TestAgentVersions(t *testing.T) {
 		detail  string
 	}{
 		{version: "2.1.289 (Claude Code)", want: OK, detail: "2.1.289 (tested)"},
-		{version: "2.1.138 (Claude Code)", want: Warn, detail: "older than 2.1.139"},
+		{version: "2.1.138 (Claude Code)", want: Warn, detail: "older than 2.1.139, the oldest terminatr's generated files work with (exec-form hooks"},
 		{version: "2.1.139 (Claude Code)", want: OK, detail: "(tested)"},
-		{version: "3.0.1 (Claude Code)", want: Warn, detail: "not in tested_versions"},
+		// Newer than the last tested: supported, said as information.
+		{version: "3.0.1 (Claude Code)", want: OK, detail: "3.0.1 (newer than the last tested"},
 		{version: "garbage", want: Warn, detail: "no version"},
 		{missing: true, want: Warn, detail: "not found on PATH"},
 	}

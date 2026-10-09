@@ -7,6 +7,13 @@ name: weekly
 # runners don't have, so they run by hand (make test-claude). No self-hosted
 # runner: the repository is public, and a fork PR could edit a workflow
 # to run its code there.
+#
+# agent-canary runs every week whatever main did: the agents release
+# often, and a new Claude Code or Codex can rename a flag, a config key or
+# a hook field, or change the text tm matches (docs/SPEC.md §8.8). It
+# installs the latest of each and runs non-live checks only (no login,
+# no model calls), and opens or updates an "agent-drift" issue when one
+# fails.
 
 on:
   schedule:
@@ -46,6 +53,69 @@ jobs:
           last=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/weekly.yml/runs?event=schedule&status=success&branch=main&per_page=1" --jq '.workflow_runs[0].head_sha // ""')
           echo "last successful run: ${last:-none}; now: $GITHUB_SHA"
           echo "run=$([ "$last" = "$GITHUB_SHA" ] && echo false || echo true)" >> "$GITHUB_OUTPUT"
+
+  agent-canary:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      # tm agent check needs no terminal emulator: no libghostty.
+      - name: Build tm
+        run: CGO_ENABLED=0 go build -o "$RUNNER_TEMP/tm" ./cmd/tm
+
+      # npm comes with the runner's Node. Latest, never pinned: this job
+      # is the early warning.
+      - name: Install the latest agents
+        run: |
+          npm install -g @openai/codex@latest @anthropic-ai/claude-code@latest
+          codex --version
+          claude --version
+
+      - name: Canary
+        id: canary
+        run: scripts/agent-canary.sh 2>&1 | tee "$RUNNER_TEMP/canary.txt"
+        env:
+          TM: ${{ runner.temp }}/tm
+
+      # The hooks.json and mod tm writes, against the latest Claude's
+      # own plugin checks.
+      - name: claude plugin validate / test
+        if: ${{ !cancelled() }}
+        run: go test -count=1 -run '^TestModPlugin$' -v ./internal/agent/claude 2>&1 | tee "$RUNNER_TEMP/plugin.txt"
+        env:
+          TERMINATR_CLAUDE_PLUGIN_CHECK: "1"
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+
+      - name: Open or update the agent-drift issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "The weekly agent canary failed on $(codex --version 2>&1 | tail -1) and Claude Code $(claude --version 2>&1 | tail -1): $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo
+            echo "What to check: docs/SPEC.md §8.8."
+            echo
+            echo '```'
+            grep -E '^(==|FAIL)' "$RUNNER_TEMP/canary.txt" 2>/dev/null
+            grep -E -- '--- FAIL|plugin' "$RUNNER_TEMP/plugin.txt" 2>/dev/null | head -20
+            echo '```'
+          } > "$RUNNER_TEMP/issue.md"
+          gh label create agent-drift --color d93f0b --description "An agent release changed what tm relies on" 2>/dev/null || true
+          n=$(gh issue list --label agent-drift --state open --json number --jq '.[0].number // ""')
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --body-file "$RUNNER_TEMP/issue.md"
+          else
+            gh issue create --title "Agent drift: the weekly canary failed" --label agent-drift --body-file "$RUNNER_TEMP/issue.md"
+          fi
 
   # Capped: 18 targets at 1m each, about 20 minutes with setup.
   fuzz:

@@ -180,6 +180,11 @@ type agentRT struct {
 	answerAt    time.Time         // when its keys were last typed
 	answerTries int
 
+	started      time.Time       // when the agent was launched or identified
+	workingSince time.Time       // when the screen first showed it working
+	drifted      map[string]bool // drift keys noted (drift.go)
+	driftNotes   []string
+
 	typedMu sync.Mutex
 	typed   typedLine // the line typed into the prompt box (agent.Typist)
 }
@@ -193,6 +198,7 @@ func newAgentRT(cfg AgentConfig, pid int, observed bool) (*agentRT, error) {
 		a: cfg.Agent, src: cfg.Agent.Sources(), man: agent.ManifestOf(cfg.Agent),
 		eng: eng, tr: agent.NewTracker(nil), cfg: cfg, pid: pid, observed: observed,
 		stop: make(chan struct{}), promptGen: strconv.FormatInt(time.Now().UnixNano(), 36),
+		started: time.Now(),
 	}
 	for _, r := range cfg.Agent.Rules() {
 		if r.Keys != "" {
@@ -295,6 +301,12 @@ func (s *Session) Explain() (agent.Explanation, bool) {
 	if rt.version != "" {
 		e.Extra["version"] = rt.version
 	}
+	if rt.man != nil && rt.man.Identify.LastTested != "" {
+		e.Extra["last_tested"] = rt.man.Identify.LastTested
+	}
+	if len(rt.driftNotes) > 0 {
+		e.Extra["drift"] = strings.Join(rt.driftNotes, " | ")
+	}
 	if rt.cfg.ModSocket != "" {
 		e.Extra["mod_socket"] = rt.cfg.ModSocket
 	}
@@ -339,6 +351,7 @@ func (s *Session) Hook(event string, payload map[string]any) (agent.HookResult, 
 		s.agentChanged(rt)
 		return agent.HookResult{}, nil
 	}
+	s.checkHook(rt, event, payload)
 	sigs, res, err := rt.a.Hook(ev, agent.HookEnv{Context: rt.cfg.Context, Guard: rt.cfg.Guard})
 	rt.tr.Hook(ev, sigs)
 	if t := rt.src.JSONLTail; t != nil {
@@ -425,8 +438,9 @@ func (rt *agentRT) statusPath() (string, error) {
 }
 
 // pollStatus reads the status file when it changed, or every
-// statusReread. A missing or bad file makes the tracker skip it.
-func (rt *agentRT) pollStatus(now time.Time) {
+// statusReread. A missing or bad file makes the tracker skip it; a file
+// that says what the manifest doesn't know is returned, as drift.
+func (rt *agentRT) pollStatus(now time.Time) (drift error) {
 	f := rt.src.StatusFile
 	if f == nil {
 		return
@@ -466,13 +480,19 @@ func (rt *agentRT) pollStatus(now time.Time) {
 	} else {
 		rt.fields = r.Fields
 	}
-	rt.version = f.Version(data)
+	if v := f.Version(data); v != "" {
+		rt.version = v
+	}
 	rt.mu.Unlock()
 	if err != nil {
 		rt.tr.Status(nil, time.Time{}, err)
-		return
+		if strings.Contains(err.Error(), ": unknown ") {
+			return err
+		}
+		return nil
 	}
 	rt.tr.Status(&r, fi.ModTime(), nil)
+	return nil
 }
 
 // probeAgent checks, every probeEvery, that the agent behind the status
@@ -619,6 +639,9 @@ func (s *Session) evalScreen(rt *agentRT) {
 	}
 	rt.mu.Lock()
 	rt.emptyBox, rt.blocker = empty, blocker
+	if best != nil && best.State == agent.StateWorking && rt.workingSince.IsZero() {
+		rt.workingSince = time.Now()
+	}
 	rt.mu.Unlock()
 	var sig agent.ScreenSignal
 	if best != nil {
@@ -697,7 +720,9 @@ func (s *Session) runAgent(rt *agentRT) {
 			return
 		case now := <-tick.C:
 			s.probeAgent(rt, now)
-			rt.pollStatus(now)
+			if err := rt.pollStatus(now); err != nil {
+				s.drift(rt, "status-file", err.Error())
+			}
 			for _, u := range rt.readTail() {
 				if rt.cfg.OnUsage != nil {
 					rt.cfg.OnUsage(s, u)
@@ -710,6 +735,7 @@ func (s *Session) runAgent(rt *agentRT) {
 			}
 			s.agentChanged(rt)
 			s.deliverPrompts(rt, now)
+			s.checkHookSilence(rt, now)
 		}
 	}
 }
@@ -745,6 +771,7 @@ func (s *Session) PromptWith(text string, o PromptOptions) (string, error) {
 			return "channel", nil
 		}
 		s.cfg.Logf("session %s: prompt channel failed, pasting instead: %v", s.cfg.ID, err)
+		s.checkChannel(rt, err)
 	}
 	rt.mu.Lock()
 	rt.promptSeq++

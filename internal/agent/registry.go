@@ -74,13 +74,18 @@ func (r *Registry) add(data []byte, source string) error {
 	if base := strings.TrimSuffix(filepath.Base(source), ".toml"); base != m.Name {
 		return fmt.Errorf("file name %q must match name = %q", base, m.Name)
 	}
-	a := FromManifest(m)
-	if wrap, ok := goAgents[m.Name]; ok {
-		a = wrap(m)
-	}
-	r.agents[m.Name] = a
+	r.agents[m.Name] = Wrap(m)
 	r.Source[m.Name] = source
 	return nil
+}
+
+// Wrap is the agent for m: its Go agent when one is registered under
+// its name (RegisterGo), else the manifest alone.
+func Wrap(m *Manifest) Agent {
+	if wrap, ok := goAgents[m.Name]; ok {
+		return wrap(m)
+	}
+	return FromManifest(m)
 }
 
 // Get returns the agent named name.

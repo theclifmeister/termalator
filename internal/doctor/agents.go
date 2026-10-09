@@ -12,8 +12,9 @@ import (
 
 var versionRE = regexp.MustCompile(`\d+\.\d+(\.\d+)?`)
 
-// Agents loads the manifests as the server would and checks each agent's
-// installed version against its tested_versions (docs/SPEC.md §14 #4).
+// Agents loads the manifests as the server would and reports each agent's
+// installed version beside its last tested one, which is information
+// only, and warns below a manifest's min_version (docs/SPEC.md §8.8).
 // An agent that isn't installed is only a warning: nobody may use it.
 func Agents(d Deps) []Check {
 	const g = "agents"
@@ -63,17 +64,37 @@ func agentCheck(d Deps, name, source string, m *agent.Manifest) Check {
 	case v == "":
 		c.Status, c.Detail = Warn, fmt.Sprintf("%s: no version in %q", path, firstLine(raw))
 	case m.Identify.MinVersion != "" && !agent.VersionAtLeast(v, m.Identify.MinVersion):
+		why := ""
+		if m.Identify.MinVersionWhy != "" {
+			why = " (" + m.Identify.MinVersionWhy + ")"
+		}
 		c.Status = Warn
-		c.Detail = fmt.Sprintf("%s %s is older than %s, the oldest terminatr's generated files work with (Claude's exec-form hooks need 2.1.139: on older versions the hooks don't run and threads lose hook state)%s; update %s",
-			path, v, m.Identify.MinVersion, src, m.Display)
+		c.Detail = fmt.Sprintf("%s %s is older than %s, the oldest terminatr's generated files work with%s%s; update %s",
+			path, v, m.Identify.MinVersion, why, src, m.Display)
 	case !m.Tested(v):
+		// Only a user manifest that sets tested_versions gets here.
 		c.Status = Warn
 		c.Detail = fmt.Sprintf("%s %s is not in tested_versions %v%s; its status file and messaging socket are ignored, state comes from hooks and the screen",
 			path, v, m.TestedVersions, src)
 	default:
-		c.Status, c.Detail = OK, fmt.Sprintf("%s %s (tested)%s", path, v, src)
+		// A newer version than the last tested is supported, not a
+		// warning: tm logs what it finds changed (docs/SPEC.md §8.8).
+		c.Status, c.Detail = OK, path+" "+v+lastTested(v, m.Identify.LastTested)+src
 	}
 	return c
+}
+
+// lastTested says how v stands to the manifest's last tested version,
+// as information.
+func lastTested(v, last string) string {
+	switch {
+	case last == "":
+		return ""
+	case agent.VersionAtLeast(last, v):
+		return " (tested)"
+	default:
+		return " (newer than the last tested " + last + ": supported; tm logs any change it runs into)"
+	}
 }
 
 // Sandbox checks what the agents' sandbox needs, which holds a thread's

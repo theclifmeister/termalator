@@ -110,7 +110,7 @@ func TestClaudeRules(t *testing.T) {
 		{"question", "✳ Claude Code", question, "blocked-question", agent.StateBlocked, "question"},
 		{"trust", "", trust, "trust-folder", agent.StateBlocked, "trust"},
 		{"bypass warning", "", bypass, "trust-bypass-warning", agent.StateBlocked, "trust"},
-		{"transcript view abstains", "✳ Claude Code", strings.Replace(transcript, "Showing", "showing", 1), "transcript-view", agent.StateUnknown, "transcript view"},
+		{"transcript view abstains", "✳ Claude Code", transcript, "transcript-view", agent.StateUnknown, "transcript view"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -57,9 +57,10 @@ var ErrNoSocket = errors.New("claude: no messaging socket")
 
 // Prompt sends text to Claude's uds-messaging socket as one NDJSON line,
 // {"type":"user","message":{"role":"user","content":text}}. Claude queues
-// it correctly both idle and mid-turn (spike t-0004). It is used only for
-// a tested version with a socket named in a trusted status file; the
-// connect is the feature probe.
+// it correctly both idle and mid-turn (spike t-0004). It is used only
+// with a socket named in a trusted status file (and, for a manifest that
+// pins tested_versions, a version in them); the connect is the feature
+// probe.
 //
 // With a token (the CLAUDE_CODE_MESSAGING_TOKEN Claude gives its
 // children, which tm's hooks report), an {"type":"auth","token":…} line

@@ -520,12 +520,17 @@ func (s *Session) waitLoop(readDone <-chan struct{}) {
 		sub.close()
 	}
 	s.subs = map[*Subscriber]struct{}{}
+	var rows []string
+	if s.ag != nil {
+		rows, _, _ = s.term.Rows()
+	}
 	s.term.Close()
 	s.term = nil
 	rt := s.ag
 	s.mu.Unlock()
 	s.cfg.Logf("session %s: pid %d %s", s.cfg.ID, s.con.PID(), status)
 	if rt != nil {
+		s.checkExit(rt, status, rows)
 		rt.tr.Exited(status)
 		if rt.observed {
 			rt.close()
