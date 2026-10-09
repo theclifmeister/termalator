@@ -11,8 +11,10 @@ import (
 
 // typed follows keys sent to the pane in the agent's typed line, when
 // the agent is a Typist tm launched, and tells it of each line submitted
-// while it is idle. Keys sent while it isn't (an answer to a menu, text
-// typed during a turn) leave the box unknown: the line is inexact.
+// while it is idle or working: the prompt box takes keys during a turn
+// too, and whether a command runs then is the agent's version's to say.
+// Keys sent in any other state (an answer to a dialog) leave the box
+// unknown: the line is inexact.
 func (s *Session) typed(p []byte) {
 	rt := s.agentRT()
 	if rt == nil || rt.observed {
@@ -27,9 +29,9 @@ func (s *Session) typed(p []byte) {
 		exact bool
 	}
 	var lines []line
-	idle := rt.tr.State().State == agent.StateIdle
+	st := rt.tr.State().State
 	rt.typedMu.Lock()
-	if idle {
+	if st == agent.StateIdle || st == agent.StateWorking {
 		rt.typed.feed(p, func(text string, exact bool) { lines = append(lines, line{text, exact}) })
 	} else {
 		rt.typed.reset()

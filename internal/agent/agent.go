@@ -276,7 +276,7 @@ type Prober interface {
 }
 
 // Typist is an Agent that hears of each line submitted in its pane by
-// keys while it is idle (docs/SPEC.md §8.6): the core rebuilds the line
+// keys while it is idle or working (docs/SPEC.md §8.6): the core rebuilds the line
 // from the keys typed or pasted into the pane, its own pasted prompts
 // among them. Exact is false when keys the core can't follow (arrows,
 // Tab, Esc, other control keys) edited it. Codex notes a /clear typed by
