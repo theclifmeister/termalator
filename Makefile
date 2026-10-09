@@ -108,11 +108,17 @@ test-race: $(READY)
 	$(GO) test -race ./...
 
 FUZZTIME ?= 5m
+# -fuzzminimizetime: Go minimizes each new interesting input for up to 60s
+# by default, as long as -fuzztime itself. One found near the end outlives
+# the deadline and the run fails "context deadline exceeded" with execs at
+# 0/sec (FuzzJoinDecode, weekly run 37904293277; no input is slow: Join
+# and Decode take well under a millisecond on any input tried).
+FUZZMINTIME ?= 3s
 fuzz: $(READY)
 	@set -e; for pkg in $$($(GO) list ./...); do \
 		for t in $$($(GO) test -list '^Fuzz' $$pkg | grep '^Fuzz' || true); do \
 			echo "== $$pkg $$t"; \
-			$(GO) test $$pkg -run '^$$' -fuzz "^$$t\$$" -fuzztime $(FUZZTIME); \
+			$(GO) test $$pkg -run '^$$' -fuzz "^$$t\$$" -fuzztime $(FUZZTIME) -fuzzminimizetime $(FUZZMINTIME); \
 		done; \
 	done
 

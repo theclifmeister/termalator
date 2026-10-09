@@ -65,8 +65,8 @@ func liveRows(t *testing.T, pane, text string) int {
 // popupMasks hide the temp paths and the machine's name, with the
 // padding after them, whose width depends on theirs.
 var popupMasks = []Mask{
-	{"tmp", regexp.MustCompile(`(/\S*/T/\S*|/tmp/\S*) *`)},
-	{"host", regexp.MustCompile(`this one  \S+ *`)},
+	{Name: "tmp", Re: regexp.MustCompile(`(/\S*/T/\S*|/tmp/\S*) *`)},
+	{Name: "host", Re: regexp.MustCompile(`this one  \S+ *`)},
 }
 
 // saved waits until cond holds and the dashboard has saved the change:

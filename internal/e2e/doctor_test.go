@@ -116,8 +116,16 @@ func TestDoctorServerContext(t *testing.T) {
 	if got := found["local shell"]; !strings.HasPrefix(got, "ok local ") || !strings.Contains(got, "gh auth") || !strings.Contains(got, "the server's sessions pass") {
 		t.Errorf("local shell note: %q", got)
 	}
-	if out := env.MustCLI("doctor"); !strings.Contains(out, "logged in [server]") || strings.Contains(out, "not logged in") {
-		t.Errorf("doctor text:\n%s", out)
+	// Only the gh line: a runner with az installed has an "az login  not
+	// logged in" line of its own.
+	out := env.MustCLI("doctor")
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "gh auth") && !strings.Contains(line, "local shell") && (!strings.Contains(line, "logged in [server]") || strings.Contains(line, "not logged in")) {
+			t.Errorf("doctor text, gh auth line %q:\n%s", line, out)
+		}
+	}
+	if !strings.Contains(out, "gh auth        logged in [server]") {
+		t.Errorf("doctor text lacks the server's gh auth:\n%s", out)
 	}
 
 	// No server: this shell's checks, labelled local.

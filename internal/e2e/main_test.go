@@ -27,25 +27,29 @@ func TestMain(m *testing.M) {
 	if d, ok := flag.Lookup("test.timeout").Value.(flag.Getter).Get().(time.Duration); ok && d > time.Minute {
 		time.AfterFunc(d-10*time.Second, func() {
 			fmt.Fprintln(os.Stderr, "e2e: the test timeout is near; stopping this run's processes")
-			finish()
+			finish(false)
 		})
 	}
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-sig
-		finish()
+		finish(true)
 		os.Exit(1)
 	}()
 	code := m.Run()
-	if !finish() && code == 0 {
+	if !finish(true) && code == 0 {
 		code = 1
 	}
 	os.Exit(code)
 }
 
-// finish ends the run; false if processes had to be killed.
-func finish() bool {
+// finish ends the run; false if processes had to be killed. The
+// watchdog passes removeBin=false: the tests still run for the seconds
+// before go test panics, and without the binary every one of them fails
+// with "fork/exec: no such file", burying the real failure. The next
+// run's sweepStale removes what the panic leaves.
+func finish(removeBin bool) bool {
 	ok := true
 	// Waits for a build in progress, and orders the read of binDir
 	// after it (finish may run on the watchdog's or a signal's goroutine).
@@ -55,7 +59,9 @@ func finish() bool {
 			fmt.Fprintf(os.Stderr, "e2e: killed processes left running: %s\n", strings.Join(left, "; "))
 			ok = false
 		}
-		os.RemoveAll(binDir)
+		if removeBin {
+			os.RemoveAll(binDir)
+		}
 	}
 	failedMu.Lock()
 	defer failedMu.Unlock()

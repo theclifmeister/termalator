@@ -161,10 +161,33 @@ jobs:
         env:
           E2E_ARTIFACTS: ${{ runner.temp }}/e2e-artifacts
 
-      # tm built with -race; the harness fails on "WARNING: DATA RACE".
-      - name: e2e smoke (race)
-        if: ${{ !cancelled() }}
-        run: make e2e-smoke-race
+      - name: Upload e2e artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-artifacts-${{ matrix.os }}
+          path: ${{ runner.temp }}/e2e-artifacts
+          if-no-files-found: ignore
+
+  # tm built with -race; the harness fails on "WARNING: DATA RACE". A
+  # race-built tm starts slowly, so the whole smoke set hit go test's 10
+  # minute timeout: three shards, each well inside it.
+  e2e-race:
+    needs: changed
+    if: needs.changed.outputs.run == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        shard: ["1/3", "2/3", "3/3"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup
+
+      - name: e2e smoke (race, shard ${{ matrix.shard }})
+        run: make e2e-smoke-race E2E_SHARD=${{ matrix.shard }}
         env:
           E2E_ARTIFACTS: ${{ runner.temp }}/e2e-artifacts-race
 
@@ -172,8 +195,6 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-artifacts-${{ matrix.os }}
-          path: |
-            ${{ runner.temp }}/e2e-artifacts
-            ${{ runner.temp }}/e2e-artifacts-race
+          name: e2e-artifacts-race-${{ matrix.os }}-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/e2e-artifacts-race
           if-no-files-found: ignore
