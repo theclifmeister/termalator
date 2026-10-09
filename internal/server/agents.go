@@ -168,25 +168,6 @@ func (s *Server) accessFor(role, slug, cwd string) (agent.Access, error) {
 	return agent.Access{}, fmt.Errorf("unknown role %q", role)
 }
 
-// featureVersion is a's version for its manifest's [identify] features,
-// "" when it can't be read (each feature then takes its fallback). It
-// logs the features this version lacks, so a fallback is never silent.
-func (s *Server) featureVersion(a agent.Agent, id string) string {
-	m := agent.ManifestOf(a)
-	if m == nil || len(m.Identify.Features) == 0 {
-		return ""
-	}
-	v, err := s.versions.of(a, s.baseEnv())
-	if err != nil {
-		s.log.Printf("session %s: %s version unknown (%v): without %s", id, a.Name(), err, strings.Join(m.MissingFeatures(""), ", "))
-		return ""
-	}
-	if miss := m.MissingFeatures(v); len(miss) > 0 {
-		s.log.Printf("session %s: %s %s is too old for %s", id, a.Name(), v, strings.Join(miss, ", "))
-	}
-	return v
-}
-
 // mergeCommands are the PR merge commands the opt-in coordinator_merges
 // setting allows the coordinator without a prompt: GitHub's, and Azure
 // DevOps' (completing a PR is an update with --status completed).
@@ -345,7 +326,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		Cwd: r.Cwd, RepoRoot: repo.RepoRoot, GitDir: repo.GitDir, RuntimeDir: rt, BriefPath: r.Brief, Kickoff: l.kick, Resume: l.resume,
 		Yolo: r.Yolo, Model: r.Model, TMBin: s.opts.Bin, Socket: s.opts.Paths.Socket, Access: access,
 		RemoteControl: r.RemoteControl, RemoteName: remoteName(r),
-		Mods: modSock != "", Version: s.featureVersion(a, r.ID),
+		Mods: modSock != "",
 	}
 	if spec.Model == "" {
 		cfg, _ := config.Load()
@@ -355,6 +336,9 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 	if err != nil {
 		s.closeModLocked(r.ID)
 		return nil, proto.Errorf(proto.ErrRefused, "%v", err)
+	}
+	for _, w := range launch.Warnings {
+		s.log.Printf("session %s: %s", r.ID, w)
 	}
 	if err := writeLaunchFiles(rt, launch.Files); err != nil {
 		s.closeModLocked(r.ID)

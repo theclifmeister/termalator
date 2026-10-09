@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/doctor"
 	"github.com/theclifmeister/terminatr/internal/emu"
 	"github.com/theclifmeister/terminatr/internal/server"
@@ -45,6 +46,7 @@ func doctorCmd(e *Env, args []string) int {
 	exe, _ := os.Executable()
 	in := update.Detect(exe, version.Channel)
 	d.Install = &in
+	d.SandboxProbe = func(p agent.SandboxProber) (string, error) { return p.ProbeSandbox(exe) }
 	d.Latest = func() (string, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()

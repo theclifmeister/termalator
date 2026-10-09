@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/theclifmeister/terminatr/internal/agent"
 	_ "github.com/theclifmeister/terminatr/internal/agent/claude" // registers the Go agent (Doctor)
 	"github.com/theclifmeister/terminatr/internal/codehost"
 	"github.com/theclifmeister/terminatr/internal/plat/flock"
@@ -146,27 +147,6 @@ func TestAgentVersions(t *testing.T) {
 		}
 		d.Run = func(dir, name string, args ...string) (string, error) { return tc.version, nil }
 		c := find(Agents(d), "claude")
-		if len(c) != 1 || c[0].Status != tc.want || !strings.Contains(c[0].Detail, tc.detail) {
-			t.Errorf("%q: %+v", tc.version, c)
-		}
-	}
-}
-
-// TestAgentFeatures: a Codex older than one of its manifest's [identify]
-// features is a warning naming the feature and its version.
-func TestAgentFeatures(t *testing.T) {
-	for _, tc := range []struct {
-		version string
-		want    Status
-		detail  string
-	}{
-		{"codex-cli 0.160.0", OK, "0.160.0 (tested)"},
-		{"codex-cli 0.145.0", Warn, "too old for coordinator_sandbox (needs 0.146.0)"},
-	} {
-		d := testDeps(t)
-		d.LookPath = func(n string) (string, error) { return "/bin/" + n, nil }
-		d.Run = func(dir, name string, args ...string) (string, error) { return tc.version, nil }
-		c := find(Agents(d), "codex")
 		if len(c) != 1 || c[0].Status != tc.want || !strings.Contains(c[0].Detail, tc.detail) {
 			t.Errorf("%q: %+v", tc.version, c)
 		}
@@ -830,5 +810,28 @@ func TestModels(t *testing.T) {
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("got:\n%s", strings.Join(got, "\n"))
+	}
+}
+
+type fakeProber struct{}
+
+func (fakeProber) ProbeSandbox(string) (string, error) { return "", nil }
+
+// TestSandboxCheck: a coordinator sandbox that doesn't hold on the
+// installed Codex is a warning naming its version and the reason.
+func TestSandboxCheck(t *testing.T) {
+	m := &agent.Manifest{Display: "Codex"}
+	m.Launch.Command = "codex"
+	d := testDeps(t)
+	d.SandboxProbe = func(agent.SandboxProber) (string, error) {
+		return "0.170.0", errors.New("the network isn't limited to tm's socket")
+	}
+	c := sandboxCheck(d, "codex", m, fakeProber{})
+	if c.Status != Warn || !strings.Contains(c.Detail, "codex 0.170.0: the coordinator's sandbox doesn't hold (the network isn't limited") {
+		t.Errorf("%+v", c)
+	}
+	d.SandboxProbe = func(agent.SandboxProber) (string, error) { return "0.160.0", nil }
+	if c = sandboxCheck(d, "codex", m, fakeProber{}); c.Status != OK || !strings.Contains(c.Detail, "codex 0.160.0") {
+		t.Errorf("%+v", c)
 	}
 }

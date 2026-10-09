@@ -232,6 +232,9 @@ func codexMain() {
 	if o.queue {
 		os.Exit(cx.queueCmd(logPath))
 	}
+	if len(os.Args) > 1 && os.Args[1] == "sandbox" {
+		os.Exit(sandboxCmd(logPath, os.Args[2:]))
+	}
 	cfg, err := codexConfig(o.config)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
@@ -870,4 +873,60 @@ func (a *app) codexUnload(thread, rollout string) {
 	}
 	time.Sleep(d)
 	_, _ = a.fireHook(context.Background(), "SessionEnd", map[string]any{"reason": "other", "session_id": thread, "transcript_path": rollout})
+}
+
+// sandboxCmd is `codex sandbox -P <name> -C <dir> -c … -- <cmd…>` as tm's
+// coordinator probe runs it (internal/agent/codex/probe.go): it doesn't
+// run the command but prints what tm's probe would, judging the profile
+// as Codex 0.160 does: tm's socket reachable when the profile allows it,
+// TCP refused when network.mode is "limited" and features.network_proxy
+// is on. FAKEAGENT_CODEX_SANDBOX plays a newer Codex: "ignore-proxy"
+// (the feature renamed: the network is open) or "reject" (a -c key
+// refused).
+func sandboxCmd(logPath string, args []string) int {
+	rec := map[string]any{"t": time.Now().Format(time.RFC3339Nano), "kind": "sandbox", "argv": args}
+	defer func() { _ = appendJSONL(logPath, rec) }()
+	var name string
+	var values, cmd []string
+	for i := 0; i < len(args); i++ {
+		switch {
+		case args[i] == "--":
+			cmd = args[i+1:]
+			i = len(args)
+		case args[i] == "-P" && i+1 < len(args):
+			name = args[i+1]
+			i++
+		case args[i] == "-c" && i+1 < len(args):
+			values = append(values, args[i+1])
+			i++
+		case args[i] == "-C" && i+1 < len(args):
+			i++
+		}
+	}
+	if os.Getenv("FAKEAGENT_CODEX_SANDBOX") == "reject" {
+		rec["verdict"] = "rejected"
+		fmt.Fprintln(os.Stderr, "Error loading config.toml: unknown configuration field `features.network_proxy` in -c/--config override")
+		return 1
+	}
+	cfg, err := codexConfig(values)
+	if err != nil || len(cmd) != 4 {
+		fmt.Fprintln(os.Stderr, "Error:", err, cmd)
+		return 1
+	}
+	sock := cmd[2]
+	unix, tcp := "refused", "refused"
+	perms, _ := cfg["permissions"].(map[string]any)
+	prof, _ := perms[name].(map[string]any)
+	netw, _ := prof["network"].(map[string]any)
+	if socks, _ := netw["unix_sockets"].(map[string]any); socks[sock] == "allow" && netw["enabled"] == true {
+		unix = "ok"
+		features, _ := cfg["features"].(map[string]any)
+		limited := netw["mode"] == "limited" && features["network_proxy"] == true
+		if !limited || os.Getenv("FAKEAGENT_CODEX_SANDBOX") == "ignore-proxy" {
+			tcp = "ok"
+		}
+	}
+	rec["verdict"] = "unix=" + unix + " tcp=" + tcp
+	fmt.Printf("unix=%s tcp=%s\n", unix, tcp)
+	return 0
 }

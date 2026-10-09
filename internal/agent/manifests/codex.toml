@@ -25,21 +25,6 @@ session_starts = ["SessionStart"]
 argv0 = ["codex"]
 version_args = ["--version"]
 
-# Launch features newer than the oldest Codex tm runs, each with the
-# oldest version known to have it; an older Codex, or one whose version
-# can't be read, gets the template's fallback (docs/SPEC.md §8.6, Codex).
-[identify.features]
-# The coordinator's profile: a permission profile (default_permissions,
-# permissions.<name> with extends=":workspace", filesystem modes and
-# network.unix_sockets) and network.mode="limited" enforced by the
-# network_proxy feature. In the source since 0.131 (the feature key;
-# extends since 0.128); checked with codex sandbox on 0.146.0, 0.147.0
-# and 0.160.0. Codex ignores a profile key it doesn't know and an
-# unknown feature, which would leave the network open, so an older Codex
-# runs the coordinator without the profile: workspace-write with the
-# network off, every tm call escalated to auto-review.
-coordinator_sandbox = "0.146.0"
-
 [launch]
 command = "codex"
 # `resume <id>` is a subcommand, so it goes first. The flags:
@@ -85,14 +70,15 @@ args = [
   # before and a merge stays reviewed. Its Commands (coordinator_merges)
   # have no equivalent: an execpolicy allow rule doesn't get past the
   # proxy, and allowing the PR host's domain would open all of gh.
-  # The coordinator's only on a Codex with [identify.features]
-  # coordinator_sandbox.
-  "{{if and (or (eq .Role \"thread\") (and (eq .Role \"coordinator\") .Features.coordinator_sandbox)) (not .Yolo)}}-c{{end}}", "{{if and (or (eq .Role \"thread\") (and (eq .Role \"coordinator\") .Features.coordinator_sandbox)) (not .Yolo)}}default_permissions=\"tm\"{{end}}",
-  "{{if and (eq .Role \"coordinator\") .Features.coordinator_sandbox (not .Yolo)}}-c{{end}}", "{{if and (eq .Role \"coordinator\") .Features.coordinator_sandbox (not .Yolo)}}features.network_proxy=true{{end}}",
+  # A newer Codex may rename or change the proxy or this syntax: the Go
+  # agent probes the profile before a coordinator starts and drops these
+  # flags, with a logged warning, when it doesn't hold (probe.go).
+  "{{if and (or (eq .Role \"thread\") (eq .Role \"coordinator\")) (not .Yolo)}}-c{{end}}", "{{if and (or (eq .Role \"thread\") (eq .Role \"coordinator\")) (not .Yolo)}}default_permissions=\"tm\"{{end}}",
+  "{{if and (eq .Role \"coordinator\") (not .Yolo)}}-c{{end}}", "{{if and (eq .Role \"coordinator\") (not .Yolo)}}features.network_proxy=true{{end}}",
   "{{if and (eq .Role \"thread\") (not .Yolo)}}-c{{end}}",
   '''{{if and (eq .Role "thread") (not .Yolo)}}permissions={tm={extends=":workspace",filesystem={{pathmodes .Access}},network={enabled=true,unix_sockets={ {{- toml .Socket}}="allow"}}}}{{end}}''',
-  "{{if and (eq .Role \"coordinator\") .Features.coordinator_sandbox (not .Yolo)}}-c{{end}}",
-  '''{{if and (eq .Role "coordinator") .Features.coordinator_sandbox (not .Yolo)}}permissions={tm={extends=":workspace",filesystem={{pathmodes .Access .Cwd}},network={enabled=true,mode="limited",unix_sockets={ {{- toml .Socket}}="allow"}}}}{{end}}''',
+  "{{if and (eq .Role \"coordinator\") (not .Yolo)}}-c{{end}}",
+  '''{{if and (eq .Role "coordinator") (not .Yolo)}}permissions={tm={extends=":workspace",filesystem={{pathmodes .Access .Cwd}},network={enabled=true,mode="limited",unix_sockets={ {{- toml .Socket}}="allow"}}}}{{end}}''',
 ]
 yolo_args = ["--dangerously-bypass-approvals-and-sandbox"]
 model_args = ["-m", "{{.Model}}"]

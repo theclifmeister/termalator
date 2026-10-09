@@ -2,10 +2,8 @@ package agent
 
 import (
 	"encoding/json"
-	"maps"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -79,31 +77,6 @@ func TestTOMLString(t *testing.T) {
 	var v struct{ K string }
 	if _, err := toml.Decode("K = "+TOMLString("a\xffb"), &v); err != nil || v.K != "a�b" {
 		t.Errorf("invalid UTF-8 -> %q %v", v.K, err)
-	}
-}
-
-// TestFeatures: a feature is there from its version on, never for an
-// unknown version; a feature that isn't a version is refused.
-func TestFeatures(t *testing.T) {
-	m := &Manifest{}
-	m.Identify.Features = map[string]string{"b": "0.146.0", "a": "1.2"}
-	for v, want := range map[string]map[string]bool{
-		"0.160.0": {"a": false, "b": true},
-		"0.146.0": {"a": false, "b": true},
-		"0.145.9": {"a": false, "b": false},
-		"1.2.0":   {"a": true, "b": true},
-		"":        {"a": false, "b": false},
-	} {
-		if got := m.FeaturesAt(v); !maps.Equal(got, want) {
-			t.Errorf("FeaturesAt(%q) = %v, want %v", v, got, want)
-		}
-	}
-	if got := m.MissingFeatures("0.145.9"); !slices.Equal(got, []string{"a (needs 1.2)", "b (needs 0.146.0)"}) {
-		t.Errorf("MissingFeatures = %q", got)
-	}
-	m.Identify.Features["c"] = "soon"
-	if err := m.validate(); err == nil || !strings.Contains(err.Error(), `identify.features.c: "soon" is not a version`) {
-		t.Errorf("validate = %v", err)
 	}
 }
 

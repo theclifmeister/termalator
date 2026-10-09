@@ -10,7 +10,7 @@ import (
 
 	// The Go parts of built-in agents register themselves.
 	_ "github.com/theclifmeister/terminatr/internal/agent/claude"
-	_ "github.com/theclifmeister/terminatr/internal/agent/codex"
+	"github.com/theclifmeister/terminatr/internal/agent/codex"
 	"github.com/theclifmeister/terminatr/internal/cli"
 	"github.com/theclifmeister/terminatr/internal/emu"
 	"github.com/theclifmeister/terminatr/internal/version"
@@ -28,6 +28,11 @@ func main() {
 		}
 		fmt.Println("libghostty-vt: ok")
 		return
+	}
+	// Run by Codex's sandbox when tm checks a coordinator's profile
+	// (internal/agent/codex/probe.go); not for people.
+	if len(os.Args) > 1 && os.Args[1] == codex.ProbeCommand {
+		os.Exit(codex.ProbeMain(os.Args[2:]))
 	}
 	if len(os.Args) > 1 && (os.Args[1] == "help" || os.Args[1] == "-h" || os.Args[1] == "--help") {
 		fmt.Println(usage())

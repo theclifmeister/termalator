@@ -9,6 +9,7 @@ package e2e
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -240,9 +241,9 @@ func TestCodexHooksReview(t *testing.T) {
 }
 
 // TestSmokeCodexRoles: a coordinator gets its kickoff in argv, the role
-// context at SessionStart, and Codex's auto-review (--approve-for-me),
-// so an approval never blocks it; a thread runs in the "tm" permission
-// profile.
+// context at SessionStart, Codex's auto-review (--approve-for-me), so an
+// approval never blocks it, and the "tm" profile once the probe says it
+// holds; a thread runs in the "tm" permission profile.
 func TestSmokeCodexRoles(t *testing.T) {
 	env := New(t)
 	env.FakeCodex()
@@ -251,8 +252,11 @@ func TestSmokeCodexRoles(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := env.StartAgent("codex", p.Dir, "--role", "coordinator", "--project", p.Slug, "--kickoff", "run codex-approval")
-	if r := env.WaitFake("start", agentWait, nil); r["approve_for_me"] != true {
+	if r := env.WaitFake("start", agentWait, nil); r["approve_for_me"] != true || r.Str("permissions") != "tm" {
 		t.Fatalf("coordinator start %v", r)
+	}
+	if r := env.WaitFake("sandbox", agentWait, nil); r.Str("verdict") != "unix=ok tcp=refused" {
+		t.Fatalf("coordinator probe %v", r)
 	}
 	r := env.WaitFake("context", agentWait, func(r FakeRecord) bool { return r.Str("source") == "startup" })
 	if !strings.Contains(r.Str("text"), "first goal") {
@@ -273,4 +277,37 @@ func TestSmokeCodexRoles(t *testing.T) {
 		t.Fatalf("thread start %v", r)
 	}
 	env.WaitState(th, "idle", agentWait)
+}
+
+// TestSmokeCodexSandboxFallback: on a Codex where the coordinator's
+// profile doesn't hold (the proxy feature renamed, so the network would
+// be open; or a -c key refused), the coordinator starts without it, as
+// before the profile, and the server's log says why, naming the version.
+func TestSmokeCodexSandboxFallback(t *testing.T) {
+	for _, mode := range []string{"ignore-proxy", "reject"} {
+		t.Run(mode, func(t *testing.T) {
+			env := New(t)
+			env.FakeCodex()
+			env.Setenv("FAKEAGENT_CODEX_SANDBOX", mode)
+			var p struct{ Slug, Dir string }
+			if err := json.Unmarshal([]byte(env.MustCLI("project", "new", "demo", "--json")), &p); err != nil {
+				t.Fatal(err)
+			}
+			s := env.StartAgent("codex", p.Dir, "--role", "coordinator", "--project", p.Slug)
+			r := env.WaitFake("start", agentWait, nil)
+			if r["approve_for_me"] != true || r.Str("permissions") != "" {
+				t.Fatalf("coordinator start %v", r)
+			}
+			for _, arg := range r["argv"].([]any) {
+				if a := arg.(string); strings.HasPrefix(a, "default_permissions=") || strings.HasPrefix(a, "permissions=") || strings.HasPrefix(a, "features.network_proxy=") {
+					t.Errorf("fallback argv has %s", a)
+				}
+			}
+			env.WaitState(s, "idle", agentWait)
+			b, _ := os.ReadFile(filepath.Join(env.Home, "logs", "server.log"))
+			if !strings.Contains(string(b), "codex 0.160.0: the coordinator's sandbox profile doesn't hold") {
+				t.Errorf("server log:\n%s", b)
+			}
+		})
+	}
 }

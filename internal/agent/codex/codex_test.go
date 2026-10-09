@@ -3,6 +3,7 @@ package codex
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -175,9 +176,15 @@ func TestLaunch(t *testing.T) {
 
 	// A coordinator outside a repo: trust the folder, auto-review, and
 	// profile tm with its cwd written by name and the network limited to
-	// the socket; yolo replaces auto-review and the profile.
+	// the socket, kept when the probe says it holds.
+	var probed []string
+	probeFunc = func(codex, tmBin, cwd, sock, name string, flags []string) (string, error) {
+		probed = append([]string{codex, tmBin, cwd, sock, name}, flags...)
+		return "0.170.0", nil
+	}
+	defer func() { probeFunc = probeProfile }()
 	spec = agent.LaunchSpec{
-		Role: "coordinator", Cwd: "/p", RuntimeDir: dir, TMBin: "/bin/tm", Socket: "/run/tm.sock", Version: "0.160.0",
+		Role: "coordinator", Cwd: "/p", RuntimeDir: dir, TMBin: "/bin/tm", Socket: "/run/tm.sock",
 		Access: agent.Access{Read: []string{"/p", "/h/worktrees/p"}, NoWriteFiles: []string{"/h/config.toml"}, Commands: []string{"gh pr merge"}},
 	}
 	l, err = a.Launch(spec)
@@ -187,8 +194,8 @@ func TestLaunch(t *testing.T) {
 	if !slices.Contains(l.Argv, `projects={"/p"={trust_level="trusted"}}`) || !slices.Contains(l.Argv, "--approve-for-me") || l.Kickoff {
 		t.Errorf("coordinator argv %q", l.Argv)
 	}
-	if slices.Contains(l.Argv, "on-request") {
-		t.Errorf("coordinator got -a: %q", l.Argv)
+	if slices.Contains(l.Argv, "on-request") || len(l.Warnings) > 0 {
+		t.Errorf("coordinator got -a or warnings: %q %q", l.Argv, l.Warnings)
 	}
 	coord := `permissions={tm={extends=":workspace",filesystem={"/p"="write","/h/worktrees/p"="read","/h/config.toml"="read"},network={enabled=true,mode="limited",unix_sockets={"/run/tm.sock"="allow"}}}}`
 	for _, arg := range []string{`default_permissions="tm"`, "features.network_proxy=true", coord} {
@@ -199,22 +206,16 @@ func TestLaunch(t *testing.T) {
 	if _, err := toml.Decode(coord, &struct{}{}); err != nil {
 		t.Errorf("coordinator profile %s: %v", coord, err)
 	}
-	// A Codex older than coordinator_sandbox, or of unknown version,
-	// keeps the coordinator as before: auto-review, no profile.
-	for _, v := range []string{"0.145.9", ""} {
-		spec.Version = v
-		l, err = a.Launch(spec)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !slices.Contains(l.Argv, "--approve-for-me") || slices.Contains(l.Argv, `default_permissions="tm"`) ||
-			slices.Contains(l.Argv, "features.network_proxy=true") || slices.Contains(l.Argv, coord) {
-			t.Errorf("coordinator on Codex %q: argv %q", v, l.Argv)
-		}
+	// The probe runs the same flags, the profile named by -P instead.
+	if want := []string{"codex", "/bin/tm", "/p", "/run/tm.sock", "tm", "-c", "features.network_proxy=true", "-c", coord}; !slices.Equal(probed, want) {
+		t.Errorf("probed %q, want %q", probed, want)
 	}
-	// The fallback in full: today's coordinator launch, nothing of the
-	// profile.
-	spec.Version = "0.140.0"
+
+	// When it doesn't hold (a newer Codex renamed the proxy, say), the
+	// coordinator runs as before the profile, and the launch says why.
+	probeFunc = func(string, string, string, string, string, []string) (string, error) {
+		return "0.170.0", errors.New("the network isn't limited to tm's socket: features.network_proxy or network.mode was ignored")
+	}
 	l, err = a.Launch(spec)
 	if err != nil {
 		t.Fatal(err)
@@ -231,11 +232,20 @@ func TestLaunch(t *testing.T) {
 		"-c", hooks, "-c", state,
 	}
 	if !slices.Equal(l.Argv, fallback) {
-		t.Errorf("coordinator on Codex 0.140.0: argv\n%q\nwant\n%q", l.Argv, fallback)
+		t.Errorf("coordinator fallback argv\n%q\nwant\n%q", l.Argv, fallback)
 	}
-	spec.Version = "0.146.0"
-	if l, _ = a.Launch(spec); !slices.Contains(l.Argv, coord) {
-		t.Errorf("coordinator on Codex 0.146.0 lacks the profile: %q", l.Argv)
+	if len(l.Warnings) != 1 || !strings.Contains(l.Warnings[0], "codex 0.170.0: the coordinator's sandbox profile doesn't hold (the network isn't limited") ||
+		!strings.Contains(l.Warnings[0], "--approve-for-me") {
+		t.Errorf("fallback warnings %q", l.Warnings)
+	}
+	// A thread is never probed.
+	probed = nil
+	probeFunc = func(codex, tmBin, cwd, sock, name string, flags []string) (string, error) {
+		probed = []string{name}
+		return "", errors.New("no")
+	}
+	if l, _ = a.Launch(agent.LaunchSpec{Role: agent.RoleThread, Cwd: "/r/wt", RuntimeDir: dir, TMBin: "/bin/tm", Socket: "/run/tm.sock"}); probed != nil || !slices.Contains(l.Argv, `default_permissions="tm"`) {
+		t.Errorf("thread probed %q, argv %q", probed, l.Argv)
 	}
 	spec.Yolo = true
 	l, _ = a.Launch(spec)
