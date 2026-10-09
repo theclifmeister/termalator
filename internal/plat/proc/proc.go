@@ -3,14 +3,14 @@
 // detached one, turning this process into a daemon, and becoming another
 // program.
 //
-// This file set is Unix only: kill(2), setsid(2), execve(2), with process
-// details from sysctl on macOS and /proc on Linux (other Unixes have no
-// Lookup or List yet). The Windows port adds files behind this API:
-// OpenProcess and GetExitCodeProcess for Alive, NtQueryInformationProcess
-// and Toolhelp32 for Lookup and List, CREATE_NO_WINDOW and
-// CREATE_NEW_PROCESS_GROUP without inherited handles for StartDetached,
-// and an Exec that runs the program on the same console, waits and exits
-// with its code.
+// Unix uses kill(2), setsid(2) and execve(2), with process details from
+// sysctl on macOS and /proc on Linux (other Unixes have no Lookup or List
+// yet). Windows has no signals, sessions or exec: OpenProcess and
+// TerminateProcess (on the whole tree) for Alive, Terminate and Kill,
+// Toolhelp32 and NtQueryInformationProcess for Lookup and List,
+// CREATE_NO_WINDOW and CREATE_NEW_PROCESS_GROUP without inherited handles
+// for StartDetached, and an Exec that runs the program on the same
+// console, waits and exits with its code.
 package proc
 
 import (

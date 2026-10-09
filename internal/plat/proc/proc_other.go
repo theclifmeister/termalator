@@ -1,4 +1,4 @@
-//go:build !unix
+//go:build !unix && !windows
 
 package proc
 
@@ -7,8 +7,8 @@ import (
 	"os"
 )
 
-// Not yet ported: every call fails with errors.ErrUnsupported. The
-// Windows port replaces this (doc in proc.go).
+// Not ported (neither Unix nor Windows): every call fails with
+// errors.ErrUnsupported.
 
 func Alive(pid int) bool                        { return false }
 func Terminate(pid int) error                   { return errors.ErrUnsupported }
