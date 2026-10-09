@@ -49,7 +49,7 @@ func TestSmokeInfoPanel(t *testing.T) {
 		}
 		return strings.Join(out, "\n")
 	}
-	WaitGolden(t, wait, panelOnly, "infopanel-thread", Mask{"worktree", regexp.MustCompile(`worktree  \S+`)})
+	WaitGolden(t, wait, panelOnly, "infopanel-thread", Mask{Name: "worktree", Re: regexp.MustCompile(`worktree  \S+`)})
 
 	// prefix+| hides it, and the pane takes its columns; again shows it.
 	w.Prefix("|")

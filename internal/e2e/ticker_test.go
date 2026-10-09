@@ -324,7 +324,10 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	w.Type("i")
 	w.WaitFor("The coordinator handles these", wait)
 	w.WaitFor("T1 handed in report 1 Fix the login", wait)
-	w.Golden("dashboard-inbox.txt", dashMasks...)
+	// The inbox pads the age to 4 cells ("5s  ", "10s "), and the duration
+	// mask keeps the padding: a slow (race-built) run reads 10s where a
+	// fast one reads 5s and the masked row would be a column short.
+	w.Golden("dashboard-inbox.txt", append([]Mask{{Name: "age", Re: regexp.MustCompile(`<duration> {3,4}`), Repl: "<duration>    "}}, dashMasks...)...)
 	w.Key(keyEsc)
 
 	// enter on the thread: attached, with nothing to take over.

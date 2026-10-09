@@ -22,7 +22,7 @@ var (
 )
 
 // dashMasks hide the cwd column's temp paths.
-var dashMasks = []Mask{{"tmp", regexp.MustCompile(`/\S*/T/\S*|/tmp/\S*`)}}
+var dashMasks = []Mask{{Name: "tmp", Re: regexp.MustCompile(`/\S*/T/\S*|/tmp/\S*`)}}
 
 // newProject creates a project through the CLI and returns its slug and
 // folder.

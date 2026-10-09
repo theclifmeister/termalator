@@ -20,13 +20,15 @@ var Update = flag.Bool("update", false, "rewrite golden screens in testdata/gold
 type Mask struct {
 	Name string
 	Re   *regexp.Regexp
+	// Repl, when set, replaces a match instead of "<Name>".
+	Repl string
 }
 
 // DefaultMasks hide what changes from run to run.
 var DefaultMasks = []Mask{
-	{"session", regexp.MustCompile(`\bs-\d+\b`)},
-	{"pid", regexp.MustCompile(`\bpid \d+\b`)},
-	{"duration", regexp.MustCompile(`\b\d+(\.\d+)?(ns|µs|ms|s|m|h)\b`)},
+	{Name: "session", Re: regexp.MustCompile(`\bs-\d+\b`)},
+	{Name: "pid", Re: regexp.MustCompile(`\bpid \d+\b`)},
+	{Name: "duration", Re: regexp.MustCompile(`\b\d+(\.\d+)?(ns|µs|ms|s|m|h)\b`)},
 }
 
 // WaitGolden compares what screen returns with testdata/golden/<name>,
@@ -39,7 +41,11 @@ func WaitGolden(t testing.TB, timeout time.Duration, screen func() string, name 
 	t.Helper()
 	mask := func(s string) string {
 		for _, m := range append(append([]Mask{}, DefaultMasks...), masks...) {
-			s = m.Re.ReplaceAllString(s, "<"+m.Name+">")
+			repl := "<" + m.Name + ">"
+			if m.Repl != "" {
+				repl = m.Repl
+			}
+			s = m.Re.ReplaceAllString(s, repl)
 		}
 		return s
 	}
