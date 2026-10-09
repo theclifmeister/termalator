@@ -168,8 +168,9 @@ type Guard struct {
 	Writable []string `toml:"writable"`
 	// Tools are the agent's tools the guard judges, by name: each one's
 	// kind (shell, write, patch, read, glob) and the input fields that
-	// kind reads, e.g. Bash = { kind = "shell", fields = ["command"] }.
-	// A tool not listed is not judged.
+	// kind reads, e.g. Bash = { kind = "shell", fields = ["command"] };
+	// a shell tool whose commands are PowerShell says syntax =
+	// "powershell". A tool not listed is not judged.
 	Tools map[string]guard.Tool `toml:"tools"`
 }
 
@@ -507,6 +508,9 @@ func (m *Manifest) validate() error {
 		}
 		if len(t.Fields) == 0 || slices.Contains(t.Fields, "") {
 			errs = append(errs, fmt.Errorf("guard.tools.%s: fields must name the input fields the guard reads", name))
+		}
+		if t.Syntax != "" && (t.Kind != guard.KindShell || !slices.Contains(guard.Syntaxes, t.Syntax)) {
+			errs = append(errs, fmt.Errorf("guard.tools.%s: syntax %q is not powershell on a shell tool", name, t.Syntax))
 		}
 	}
 	switch m.Screen.Resize {

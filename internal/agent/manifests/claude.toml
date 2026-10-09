@@ -139,8 +139,10 @@ writable = [".claude/plans", ".claude/projects"]
 
 # The tools the guard judges, by kind, and the input fields each reads.
 # The mod's guard (hooks/guard.ts) gets them from GET /v1/rules too.
+# PowerShell is Claude's shell tool on Windows without Git Bash.
 [guard.tools]
 Bash = { kind = "shell", fields = ["command"] }
+PowerShell = { kind = "shell", syntax = "powershell", fields = ["command"] }
 Edit = { kind = "write", fields = ["file_path"] }
 Write = { kind = "write", fields = ["file_path"] }
 MultiEdit = { kind = "write", fields = ["file_path"] }
@@ -281,9 +283,10 @@ event = "PreToolUse"
 state = "working"
 transient = true
 # Without the mod, the server's guard (internal/guard) judges each call
-# and a refusal is the hook's answer, before any dialog. Allowed: no
-# output, so Claude's own permission check decides.
-respond = '''{{with .Guard}}{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":{{json .Message}}}}{{end}}'''
+# and a refusal is the hook's answer, before any dialog; a PowerShell
+# command it can't read is put to the dialog (or auto mode's classifier)
+# with "ask". Allowed: no output, so Claude's own permission check decides.
+respond = '''{{with .Guard}}{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":{{if .Ask}}"ask"{{else}}"deny"{{end}},"permissionDecisionReason":{{json .Message}}}}{{end}}'''
 
 [[hooks]]
 event = "PostToolUse"

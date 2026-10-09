@@ -172,7 +172,8 @@ func TestGuardRoutes(t *testing.T) {
 
 // TestHookGuard: without a mod, the server judges the tool calls a
 // session's hooks report against its rules and records each refusal as
-// POST /v1/denied does; with a mod there is no hook guard.
+// POST /v1/denied does, but not an ask; with a mod there is no hook
+// guard.
 func TestHookGuard(t *testing.T) {
 	testPaths(t)
 	p := newWatchProject(t)
@@ -202,6 +203,12 @@ func TestHookGuard(t *testing.T) {
 	}
 	if d := judge("Bash", map[string]any{"command": "git push -u origin tm/x"}); d != nil {
 		t.Errorf("own branch: %+v", d)
+	}
+	// Claude's PowerShell tool: a command the guard can't read is asked,
+	// and an ask is not journaled.
+	s.records["s-3"] = SessionRecord{ID: "s-3", Role: proto.RoleThread, Agent: "claude", Project: p.Slug, Thread: "t-0001", Cwd: wt}
+	if d := s.hookGuardOf("s-3", false)("PowerShell", map[string]any{"command": "iex $line"}); d == nil || !d.Ask || d.Rule != "unknown" {
+		t.Errorf("PowerShell iex: %+v", d)
 	}
 	lines, _, _ := p.JournalTail(20)
 	var got []string

@@ -2,14 +2,14 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 
-import { commands, judge, rulesOf } from '../hooks/guard'
+import { commands, judge, psCommands, rulesOf } from '../hooks/guard'
 import type { Rules } from '../hooks/guard'
 import vectors from './guard-vectors'
 
 type Vectors = {
   tools: Rules['tools']
   rules: Record<string, Rules>
-  cases: { rules: string; tool: string; input: Record<string, unknown>; rule: string | null; summary?: string }[]
+  cases: { rules: string; tool: string; input: Record<string, unknown>; rule: string | null; summary?: string; ask?: boolean }[]
   messages: Record<string, Record<string, string>>
 }
 
@@ -37,7 +37,7 @@ test('the shared vectors: rule and summary of each call', () => {
   const v = vectors as unknown as Vectors
   for (const c of v.cases) {
     const d = judge({ ...v.rules[c.rules], tools: v.tools }, c.tool, c.input)
-    expect([c.rules, c.tool, c.input, d?.rule ?? null, d?.summary]).toEqual([c.rules, c.tool, c.input, c.rule, c.summary])
+    expect([c.rules, c.tool, c.input, d?.rule ?? null, d?.summary, d?.ask ?? false]).toEqual([c.rules, c.tool, c.input, c.rule, c.summary, c.ask ?? false])
   }
   for (const [role, m] of Object.entries(v.messages)) {
     const r = { ...v.rules.thread, role, tools: v.tools }
@@ -121,4 +121,18 @@ test('rules the server couldn\'t give are asked for again at the next call', asy
     expect((r as { deny?: string }).deny).toBe(undefined)
   }
   expect(fetches()).toBe(2)
+})
+
+test('a PowerShell command the guard can\'t read is asked, with its reason; one it refuses is refused', async ($, on) => {
+  await start($, on, thread)
+  const asked = await $.tool.check({ tool: 'PowerShell', input: { command: 'Invoke-Expression $line' } })
+  expect([asked.decision, asked.reason]).toEqual(['ask', "terminatr guard: it can't tell what this PowerShell command runs (invoke-expression), so it asks first."])
+  expect((await $.tool.check({ tool: 'PowerShell', input: { command: 'git status; Invoke-Expression $line; git branch -D x' } })).decision).toBe('deny')
+  expect((await $.tool.check({ tool: 'PowerShell', input: { command: 'Get-ChildItem | Select-String foo' } })).decision).toBe('allow')
+})
+
+test('psCommands splits a PowerShell line', () => {
+  expect(psCommands("cd x; $r = git status 2>&1 | Out-Null && & { gh pr view 1 } # git log\n<# c #> echo 'it''s' \"a $(gh pr view 2) b\"")).toEqual([
+    ['cd', 'x'], ['$r', '=', 'git', 'status', '>'], ['Out-Null'], ['gh', 'pr', 'view', '1'], ['gh', 'pr', 'view', '2'], ['echo', "it's", 'a $(gh pr view 2) b'],
+  ])
 })

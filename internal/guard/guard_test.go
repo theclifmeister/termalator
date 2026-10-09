@@ -3,6 +3,7 @@ package guard
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"reflect"
 	"testing"
@@ -18,6 +19,7 @@ type vectors struct {
 		Input   map[string]any `json:"input"`
 		Rule    *string        `json:"rule"`
 		Summary string         `json:"summary"`
+		Ask     bool           `json:"ask"`
 	} `json:"cases"`
 	Messages map[string]map[string]string `json:"messages"`
 }
@@ -50,8 +52,8 @@ func loadVectors(t *testing.T) vectors {
 	return v
 }
 
-// TestVectors: the Go port refuses what guard.ts refuses, with the same
-// rule, summary and sentence.
+// TestVectors: the Go port refuses (or asks about) what guard.ts does,
+// with the same rule, summary and sentence.
 func TestVectors(t *testing.T) {
 	v := loadVectors(t)
 	for _, c := range v.Cases {
@@ -62,10 +64,10 @@ func TestVectors(t *testing.T) {
 		d := r.Judge(c.Tool, c.Input)
 		var got, want string
 		if d != nil {
-			got = d.Rule + " / " + d.Summary
+			got = fmt.Sprintf("%s / %s / ask %t", d.Rule, d.Summary, d.Ask)
 		}
 		if c.Rule != nil {
-			want = *c.Rule + " / " + c.Summary
+			want = fmt.Sprintf("%s / %s / ask %t", *c.Rule, c.Summary, c.Ask)
 		}
 		if got != want {
 			t.Errorf("%s %s %v: got %q, want %q", c.Rules, c.Tool, c.Input, got, want)
@@ -113,11 +115,14 @@ func TestPatchPaths(t *testing.T) {
 func FuzzJudge(f *testing.F) {
 	f.Add("git push -f origin 'x' && echo \"$(gh pr merge 1)\" `x` \\")
 	f.Add("rm -rf ~/.terminatr/worktrees/../x; cat <~/.ssh/k")
+	f.Add("& { git push -f }; $x = @\"\n$(gh pr merge 1)\n\"@ <# c #> 'a''b' \"`\"$(\" 2>&1 &")
 	r := Rules{On: true, Role: "thread", Rules: []string{"force-push", "push-default", "worktree-only", "delete-branch", "merge", "credentials"},
 		Home: "/h", Cwd: "/w", Writable: []string{"/w"}, Worktrees: "/h/wt", Protected: []string{"main"}, Secrets: []string{"/h/.ssh"},
-		Tools: map[string]Tool{"Bash": {KindShell, []string{"command"}}, "apply_patch": {KindPatch, []string{"command"}}, "Glob": {KindGlob, []string{"pattern"}}}}
+		Tools: map[string]Tool{"Bash": {Kind: KindShell, Fields: []string{"command"}}, "PowerShell": {Kind: KindShell, Syntax: SyntaxPowerShell, Fields: []string{"command"}},
+			"apply_patch": {Kind: KindPatch, Fields: []string{"command"}}, "Glob": {Kind: KindGlob, Fields: []string{"pattern"}}}}
 	f.Fuzz(func(t *testing.T, s string) {
 		r.Judge("Bash", map[string]any{"command": s})
+		r.Judge("PowerShell", map[string]any{"command": s})
 		r.Judge("apply_patch", map[string]any{"command": s})
 		r.Judge("Glob", map[string]any{"pattern": s})
 	})

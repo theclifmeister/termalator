@@ -186,7 +186,8 @@ func TestProbe(t *testing.T) {
 
 // TestGuard: PreToolUse keeps the tool's input through the hook's trim (so
 // the guard judges Bash and file tools with mods off), and the guard's
-// refusal is answered as a deny.
+// refusal is answered as a deny; a PowerShell command it can't read, as
+// an ask.
 func TestGuard(t *testing.T) {
 	a := load(t)
 	payload := a.Sources().Hook.Trim(map[string]any{
@@ -207,6 +208,22 @@ func TestGuard(t *testing.T) {
 	}
 	if !strings.Contains(string(res.Stdout), `"permissionDecision":"deny"`) {
 		t.Errorf("no deny: %s", res.Stdout)
+	}
+	for cmd, want := range map[string]string{
+		"gh pr merge 1":           `"permissionDecision":"deny","permissionDecisionReason":"terminatr guard (merge): `,
+		"Invoke-Expression $line": `"permissionDecision":"ask","permissionDecisionReason":"terminatr guard: it can't tell what this PowerShell command runs (invoke-expression), so it asks first."`,
+	} {
+		payload := a.Sources().Hook.Trim(map[string]any{
+			"hook_event_name": "PreToolUse", "session_id": "x", "tool_name": "PowerShell",
+			"tool_input": map[string]any{"command": cmd},
+		})
+		_, res, err := a.Hook(agent.HookEvent{Event: "PreToolUse", Payload: payload}, env)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(res.Stdout), want) {
+			t.Errorf("PowerShell %q: %s", cmd, res.Stdout)
+		}
 	}
 	if p := a.Sources().Hook.Trim(map[string]any{"hook_event_name": "PostToolUse", "tool_input": map[string]any{}}); p["tool_input"] != nil {
 		t.Error("tool_input kept beyond PreToolUse")
