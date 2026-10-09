@@ -424,3 +424,17 @@ func TestSocketAccess(t *testing.T) {
 		t.Errorf("windows: %v (spec %v)", got.Access.Write, spec.Access.Write)
 	}
 }
+
+// TestStateSourceFor: Windows keys carry the drive of the working directory.
+func TestStateSourceFor(t *testing.T) {
+	for _, c := range []struct{ cwd, goos, want string }{
+		{"/home/a", "linux", "/<session-flags>/config.toml"},
+		{`C:\Users\a\w`, "windows", `C:\<session-flags>\config.toml`},
+		{`D:\w`, "windows", `D:\<session-flags>\config.toml`},
+		{"", "windows", `C:\<session-flags>\config.toml`},
+	} {
+		if got := stateSourceFor(c.cwd, c.goos); got != c.want {
+			t.Errorf("stateSourceFor(%q, %s) = %q, want %q", c.cwd, c.goos, got, c.want)
+		}
+	}
+}

@@ -43,6 +43,21 @@ func hookTimeout(event string) int {
 // trust keys (codex-rs hooks discovery, 0.160).
 const stateSource = "/<session-flags>/config.toml"
 
+// stateSourceFor is that source as the session names it: on Windows
+// Codex makes the path absolute on the drive of its working directory, so
+// the trust key reads `C:\<session-flags>\config.toml:stop:0:0` and the
+// slash form stays untrusted (measured on Codex 0.162, T204).
+func stateSourceFor(cwd, goos string) string {
+	if goos != "windows" {
+		return stateSource
+	}
+	vol := "C:"
+	if len(cwd) >= 2 && cwd[1] == ':' && unicode.IsLetter(rune(cwd[0])) {
+		vol = cwd[:2]
+	}
+	return vol + `\<session-flags>\config.toml`
+}
+
 // Agent is the manifest agent with the session's hooks added to every
 // launch.
 type Agent struct {
@@ -68,7 +83,7 @@ func (a *Agent) Launch(spec agent.LaunchSpec) (agent.Launch, error) {
 	if err != nil {
 		return l, err
 	}
-	hooks, state, err := HookArgs(a.Events())
+	hooks, state, err := hookArgs(a.Events(), stateSourceFor(spec.Cwd, runtime.GOOS))
 	if err != nil {
 		return l, err
 	}
@@ -118,6 +133,10 @@ func (a *Agent) Events() []string { return a.m.HookEvents() }
 //	hooks={Stop=[{hooks=[{type="command",command="…",timeout=5}]}],…}
 //	hooks.state={"/<session-flags>/config.toml:stop:0:0"={trusted_hash="sha256:…"},…}
 func HookArgs(events []string) (hooks, state string, err error) {
+	return hookArgs(events, stateSource)
+}
+
+func hookArgs(events []string, source string) (hooks, state string, err error) {
 	var h, s []string
 	for _, ev := range events {
 		if !validEvent(ev) {
@@ -129,7 +148,7 @@ func HookArgs(events []string) (hooks, state string, err error) {
 		if err != nil {
 			return "", "", err
 		}
-		key := fmt.Sprintf("%s:%s:0:0", stateSource, snake(ev))
+		key := fmt.Sprintf("%s:%s:0:0", source, snake(ev))
 		s = append(s, fmt.Sprintf(`%s={trusted_hash=%s}`, agent.TOMLString(key), agent.TOMLString(sum)))
 	}
 	return "hooks={" + strings.Join(h, ",") + "}", "hooks.state={" + strings.Join(s, ",") + "}", nil
