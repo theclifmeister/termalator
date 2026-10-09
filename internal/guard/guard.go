@@ -7,12 +7,15 @@
 // (internal/agent/claude/mod/tests/guard-vectors.ts): change them
 // together.
 //
-// It only ever refuses: a call no rule matches goes on to the agent's
-// own permission check. Bash commands are split into simple commands on
-// ; & | && || newlines, $( ) and backticks, and read shell-style
-// (quotes, env assignments, sudo, git -C). That catches what agents
-// type; the sandbox and the permission rules stay the backstop for what
-// is written to hide.
+// It refuses, or for a PowerShell command it can't read, asks: a call no
+// rule matches goes on to the agent's own permission check. Bash
+// commands are split into simple commands on ; & | && || newlines, $( )
+// and backticks, and read shell-style (quotes, env assignments, sudo,
+// git -C). That catches what agents type; the sandbox and the permission
+// rules stay the backstop for what is written to hide. PowerShell
+// commands (powershell.go) have no sandbox behind them on Windows, so
+// what names its command by an expression, or evaluates a string, is put
+// to the human (or auto mode's classifier) instead.
 package guard
 
 import (
@@ -57,11 +60,20 @@ type Rules struct {
 }
 
 // Tool is what the guard knows of one of an agent's tools: its kind and
-// the fields of its input the kind reads.
+// the fields of its input the kind reads. A shell tool's Syntax is how
+// its command lines are read: "" for a POSIX shell, SyntaxPowerShell
+// for PowerShell (Claude's PowerShell tool on Windows).
 type Tool struct {
 	Kind   Kind     `json:"kind" toml:"kind"`
+	Syntax string   `json:"syntax,omitempty" toml:"syntax"`
 	Fields []string `json:"fields" toml:"fields"`
 }
+
+// SyntaxPowerShell: a shell tool whose command lines are PowerShell.
+const SyntaxPowerShell = "powershell"
+
+// Syntaxes are the syntaxes a manifest may give a shell tool.
+var Syntaxes = []string{SyntaxPowerShell}
 
 // Kind is what a tool does, as the guard judges it.
 type Kind string
@@ -87,11 +99,15 @@ var Kinds = []Kind{KindShell, KindWrite, KindPatch, KindRead, KindGlob}
 
 // Denial is a refusal: the rule, what the model reads, and a short
 // account for the journal that carries no text of the call beyond a
-// path or branch.
+// path or branch. With Ask it is no refusal but a question: the call is
+// one the guard can't read (rule "unknown"), so it goes to the agent's
+// dialog or classifier however its rules would allow it; Message is
+// the reason the dialog shows. An ask is not journaled.
 type Denial struct {
 	Rule    string `json:"rule"`
 	Message string `json:"message"`
 	Summary string `json:"summary"`
+	Ask     bool   `json:"ask,omitempty"`
 }
 
 // Judge is the rule the call of tool with input breaks, or nil. The
@@ -112,11 +128,21 @@ func (r Rules) Judge(tool string, input map[string]any) *Denial {
 	}
 	switch t.Kind {
 	case KindShell:
+		var ask *Denial
 		for _, c := range values {
-			if d := r.judgeBash(c); d != nil {
+			judge := r.judgeBash
+			if t.Syntax == SyntaxPowerShell {
+				judge = r.judgePowerShell
+			}
+			d := judge(c)
+			if d != nil && !d.Ask {
 				return d
 			}
+			if ask == nil {
+				ask = d
+			}
 		}
+		return ask
 	case KindWrite:
 		if !r.has("worktree-only") {
 			return nil
@@ -233,7 +259,7 @@ func (r Rules) judgeBash(command string) *Denial {
 			return d
 		}
 		if r.has("credentials") {
-			if d := r.judgeSecret(cmd, args, words); d != nil {
+			if d := r.judgeSecret(cmd, args, words, readers[cmd], printers[cmd]); d != nil {
 				return d
 			}
 		}
@@ -584,8 +610,12 @@ func truthy(args []string, name string) bool {
 	})
 }
 
-// readers print or copy what they are given.
-var readers = map[string]bool{}
+// readers print or copy what they are given; printers print their
+// arguments.
+var (
+	readers  = map[string]bool{}
+	printers = map[string]bool{"echo": true, "printf": true, "print": true}
+)
 
 func init() {
 	for _, c := range strings.Fields(`cat head tail less more bat nl tac cp mv scp rsync base64 xxd od
@@ -600,11 +630,14 @@ var (
 	// a secret.
 	secretName  = regexp.MustCompile(`(?i)token|secret|key|password|passwd|credential|(^|_)pat$`)
 	securityCmd = regexp.MustCompile(`^(find-(generic|internet)-password|dump-keychain|export)$`)
-	shellVar    = regexp.MustCompile(`\$\{?([A-Za-z_][A-Za-z0-9_]*)`)
-	azurePAT    = regexp.MustCompile(`(?i)^AZURE_DEVOPS_EXT_PAT$|^AZURE_DEVOPS_.*(PAT|TOKEN)$`)
+	// shellVar: a variable, $NAME or ${NAME}, or PowerShell's $env:NAME.
+	shellVar = regexp.MustCompile(`\$\{?(?:[Ee][Nn][Vv]:)?([A-Za-z_][A-Za-z0-9_]*)`)
+	azurePAT = regexp.MustCompile(`(?i)^AZURE_DEVOPS_EXT_PAT$|^AZURE_DEVOPS_.*(PAT|TOKEN)$`)
 )
 
-func (r Rules) judgeSecret(cmd string, args, words []string) *Denial {
+// judgeSecret: cmd (a reader or a printer of what it is given) reading a
+// secret or printing the environment.
+func (r Rules) judgeSecret(cmd string, args, words []string, reader, printer bool) *Denial {
 	if cmd == "security" && securityCmd.MatchString(at(args, 0)) {
 		return r.deny("credentials", "security "+at(args, 0), "")
 	}
@@ -627,10 +660,10 @@ func (r Rules) judgeSecret(cmd string, args, words []string) *Denial {
 		return r.deny("credentials", "env printing the environment", "")
 	}
 	// echo and the like given a secret variable ($AZURE_DEVOPS_EXT_PAT).
-	if cmd == "echo" || cmd == "printf" || cmd == "print" || readers[cmd] {
+	if printer || reader {
 		for _, w := range words {
-			if m := shellVar.FindStringSubmatch(w); m != nil && azurePAT.MatchString(m[1]) {
-				return r.deny("credentials", cmd+" of "+safe(m[1]), "")
+			if v := patVar(w); v != "" {
+				return r.deny("credentials", cmd+" of "+safe(v), "")
 			}
 		}
 	}
@@ -641,11 +674,22 @@ func (r Rules) judgeSecret(cmd string, args, words []string) *Denial {
 		if strings.HasPrefix(w, "<") && len(w) > 1 {
 			path = w[1:]
 		}
-		if (readers[cmd] || redirected) && !strings.HasPrefix(path, "-") && path != "<" && r.isSecret(r.abs(path)) {
+		if (reader || redirected) && !strings.HasPrefix(path, "-") && path != "<" && r.isSecret(r.abs(path)) {
 			return r.deny("credentials", cmd+" of "+safe(r.abs(path)), "")
 		}
 	}
 	return nil
+}
+
+// patVar is the Azure DevOps token variable w names ($AZURE_DEVOPS_EXT_PAT,
+// $env:AZURE_DEVOPS_EXT_PAT), or "".
+func patVar(w string) string {
+	for _, m := range shellVar.FindAllStringSubmatch(w, -1) {
+		if azurePAT.MatchString(m[1]) {
+			return m[1]
+		}
+	}
+	return ""
 }
 
 var substitution = regexp.MustCompile("\\$\\(([^)]*)\\)|`([^`]*)`")
@@ -796,15 +840,32 @@ func first(s []string, def string) string {
 	return def
 }
 
+// homes are what a path may start with for the home directory, case
+// aside: ~, $HOME, and PowerShell's $env:USERPROFILE and $env:HOME.
+var homes = []string{"~", "$home", "${home}", "$env:userprofile", "${env:userprofile}", "$env:home", "${env:home}"}
+
+// drive: a Windows path from its drive's root (C:/, or C: alone);
+// driveRoot: the root itself.
+var (
+	drive     = regexp.MustCompile(`^[A-Za-z]:(/|$)`)
+	driveRoot = regexp.MustCompile(`^[A-Za-z]:/?$`)
+)
+
+// slash is p with Windows' backslashes as slashes.
+func slash(p string) string { return strings.ReplaceAll(p, `\`, "/") }
+
 // abs is p made absolute and clean: ~ is home, a relative path is from
-// the session's folder.
+// the session's folder. A Windows path keeps its drive (C:/Users/me);
+// backslashes are slashes.
 func (r Rules) abs(p string) string {
-	if p == "~" || strings.HasPrefix(p, "~/") {
-		p = r.Home + p[1:]
-	} else if p == "$HOME" || strings.HasPrefix(p, "$HOME/") {
-		p = r.Home + p[5:]
+	p = slash(p)
+	for _, h := range homes {
+		if len(p) >= len(h) && strings.EqualFold(p[:len(h)], h) && (len(p) == len(h) || p[len(h)] == '/') {
+			p = slash(r.Home) + p[len(h):]
+			break
+		}
 	}
-	if !strings.HasPrefix(p, "/") {
+	if !strings.HasPrefix(p, "/") && !drive.MatchString(p) {
 		dir := r.Cwd
 		if dir == "" {
 			dir = "/"
@@ -812,7 +873,11 @@ func (r Rules) abs(p string) string {
 				dir = r.Writable[0]
 			}
 		}
-		p = dir + "/" + p
+		p = slash(dir) + "/" + p
+	}
+	root := "/"
+	if drive.MatchString(p) {
+		root, p = p[:2]+"/", p[2:]
 	}
 	var parts []string
 	for _, s := range strings.Split(p, "/") {
@@ -826,12 +891,13 @@ func (r Rules) abs(p string) string {
 			parts = append(parts, s)
 		}
 	}
-	return "/" + strings.Join(parts, "/")
+	return root + strings.Join(parts, "/")
 }
 
-// fold is p as paths are compared: case folded where the file system
-// ignores case.
+// fold is p as paths are compared: with slashes, and case folded where
+// the file system ignores case.
 func (r Rules) fold(p string) string {
+	p = slash(p)
 	if r.CaseFold {
 		return strings.ToLower(p)
 	}
@@ -863,8 +929,9 @@ func (r Rules) isSecret(p string) bool {
 	if fixed == "" {
 		fixed = "/"
 	}
+	root := fixed == "/" || driveRoot.MatchString(fixed)
 	return slices.ContainsFunc(r.Secrets, func(s string) bool {
-		return r.under(fixed, s) || (fixed != p && r.under(s, fixed) && fixed != "/" && r.fold(fixed) != r.fold(r.Home))
+		return r.under(fixed, s) || (fixed != p && r.under(s, fixed) && !root && r.fold(fixed) != r.fold(r.Home))
 	})
 }
 
@@ -892,7 +959,7 @@ func safe(s string) string {
 	var b strings.Builder
 	n := 0
 	for _, c := range s {
-		ok := c < 128 && (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.ContainsRune("._/~@+-", c))
+		ok := c < 128 && (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.ContainsRune("._/~@+:-", c))
 		w := 1
 		if c > 0xFFFF {
 			w = 2 // two UTF-16 units, as guard.ts counts them

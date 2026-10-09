@@ -198,8 +198,9 @@ func (s *Server) guardRoutes(mux *http.ServeMux, id string) {
 
 // hookGuardOf judges the tool calls session id's hooks report against
 // its rules (agent.HookEnv.Guard: agents without a mod, which answer
-// PreToolUse with the refusal) and records a refusal as POST /v1/denied
-// does. With a mod, the mod judges: nil.
+// PreToolUse with the refusal, or an ask) and records a refusal as POST
+// /v1/denied does; an ask is not recorded. With a mod, the mod judges:
+// nil.
 func (s *Server) hookGuardOf(id string, mod bool) func(string, map[string]any) *guard.Denial {
 	if mod {
 		return nil
@@ -212,7 +213,7 @@ func (s *Server) hookGuardOf(id string, mod bool) func(string, map[string]any) *
 			return nil
 		}
 		d := s.hookRules(rec).Judge(tool, input)
-		if d != nil {
+		if d != nil && !d.Ask {
 			s.guardDenied(rec, GuardDenial{Rule: d.Rule, Tool: tool, Summary: d.Summary})
 		}
 		return d

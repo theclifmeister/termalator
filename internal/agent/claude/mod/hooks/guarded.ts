@@ -3,7 +3,11 @@
 // so a refusal comes ahead of any dialog. A refused call returns the
 // rule's sentence as the tool's error, and the mod reports it to the
 // server (POST /v1/denied), which journals it and tells the coordinator.
-// A call no rule matches goes on to Claude's own checks.
+// A call no rule matches goes on to Claude's own checks. A PowerShell
+// command the guard can't read is let through tool.call and asked in
+// tool.check: a call Claude would allow goes to the dialog, or auto
+// mode's classifier, with the guard's reason; one it would ask about
+// or refuse keeps Claude's answer. An ask is not reported.
 //
 // The rules come from the server (GET /v1/rules), fetched at the first
 // call after a load and again once they are a minute old. Without the mod
@@ -24,19 +28,23 @@ let cached: { at: number; rules: Promise<Rules> } | null = null
 export function guard(on: On) {
   on('tool.call', async ($, e, next) => {
     const d = judge(await rulesNow($), e.tool, e as unknown as Record<string, unknown>)
-    if (!d) return next(e)
+    if (!d || d.ask) return next(e)
     void reportDenial($, e.tool, d)
     return { deny: d.message }
   }).catch(($, e, next) =>
     next.called ? next(e) : { deny: 'terminatr guard: the check of this call failed, so it was refused. Try again; if it keeps failing, say so.' },
   )
 
-  // What $.tool.check asks gets the same answer. A real call the guard
-  // refuses never gets here: tool.call refused it first.
+  // What $.tool.check asks gets the same answer, and a real call the
+  // guard asks about its question here. A real call the guard refuses
+  // never gets here: tool.call refused it first.
   on('tool.check', async ($, e, next) => {
     const input = e.input && typeof e.input === 'object' ? (e.input as Record<string, unknown>) : {}
     const d = judge(await rulesNow($), e.tool, input)
-    return d ? { decision: 'deny' as const, reason: d.message } : next(e)
+    if (!d) return next(e)
+    if (!d.ask) return { decision: 'deny' as const, reason: d.message }
+    const r = await next(e)
+    return r.decision === 'allow' ? { decision: 'ask' as const, reason: d.message } : r
   }).catch(() => ({ decision: 'deny' as const }))
 }
 
