@@ -72,7 +72,7 @@ type Deps struct {
 	// ThreadSandboxProbe checks an agent's thread sandbox on Windows
 	// (agent.ThreadSandboxProber); nil skips.
 	ThreadSandboxProbe func(agent.ThreadSandboxProber) (version string, err error)
-	GOOS         string
+	GOOS               string
 	// LookPath finds a program on PATH.
 	LookPath func(string) (string, error)
 	// Run runs a program in dir and returns its combined, trimmed output.
