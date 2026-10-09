@@ -31,6 +31,9 @@ export type TerminatrWatch = {
   needs_you: number
   inbox: number
   queued_prompts: number
+  // A coordinator's open questions (tm ask), which its band offers to
+  // open in the question dialog; absent for none.
+  questions?: number
 }
 
 // The session's turn as the mod's own events left it (hooks/turn.ts),

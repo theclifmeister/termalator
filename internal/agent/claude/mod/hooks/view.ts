@@ -18,6 +18,26 @@ export function bandShows(w: TerminatrWatch | null): w is TerminatrWatch {
   return shows(w) && w.task !== null
 }
 
+// questions counts the open questions a coordinator's band offers to
+// open (tm ask): 0 for a thread, an ended session, or none.
+export function questions(w: TerminatrWatch | null): number {
+  if (!w || w.session.state === 'exited' || w.session.role !== 'coordinator') return 0
+  return w.questions ?? 0
+}
+
+// questionsText is "2 questions waiting".
+export function questionsText(n: number): string {
+  return n === 1 ? '1 question waiting' : `${n} questions waiting`
+}
+
+// answeredText is the toast after a press on Answer: what `tm ask open`
+// did, from its exit code and output.
+export function answeredText(code: number | null, stderr: string): string {
+  if (code === 0) return 'Asked: your questions open in a dialog once the coordinator is free'
+  const why = stderr.trim().replace(/^tm ask: /, '').split('\n')[0]
+  return `Not asked: ${why || `tm ask open exited ${code}`}`
+}
+
 // waiting counts what waits for the user: the board's Needs you tasks
 // and the unhandled inbox items.
 export function waiting(w: TerminatrWatch): number {

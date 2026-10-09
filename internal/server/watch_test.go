@@ -172,3 +172,29 @@ func TestWatchStream(t *testing.T) {
 		t.Fatal("the stream didn't end with the session")
 	}
 }
+
+// TestWatchOfQuestions: a coordinator's Watch counts its open questions
+// (tm ask), for the band; a thread's never does.
+func TestWatchOfQuestions(t *testing.T) {
+	testPaths(t)
+	p := newWatchProject(t)
+	for _, q := range []string{"Which repo?", "Ship it?"} {
+		if _, err := p.AddQuestion(project.Question{Question: q, Options: []project.QuestionOption{{Label: "A"}, {Label: "B"}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	none := filepath.Join(t.TempDir(), "none.json")
+	coord := proto.SessionInfo{ID: "s-1", Role: proto.RoleCoordinator, Project: p.Slug, State: "idle"}
+	if w := watchOf(coord, none); w.Questions != 2 {
+		t.Errorf("coordinator questions %d", w.Questions)
+	}
+	if w := watchOf(proto.SessionInfo{ID: "s-2", Role: proto.RoleThread, Project: p.Slug}, none); w.Questions != 0 {
+		t.Errorf("thread questions %d", w.Questions)
+	}
+	if _, err := p.DoneQuestion("Q1"); err != nil {
+		t.Fatal(err)
+	}
+	if w := watchOf(coord, none); w.Questions != 1 {
+		t.Errorf("after done: %d", w.Questions)
+	}
+}
