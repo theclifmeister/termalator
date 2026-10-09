@@ -36,8 +36,9 @@ type AgentConfig struct {
 	// Home is the user's home directory, for status-file and snapshot
 	// path templates.
 	Home string
-	// Context renders the role's context for hook responses (§7.8).
-	Context func() ([]byte, error)
+	// Context renders the role's context for hook responses (§7.8), given
+	// the hook's payload (a SessionStart's source).
+	Context func(payload map[string]any) ([]byte, error)
 	// Guard judges a tool call a hook reports against the session's
 	// guard rules, for hook responses (agent.HookEnv.Guard).
 	Guard func(tool string, input map[string]any) *guard.Denial
@@ -352,7 +353,11 @@ func (s *Session) Hook(event string, payload map[string]any) (agent.HookResult, 
 		return agent.HookResult{}, nil
 	}
 	s.checkHook(rt, event, payload)
-	sigs, res, err := rt.a.Hook(ev, agent.HookEnv{Context: rt.cfg.Context, Guard: rt.cfg.Guard})
+	env := agent.HookEnv{Guard: rt.cfg.Guard}
+	if c := rt.cfg.Context; c != nil {
+		env.Context = func() ([]byte, error) { return c(payload) }
+	}
+	sigs, res, err := rt.a.Hook(ev, env)
 	rt.tr.Hook(ev, sigs)
 	if t := rt.src.JSONLTail; t != nil {
 		if p, ok := payload[t.PathField].(string); ok && p != "" && filepath.IsAbs(p) {
