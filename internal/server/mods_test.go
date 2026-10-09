@@ -102,3 +102,28 @@ func TestBandSetting(t *testing.T) {
 		}
 	}
 }
+
+// TestFeatureVersion: a launch is judged by the agent's version when its
+// manifest has [identify] features, and a feature it lacks is logged.
+func TestFeatureVersion(t *testing.T) {
+	featured := func(a agent.Agent) agent.Agent {
+		m := agent.ManifestOf(a)
+		m.Identify.Features = map[string]string{"sandbox": "2.1.290"}
+		return a
+	}
+	s, a, runs, buf := modsServer(t, false, "2.1.291")
+	if v := s.featureVersion(a, "s-1"); v != "" || *runs != 0 {
+		t.Fatalf("no features: version %q, runs %d", v, *runs)
+	}
+	if v := s.featureVersion(featured(a), "s-1"); v != "2.1.291" || buf.Len() != 0 {
+		t.Fatalf("2.1.291: version %q, log %q", v, buf.String())
+	}
+	s, a, _, buf = modsServer(t, false, "2.1.289")
+	if v := s.featureVersion(featured(a), "s-1"); v != "2.1.289" || !strings.Contains(buf.String(), "claude 2.1.289 is too old for sandbox (needs 2.1.290)") {
+		t.Fatalf("2.1.289: version %q, log %q", v, buf.String())
+	}
+	s, a, _, buf = modsServer(t, false, "garbage")
+	if v := s.featureVersion(featured(a), "s-1"); v != "" || !strings.Contains(buf.String(), "version unknown") || !strings.Contains(buf.String(), "without sandbox (needs 2.1.290)") {
+		t.Fatalf("garbage: version %q, log %q", v, buf.String())
+	}
+}

@@ -71,6 +71,11 @@ func agentCheck(d Deps, name, source string, m *agent.Manifest) Check {
 	default:
 		c.Status, c.Detail = OK, fmt.Sprintf("%s %s (tested)%s", path, v, src)
 	}
+	if miss := m.MissingFeatures(v); v != "" && len(miss) > 0 {
+		c.Status = Warn
+		c.Detail += fmt.Sprintf("; too old for %s, which tm then leaves out (the manifest's [identify] features); update %s",
+			strings.Join(miss, ", "), m.Display)
+	}
 	return c
 }
 

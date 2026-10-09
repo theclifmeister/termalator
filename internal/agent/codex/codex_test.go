@@ -177,7 +177,7 @@ func TestLaunch(t *testing.T) {
 	// profile tm with its cwd written by name and the network limited to
 	// the socket; yolo replaces auto-review and the profile.
 	spec = agent.LaunchSpec{
-		Role: "coordinator", Cwd: "/p", RuntimeDir: dir, TMBin: "/bin/tm", Socket: "/run/tm.sock",
+		Role: "coordinator", Cwd: "/p", RuntimeDir: dir, TMBin: "/bin/tm", Socket: "/run/tm.sock", Version: "0.160.0",
 		Access: agent.Access{Read: []string{"/p", "/h/worktrees/p"}, NoWriteFiles: []string{"/h/config.toml"}, Commands: []string{"gh pr merge"}},
 	}
 	l, err = a.Launch(spec)
@@ -198,6 +198,23 @@ func TestLaunch(t *testing.T) {
 	}
 	if _, err := toml.Decode(coord, &struct{}{}); err != nil {
 		t.Errorf("coordinator profile %s: %v", coord, err)
+	}
+	// A Codex older than coordinator_sandbox, or of unknown version,
+	// keeps the coordinator as before: auto-review, no profile.
+	for _, v := range []string{"0.145.9", ""} {
+		spec.Version = v
+		l, err = a.Launch(spec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Contains(l.Argv, "--approve-for-me") || slices.Contains(l.Argv, `default_permissions="tm"`) ||
+			slices.Contains(l.Argv, "features.network_proxy=true") || slices.Contains(l.Argv, coord) {
+			t.Errorf("coordinator on Codex %q: argv %q", v, l.Argv)
+		}
+	}
+	spec.Version = "0.146.0"
+	if l, _ = a.Launch(spec); !slices.Contains(l.Argv, coord) {
+		t.Errorf("coordinator on Codex 0.146.0 lacks the profile: %q", l.Argv)
 	}
 	spec.Yolo = true
 	l, _ = a.Launch(spec)

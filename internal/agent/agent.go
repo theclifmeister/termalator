@@ -44,6 +44,9 @@ type LaunchSpec struct {
 	Resume     bool   // resume AgentSID instead of starting fresh; AgentSID must be set
 	Yolo       bool   // skip the agent's own permission prompts (project setting)
 	Model      string // optional; "" is the manifest's default model
+	// Version is the agent binary's version, "" when unknown; the
+	// manifest's [identify] features are judged by it.
+	Version string
 	// AgentDefault passes no model when Model is "": the user's catalog
 	// (config.toml default_model = "") wants the agent's own default, not
 	// the manifest's.

@@ -152,6 +152,27 @@ func TestAgentVersions(t *testing.T) {
 	}
 }
 
+// TestAgentFeatures: a Codex older than one of its manifest's [identify]
+// features is a warning naming the feature and its version.
+func TestAgentFeatures(t *testing.T) {
+	for _, tc := range []struct {
+		version string
+		want    Status
+		detail  string
+	}{
+		{"codex-cli 0.160.0", OK, "0.160.0 (tested)"},
+		{"codex-cli 0.145.0", Warn, "too old for coordinator_sandbox (needs 0.146.0)"},
+	} {
+		d := testDeps(t)
+		d.LookPath = func(n string) (string, error) { return "/bin/" + n, nil }
+		d.Run = func(dir, name string, args ...string) (string, error) { return tc.version, nil }
+		c := find(Agents(d), "codex")
+		if len(c) != 1 || c[0].Status != tc.want || !strings.Contains(c[0].Detail, tc.detail) {
+			t.Errorf("%q: %+v", tc.version, c)
+		}
+	}
+}
+
 func TestGHAuth(t *testing.T) {
 	d := testDeps(t)
 	d.LookPath = func(n string) (string, error) { return "/bin/" + n, nil }

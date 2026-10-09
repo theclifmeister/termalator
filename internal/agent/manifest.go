@@ -42,6 +42,13 @@ type Manifest struct {
 		// files work with (tested_versions is a prefix and can't say it);
 		// tm doctor warns below it. Empty: no minimum.
 		MinVersion string `toml:"min_version"`
+		// Features names the launch features that need a newer agent
+		// than min_version, each with the oldest version known to have
+		// it. Launch templates read .Features.<name>, true only when the
+		// agent's version is known and at least that, so an older or
+		// unknown agent gets the fallback the template gives; the server
+		// logs it and tm doctor warns.
+		Features map[string]string `toml:"features"`
 	} `toml:"identify"`
 
 	Launch struct {
@@ -445,6 +452,11 @@ func (m *Manifest) validate() error {
 	if m.Launch.Command == "" {
 		errs = append(errs, errors.New("launch.command is empty"))
 	}
+	for name, v := range m.Identify.Features {
+		if ParseVersion(v) != v {
+			errs = append(errs, fmt.Errorf("identify.features.%s: %q is not a version", name, v))
+		}
+	}
 	if m.Launch.Command != "" && strings.ContainsAny(m.Launch.Command, " \t") {
 		errs = append(errs, errors.New("launch.command must be one program; put arguments in launch.args"))
 	}
@@ -655,11 +667,36 @@ func (a *manifestAgent) Identify(p ProcessInfo) bool {
 	return false
 }
 
-// launchData is what launch templates see: the LaunchSpec's fields and
-// the manifest's .HookEvents.
+// launchData is what launch templates see: the LaunchSpec's fields, the
+// manifest's .HookEvents, and .Features, which of [identify] features
+// the agent's version has.
 type launchData struct {
 	LaunchSpec
 	HookEvents []string
+	Features   map[string]bool
+}
+
+// FeaturesAt is which of the manifest's [identify] features an agent of
+// version v has: none when v is unknown ("").
+func (m *Manifest) FeaturesAt(v string) map[string]bool {
+	out := make(map[string]bool, len(m.Identify.Features))
+	for name, min := range m.Identify.Features {
+		out[name] = v != "" && VersionAtLeast(v, min)
+	}
+	return out
+}
+
+// MissingFeatures lists, sorted, the manifest's features an agent of
+// version v lacks, as "name (needs min)".
+func (m *Manifest) MissingFeatures(v string) []string {
+	var out []string
+	for name, ok := range m.FeaturesAt(v) {
+		if !ok {
+			out = append(out, name+" (needs "+m.Identify.Features[name]+")")
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // HookEvents are the hook events the manifest names, in manifest order,
@@ -702,7 +739,7 @@ func (a *manifestAgent) Launch(spec LaunchSpec) (Launch, error) {
 	if spec.Model == "" && !spec.AgentDefault {
 		spec.Model = a.m.DefaultModel() // none chosen: the manifest's default
 	}
-	data := launchData{spec, a.m.HookEvents()}
+	data := launchData{spec, a.m.HookEvents(), a.m.FeaturesAt(spec.Version)}
 	argv := []string{l.Command}
 	add := func(tmpls []string) error {
 		for _, t := range tmpls {
