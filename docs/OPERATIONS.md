@@ -28,7 +28,13 @@ tm doctor
 
 - **macOS:** the binary links only system libraries (libSystem, libresolv and, depending on the Go release, CoreFoundation). It is signed with a Developer ID (hardened runtime) and notarised. A bare binary can't carry a stapled ticket, so Gatekeeper checks the notarisation online the first time it meets a quarantined copy (one a browser downloaded); with no network that first run is refused. curl and Homebrew set no quarantine flag, so they never ask.
 - **Linux:** glibc 2.28 or later (Debian 10, Ubuntu 18.10, RHEL 8 and newer); musl is not supported.
-- **Windows (amd64, arm64):** `tm_windows_<arch>.zip` holds `tm.exe` with Microsoft's `conpty.dll` and `OpenConsole.exe` beside it (keep the three together; they give every Windows version the same console behaviour). The exe is not code-signed, so SmartScreen may warn on a browser download. Windows support is being built up in steps; the archive is built and checked by the release, but `tm` does not run sessions on Windows yet.
+- **Windows (amd64, arm64):** `tm_windows_<arch>.zip` holds `tm.exe` with Microsoft's `conpty.dll` and `OpenConsole.exe` beside it (keep the three together; they give every Windows version the same console behaviour). The exe is not code-signed, so SmartScreen may warn on a browser download. Windows support is being built up in steps; the archive is built and checked by the release, but `tm` does not run sessions on Windows yet. To install the latest in PowerShell, with no admin rights:
+
+  ```powershell
+  irm https://github.com/theclifmeister/terminatr/releases/latest/download/install.ps1 | iex
+  ```
+
+  `scripts/install.ps1` downloads the zip for your PC, checks it against `checksums.txt`, puts the three files in `%LOCALAPPDATA%\Programs\terminatr` and adds that folder to your user PATH. Save it to pass options: `-Version v0.5.0`, `-Dir <folder>`, `-Service` (also start at login), `-NoPath`. Running it again upgrades, also while `tm` runs: a file in use can be renamed but not overwritten, so the old one moves aside (`tm.exe.old-<time>`) and is deleted by the next install or `tm update`. If a file can't be replaced it says so and changes nothing.
 - **Runtime:** git, and the agents you use (Claude Code, Codex; see [CODEX.md](CODEX.md)). For threads' sandbox Claude needs `bwrap` and `socat` on Linux. `tm doctor` checks all of these.
 
 To build from source instead, see the [Contributing](../CONTRIBUTING.md#build). How releases are made: [Releasing](#releasing).
@@ -175,6 +181,7 @@ Any `tm` command starts the server when needed, so you don't need a service. If 
 - `tm server service uninstall` unloads and removes the file. That cleanly stops a server the service started, so the next server resumes its agents.
 - `--print` shows the file without installing anything.
 - On Linux a user service stops at logout unless lingering is on (`loginctl enable-linger`).
+- On Windows it adds a value to your `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` key (named `dev.terminatr.server`; Task Manager's Startup tab lists it and can switch it off), which runs `tm.exe server start` at each login. It needs no admin rights and starts nothing now; any `tm` command still starts the server when needed. A console window shows for an instant at login. `uninstall` deletes the value.
 
 ## Code hosts: GitHub and Azure DevOps
 
@@ -217,7 +224,7 @@ Without the CLI and a login (or a PAT for Azure DevOps), that host's PRs are not
 - how `tm` was installed (Homebrew, a direct download, or built from source) and whether a newer release exists, with the command that updates it;
 - the server: running and answering, the same build as this `tm` (a server of an older protocol is a warning; `tm doctor --fix` restarts it, agents are resumed), on macOS whether its sessions can reach the keychain (not when it was started over SSH without launchd; see [Over SSH](#over-ssh-macos)), a previous crash, stale `tm.sock`, `server.pid` and session runtime dirs (it never starts a server);
 - each agent's installed version, beside the version its manifest was last tested with (information: a newer agent is supported, and tm logs any change it runs into as `agent drift`, docs/SPEC.md §8.8), and a warning below the oldest version tm's generated files work with (`min_version`);
-- the sandbox tools Claude needs for threads: `sandbox-exec` on macOS, `bwrap` and `socat` on Linux, and on Linux that an unprivileged process may map a user namespace, which bwrap needs (Ubuntu 24.04 restricts it by default: `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`, or an AppArmor profile for bwrap); without it a Codex thread's every command fails;
+- the sandbox tools Claude needs for threads: `sandbox-exec` on macOS, `bwrap` and `socat` on Linux, and on Linux that an unprivileged process may map a user namespace, which bwrap needs (Ubuntu 24.04 restricts it by default: `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`, or an AppArmor profile for bwrap); without it a Codex thread's every command fails; on Windows, that a Codex thread's sandbox applies and reaches tm's socket (`codex thread sandbox`, a probe run inside a thread's profile; see [CODEX.md](CODEX.md));
 - Claude plugins you have enabled that are known to be unsafe in terminatr's sessions (from `claude plugin list --json`), each with the reason and the `claude plugin disable` command; today `worktrees@supermods`, whose "Remove N finished" removes a fresh thread's clean worktree. A warning only: doctor never disables a plugin;
 - a session whose queued prompts are held while its agent is idle (`prompt queue`: text left in its prompt box, or a dialog), which also holds a coordinator's nudges;
 - leftovers: worktrees under `~/.terminatr/worktrees` whose thread is resolved or gone, and `tm/<project>/…` branches already merged into the default branch;
@@ -244,6 +251,7 @@ tm update --check    # only says whether there is one
 ```
 
 - **Direct install:** `tm update` downloads the archive for your platform, checks it against `checksums.txt` and, on macOS, checks its Developer ID signature with `codesign`, then replaces `tm` in one rename. It needs to write to the directory `tm` is in. `--yes` skips the question (and is needed without a terminal).
+- **Windows:** `tm update` downloads the zip and replaces `tm.exe`, `conpty.dll` and `OpenConsole.exe` by renaming each old file to `<name>.old-<time>` and the new one into its name (a running exe can be renamed, not overwritten), so it works while `tm` and its server run; the old files are deleted by the next `tm update` once nothing runs them. If a file can't be replaced, `tm update` names the processes that hold it (the Restart Manager's list) and restores the files it had replaced; close them and run it again.
 - **Homebrew:** `tm update` never touches Homebrew's files: it shows `brew upgrade terminatr` and runs it if you say yes.
 - **Built from source:** `tm update` refuses; `git pull && make`.
 
@@ -315,6 +323,8 @@ tm server stop --yes
 rm "$(command -v tm)"
 rm -rf ~/.terminatr          # all projects, tasks, reports and thread worktrees: keep a copy if you want them
 ```
+
+On Windows, after `tm server service uninstall` and `tm server stop --yes`, delete the install folder (`%LOCALAPPDATA%\Programs\terminatr` for `install.ps1`), remove it from your user PATH and delete `%LOCALAPPDATA%\terminatr`.
 
 Thread branches (`tm/<project>/…`) live in your repositories and are not removed by this; `tm doctor --fix` before uninstalling deletes the merged ones.
 

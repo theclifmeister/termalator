@@ -872,3 +872,26 @@ func TestSandboxWindows(t *testing.T) {
 		t.Fatalf("windows: %+v", cs)
 	}
 }
+
+type fakeThreadProber struct{}
+
+func (fakeThreadProber) ProbeThreadSandbox(string) (string, error) { return "", nil }
+
+// TestThreadSandboxCheck: where Codex's sandbox needs a setup (Windows),
+// a thread sandbox that doesn't hold is a warning that points at it.
+func TestThreadSandboxCheck(t *testing.T) {
+	m := &agent.Manifest{Display: "Codex"}
+	m.Launch.Command = "codex"
+	d := testDeps(t)
+	d.ThreadSandboxProbe = func(agent.ThreadSandboxProber) (string, error) {
+		return "0.162.0", errors.New("codex sandbox refused it: setup required")
+	}
+	c := threadSandboxCheck(d, "codex", m, fakeThreadProber{})
+	if c.Status != Warn || c.Name != "codex thread sandbox" || !strings.Contains(c.Detail, "codex 0.162.0: the thread sandbox doesn't hold (codex sandbox refused it") || !strings.Contains(c.Detail, "runs without it or asks approval for every command") {
+		t.Errorf("%+v", c)
+	}
+	d.ThreadSandboxProbe = func(agent.ThreadSandboxProber) (string, error) { return "0.162.0", nil }
+	if c = threadSandboxCheck(d, "codex", m, fakeThreadProber{}); c.Status != OK || !strings.Contains(c.Detail, "reach tm's socket") {
+		t.Errorf("%+v", c)
+	}
+}

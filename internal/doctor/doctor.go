@@ -69,7 +69,10 @@ type Deps struct {
 	// SandboxProbe checks an agent's coordinator sandbox on the installed
 	// agent (agent.SandboxProber); nil skips.
 	SandboxProbe func(agent.SandboxProber) (version string, err error)
-	GOOS         string
+	// ThreadSandboxProbe checks an agent's thread sandbox on Windows
+	// (agent.ThreadSandboxProber); nil skips.
+	ThreadSandboxProbe func(agent.ThreadSandboxProber) (version string, err error)
+	GOOS               string
 	// LookPath finds a program on PATH.
 	LookPath func(string) (string, error)
 	// Run runs a program in dir and returns its combined, trimmed output.

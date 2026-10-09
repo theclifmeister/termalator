@@ -39,8 +39,29 @@ func Agents(d Deps) []Check {
 		if p, ok := a.(agent.SandboxProber); ok && d.SandboxProbe != nil && !strings.Contains(c.Detail, "not found on PATH") {
 			out = append(out, sandboxCheck(d, name, m, p))
 		}
+		if p, ok := a.(agent.ThreadSandboxProber); ok && d.GOOS == "windows" && d.ThreadSandboxProbe != nil && !strings.Contains(c.Detail, "not found on PATH") {
+			out = append(out, threadSandboxCheck(d, name, m, p))
+		}
 	}
 	return out
+}
+
+// threadSandboxCheck runs the agent's thread sandbox probe on Windows,
+// where Codex's sandbox is a separate piece (docs/CODEX.md): a thread whose
+// sandbox doesn't hold can't reach tm's socket.
+func threadSandboxCheck(d Deps, name string, m *agent.Manifest, p agent.ThreadSandboxProber) Check {
+	c := Check{Group: "agents", Name: name + " thread sandbox"}
+	v, err := d.ThreadSandboxProbe(p)
+	if v == "" {
+		v = "(version unknown)"
+	}
+	if err != nil {
+		c.Status = Warn
+		c.Detail = fmt.Sprintf("%s %s: the thread sandbox doesn't hold (%v); a %s thread runs without it or asks approval for every command (docs/CODEX.md)", m.Launch.Command, v, err, m.Display)
+		return c
+	}
+	c.Status, c.Detail = OK, fmt.Sprintf("%s %s: a thread's commands run sandboxed and reach tm's socket", m.Launch.Command, v)
+	return c
 }
 
 // sandboxCheck runs the agent's coordinator sandbox probe: a newer Codex

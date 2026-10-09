@@ -2,11 +2,14 @@ package update
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +17,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/theclifmeister/terminatr/internal/plat/proc"
 )
 
 func TestNewer(t *testing.T) {
@@ -48,7 +53,9 @@ func TestDetect(t *testing.T) {
 	os.WriteFile(filepath.Join(keg, "tm"), nil, 0o755)
 	os.MkdirAll(filepath.Join(dir, "bin"), 0o755)
 	link := filepath.Join(dir, "bin", "tm")
-	os.Symlink(filepath.Join(keg, "tm"), link)
+	if err := os.Symlink(filepath.Join(keg, "tm"), link); err != nil {
+		t.Skipf("no symlinks here: %v", err)
+	}
 	plain := filepath.Join(dir, "local", "tm")
 
 	if in := Detect(link, "release"); in.Method != Homebrew || !strings.HasSuffix(in.Path, "/Cellar/terminatr/0.2.0/bin/tm") || in.Upgrade != "brew upgrade terminatr" {
@@ -131,16 +138,17 @@ func TestDownload(t *testing.T) {
 		t.Fatalf("Latest: %+v %v", r, err)
 	}
 	dir := t.TempDir()
-	tmp, err := c.Download(context.Background(), r, "linux", "amd64", dir)
+	staged, err := c.Download(context.Background(), r, "linux", "amd64", dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b, _ := os.ReadFile(tmp); string(b) != "new binary" || filepath.Dir(tmp) != dir {
-		t.Fatalf("extracted %q into %s", b, tmp)
+	tmp := staged.Program()
+	if b, _ := os.ReadFile(tmp); string(b) != "new binary" || filepath.Dir(tmp) != dir || len(staged) != 1 {
+		t.Fatalf("extracted %q into %s (%d files)", b, tmp, len(staged))
 	}
 	dst := filepath.Join(dir, "tm")
 	os.WriteFile(dst, []byte("old"), 0o700)
-	if err := Replace(tmp, dst); err != nil {
+	if err := staged.Install(dir); err != nil {
 		t.Fatal(err)
 	}
 	if b, _ := os.ReadFile(dst); string(b) != "new binary" {
@@ -246,5 +254,106 @@ func TestCachedLatest(t *testing.T) {
 	}
 	if _, err := CachedLatest(context.Background(), c, path, later.Add(time.Hour)); err != nil {
 		t.Errorf("a failed check is not retried within the day: %v", err)
+	}
+}
+
+// Zip builds a Windows release archive holding files (name → content).
+func Zip(t testing.TB, files map[string]string) []byte {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, body := range files {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		io.WriteString(w, body)
+	}
+	zw.Close()
+	return buf.Bytes()
+}
+
+func TestExtractWindowsZip(t *testing.T) {
+	if got := ArchiveName("windows", "arm64"); got != "tm_windows_arm64.zip" {
+		t.Fatalf("ArchiveName = %q", got)
+	}
+	dir := t.TempDir()
+	full := Zip(t, map[string]string{"tm.exe": "exe", "conpty.dll": "dll", "OpenConsole.exe": "oc", "LICENSE": "x", "docs/tm.exe": "no"})
+	b, err := extract(full, "windows", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, s := range b {
+		got, _ := os.ReadFile(s.Path)
+		names = append(names, s.Name+"="+string(got))
+	}
+	if strings.Join(names, " ") != "tm.exe=exe conpty.dll=dll OpenConsole.exe=oc" {
+		t.Errorf("staged %v", names)
+	}
+	b.Remove()
+	if es, _ := os.ReadDir(dir); len(es) != 0 {
+		t.Errorf("Remove left %d files", len(es))
+	}
+	// A zip without the ConPTY files is not a release.
+	if _, err := extract(Zip(t, map[string]string{"tm.exe": "exe"}), "windows", dir); err == nil || !strings.Contains(err.Error(), "conpty.dll") {
+		t.Errorf("zip without conpty.dll: %v", err)
+	}
+	if es, _ := os.ReadDir(dir); len(es) != 0 {
+		t.Errorf("a failed extract left %d files", len(es))
+	}
+}
+
+func TestInstallBundle(t *testing.T) {
+	dir := t.TempDir()
+	for _, n := range Files("windows") {
+		os.WriteFile(filepath.Join(dir, n), []byte("old "+n), 0o755)
+	}
+	b, err := extract(Zip(t, map[string]string{"tm.exe": "new", "conpty.dll": "new", "OpenConsole.exe": "new"}), "windows", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Install(dir); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range Files("windows") {
+		if got, _ := os.ReadFile(filepath.Join(dir, n)); string(got) != "new" {
+			t.Errorf("%s holds %q", n, got)
+		}
+	}
+	CleanOld(dir, "windows")
+	es, _ := os.ReadDir(dir)
+	if len(es) != 3 {
+		t.Errorf("after CleanOld: %d files", len(es))
+	}
+}
+
+// A file that can't be replaced undoes the ones already in, and the error
+// names the file.
+func TestInstallRollsBack(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "conpty.dll"), []byte("old"), 0o755)
+	os.WriteFile(filepath.Join(dir, "tm.exe"), []byte("old"), 0o755)
+	blockReplace(t, filepath.Join(dir, "OpenConsole.exe"))
+	b, err := extract(Zip(t, map[string]string{"tm.exe": "new", "conpty.dll": "new", "OpenConsole.exe": "new"}), "windows", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = b.Install(dir)
+	var be *BusyError
+	if !errors.As(err, &be) || filepath.Base(be.Path) != "OpenConsole.exe" {
+		t.Fatalf("Install: %v, want a BusyError for OpenConsole.exe", err)
+	}
+	for _, n := range []string{"tm.exe", "conpty.dll"} {
+		if got, _ := os.ReadFile(filepath.Join(dir, n)); string(got) != "old" {
+			t.Errorf("%s holds %q after the failure", n, got)
+		}
+	}
+}
+
+func TestBusyErrorText(t *testing.T) {
+	e := &BusyError{Path: `C:\tm\tm.exe`, Err: errors.New("sharing violation"), Holders: []proc.Holder{{PID: 12, Name: "Explorer"}}}
+	want := `can't replace C:\tm\tm.exe: sharing violation; in use by Explorer (pid 12) (close it and try again)`
+	if e.Error() != want {
+		t.Errorf("%q", e.Error())
 	}
 }

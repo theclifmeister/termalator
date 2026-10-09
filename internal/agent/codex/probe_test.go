@@ -79,3 +79,41 @@ func TestProfileFlags(t *testing.T) {
 		t.Errorf("no profile: %v", idx)
 	}
 }
+
+// TestProbeMainWrite: with a third argument the probe reports whether
+// the write was denied, and removes the file when it wasn't.
+func TestProbeMainWrite(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix sockets")
+	}
+	dir := t.TempDir()
+	sock := filepath.Join(dir, "s")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	probe := func(path string) string {
+		r, w, _ := os.Pipe()
+		stdout := os.Stdout
+		os.Stdout = w
+		code := ProbeMain([]string{sock, "127.0.0.1:1", path})
+		os.Stdout = stdout
+		w.Close()
+		out := make([]byte, 100)
+		n, _ := r.Read(out)
+		if code != 0 {
+			t.Errorf("code %d", code)
+		}
+		return strings.TrimSpace(string(out[:n]))
+	}
+	if got := probe(filepath.Join(dir, "f")); got != "unix=ok write=ok" {
+		t.Errorf("writable = %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "f")); err == nil {
+		t.Error("the probe left its file")
+	}
+	if got := probe(filepath.Join(dir, "no", "such", "f")); got != "unix=ok write=denied" {
+		t.Errorf("unwritable = %q", got)
+	}
+}
