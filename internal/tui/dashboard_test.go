@@ -888,9 +888,43 @@ func TestVersionHint(t *testing.T) {
 		t.Errorf("other build: %q", h)
 	}
 	if v := serverVersion(other); !strings.Contains(v, "v0.1.0") || !strings.Contains(v, "(tm "+version.Version+")") {
-		t.Errorf("header: %q", v)
+		t.Errorf("footer: %q", v)
 	}
 	if v := serverVersion(own); strings.Contains(v, "(tm") {
-		t.Errorf("header for the same version: %q", v)
+		t.Errorf("footer for the same version: %q", v)
+	}
+	if f := sideFoot(other, 31); len(f) != 2 || f[1] != versionHintShort(other) {
+		t.Errorf("narrow footer %q", f)
+	}
+	if f := sideFoot(other, 120); len(f) != 2 || f[1] != versionHint(other) {
+		t.Errorf("wide footer %q", f)
+	}
+	if f := sideFoot(other, sideSlim); f != nil {
+		t.Errorf("slim footer %q", f)
+	}
+	if f := sideFoot(ServerInfo{}, 31); f != nil {
+		t.Errorf("old server footer %q", f)
+	}
+}
+
+// The version is in the sidebar's last lines, not the header; settings
+// say it in an About line.
+func TestVersionPlaces(t *testing.T) {
+	src := &fakeSource{data: testData()}
+	m := newDash(DashOptions{Source: src, Width: 120 + sideDefault, Height: 30, State: DashState{Current: "beta"}})
+	d := src.data
+	d.ServerOK, d.UpdateCheck = true, true
+	d.Server = ServerInfo{Version: "v9.9.9", Build: version.BuildID()}
+	m.setData(d)
+	lines := strings.Split(ansi.Strip(whole(m)), "\n")
+	if strings.Contains(lines[0], "v9.9.9") || !strings.Contains(lines[0], "server ok") {
+		t.Errorf("header %q", lines[0])
+	}
+	if last := lines[len(lines)-1]; !strings.Contains(last, "v9.9.9") {
+		t.Errorf("sidebar footer %q", last)
+	}
+	m.openSettings()
+	if s := ansi.Strip(whole(m)); !strings.Contains(s, "About: tm "+version.Version+" · server v9.9.9 · update check on") {
+		t.Errorf("settings:\n%s", s)
 	}
 }

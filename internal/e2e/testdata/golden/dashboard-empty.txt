@@ -1,4 +1,4 @@
- PROJECTS                      │ tm dashboard                         ● server ok · 0 sessions · dev
+ PROJECTS                      │ tm dashboard                               ● server ok · 0 sessions
  no projects                   │  no projects; n creates one
                                │ OTHER SESSIONS ────────────────────────────────────────────────────
                                │  no sessions
@@ -21,4 +21,4 @@
                                │
                                │────────────────────────────────────────────────────────────────────
                                │ ≡ menu · n new project · , settings · ? help · prefix+q quit
-                               │
+ dev                           │
