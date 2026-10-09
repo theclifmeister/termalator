@@ -11,7 +11,6 @@ package fsx
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -83,10 +82,12 @@ func tempName(path string) (string, error) {
 	return filepath.Join(filepath.Dir(path), "."+filepath.Base(path)+".tmp-"+hex.EncodeToString(b)), nil
 }
 
-// syncFile flushes path to disk. It opens path read-only, which fsync
-// allows on Unix: create may make tmp a hard link to a read-only file.
+// syncFile flushes path to disk. It opens path the way the platform's
+// flush allows (openSync): read-only on Unix, where create may make tmp a
+// hard link to a read-only file; writable on Windows, whose FlushFileBuffers
+// needs write access.
 func syncFile(path string) error {
-	f, err := os.Open(path)
+	f, err := openSync(path)
 	if err != nil {
 		return err
 	}
@@ -95,12 +96,6 @@ func syncFile(path string) error {
 		err = cerr
 	}
 	return err
-}
-
-// rename moves tmp over path. Windows (later) retries it while another
-// process has path open without FILE_SHARE_DELETE.
-func rename(tmp, path string) error {
-	return os.Rename(tmp, path)
 }
 
 // EnsurePrivateDir creates dir (mode 0700) if needed, then CheckPrivate.
@@ -119,31 +114,13 @@ func CheckPrivate(dir string) error {
 	if err != nil {
 		return err
 	}
+	if isLink(fi) {
+		return fmt.Errorf("%s is a link, not a directory", dir)
+	}
 	if !fi.IsDir() {
 		return fmt.Errorf("%s is not a directory", dir)
 	}
-	if uid, ok := owner(fi); ok && uid != os.Getuid() {
-		return fmt.Errorf("%s is owned by uid %d, not %d", dir, uid, os.Getuid())
-	}
-	if fi.Mode().Perm()&0o077 != 0 {
-		return fmt.Errorf("%s has mode %04o, want 0700 (chmod 700 %s)", dir, fi.Mode().Perm(), dir)
-	}
-	return nil
-}
-
-// LinkRoleFile makes dir/name point at the role file target in the same
-// directory, so an agent that reads name reads target: a relative
-// symlink. An existing link to target is kept; anything else at name is
-// replaced.
-func LinkRoleFile(dir, name, target string) error {
-	link := filepath.Join(dir, name)
-	if t, err := os.Readlink(link); err == nil && t == target {
-		return nil
-	}
-	if err := os.Remove(link); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
-	}
-	return os.Symlink(target, link)
+	return checkOwnerMode(dir, fi)
 }
 
 // Canonical is p absolute, cleaned and with its symlinks resolved; the

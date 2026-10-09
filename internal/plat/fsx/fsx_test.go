@@ -145,8 +145,12 @@ func TestLinkRoleFile(t *testing.T) {
 		if err := LinkRoleFile(dir, "CLAUDE.md", "AGENTS.md"); err != nil {
 			t.Fatal(err)
 		}
-		if b, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md")); string(b) != "role" {
-			t.Fatalf("CLAUDE.md reads %q", b)
+		want := "role"
+		if runtime.GOOS == "windows" {
+			want = "@AGENTS.md\n" // an import line, not a symlink
+		}
+		if b, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md")); string(b) != want {
+			t.Fatalf("CLAUDE.md reads %q, want %q", b, want)
 		}
 	}
 }
