@@ -1175,8 +1175,6 @@ func (m *dash) frame(title string, body []string, sel int, keys string) string {
 	foot = append(foot, fit(" "+keysLine(keys), m.w)+reset)
 	msg := " " + oneLine(m.msg)
 	switch {
-	case m.msg == "" && !m.busy && m.loaded && versionHint(m.data.Server) != "":
-		msg = styleFaint.Render(" " + versionHint(m.data.Server))
 	case m.busy:
 		msg = styleFaint.Render(" working…")
 	case m.msg != "" && m.msg == m.errMsg:
