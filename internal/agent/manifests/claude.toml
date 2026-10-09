@@ -3,14 +3,14 @@
 # Verified against Claude Code 2.1.289 on macOS by the integration spike
 # (t-0004, docs/research/claude.md) and the symlink spike (t-0005).
 # Several sources below are undocumented by Anthropic (the session status
-# file, the task snapshot dir); they are trusted only for tested_versions
-# and the core falls back to hooks, transcript and screen otherwise.
+# file, the task snapshot dir): any version is trusted, and what it
+# writes is checked instead (an unknown status distrusts the file); the
+# core falls back to hooks, transcript and screen (docs/SPEC.md §8.8).
 
 manifest_version = 1
 name = "claude"
 display = "Claude Code"
 role_files = ["CLAUDE.md"]
-tested_versions = ["2.1."]
 
 # Read from every hook event, latest wins: /clear rotates Claude's id.
 session_field = "session_id"
@@ -22,9 +22,13 @@ ignore_fields = ["agent_id"]
 [identify]
 argv0 = ["claude"]
 version_args = ["--version"]
-# Exec-form hooks (command + args) need Claude Code 2.1.139; tested_versions'
-# 2.1. prefix can't say so. tm doctor warns below this.
+# Exec-form hooks (command + args) need Claude Code 2.1.139. tm doctor
+# warns below this.
 min_version = "2.1.139"
+min_version_why = "exec-form hooks need 2.1.139: on older versions the hooks don't run and threads lose hook state"
+# Information only, never a gate: a newer Claude is supported until
+# something breaks, and tm logs the drift it sees (docs/SPEC.md §8.8).
+last_tested = "2.1.295"
 
 [launch]
 command = "claude"
@@ -74,8 +78,7 @@ template = '''
 
 # Every event goes to `tm hook --agent claude`: a command hook in exec form
 # ("command" is the tm binary, "args" its arguments: no shell on any OS, so
-# no quoting; Claude >= 2.1.139, which tested_versions' 2.1. prefix doesn't
-# pin) (an http hook
+# no quoting; Claude >= 2.1.139, [identify] min_version) (an http hook
 # shows a red error in Claude's UI whenever the server is down), synchronous
 # so events stay in order (~4 ms each), always exit 0, never stderr.
 # With .Mods the mod reports the turn's state itself (docs/SPEC.md §8.6,
@@ -434,7 +437,9 @@ state = "unknown"
 reason = "transcript view"
 priority = 45
 region = "bottom:3"
-contains = ["showing detailed transcript"]
+# Claude writes "Showing detailed transcript · <key> to toggle"; the
+# lowercase "showing" this rule had never matched it (T190).
+contains = ["detailed transcript"]
 
 [[rules]]
 id = "blocked-permission-dialog"

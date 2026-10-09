@@ -1,7 +1,7 @@
 // Package doctor implements `tm doctor` (docs/SPEC.md §15 M8): checks of
 // the toolchain, the server and its run dir (and, on macOS, whether its
-// sessions can reach the keychain), the agents against their
-// manifests' tested_versions, enabled Claude plugins known to be unsafe in
+// sessions can reach the keychain), the agents' versions (the last tested
+// one as information, min_version as a warning), enabled Claude plugins known to be unsafe in
 // tm's sessions, the sandbox prerequisites, and leftovers of
 // threads (worktrees and merged branches nobody uses any more), and
 // settings in config.toml that tm no longer has.

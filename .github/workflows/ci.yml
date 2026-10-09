@@ -60,11 +60,21 @@ jobs:
       - name: selftest
         run: ./bin/tm selftest
 
+      # For TestSmokeCodexSandbox: the thread sandbox under Linux's
+      # bubblewrap (T189). `codex sandbox` needs no login. Ubuntu 24.04
+      # lets no unprivileged process map a user namespace, which bwrap
+      # needs ("bwrap: setting up uid map: Permission denied").
+      - name: codex
+        run: |
+          npm install -g @openai/codex@0.160.0
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       # Internal/e2e TestSmoke*.
       - name: e2e smoke
         run: make e2e-smoke
         env:
           E2E_ARTIFACTS: ${{ runner.temp }}/e2e-artifacts
+          E2E_CODEX_SANDBOX: "1"
 
       - name: Upload e2e artifacts
         if: failure()

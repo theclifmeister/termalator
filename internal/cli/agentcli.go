@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -17,7 +18,7 @@ import (
 )
 
 const agentUsage = `usage: tm agent list [--json]
-       tm agent check FILE
+       tm agent check [--render DIR [--role ROLE] [--tm-bin PATH]] FILE
        tm agent reload
        tm agent explain SESSION [--json]`
 
@@ -63,6 +64,7 @@ func localAgents() (proto.AgentListResult, error) {
 		info := proto.AgentInfo{Name: n, Source: reg.Source[n], Injector: string(a.Injector())}
 		if m := agent.ManifestOf(a); m != nil {
 			info.Display, info.Command, info.Tested = m.Display, m.Launch.Command, m.TestedVersions
+			info.LastTested = m.Identify.LastTested
 			info.Unenforced = !m.RendersAccess()
 		}
 		res.Agents = append(res.Agents, info)
@@ -105,6 +107,9 @@ func printAgents(e *Env, res proto.AgentListResult) {
 		if len(a.Tested) > 0 {
 			notes = append(notes, "tested "+strings.Join(a.Tested, ","))
 		}
+		if a.LastTested != "" {
+			notes = append(notes, "last tested "+a.LastTested)
+		}
 		fmt.Fprintf(tw, "%s\t%s\t%s\tinject=%s\t%s\t%s\n", a.Name, a.Display, a.Command, a.Injector,
 			strings.Join(notes, " "), a.Source)
 	}
@@ -115,9 +120,21 @@ func printAgents(e *Env, res proto.AgentListResult) {
 }
 
 // agentCheck validates one manifest file the way the server loads it.
+// With --render it also writes a sample launch's files into DIR (as its
+// runtime dir) and prints the launch as JSON, {"argv","env"}: what CI's
+// agent canary hands the latest agent releases (docs/SPEC.md §8.8).
 func agentCheck(e *Env, args []string) int {
+	fs := flag.NewFlagSet("agent check", flag.ContinueOnError)
+	fs.SetOutput(e.Stderr)
+	render := fs.String("render", "", "write a sample launch's files into `DIR` and print the launch as JSON")
+	role := fs.String("role", string(agent.RoleThread), "the sample launch's `ROLE` (thread, coordinator)")
+	tmBin := fs.String("tm-bin", "/usr/local/bin/tm", "the tm binary the sample launch's hooks call")
+	if err := fs.Parse(args); err != nil {
+		return ExitUsage
+	}
+	args = fs.Args()
 	if len(args) != 1 {
-		return e.srvUsage("agent check", "usage: tm agent check FILE")
+		return e.srvUsage("agent check", "usage: tm agent check [--render DIR [--role ROLE] [--tm-bin PATH]] FILE")
 	}
 	data, err := os.ReadFile(args[0])
 	if err != nil {
@@ -132,23 +149,47 @@ func agentCheck(e *Env, args []string) int {
 	if err == nil {
 		_, err = detect.New(m.Rules)
 	}
+	var launch agent.Launch
 	if err == nil {
 		// Render every template once, with a sample spec, so template
 		// errors show up now rather than at launch. The brief is a real
-		// file, for templates that read it (file .BriefPath).
-		dir, derr := os.MkdirTemp("", "tm-agent-check-")
-		if derr != nil {
-			return e.srvFail("agent check", derr)
+		// file, for templates that read it (file .BriefPath). The agent's
+		// Go side, when it has one, adds its part (Codex's hooks).
+		dir := *render
+		if dir == "" {
+			tmp, derr := os.MkdirTemp("", "tm-agent-check-")
+			if derr != nil {
+				return e.srvFail("agent check", derr)
+			}
+			defer os.RemoveAll(tmp)
+			dir = tmp
+		} else if dir, err = filepath.Abs(dir); err != nil {
+			return e.srvUsage("agent check", err.Error())
 		}
-		defer os.RemoveAll(dir)
+		cwd, repo, rt := "/tmp/wt", "/tmp/repo", "/tmp/rt"
+		if *render != "" {
+			cwd, repo, rt = filepath.Join(dir, "wt"), filepath.Join(dir, "wt"), dir
+			os.MkdirAll(cwd, 0o700)
+		}
 		brief := filepath.Join(dir, "brief.md")
 		os.WriteFile(brief, []byte("# Sample brief\n\nSay \"hello\".\n"), 0o600)
-		_, err = agent.FromManifest(m).Launch(agent.LaunchSpec{
-			Role: agent.RoleThread, SessionID: "s-0", AgentSID: "00000000-0000-4000-8000-000000000000",
-			Cwd: "/tmp/wt", RepoRoot: "/tmp/repo", GitDir: "/tmp/repo/.git/worktrees/wt", RuntimeDir: "/tmp/rt", BriefPath: brief, Kickoff: "hello",
-			TMBin: "/usr/local/bin/tm", Socket: "/tmp/tm.sock",
-			Access: agent.Access{Read: []string{"/p"}, NoWrite: []string{"/p"}, Write: []string{"/tmp/repo/.git", "/tmp/repo/.git/worktrees/wt"}},
+		launch, err = agent.Wrap(m).Launch(agent.LaunchSpec{
+			Role: agent.Role(*role), SessionID: "s-0", AgentSID: "00000000-0000-4000-8000-000000000000",
+			Cwd: cwd, RepoRoot: repo, GitDir: repo + "/.git/worktrees/wt", RuntimeDir: rt, BriefPath: brief, Kickoff: "hello",
+			TMBin: *tmBin, Socket: filepath.Join(dir, "tm.sock"),
+			Access: agent.Access{Read: []string{"/p"}, NoWrite: []string{"/p"}, Write: []string{repo + "/.git", repo + "/.git/worktrees/wt"}},
 		})
+		if err == nil && *render != "" {
+			for p, b := range launch.Files {
+				full := filepath.Join(dir, p)
+				if err = os.MkdirAll(filepath.Dir(full), 0o700); err == nil {
+					err = os.WriteFile(full, b, 0o600)
+				}
+				if err != nil {
+					break
+				}
+			}
+		}
 	}
 	if err != nil {
 		fmt.Fprintf(e.Stderr, "tm agent check: %s:\n", args[0])
@@ -156,6 +197,12 @@ func agentCheck(e *Env, args []string) int {
 			fmt.Fprintf(e.Stderr, "  %s\n", line)
 		}
 		return ExitRefused
+	}
+	if *render != "" {
+		enc := json.NewEncoder(e.Stdout)
+		enc.SetIndent("", "  ")
+		enc.Encode(map[string][]string{"argv": launch.Argv, "env": launch.Env})
+		return ExitOK
 	}
 	fmt.Fprintf(e.Stdout, "%s: ok (%d hooks, %d rules, %d todo mappings)\n", m.Name, len(m.Hooks), len(m.Rules), len(m.Todos))
 	return ExitOK

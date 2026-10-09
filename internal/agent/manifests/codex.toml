@@ -9,7 +9,6 @@
 manifest_version = 1
 name = "codex"
 display = "Codex"
-tested_versions = ["0.160."]
 
 # Read from every hook event, latest wins. Codex's id can't be chosen
 # ahead: it is learnt from the first hook, which fires at the first
@@ -24,6 +23,9 @@ session_starts = ["SessionStart"]
 [identify]
 argv0 = ["codex"]
 version_args = ["--version"]
+# Information only, never a gate: a newer Codex is supported until
+# something breaks, and tm logs the drift it sees (docs/SPEC.md §8.8).
+last_tested = "0.162.0"
 
 [launch]
 command = "codex"

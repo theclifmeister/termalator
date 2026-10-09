@@ -57,9 +57,11 @@ func TestRealVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Information only (docs/SPEC.md §8.8): bump last_tested once the
+	// real-Claude tests pass on a newer version.
 	v := strings.Fields(string(out))[0]
-	if !pm.Tested(v) {
-		t.Errorf("claude %s is outside tested_versions %v: the status file is not trusted", v, pm.TestedVersions)
+	if !agent.VersionAtLeast(pm.Identify.LastTested, v) {
+		t.Logf("claude %s is newer than last_tested %s: bump it if these tests pass", v, pm.Identify.LastTested)
 	}
 }
 

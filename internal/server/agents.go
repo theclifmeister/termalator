@@ -88,6 +88,7 @@ func (s *Server) agentList() proto.AgentListResult {
 		info := proto.AgentInfo{Name: n, Source: reg.Source[n], Injector: string(a.Injector())}
 		if m := agent.ManifestOf(a); m != nil {
 			info.Display, info.Command, info.Tested = m.Display, m.Launch.Command, m.TestedVersions
+			info.LastTested = m.Identify.LastTested
 			info.Unenforced = !m.RendersAccess()
 		}
 		res.Agents = append(res.Agents, info)
@@ -412,6 +413,18 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		how = "resumed " + r.AgentSessionID
 	}
 	s.log.Printf("session %s: %s agent %s pid %d %q in %s", r.ID, how, r.Agent, sess.PID(), launch.Argv, r.Cwd)
+	// The version is information for the drift notes and the log, never
+	// a gate (docs/SPEC.md §8.8). Cached per binary; off the launch path.
+	go func(env []string) {
+		v, err := s.versions.of(a, env)
+		if err != nil {
+			return
+		}
+		sess.SetAgentVersion(v)
+		if m := agent.ManifestOf(a); m != nil && m.Identify.LastTested != "" && !agent.VersionAtLeast(m.Identify.LastTested, v) {
+			s.log.Printf("session %s: %s %s is newer than the last tested %s: supported; drift is logged as \"agent drift\"", r.ID, r.Agent, v, m.Identify.LastTested)
+		}
+	}(s.baseEnv())
 	return sess, nil
 }
 

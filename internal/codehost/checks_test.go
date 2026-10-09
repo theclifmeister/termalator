@@ -1,6 +1,7 @@
 package codehost
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -69,5 +70,27 @@ func TestGitTimeout(t *testing.T) {
 	}
 	if took := time.Since(start); took > 5*time.Second {
 		t.Fatalf("took %s", took)
+	}
+}
+
+// TestChecksNoHost: repos with no PR host add no gh line (so doctor can't
+// warn about a gh nothing uses), but a fresh install, with no repos, still
+// gets one.
+func TestChecksNoHost(t *testing.T) {
+	d := DoctorDeps{
+		LookPath: func(string) (string, error) { return "", errors.New("not found") },
+		Run:      func(dir, name string, args ...string) (string, error) { return "", nil },
+	}
+	for _, c := range Checks(d, []RepoHost{{Repo: "/r", Target: Target{Kind: NoKind}}}) {
+		if c.Name == "gh" || c.Name == "gh auth" {
+			t.Errorf("gh checked for a repo with no PR host: %+v", c)
+		}
+	}
+	var gh bool
+	for _, c := range Checks(d, nil) {
+		gh = gh || c.Name == "gh"
+	}
+	if !gh {
+		t.Error("no gh line on a fresh install")
 	}
 }

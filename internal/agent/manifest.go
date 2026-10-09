@@ -39,9 +39,15 @@ type Manifest struct {
 		Argv0       []string `toml:"argv0"`        // basenames of argv[0] after unwrapping
 		VersionArgs []string `toml:"version_args"` // e.g. ["--version"], for tm doctor
 		// MinVersion is the oldest agent version terminatr's generated
-		// files work with (tested_versions is a prefix and can't say it);
-		// tm doctor warns below it. Empty: no minimum.
-		MinVersion string `toml:"min_version"`
+		// files work with; tm doctor warns below it, naming
+		// MinVersionWhy. Empty: no minimum.
+		MinVersion    string `toml:"min_version"`
+		MinVersionWhy string `toml:"min_version_why"`
+		// LastTested is the newest agent version this manifest was
+		// checked against: information only (tm doctor, tm agent list,
+		// the session log), never a gate. A newer version is supported
+		// until something actually breaks (docs/SPEC.md §8.8).
+		LastTested string `toml:"last_tested"`
 	} `toml:"identify"`
 
 	Launch struct {

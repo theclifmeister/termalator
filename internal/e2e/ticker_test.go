@@ -55,7 +55,46 @@ func tickerEnv(t *testing.T) (env *Env, projDir, out string) {
 	// Never the machine's own gh: a logged-out one would raise
 	// gh-failing items. This one knows no PR until a test sets one.
 	fakeGH(t, env)
+	githubRepo(t, projDir)
 	return env, projDir, out
+}
+
+// ghOrigin is the origin the tickerEnv repo claims: a GitHub one, so the
+// ticker has a PR host to poll (a repo with no remote, or a local one,
+// has none).
+const ghOrigin = "https://github.com/o/r.git"
+
+// githubRepo gives the project's repo a GitHub origin that still fetches
+// and pushes through its local bare repo.
+func githubRepo(t *testing.T, projDir string) {
+	t.Helper()
+	repo := projectRepo(t, projDir)
+	bare := repoGit(t, repo, "remote", "get-url", "origin")
+	repoGit(t, repo, "remote", "set-url", "origin", ghOrigin)
+	repoGit(t, repo, "config", "url."+bare+".insteadOf", ghOrigin)
+}
+
+// projectRepo is the project's one repo, from its PROJECT.md.
+func projectRepo(t *testing.T, projDir string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(projDir, "PROJECT.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`repos = \["([^"]+)"\]`).FindSubmatch(b)
+	if m == nil {
+		t.Fatalf("no repo in PROJECT.md:\n%s", b)
+	}
+	return string(m[1])
+}
+
+func repoGit(t *testing.T, repo string, args ...string) string {
+	t.Helper()
+	out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // startThread starts thread t-0001 as the human and waits until its

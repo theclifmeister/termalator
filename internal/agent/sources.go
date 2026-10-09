@@ -17,8 +17,12 @@ import (
 // package only interprets what they read, so every agent gets the same
 // behaviour from data (docs/SPEC.md §8.2).
 type Sources struct {
-	// TestedVersions are version prefixes (e.g. "2.1.") this manifest was
-	// verified against. Undocumented sources are trusted only for these.
+	// TestedVersions are version prefixes (e.g. "2.1.") a manifest may
+	// trust its status file and prompt channel for. The built-in
+	// manifests set none: they check what the agent writes instead
+	// (unknown values distrust the file) and keep the version as
+	// information ([identify] last_tested, docs/SPEC.md §8.8). Empty
+	// trusts every version.
 	TestedVersions []string `toml:"tested_versions"`
 
 	// SessionField names the payload field carrying the agent's own

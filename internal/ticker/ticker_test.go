@@ -887,3 +887,50 @@ func TestPRPollSecondsSetting(t *testing.T) {
 		t.Fatalf("a missing file: %+v", z)
 	}
 }
+
+// TestNoPRHost: a repo with no PR host (no origin, a local one, GitLab)
+// has nothing to poll: no gh call, no poll recorded, no gh-failing item,
+// and a failure count kept from before (an older tm, a removed remote)
+// is cleared with its item.
+func TestNoPRHost(t *testing.T) {
+	repo := t.TempDir()
+	r := newRigIn(t, repo, []string{repo})
+	r.tk.o.CodeHost = func(string, codehost.Config) codehost.Host { return codehost.NoHost{} }
+	r.ghErr = "gh pr view: exit status 1 no git remotes found"
+	for i := 0; i < GHFailPolls+2; i++ {
+		r.sweep(2 * time.Minute)
+	}
+	if k := r.kinds(); k != "" {
+		t.Fatalf("raised %q for a repo with no PR host", k)
+	}
+	if r.ghN != 0 {
+		t.Fatalf("gh asked %d times", r.ghN)
+	}
+	pm := r.tk.st.Projects["demo"]
+	if pm != nil && (pm.GHFails != 0 || !pm.PRPolled.IsZero()) {
+		t.Fatalf("memo %+v: a poll was counted", pm)
+	}
+
+	// A failure recorded earlier clears: nothing can fail now.
+	it, err := r.p.AddItem(KindGHFailing, "gh", "gh failed", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pm = r.tk.projectMemo("demo")
+	pm.GHFails, pm.GHItem = GHFailPolls+1, it.ID
+	r.sweep(2 * time.Minute)
+	if k := r.kinds(); k != "" || pm.GHFails != 0 || pm.GHItem != "" {
+		t.Fatalf("stale failure kept: kinds %q, memo %+v", k, pm)
+	}
+
+	// A remote added later: the host is picked again after a sync, polls
+	// run and fail as for any GitHub repo.
+	r.tk.o.CodeHost = r.codeHost
+	r.tk.hosts = map[string]codehost.Host{}
+	for i := 0; i < GHFailPolls; i++ {
+		r.sweep(2 * time.Minute)
+	}
+	if k := r.kinds(); k != KindGHFailing {
+		t.Fatalf("with a host again: %q", k)
+	}
+}

@@ -98,8 +98,10 @@ func TestRealCodexVersion(t *testing.T) {
 	}
 	f := strings.Fields(strings.TrimSpace(string(out)))
 	v := f[len(f)-1] // "codex-cli 0.160.0"
-	if !pm.Tested(v) {
-		t.Errorf("codex %s is outside tested_versions %v", v, pm.TestedVersions)
+	// Information only (docs/SPEC.md §8.8): bump last_tested once the
+	// real-Codex tests pass on a newer version.
+	if !agent.VersionAtLeast(pm.Identify.LastTested, v) {
+		t.Logf("codex %s is newer than last_tested %s: bump it if these tests pass", v, pm.Identify.LastTested)
 	}
 }
 

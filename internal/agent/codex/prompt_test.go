@@ -120,3 +120,75 @@ func TestPrompt(t *testing.T) {
 		t.Error("no codex passed")
 	}
 }
+
+// TestTyped: a switch command typed by hand leaves the thread as one
+// sent through Prompt does (T187), and a prompt on the thread (its
+// UserPromptSubmit) takes back a note that was wrong.
+func TestTyped(t *testing.T) {
+	a := load(t)
+	target := agent.PromptTarget{SessionID: "s-1", AgentSID: "01a11c21-6753-78d3-acf7-54e1f5a71473"}
+	ctx := context.Background()
+	fakeCodex(t, `echo "Queued message x for thread y."`)
+
+	for _, c := range []struct {
+		line  string
+		exact bool
+		want  bool
+	}{
+		{"/clear", true, true},
+		{"  /new  ", true, true},
+		{"/resume 01a11c27", true, true},
+		{"/fork", true, true},
+		{"/cl", true, true},  // the popup may pick /clear
+		{"/rsm", true, true}, // matched fuzzily: /resume
+		{"/compact", true, false},
+		{"/model gpt-6-luna", true, false},
+		{"/plan", true, false},
+		{"/status", true, false},
+		{"/compact", false, true}, // edited past what the core follows
+		{"hello /clear", true, false},
+		{"hello", false, false},
+		{"", true, false},
+	} {
+		if got := switches(c.line, c.exact); got != c.want {
+			t.Errorf("switches(%q, %v) = %v, want %v", c.line, c.exact, got, c.want)
+		}
+	}
+
+	a.Typed(target, "hello", true)
+	if err := a.Prompt(ctx, target, "hi"); err != nil {
+		t.Errorf("after a typed prompt: %v", err)
+	}
+	a.Typed(agent.PromptTarget{SessionID: "s-1"}, "/clear", true)
+	if err := a.Prompt(ctx, target, "hi"); err != nil {
+		t.Errorf("a /clear before any thread id left the thread: %v", err)
+	}
+	a.Typed(target, "/clear", true)
+	if err := a.Prompt(ctx, target, "hi"); !errors.Is(err, ErrThreadLeft) {
+		t.Errorf("after a typed /clear: %v", err)
+	}
+	// The new thread's SessionStart and UserPromptSubmit: queued again.
+	next := target
+	next.AgentSID = "01a11c27-f755-7c21-93ae-493c148413d8"
+	for _, ev := range []string{"SessionStart", "UserPromptSubmit"} {
+		if _, _, err := a.Hook(agent.HookEvent{Agent: "codex", Event: ev, Payload: map[string]any{"session_id": next.AgentSID}}, agent.HookEnv{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := a.Prompt(ctx, next, "hi"); err != nil {
+		t.Errorf("on the new thread: %v", err)
+	}
+
+	// A wrong note (/cl picked /compact): the next prompt is pasted, and
+	// its UserPromptSubmit on the same thread ends the note.
+	a.Typed(next, "/cl", true)
+	if err := a.Prompt(ctx, next, "hi"); !errors.Is(err, ErrThreadLeft) {
+		t.Errorf("after /cl: %v", err)
+	}
+	if _, _, err := a.Hook(agent.HookEvent{Agent: "codex", Event: "UserPromptSubmit", Payload: map[string]any{"session_id": next.AgentSID}}, agent.HookEnv{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Prompt(ctx, next, "hi"); err != nil {
+		t.Errorf("after a prompt on the thread: %v", err)
+	}
+}

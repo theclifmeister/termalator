@@ -184,6 +184,45 @@ func TestSmokeCodexSession(t *testing.T) {
 	}
 }
 
+// TestSmokeCodexTypedClear: a /clear typed in the pane by hand (no
+// Prompt, so no hook and no slash refusal) still makes the next prompt
+// paste into the visible thread, not queue for the one left (T187).
+func TestSmokeCodexTypedClear(t *testing.T) {
+	env := New(t)
+	env.FakeCodex()
+	s := env.StartAgent("codex", env.Workdir())
+	env.WaitState(s, "idle", agentWait)
+	env.Prompt(s, "hello")
+	sst := env.waitHook("SessionStart", 1)
+	env.waitHook("Stop", 1)
+	thread := hookField(sst, "session_id")
+	env.WaitState(s, "idle", agentWait)
+
+	env.Keys(s, "/clea")
+	env.Keys(s, "x\x7fr")
+	env.Keys(s, "\r")
+	env.WaitFake("slash", agentWait, func(r FakeRecord) bool { return r.Str("text") == "/clear" })
+	env.WaitState(s, "idle", agentWait)
+	env.Prompt(s, "after typed clear")
+	sst = env.waitHook("SessionStart", 2)
+	if hookField(sst, "source") != "clear" || hookField(sst, "session_id") == thread {
+		t.Errorf("SessionStart after the typed /clear %v", sst)
+	}
+	env.waitHook("Stop", 2)
+	if p := env.lastPrompt(); p.Str("via") != "paste" || p.Str("text") != "after typed clear" {
+		t.Errorf("prompt after the typed /clear %v", p)
+	}
+	if h := env.FakeRecords("queue-hidden"); len(h) != 0 {
+		t.Errorf("a prompt went to the thread /clear left: %v", h)
+	}
+	env.WaitState(s, "idle", agentWait)
+	env.Prompt(s, "on the new thread")
+	env.waitHook("Stop", 3)
+	if p := env.lastPrompt(); p.Str("via") != "queue" {
+		t.Errorf("prompt on the new thread %v", p)
+	}
+}
+
 // TestSmokeCodexResume: a server restart resumes Codex with `codex
 // resume <thread>`, and the thread reports itself again at the next
 // prompt (SessionStart resume).
