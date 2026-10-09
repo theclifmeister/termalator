@@ -52,6 +52,17 @@ Claude Code, Codex. `terminatr` itself is not installed, so a clean
 Log in to the agents (`claude`, `codex`) inside the VM when a live test needs
 it; live model calls only when a test needs them.
 
+## Login PATH and permissions
+
+`setup` appends one marked line (`# terminatr-vm`) to `~/.zprofile` (macOS) or
+`~/.profile` (Linux) putting `~/.local/bin` (and `/opt/homebrew/bin` on macOS)
+on PATH, so a login shell finds `claude` and `codex`. It is added once.
+
+Exec sessions run with a loose umask (0000 on macOS, 007 on Linux), which made
+`~/.local`, `~/.local/bin` etc. mode 777/770. The scripts now run user commands
+with `umask 022` and `chmod 755` those folders on every `setup`, so re-running
+`setup` repairs an older VM.
+
 ## Known
 
 Linux: the VM keeps Ubuntu's default `kernel.apparmor_restrict_unprivileged_userns = 1`

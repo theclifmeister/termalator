@@ -14,7 +14,8 @@ set -euo pipefail
 VM="macOS"
 GUSER="${GUSER:-clifford}"
 root() { prlctl exec "$VM" /bin/bash -s; }
-user() { prlctl exec "$VM" --current-user /bin/bash -s; }
+user() { { echo 'umask 022'; cat; } | prlctl exec "$VM" --current-user /bin/bash -s; }
+# Exec sessions run with umask 0000, which made ~/.local/* mode 777.
 ENVP='export PATH=$HOME/.local/bin:/opt/homebrew/bin:$PATH HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1'
 
 setup() {
@@ -44,6 +45,15 @@ brew link --force go@1.26
 mkdir -p ~/tm-test ~/.local
 npm i -g --prefix ~/.local @openai/codex
 curl -fsSL https://claude.ai/install.sh | bash
+SH
+  # Login shells (what Terminal opens) need the tools on PATH too, and the
+  # ~/.local folders must be 755 (fixes ones made 777 by an earlier run).
+  user <<'SH'
+mkdir -p ~/.local/bin
+chmod 755 ~/.local ~/.local/bin ~/.local/lib ~/.local/share ~/.local/state 2>/dev/null || true
+chmod 755 ~/.local/share/claude 2>/dev/null || true
+l='export PATH="$HOME/.local/bin:/opt/homebrew/bin:$PATH" # terminatr-vm'
+grep -qF '# terminatr-vm' ~/.zprofile 2>/dev/null || echo "$l" >> ~/.zprofile
 SH
 }
 
