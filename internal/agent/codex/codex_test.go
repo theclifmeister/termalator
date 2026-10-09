@@ -173,9 +173,13 @@ func TestLaunch(t *testing.T) {
 		t.Errorf("resume argv %q", l.Argv)
 	}
 
-	// A coordinator outside a repo: trust the folder, auto-review; yolo
-	// replaces auto-review.
-	spec = agent.LaunchSpec{Role: "coordinator", Cwd: "/p", RuntimeDir: dir, TMBin: "/bin/tm"}
+	// A coordinator outside a repo: trust the folder, auto-review, and
+	// profile tm with its cwd written by name and the network limited to
+	// the socket; yolo replaces auto-review and the profile.
+	spec = agent.LaunchSpec{
+		Role: "coordinator", Cwd: "/p", RuntimeDir: dir, TMBin: "/bin/tm", Socket: "/run/tm.sock",
+		Access: agent.Access{Read: []string{"/p", "/h/worktrees/p"}, NoWriteFiles: []string{"/h/config.toml"}, Commands: []string{"gh pr merge"}},
+	}
 	l, err = a.Launch(spec)
 	if err != nil {
 		t.Fatal(err)
@@ -183,12 +187,22 @@ func TestLaunch(t *testing.T) {
 	if !slices.Contains(l.Argv, `projects={"/p"={trust_level="trusted"}}`) || !slices.Contains(l.Argv, "--approve-for-me") || l.Kickoff {
 		t.Errorf("coordinator argv %q", l.Argv)
 	}
-	if slices.Contains(l.Argv, `default_permissions="tm"`) || slices.Contains(l.Argv, "on-request") {
-		t.Errorf("coordinator got the thread profile or -a: %q", l.Argv)
+	if slices.Contains(l.Argv, "on-request") {
+		t.Errorf("coordinator got -a: %q", l.Argv)
+	}
+	coord := `permissions={tm={extends=":workspace",filesystem={"/p"="write","/h/worktrees/p"="read","/h/config.toml"="read"},network={enabled=true,mode="limited",unix_sockets={"/run/tm.sock"="allow"}}}}`
+	for _, arg := range []string{`default_permissions="tm"`, "features.network_proxy=true", coord} {
+		if !slices.Contains(l.Argv, arg) {
+			t.Errorf("coordinator argv lacks %s: %q", arg, l.Argv)
+		}
+	}
+	if _, err := toml.Decode(coord, &struct{}{}); err != nil {
+		t.Errorf("coordinator profile %s: %v", coord, err)
 	}
 	spec.Yolo = true
 	l, _ = a.Launch(spec)
-	if slices.Contains(l.Argv, "--approve-for-me") || !slices.Contains(l.Argv, "--dangerously-bypass-approvals-and-sandbox") {
+	if slices.Contains(l.Argv, "--approve-for-me") || !slices.Contains(l.Argv, "--dangerously-bypass-approvals-and-sandbox") ||
+		slices.Contains(l.Argv, `default_permissions="tm"`) || slices.Contains(l.Argv, "features.network_proxy=true") {
 		t.Errorf("yolo coordinator argv %q", l.Argv)
 	}
 
