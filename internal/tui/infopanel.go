@@ -97,11 +97,11 @@ type infoHit struct {
 type hitKind int
 
 const (
-	hitNone    hitKind = iota
-	hitTask            // the task view over the session
-	hitPR              // the PR in the browser
-	hitSession         // that session in the pane (a coordinator's thread row)
-	hitQuestions       // the coordinator opens its questions (tm ask open)
+	hitNone      hitKind = iota
+	hitTask              // the task view over the session
+	hitPR                // the PR in the browser
+	hitSession           // that session in the pane (a coordinator's thread row)
+	hitQuestions         // the coordinator opens its questions (tm ask open)
 )
 
 // prURL is the thread's PR's address: the ticker's, else its report's.
