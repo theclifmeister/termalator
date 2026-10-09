@@ -53,6 +53,12 @@ type SessionRecord struct {
 	// CleanExit is true when the session was stopped by a clean server
 	// stop rather than lost in a crash.
 	CleanExit bool `json:"clean_exit"`
+	// ContextBuild is the tm build (version.BuildID) that rendered the
+	// context the agent's conversation carries in its terminatr block:
+	// set when the mod fetches it (GET /v1/context). A resume under
+	// another build brings the current context in the SessionStart hook
+	// (§7.8).
+	ContextBuild string `json:"context_build,omitempty"`
 }
 
 const stateVersion = 1

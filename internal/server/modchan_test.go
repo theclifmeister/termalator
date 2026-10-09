@@ -20,6 +20,7 @@ import (
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/session"
 	"github.com/theclifmeister/terminatr/internal/thread"
+	"github.com/theclifmeister/terminatr/internal/version"
 )
 
 // modClient posts to a mod socket as the mod's $.http.fetch does.
@@ -186,6 +187,13 @@ func TestModChannel(t *testing.T) {
 	if code, text := getContext(); code != http.StatusOK || !strings.HasPrefix(text, "tm skill thread v") || !strings.Contains(text, "Your brief: /p/threads/t-1/brief.md") {
 		t.Fatalf("thread context: %d %q", code, text)
 	}
+	// It records the build the conversation's block now comes from.
+	s.mu.Lock()
+	got := s.records["s-1"].ContextBuild
+	s.mu.Unlock()
+	if got != version.BuildID() {
+		t.Fatalf("context build %q, want %q", got, version.BuildID())
+	}
 
 	// The session ends: its socket goes with it.
 	s.mu.Lock()
@@ -320,14 +328,15 @@ func TestAddUsage(t *testing.T) {
 func TestHookContextWithMod(t *testing.T) {
 	s := &Server{log: log.New(os.Stderr, "", 0)}
 	s.records = map[string]SessionRecord{
-		"s-1": {ID: "s-1", Role: proto.RoleThread, Brief: "/p/threads/t-1/brief.md"},
+		"s-1": {ID: "s-1", Role: proto.RoleThread, Brief: "/p/threads/t-1/brief.md", ContextBuild: version.BuildID()},
 		"s-2": {ID: "s-2"},
 	}
-	full, err := s.hookContextOf("s-1", false)()
+	startup := map[string]any{"source": "startup"}
+	full, err := s.hookContextOf("s-1", false)(startup)
 	if err != nil || !strings.HasPrefix(string(full), "tm skill thread v") || len(full) < 1000 {
 		t.Fatalf("without the mod: %v %.60q (%d bytes)", err, full, len(full))
 	}
-	short, err := s.hookContextOf("s-1", true)()
+	short, err := s.hookContextOf("s-1", true)(startup)
 	if err != nil || string(short) != modContextLine {
 		t.Fatalf("with the mod: %v %q", err, short)
 	}
@@ -335,9 +344,54 @@ func TestHookContextWithMod(t *testing.T) {
 		t.Fatal("the mod's /v1/context is no longer the full context")
 	}
 	for _, mod := range []bool{false, true} {
-		if b, err := s.hookContextOf("s-2", mod)(); err != nil || len(b) != 0 {
-			t.Fatalf("outside a project (mod %v): %v %q", mod, err, b)
+		for _, src := range []string{"startup", "resume"} {
+			if b, err := s.hookContextOf("s-2", mod)(map[string]any{"source": src}); err != nil || len(b) != 0 {
+				t.Fatalf("outside a project (mod %v, %s): %v %q", mod, src, err, b)
+			}
 		}
+	}
+}
+
+// TestHookContextResumed: a resumed conversation keeps the context block
+// the transcript recorded (T226). With the mod, a resume under the build
+// that rendered it gets the line; under another build, or one not known
+// (a record from before context_build), the full context, headed as
+// replacing the block. /clear and compaction re-read the block: the line.
+func TestHookContextResumed(t *testing.T) {
+	s := &Server{log: log.New(os.Stderr, "", 0)}
+	set := func(build string) {
+		s.records = map[string]SessionRecord{"s-1": {ID: "s-1", Role: proto.RoleThread, Brief: "/p/b.md", ContextBuild: build}}
+	}
+	hook := func(src string) string {
+		t.Helper()
+		b, err := s.hookContextOf("s-1", true)(map[string]any{"source": src})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	set(version.BuildID())
+	if got := hook("resume"); got != modContextLine {
+		t.Fatalf("resume, same build: %q", got)
+	}
+	full, _ := s.contextOf("s-1")()
+	for build, was := range map[string]string{"v0.12.0+33da6848d63b+47bc896b5ab4": "tm v0.12.0", "": "an older tm"} {
+		set(build)
+		got := hook("resume")
+		head := "terminatr: this conversation's `terminatr` context block was written by " + was + "; tm is now " + version.Version + "."
+		if !strings.HasPrefix(got, head) || !strings.HasSuffix(got, "in its place:\n\n"+string(full)) {
+			t.Fatalf("resume after build %q: %.300q", build, got)
+		}
+		for _, src := range []string{"startup", "clear", "compact"} {
+			if got := hook(src); got != modContextLine {
+				t.Fatalf("%s after build %q: %q", src, build, got)
+			}
+		}
+	}
+	// Without the mod every SessionStart has the full context already.
+	set("")
+	if b, _ := s.hookContextOf("s-1", false)(map[string]any{"source": "resume"}); string(b) != string(full) {
+		t.Fatalf("resume without the mod: %.100q", b)
 	}
 }
 

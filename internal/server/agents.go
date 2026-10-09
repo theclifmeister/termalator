@@ -253,21 +253,67 @@ func (s *Server) contextOf(id string) func() ([]byte, error) {
 // twice.
 const modContextLine = "terminatr: your role's rules and your task's state are in this conversation's `terminatr` context block."
 
-// hookContextOf is what the session's SessionStart hook prints: the full
-// context, or with the mod only a line saying where it is (none for a
-// session outside a project).
-func (s *Server) hookContextOf(id string, mod bool) func() ([]byte, error) {
+// hookContextOf is what the session's SessionStart hook prints, given
+// the hook's payload: the full context, or with the mod only a line
+// saying where it is (none for a session outside a project).
+//
+// A resume keeps the conversation's context block as the transcript
+// recorded it: Claude computes it once per conversation, and only /clear
+// and compaction read it again. So a mod session resumed under another
+// build than the one that rendered its block (an upgrade and a server
+// restart, T226) gets the full context here, saying it replaces the
+// block's.
+func (s *Server) hookContextOf(id string, mod bool) func(payload map[string]any) ([]byte, error) {
 	full := s.contextOf(id)
-	if !mod {
-		return full
-	}
-	return func() ([]byte, error) {
+	return func(payload map[string]any) ([]byte, error) {
 		b, err := full()
-		if err != nil || len(b) == 0 {
+		if err != nil || len(b) == 0 || !mod {
 			return b, err
+		}
+		if src, _ := payload["source"].(string); src == "resume" {
+			if old, stale := s.staleContext(id); stale {
+				return append([]byte(replacedContext(old)), b...), nil
+			}
 		}
 		return []byte(modContextLine), nil
 	}
+}
+
+// staleContext reports whether session id's conversation carries a
+// context block another build rendered, and that build ("" when not
+// known: a record from before context_build).
+func (s *Server) staleContext(id string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	b := s.records[id].ContextBuild
+	return b, b != version.BuildID()
+}
+
+// servedContext records that session id's conversation now carries the
+// context this build renders (GET /v1/context).
+func (s *Server) servedContext(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r, ok := s.records[id]
+	if !ok || r.ContextBuild == version.BuildID() {
+		return
+	}
+	r.ContextBuild = version.BuildID()
+	s.records[id] = r
+	if err := s.saveLocked(""); err != nil {
+		s.log.Printf("sessions.json: %v", err)
+	}
+}
+
+// replacedContext heads the full context a resumed session gets when its
+// context block is another build's.
+func replacedContext(old string) string {
+	was := "an older tm"
+	if v, _, _ := strings.Cut(old, "+"); v != "" {
+		was = "tm " + v
+	}
+	return "terminatr: this conversation's `terminatr` context block was written by " + was +
+		"; tm is now " + version.Version + ". These are your current rules and state, in its place:\n\n"
 }
 
 // agentLaunch is everything needed to (re)start one agent session.
