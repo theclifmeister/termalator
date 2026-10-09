@@ -3,9 +3,10 @@
 // request to let go of it).
 //
 // The terminal calls go through golang.org/x/term, which covers the
-// Windows console too. RawMode and Events are Unix only for now (termios,
-// signals); the Windows port adds files that read the console mode and
-// its WINDOW_BUFFER_SIZE events behind this API.
+// Windows console too. RawMode and Events are per OS: termios and signals
+// on Unix; on Windows the console mode (with VT input and output switched
+// on, so keys and escapes travel as on Unix), a poll of the console size
+// for resizes, and the console's close and break events for Detach.
 package term
 
 import (
@@ -36,7 +37,11 @@ func MakeRaw(f *os.File) (restore func() error, err error) {
 	if err != nil {
 		return nil, err
 	}
-	return func() error { return xterm.Restore(fd, old) }, nil
+	undo := enableVT(f)
+	return func() error {
+		undo()
+		return xterm.Restore(fd, old)
+	}, nil
 }
 
 // Kind is what an Event says.

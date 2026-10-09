@@ -10,6 +10,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+func enableVT(f *os.File) func() { return func() {} }
+
 // RawMode reports whether f is a terminal with echo and line editing off.
 func RawMode(f *os.File) bool {
 	t, err := unix.IoctlGetTermios(int(f.Fd()), ioctlGetTermios)
