@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"unicode"
@@ -16,6 +15,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/plat/caps"
 	"github.com/theclifmeister/terminatr/internal/plat/shell"
 )
 
@@ -50,8 +50,8 @@ const stateSource = "/<session-flags>/config.toml"
 // Codex makes the path absolute on the drive of its working directory, so
 // the trust key reads `C:\<session-flags>\config.toml:stop:0:0` and the
 // slash form stays untrusted (measured on Codex 0.162, T204).
-func stateSourceFor(cwd, goos string) string {
-	if goos != "windows" {
+func stateSourceFor(cwd string, windows bool) string {
+	if !windows {
 		return stateSource
 	}
 	vol := "C:"
@@ -82,11 +82,11 @@ func (a *Agent) Manifest() *agent.Manifest { return a.m }
 // coordinator's sandbox profile stays only when it holds on this Codex
 // (probe.go).
 func (a *Agent) Launch(spec agent.LaunchSpec) (agent.Launch, error) {
-	l, err := a.Agent.Launch(socketAccess(spec, runtime.GOOS))
+	l, err := a.Agent.Launch(socketAccess(spec, caps.Windows))
 	if err != nil {
 		return l, err
 	}
-	hooks, state, err := hookArgs(a.Events(), stateSourceFor(spec.Cwd, runtime.GOOS))
+	hooks, state, err := hookArgs(a.Events(), stateSourceFor(spec.Cwd, caps.Windows))
 	if err != nil {
 		return l, err
 	}
@@ -95,7 +95,7 @@ func (a *Agent) Launch(spec agent.LaunchSpec) (agent.Launch, error) {
 		at -= len(a.m.Launch.KickoffArgs)
 	}
 	extra := []string{"-c", hooks, "-c", state}
-	if windowsSandboxArgs(l.Argv, runtime.GOOS) {
+	if windowsSandboxArgs(l.Argv, caps.Windows) {
 		extra = append(extra, "-c", `windows.sandbox="unelevated"`)
 	}
 	l.Argv = append(l.Argv[:at:at], append(extra, l.Argv[at:]...)...)
@@ -111,8 +111,8 @@ func (a *Agent) Launch(spec agent.LaunchSpec) (agent.Launch, error) {
 // folder: `network.unix_sockets` isn't what opens it (measured on Codex
 // 0.162, T204: write on the folder connects, read or write on the socket
 // file alone and the unix_sockets entry don't).
-func socketAccess(spec agent.LaunchSpec, goos string) agent.LaunchSpec {
-	if goos != "windows" || spec.Socket == "" {
+func socketAccess(spec agent.LaunchSpec, windows bool) agent.LaunchSpec {
+	if !windows || spec.Socket == "" {
 		return spec
 	}
 	dir := filepath.Dir(spec.Socket)
@@ -127,8 +127,8 @@ func socketAccess(spec agent.LaunchSpec, goos string) agent.LaunchSpec {
 // and `codex sandbox` alone, which doesn't read the key, proves nothing
 // (T204). "unelevated" (a restricted token) needs no administrator; a
 // user's own choice in $CODEX_HOME/config.toml stands.
-func windowsSandboxArgs(argv []string, goos string) bool {
-	if goos != "windows" {
+func windowsSandboxArgs(argv []string, windows bool) bool {
+	if !windows {
 		return false
 	}
 	if idx, _, _ := profileFlags(argv); len(idx) == 0 {

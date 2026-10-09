@@ -9,12 +9,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/plat/caps"
 )
 
 // The coordinator's sandbox (docs/SPEC.md §8.6, Codex) rests on Codex's
@@ -317,7 +317,7 @@ func (a *Agent) ProbeThreadSandbox(tmBin string) (string, error) {
 	l, err := a.Agent.Launch(socketAccess(agent.LaunchSpec{
 		Role: "thread", Cwd: work, RuntimeDir: base, TMBin: tmBin, Socket: sock,
 		Access: agent.Access{Write: []string{work}, Read: []string{base}},
-	}, runtime.GOOS))
+	}, caps.Windows))
 	if err != nil {
 		return "", err
 	}
