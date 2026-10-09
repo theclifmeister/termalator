@@ -839,6 +839,44 @@ func TestUnsavedAdoptedCheckout(t *testing.T) {
 	}
 }
 
+// TestPRFollowUpWaitsForSession: checks that fail, and changes asked
+// for, while the thread has no live session yet (a slow start) are
+// followed up once on a later poll that finds it, and not again.
+func TestPRFollowUpWaitsForSession(t *testing.T) {
+	r := newRig(t)
+	sessions := r.host.sessions
+	r.host.sessions = sessions[:1] // the thread's session isn't up yet
+	r.gh = []string{prFailed, prFailed, prFailed, prFailed, prChanges, prChanges, prChanges}
+	r.sweep(0)
+	if !strings.Contains(r.summaries(), "2 check(s) failed") || len(r.host.prompts) != 0 {
+		t.Fatalf("items %s prompts %q", r.summaries(), r.host.prompts)
+	}
+	r.sweep(2 * time.Minute)
+	if len(r.host.prompts) != 0 {
+		t.Fatalf("prompted with no session: %q", r.host.prompts)
+	}
+	r.host.sessions = sessions
+	r.sweep(2 * time.Minute)
+	if len(r.host.prompts) != 1 || !strings.HasPrefix(r.host.prompts[0], "s-2 [tm] 2 check(s) failed on your PR #7") {
+		t.Fatalf("follow-up %q", r.host.prompts)
+	}
+	r.sweep(2 * time.Minute)
+	if len(r.host.prompts) != 1 {
+		t.Fatalf("followed up twice: %q", r.host.prompts)
+	}
+	r.host.sessions = sessions[:1]
+	r.sweep(2 * time.Minute)
+	r.sweep(2 * time.Minute)
+	if len(r.host.prompts) != 1 || strings.Count(r.summaries(), "changes requested") != 1 {
+		t.Fatalf("items %s prompts %q", r.summaries(), r.host.prompts)
+	}
+	r.host.sessions = sessions
+	r.sweep(2 * time.Minute)
+	if len(r.host.prompts) != 2 || !strings.Contains(r.host.prompts[1], "requested changes on your PR #7") {
+		t.Fatalf("review follow-up %q", r.host.prompts)
+	}
+}
+
 func TestPRChecksFailedPromptCarriesLog(t *testing.T) {
 	r := newRig(t)
 	r.runLog = "test (ubuntu)\tgo test\t2026-10-06T10:00:00.1Z ok  pkg/a\n" +
