@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -120,6 +121,13 @@ func start(api *conptyAPI, argv []string, dir string, env []string, cols, rows u
 }
 
 func (c *console) PID() int { return c.pid }
+
+// Holds reports whether pid is in the console's job: every process the
+// session started, unless it broke away on purpose.
+func (c *console) Holds(pid int) bool {
+	pids, err := jobPIDs(c.job)
+	return err == nil && slices.Contains(pids, pid)
+}
 
 func (c *console) Read(p []byte) (int, error) {
 	for len(c.rest) == 0 {

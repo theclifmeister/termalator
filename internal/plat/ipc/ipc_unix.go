@@ -63,3 +63,8 @@ func PeerOf(c net.Conn) (Peer, error) {
 	}
 	return Peer{PID: pid, SameUser: uid == os.Getuid()}, nil
 }
+
+// ShortDir is a short directory every user can make a socket directory
+// in, for a run directory whose usual place is too long: /tmp (macOS's
+// per-user temp dir is too long itself).
+func ShortDir() string { return "/tmp" }

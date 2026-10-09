@@ -1,5 +1,3 @@
-//go:build unix
-
 package e2e
 
 // M6 scenarios: threads (docs/SPEC.md §15 M6). The fake agent plays both

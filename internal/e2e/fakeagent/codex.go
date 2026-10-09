@@ -1,5 +1,3 @@
-//go:build unix
-
 package main
 
 // The Codex flavour: the fake as Codex CLI 0.160 (T91, T98-T104),
@@ -59,7 +57,7 @@ const (
 
 // isCodex reports whether the fake runs as Codex.
 func isCodex() bool {
-	return filepath.Base(os.Args[0]) == "codex" || os.Getenv("FAKEAGENT_FLAVOR") == "codex"
+	return strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe") == "codex" || os.Getenv("FAKEAGENT_FLAVOR") == "codex"
 }
 
 // codexOpts are Codex's command line.

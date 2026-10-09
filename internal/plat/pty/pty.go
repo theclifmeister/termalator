@@ -27,6 +27,12 @@ type Console interface {
 	// current command, or the shell itself (its process group id; on
 	// Windows the shell's newest child).
 	Foreground() (pid int, err error)
+	// Holds reports whether the system counts pid as part of the
+	// console's process tree, however far from the process Start ran: on
+	// Windows, whether pid is in the console's job. Unix tracks no such
+	// thing (a process can leave its group), so there it is always false
+	// and callers walk the parent chain themselves.
+	Holds(pid int) bool
 	// PID is the process Start ran, the leader of its process group (on
 	// Windows, the first process in its job).
 	PID() int

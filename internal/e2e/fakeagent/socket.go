@@ -1,5 +1,3 @@
-//go:build unix
-
 package main
 
 import (
@@ -8,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/theclifmeister/terminatr/internal/plat/ipc"
@@ -15,7 +14,7 @@ import (
 
 // listen opens the messaging socket, like Claude's uds-messaging one.
 func (a *app) listen() {
-	path := fmt.Sprintf("/tmp/fa-%d.sock", a.pid)
+	path := filepath.Join(sockDir, fmt.Sprintf("fa-%d.sock", a.pid))
 	os.Remove(path)
 	ln, err := ipc.Listen(ipc.Addr(path))
 	if err != nil {

@@ -1,5 +1,3 @@
-//go:build unix
-
 package e2e
 
 // M8 scenarios: tm doctor (docs/SPEC.md §15 M8).

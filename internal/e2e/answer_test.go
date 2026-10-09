@@ -1,5 +1,3 @@
-//go:build unix
-
 package e2e
 
 // tm thread answer (docs/SPEC.md §11.2): the coordinator relays the

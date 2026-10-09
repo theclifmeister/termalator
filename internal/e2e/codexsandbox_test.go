@@ -1,5 +1,3 @@
-//go:build unix
-
 package e2e
 
 // The thread sandbox against the installed codex (T189): `codex sandbox`

@@ -1,5 +1,3 @@
-//go:build unix
-
 // Command printer is the e2e harness's first deterministic app: it prints
 // a known screen, optionally streams numbered lines, and then waits.
 // Real programs (vim, htop, shells) vary between machines; scenarios use
@@ -9,27 +7,27 @@
 //
 // It prints a banner with styles and wide characters, its window size,
 // then N lines "line 1" … "line N" (D apart), then "ready". Every
-// SIGWINCH prints "resized to CxR", so a scenario can tell whether the
-// pane was resized.
+// SIGWINCH (on Windows a change of the console size) prints "resized to
+// CxR", so a scenario can tell whether the pane was resized.
 //
 // It turns its terminal's echo off: it never reads, and on Linux the echo
 // of a key typed while it prints can land between a line's "\r" and
 // "\n" (n_tty writes them separately), overwriting the line's first
-// character.
+// character. A Windows console echoes only during a read, so there it
+// needs nothing.
 package main
 
 import (
 	"bufio"
+	"context"
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"os/signal"
 	"sync"
-	"syscall"
 	"time"
 
-	"golang.org/x/sys/unix"
+	"github.com/theclifmeister/terminatr/internal/plat/term"
 )
 
 func main() {
@@ -37,18 +35,21 @@ func main() {
 	delay := flag.Duration("delay", 0, "pause between lines")
 	flag.Parse()
 
-	signal.Ignore(syscall.SIGINT)
-	noEcho := exec.Command("stty", "-echo")
-	noEcho.Stdin = os.Stdin
-	noEcho.Run()
+	signal.Ignore(os.Interrupt)
+	echoOff()
 	var mu sync.Mutex // one writer at a time
-	winch := make(chan os.Signal, 1)
-	signal.Notify(winch, syscall.SIGWINCH)
 	go func() {
-		for range winch {
-			if ws, err := unix.IoctlGetWinsize(1, unix.TIOCGWINSZ); err == nil {
+		// Events takes over the hangup too: it still ends the printer.
+		for ev := range term.Events(context.Background()) {
+			if ev.Kind == term.Detach {
+				if ev.Why == "interrupt" {
+					continue
+				}
+				os.Exit(0)
+			}
+			if cols, rows, ok := term.Size(os.Stdout); ok {
 				mu.Lock()
-				fmt.Printf("resized to %dx%d\r\n", ws.Col, ws.Row)
+				fmt.Printf("resized to %dx%d\r\n", cols, rows)
 				mu.Unlock()
 			}
 		}
@@ -56,8 +57,8 @@ func main() {
 	mu.Lock()
 	w := bufio.NewWriter(os.Stdout)
 	fmt.Fprint(w, "printer: \x1b[1mbold\x1b[0m \x1b[32mgreen\x1b[0m wide:日本語\r\n")
-	if ws, err := unix.IoctlGetWinsize(1, unix.TIOCGWINSZ); err == nil {
-		fmt.Fprintf(w, "size %dx%d\r\n", ws.Col, ws.Row)
+	if cols, rows, ok := term.Size(os.Stdout); ok {
+		fmt.Fprintf(w, "size %dx%d\r\n", cols, rows)
 	}
 	w.Flush()
 	for i := 1; i <= *lines; i++ {

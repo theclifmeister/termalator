@@ -1,14 +1,12 @@
-//go:build unix
-
 package e2e
 
 import (
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/emu"
+	"github.com/theclifmeister/terminatr/internal/plat/proc"
 	"github.com/theclifmeister/terminatr/internal/plat/pty"
 	"github.com/theclifmeister/terminatr/internal/view"
 )
@@ -48,10 +46,11 @@ func (e *Env) Window(cols, rows uint16, args ...string) *Window {
 	return e.WindowCmd(cols, rows, append([]string{e.Bin}, args...)...)
 }
 
-// Shell opens a window running /bin/sh, with $TM naming the tm under test.
+// Shell opens a window running /bin/sh (a POSIX sh on Windows), with $TM
+// naming the tm under test.
 func (e *Env) Shell(cols, rows uint16) *Window {
 	e.T.Helper()
-	return e.WindowCmd(cols, rows, "/bin/sh")
+	return e.WindowCmd(cols, rows, sh(e.T))
 }
 
 // WindowCmd opens a window running argv. Like under a real terminal
@@ -82,7 +81,7 @@ func (e *Env) WindowCmd(cols, rows uint16, argv ...string) *Window {
 	env := append(append([]string(nil), e.Vars...), "TERM=xterm-256color")
 	// plat/pty gives a non-blocking master, so closing it really hangs
 	// up the window.
-	con, err := pty.Start(argv, "/", env, cols, rows)
+	con, err := pty.Start(argv, rootDir, env, cols, rows)
 	if err != nil {
 		e.T.Fatal(err)
 	}
@@ -126,7 +125,8 @@ func (w *Window) Type(s string) {
 	}
 }
 
-// Resize resizes the window; the kernel sends SIGWINCH to its command.
+// Resize resizes the window; the kernel sends SIGWINCH to its command
+// (on Windows ConPTY repaints at the new size).
 func (w *Window) Resize(cols, rows uint16) {
 	w.env.T.Helper()
 	w.mu.Lock()
@@ -226,10 +226,10 @@ func (w *Window) Quiet(d time.Duration) {
 	}
 }
 
-// KillClient SIGKILLs the window's whole process group: the client dies
-// without any chance to clean up.
+// KillClient SIGKILLs the window's whole process group (on Windows its
+// process tree): the client dies without any chance to clean up.
 func (w *Window) KillClient() {
-	syscall.Kill(-w.con.PID(), syscall.SIGKILL)
+	proc.KillGroup(w.con.PID())
 	select {
 	case <-w.done:
 	case <-time.After(5 * time.Second):

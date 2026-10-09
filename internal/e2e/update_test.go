@@ -1,5 +1,3 @@
-//go:build unix
-
 package e2e
 
 // Upgrades (docs/SPEC.md §3.6, Upgrade; §10.1 tm update).
@@ -23,7 +21,7 @@ func TestSmokeUpgradeInPlace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tm := filepath.Join(t.TempDir(), "tm")
+	tm := filepath.Join(t.TempDir(), exe("tm"))
 	if err := os.WriteFile(tm, b, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +37,7 @@ func TestSmokeUpgradeInPlace(t *testing.T) {
 	if err := os.WriteFile(tm+".new", append(b, "new build"...), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Rename(tm+".new", tm); err != nil {
+	if err := replaceExe(tm+".new", tm); err != nil {
 		t.Fatal(err)
 	}
 	w := env.WindowCmd(80, 24, tm, "attach", s.ID)

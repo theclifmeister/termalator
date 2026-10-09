@@ -1,5 +1,3 @@
-//go:build unix
-
 package main
 
 import (
@@ -12,8 +10,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"syscall"
 	"time"
+
+	"github.com/theclifmeister/terminatr/internal/plat/proc"
 )
 
 // hookGroup is one entry of a hooks.json event list.
@@ -97,7 +96,7 @@ func eventNames(groups map[string][]hookGroup) []string {
 func runHookCmd(h hookCmd, payload []byte, dir string, env []string) (string, int) {
 	ctx, cancel := context.WithTimeout(context.Background(), h.timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", h.command)
+	cmd := exec.CommandContext(ctx, shell(), "-c", h.command)
 	if h.args != nil {
 		cmd = exec.CommandContext(ctx, h.command, h.args...)
 	}
@@ -106,8 +105,7 @@ func runHookCmd(h hookCmd, payload []byte, dir string, env []string) (string, in
 	cmd.Stdin = bytes.NewReader(payload)
 	var out bytes.Buffer
 	cmd.Stdout = &out
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+	proc.Group(cmd)
 	cmd.WaitDelay = time.Second
 	err := cmd.Run()
 	code := 0

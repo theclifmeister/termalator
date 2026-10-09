@@ -1,5 +1,3 @@
-//go:build unix
-
 package main
 
 import (
@@ -156,12 +154,13 @@ func readTrustFile(home string) map[string]any {
 }
 
 // isTrusted reports whether any of dirs, or one of their ancestors, has
-// the trust dialog accepted.
+// the trust dialog accepted. Keys use forward slashes, as Claude Code's
+// do on Windows (C:/Users/…).
 func isTrusted(home string, dirs ...string) bool {
 	projects, _ := readTrustFile(home)["projects"].(map[string]any)
 	for _, dir := range dirs {
 		for d := dir; ; d = filepath.Dir(d) {
-			if p, ok := projects[d].(map[string]any); ok && p["hasTrustDialogAccepted"] == true {
+			if p, ok := projects[filepath.ToSlash(d)].(map[string]any); ok && p["hasTrustDialogAccepted"] == true {
 				return true
 			}
 			if d == filepath.Dir(d) {
@@ -188,6 +187,7 @@ func updateTrustFile(home string, fn func(m map[string]any)) error {
 }
 
 func acceptTrust(home, cwd string) error {
+	cwd = filepath.ToSlash(cwd)
 	return updateTrustFile(home, func(m map[string]any) {
 		projects, ok := m["projects"].(map[string]any)
 		if !ok {
@@ -234,7 +234,9 @@ func readSettings(value string) (settingsFile, error) {
 	return s, nil
 }
 
-// denyDirs turns Edit(//abs/path/**) rules into directories.
+// denyDirs turns Edit(//abs/path/**) rules into directories. On Windows
+// the absolute path is POSIX-style, as in Claude Code's rules there:
+// //c/Users/… is C:\Users\….
 func denyDirs(rules []string, home, cwd string) []string {
 	var dirs []string
 	for _, r := range rules {
@@ -246,7 +248,7 @@ func denyDirs(rules []string, home, cwd string) []string {
 		p = strings.TrimSuffix(strings.TrimSuffix(p, "/**"), "/*")
 		switch {
 		case strings.HasPrefix(p, "//"):
-			p = p[1:]
+			p = nativeAbs(p[1:])
 		case strings.HasPrefix(p, "~/"):
 			p = filepath.Join(home, p[2:])
 		case strings.HasPrefix(p, "/"):
@@ -258,6 +260,15 @@ func denyDirs(rules []string, home, cwd string) []string {
 		}
 	}
 	return dirs
+}
+
+// nativeAbs turns an absolute POSIX path into this OS's: on Windows
+// /c/Users/x is C:\Users\x; elsewhere it is p.
+func nativeAbs(p string) string {
+	if filepath.Separator == '/' || len(p) < 2 || p[0] != '/' || (len(p) > 2 && p[2] != '/') {
+		return p
+	}
+	return strings.ToUpper(p[1:2]) + ":" + filepath.FromSlash(p[2:]+"/")
 }
 
 // realPath resolves symlinks in the longest existing prefix of p.
@@ -277,7 +288,8 @@ func realPath(p string) string {
 func denied(path string, dirs []string) bool {
 	path = realPath(path)
 	for _, d := range dirs {
-		if path == d || strings.HasPrefix(path, strings.TrimSuffix(d, "/")+"/") {
+		sep := string(filepath.Separator)
+		if path == d || strings.HasPrefix(path, strings.TrimSuffix(d, sep)+sep) {
 			return true
 		}
 	}

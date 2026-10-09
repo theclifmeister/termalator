@@ -177,6 +177,10 @@ func (s *Session) ID() string { return s.cfg.ID }
 // and session leader).
 func (s *Session) PID() int { return s.con.PID() }
 
+// Holds reports whether the system counts pid as one of the session's
+// processes (pty.Console.Holds: Windows only).
+func (s *Session) Holds(pid int) bool { return s.con.Holds(pid) }
+
 // Done is closed once the process has exited and the session is torn down.
 func (s *Session) Done() <-chan struct{} { return s.done }
 

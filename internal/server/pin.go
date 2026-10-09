@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -23,8 +24,9 @@ const pinDir = service.PinDir
 // privacy settings (TCC) know a command-line tool by its path, so one
 // path keeps one entry, and one answer, across upgrades. launchd starts
 // the server from it (service.Config.Program), because TCC keeps the
-// path launchd started a process with, whatever that process execs.
-const pinName = service.PinName
+// path launchd started a process with, whatever that process execs. On
+// Windows it is tm.exe.
+const pinName = service.PinName + pinExt
 
 // legacyPinDir is where servers before T87 pinned it, under the home.
 const legacyPinDir = "server-bin"
@@ -56,6 +58,7 @@ func pinBinary(runDir, bin string) (string, error) {
 	}
 	dst := filepath.Join(dir, pinName)
 	defer removeOtherPins(dir)
+	pinCompanions(filepath.Dir(bin), dir)
 	if same, err := sameContent(bin, dst); err != nil {
 		return "", err
 	} else if same {
@@ -111,16 +114,30 @@ func pinFor(runDir, bin, source string, logf func(string, ...any)) (string, bool
 	return pin, replaced || !fsx.SamePath(bin, pin), nil
 }
 
-// removeOtherPins removes all but the pin from dir: older per-build
-// pins and temporary files a crash left. A process still running one
-// keeps its file until it exits.
+// pinCompanions copies the files tm needs beside it (companions) from
+// src to the pin's dir, when src has them and the pin's differ. It does
+// its best: a companion in use stays as it is, and a missing one makes
+// tm fall back (to the system's ConPTY on Windows).
+func pinCompanions(src, dir string) {
+	for _, name := range companions {
+		from, to := filepath.Join(src, name), filepath.Join(dir, name)
+		if same, err := sameContent(from, to); err != nil || same {
+			continue
+		}
+		fsx.Replace(to, 0o700, func(tmp string) error { return copyFile(from, tmp) })
+	}
+}
+
+// removeOtherPins removes all but the pin and its companions from dir:
+// older per-build pins and temporary files a crash left. A process still
+// running one keeps its file until it exits.
 func removeOtherPins(dir string) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
 	}
 	for _, e := range entries {
-		if e.Name() != pinName {
+		if e.Name() != pinName && !slices.Contains(companions, e.Name()) {
 			os.Remove(filepath.Join(dir, e.Name()))
 		}
 	}

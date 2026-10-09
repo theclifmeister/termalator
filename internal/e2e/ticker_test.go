@@ -1,5 +1,3 @@
-//go:build unix
-
 package e2e
 
 // M7 scenarios: the ticker (docs/SPEC.md §7.5, §15 M7). The fake agent
@@ -183,7 +181,7 @@ func fakeGH(t *testing.T, env *Env) (state string) {
 	dir := t.TempDir()
 	state = filepath.Join(dir, "pr.json")
 	script := "#!/bin/sh\ncase \"$*\" in *--jq*) echo MERGED; exit 0;; esac\ncat \"$GH_STATE\" 2>/dev/null || { echo 'no pull requests found' >&2; exit 1; }\n"
-	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
+	if err := WriteScript(dir, "gh", script); err != nil {
 		t.Fatal(err)
 	}
 	path := ""
@@ -192,7 +190,7 @@ func fakeGH(t *testing.T, env *Env) (state string) {
 			path = v
 		}
 	}
-	env.Setenv("PATH", dir+":"+path)
+	env.Setenv("PATH", dir+string(os.PathListSeparator)+path)
 	env.Setenv("GH_STATE", state)
 	return state
 }

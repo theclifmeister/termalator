@@ -1,6 +1,7 @@
 #!/bin/sh
 # The C compiler for release builds: zig cc for $TM_ZIG_TARGET, with the
-# Zig that scripts/release/ghostty.sh linked into .build/release/zig.
+# Zig that scripts/release/ghostty.sh linked into .build/release/zig
+# ($TM_ZIG overrides).
 # goreleaser sets CC to this script and TM_ZIG_TARGET per target.
 #
 # macOS targets link libresolv, which Zig doesn't ship: the macOS SDK's
@@ -14,7 +15,7 @@ case $target in
 	set -- "$@" -L"$sdk/usr/lib" -F"$sdk/System/Library/Frameworks"
 	;;
 esac
-zig="$root/.build/release/zig"
+zig=${TM_ZIG:-$root/.build/release/zig}
 # Go probes the compiler with `-### -x c -c -`, which zig cc runs for real,
 # leaving a "-.o" in the working directory: probe in a scratch directory.
 if [ "${1:-}" = "-###" ]; then

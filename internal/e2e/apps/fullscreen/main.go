@@ -1,5 +1,3 @@
-//go:build unix
-
 // Command fullscreen is the e2e harness's full-screen app, a stand-in for
 // vim, htop and Claude Code's default renderer: it switches to the
 // alternate screen and asks for everything Claude asks for (any-event
@@ -20,10 +18,8 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
-	"syscall"
 
-	"golang.org/x/sys/unix"
-	"golang.org/x/term"
+	"github.com/theclifmeister/terminatr/internal/plat/term"
 )
 
 const (
@@ -32,18 +28,18 @@ const (
 )
 
 func main() {
-	old, err := term.MakeRaw(0)
+	restore, err := term.MakeRaw(os.Stdin)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "fullscreen:", err)
 		os.Exit(1)
 	}
-	signal.Ignore(syscall.SIGINT)
+	signal.Ignore(os.Interrupt)
 	os.Stdout.WriteString(enter)
 	var lines []string
 	paint := func() {
 		rows := 24
-		if ws, err := unix.IoctlGetWinsize(1, unix.TIOCGWINSZ); err == nil {
-			rows = int(ws.Row)
+		if _, r, ok := term.Size(os.Stdout); ok {
+			rows = r
 		}
 		var b strings.Builder
 		b.WriteString("\x1b[?2026h\x1b[H\x1b[2J")
@@ -72,5 +68,5 @@ func main() {
 		paint()
 	}
 	os.Stdout.WriteString(leave)
-	term.Restore(0, old)
+	restore()
 }

@@ -1,5 +1,3 @@
-//go:build unix
-
 package e2e
 
 // Replacing a server of another version (docs/SPEC.md §3.3, Stopping
@@ -113,8 +111,13 @@ func TestSmokeReplaceOldServer(t *testing.T) {
 			}
 			var st proto.ServerStatus
 			json.Unmarshal([]byte(env.MustCLI("server", "status", "--json")), &st)
-			if st.PreviousShutdown != "clean" {
-				t.Errorf("old server's shutdown was %q, want clean", st.PreviousShutdown)
+			// A deaf server only gets a signal: on Windows that kills it.
+			want := "clean"
+			if c.hello == "deaf" && !politeTerminate {
+				want = "crash"
+			}
+			if st.PreviousShutdown != want {
+				t.Errorf("old server's shutdown was %q, want %s", st.PreviousShutdown, want)
 			}
 		})
 	}

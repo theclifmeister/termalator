@@ -1,5 +1,3 @@
-//go:build unix
-
 package e2e
 
 // T40: tm thread adopt (docs/SPEC.md §9, Adopt). An agent session the

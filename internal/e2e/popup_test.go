@@ -1,5 +1,3 @@
-//go:build unix
-
 package e2e
 
 // The project popup (a, prefix+a) and the settings (docs/SPEC.md §4,
@@ -260,7 +258,7 @@ func TestSmokeProjectPopup(t *testing.T) {
 	// it.
 	w2 := env.Window(cols, 40)
 	w2.WaitFor("SESSIONS", wait)
-	id := env.StartShell("/")
+	id := env.StartShell(rootDir)
 	w.OpenSession(id)
 	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, "prefix+d dashboard") })
 	w2.WaitUntil("w2 attached", wait, func(sc string) bool { return lastLine(sc, "prefix+d dashboard") })
