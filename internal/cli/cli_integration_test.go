@@ -212,7 +212,7 @@ func TestBinaryCallerChecks(t *testing.T) {
 }
 
 // TestBinaryContextDeterministic is the base of the "clearing the
-// coordinator loses nothing" invariant (§16.6): after scripted actions,
+// coordinator loses nothing" invariant (§15.6): after scripted actions,
 // `tm context` is a pure function of the files, so a coordinator that runs
 // it after /clear sees exactly what it saw before.
 func TestBinaryContextDeterministic(t *testing.T) {

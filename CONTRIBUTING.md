@@ -71,14 +71,14 @@ make e2e        # every end-to-end scenario (weekly in CI); E2E_RACE=1 for a rac
 make fuzz       # every fuzz target, FUZZTIME=5m each (weekly in CI, 1m each); e.g. make fuzz FUZZTIME=20s
 ```
 
-On Windows the scenarios run from a cross-built bundle (docs/SPEC.md §16.2): on the Mac, `scripts/e2e-windows.sh arm64 OUT` (amd64 for x64), copy OUT to the Windows box, and there, with Git for Windows installed (its `cmd` on `PATH`):
+On Windows the scenarios run from a cross-built bundle (docs/SPEC.md §15.2): on the Mac, `scripts/e2e-windows.sh arm64 OUT` (amd64 for x64), copy OUT to the Windows box, and there, with Git for Windows installed (its `cmd` on `PATH`):
 
 ```powershell
 $env:E2E = '1'; $env:E2E_BIN = "$PWD\bin"
 .\e2e.test.exe '-test.run=^TestSmoke' '-test.timeout=15m'   # PowerShell needs the flags quoted
 ```
 
-`internal/e2e` is the end-to-end harness that every milestone adds scenarios to. A scenario gets an isolated installation (its own `TERMINATR_HOME` and a short socket path), runs the real `tm`, and looks at what a user would see. Sessions are read through the server; a virtual terminal (a PTY whose output libghostty-vt parses) plays the user's terminal window. The harness can type into that window, kill its client and close it. Screens can be compared with golden files in `internal/e2e/testdata/`; `make e2e E2E_FLAGS=-update` rewrites them. The M1 scenarios cover these cases: the server survives a killed client and a closed terminal, stale sockets, crash detection, a hung server, and the version handshake.
+`internal/e2e` is the end-to-end harness that every feature adds scenarios to. A scenario gets an isolated installation (its own `TERMINATR_HOME` and a short socket path), runs the real `tm`, and looks at what a user would see. Sessions are read through the server; a virtual terminal (a PTY whose output libghostty-vt parses) plays the user's terminal window. The harness can type into that window, kill its client and close it. Screens can be compared with golden files in `internal/e2e/testdata/`; `make e2e E2E_FLAGS=-update` rewrites them. The first scenarios cover these cases: the server survives a killed client and a closed terminal, stale sockets, crash detection, a hung server, and the version handshake.
 
 #### Why libghostty-vt, and why these bindings
 
@@ -105,7 +105,7 @@ internal/e2e         end-to-end test harness and scenarios
 internal/agent       agent interface, manifests (manifests/claude.toml), registry
 internal/…           see [docs/SPEC.md §2.1](docs/SPEC.md)
 scripts/run.sh       what `make run` does
-docs/SPEC.md         the v0.1 specification and milestone plan
+docs/SPEC.md         the v0.1 specification
 docs/OPERATIONS.md   installing, state, logs, doctor, service, upgrading, uninstalling
 docs/research/       findings of the early spikes (libghostty, Claude Code, symlinks)
 docs/VMS.md          the test VMs (contributors)

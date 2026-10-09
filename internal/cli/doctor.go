@@ -25,7 +25,7 @@ func init() {
 	commands["doctor"] = func(e *Env, args []string) error { return codeErr(doctorCmd(e, args)) }
 }
 
-// doctorCmd implements `tm doctor [--fix]` (docs/SPEC.md §15 M8). It
+// doctorCmd implements `tm doctor [--fix]` (docs/SPEC.md). It
 // never starts the server and removes nothing without --fix and a
 // confirmation (a y on a TTY, or --yes).
 func doctorCmd(e *Env, args []string) int {

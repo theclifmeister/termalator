@@ -2,7 +2,7 @@ package e2e
 
 // M4 scenarios with projects: tm project open, the
 // server's caller checks (docs/SPEC.md §11.1) and the "clearing the
-// coordinator loses nothing" invariant (§16.6).
+// coordinator loses nothing" invariant (§15.6).
 
 import (
 	"fmt"
@@ -340,7 +340,7 @@ cmd = 'env -u TERMINATR_SESSION -u TERMINATR_ROLE -u TERMINATR_PROJECT "$TERMINA
 	}
 }
 
-// TestSmokeClearLosesNothing is the invariant of docs/SPEC.md §16.6: a
+// TestSmokeClearLosesNothing is the invariant of docs/SPEC.md §15.6: a
 // coordinator works (tasks, a done the user approved, inbox handling,
 // journal lines); after /clear its SessionStart re-injection is the role rules
 // plus tm context, byte for byte as captured before, and no inbox item

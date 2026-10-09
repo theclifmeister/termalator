@@ -74,7 +74,7 @@ export const BUTTON_LABELS: Record<AskKind | 'report', string> = {
 }
 
 // WHY_WORDS say why a need waits, short, in the TUI's words
-// (docs/STYLE.md T2).
+// (docs/STYLE.md Y2).
 const WHY_WORDS: Record<TerminatrNeed['why'], string> = {
   queue: 'prompts held',
   review: 'in review',
