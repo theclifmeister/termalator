@@ -1,10 +1,10 @@
-//go:build !unix
+//go:build !unix && !windows
 
 package pty
 
 import "errors"
 
-// Not yet ported: the Windows port adds ConPTY (doc in pty.go).
+// Neither Unix nor Windows: nothing to start a console on.
 
 func Start(argv []string, dir string, env []string, cols, rows uint16) (Console, error) {
 	return nil, errors.ErrUnsupported

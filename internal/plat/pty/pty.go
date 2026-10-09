@@ -3,9 +3,8 @@
 // resizes, inspects and stops. Other processes' argv and parent are
 // plat/proc's (Lookup).
 //
-// It works on Unix. Elsewhere every call returns errors.ErrUnsupported
-// (pty_other.go) until the Windows port adds ConPTY, with a Job Object
-// standing in for the process group.
+// It works on Unix, and on Windows over ConPTY with a Job Object standing
+// in for the process group (pty_windows.go, conpty_windows.go).
 package pty
 
 import (
@@ -22,15 +21,18 @@ type Console interface {
 	// it (an error says it doesn't).
 	SetReadDeadline(t time.Time) error
 	// Resize sets the window size; the foreground job learns of it
-	// (SIGWINCH).
+	// (SIGWINCH; on Windows ConPTY repaints at the new size).
 	Resize(cols, rows uint16) error
 	// Foreground is the job the terminal runs in front: the shell's
-	// current command, or the shell itself (its process group id).
+	// current command, or the shell itself (its process group id; on
+	// Windows the shell's newest child).
 	Foreground() (pid int, err error)
-	// PID is the process Start ran, the leader of its process group.
+	// PID is the process Start ran, the leader of its process group (on
+	// Windows, the first process in its job).
 	PID() int
-	// Stop ends the process tree: a hangup (SIGHUP to the group), then a
-	// kill (SIGKILL) if it is still running after grace. It returns once
+	// Stop ends the process tree: a hangup (SIGHUP to the group; on
+	// Windows, closing the console), then a kill (SIGKILL; terminating
+	// the job) if it is still running after grace. It returns once
 	// the process has exited (Wait returned) or after the kill, with an
 	// error that says it had to kill.
 	Stop(grace time.Duration) error

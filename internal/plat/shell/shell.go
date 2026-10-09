@@ -140,3 +140,21 @@ func Command(k Kind, goos, exe string, args ...string) string {
 	}
 	return b.String()
 }
+
+// HookShell is the Kind of shell an agent runs hook commands in on this
+// OS: sh on Unix, PowerShell on Windows (Codex always uses it there).
+func HookShell() (Kind, string) { return hookShell(runtime.GOOS) }
+
+func hookShell(goos string) (Kind, string) {
+	if goos == "windows" {
+		return PowerShell, goos
+	}
+	return Sh, goos
+}
+
+// EnvCommand is the hook command line that runs the program the
+// environment variable name holds, with args, in the shell of this OS.
+func EnvCommand(name string, args ...string) string {
+	k, goos := HookShell()
+	return Command(k, goos, "$"+name, args...)
+}

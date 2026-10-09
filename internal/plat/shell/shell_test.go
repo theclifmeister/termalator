@@ -180,3 +180,17 @@ func TestSplit(t *testing.T) {
 		}
 	}
 }
+
+// TestHookShell: Unix hooks run in sh, Windows ones in PowerShell.
+func TestHookShell(t *testing.T) {
+	for goos, want := range map[string]string{
+		"linux":   `"$TERMINATR_BIN" hook --agent codex`,
+		"darwin":  `"$TERMINATR_BIN" hook --agent codex`,
+		"windows": `& $env:TERMINATR_BIN hook --agent codex`,
+	} {
+		k, g := hookShell(goos)
+		if got := Command(k, g, "$TERMINATR_BIN", "hook", "--agent", "codex"); got != want {
+			t.Errorf("%s: %s, want %s", goos, got, want)
+		}
+	}
+}
