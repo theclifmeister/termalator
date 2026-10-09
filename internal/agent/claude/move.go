@@ -56,11 +56,12 @@ func (a *Agent) MoveDir(home, from, to string) error {
 	err := editProjects(home, func(projects map[string]json.RawMessage, _ string) (bool, error) {
 		changed := false
 		for _, p := range pairs {
-			raw, ok := projects[p[0]]
-			if _, taken := projects[p[1]]; !ok || taken {
+			from, to := projectKey(p[0]), projectKey(p[1])
+			raw, ok := projects[from]
+			if _, taken := projects[to]; !ok || taken {
 				continue
 			}
-			projects[p[1]] = raw
+			projects[to] = raw
 			changed = true
 		}
 		return changed, nil

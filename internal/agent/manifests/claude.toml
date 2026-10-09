@@ -107,7 +107,8 @@ template = '''
 '''
 
 # Access policy (docs/SPEC.md §5.2). Rules name real paths, because Claude
-# resolves symlinks first. Only Edit(...) deny rules: they cover Write, Edit
+# resolves symlinks first. On Windows Claude matches POSIX-form paths, so
+# C:\Users\a is written //c/Users/a (the rules function converts it). Only Edit(...) deny rules: they cover Write, Edit
 # and NotebookEdit, while Write(...) rules aren't matched by file checks.
 # Edit(...) allow rules also open the Bash sandbox for writing (a thread's
 # commits go to the main repo's git dir).
@@ -447,7 +448,9 @@ state = "blocked"
 reason = "permission"
 priority = 40
 region = "screen"
-contains = ["Do you want to ", "❯ 1. Yes", "Esc to cancel"]
+contains = ["Do you want to ", "Esc to cancel"]
+# Claude on Windows draws ">" for "❯" (its figures fallback).
+regex = '(?m)^\s*[❯>][\s\x{00A0}]+1\. Yes'
 
 [[rules]]
 id = "blocked-question"
@@ -484,7 +487,7 @@ id = "idle-prompt-box"
 state = "idle"
 priority = 0
 region = "bottom:10"
-regex = '(?m)^\s*❯'
+regex = '(?m)^\s*[❯>]'
 skip_dim = true
 
 # Not a state of its own (the box above already says idle): the paste
@@ -496,5 +499,5 @@ id = "idle-empty-box"
 state = "idle"
 priority = 0
 region = "bottom:10"
-regex = '(?m)^\s*❯[\s\x{00A0}]*$'
+regex = '(?m)^\s*[❯>][\s\x{00A0}]*$'
 skip_dim = true

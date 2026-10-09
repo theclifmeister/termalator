@@ -13,3 +13,16 @@ func TestHookexecFunc(t *testing.T) {
 		t.Fatalf("hookexec without args = %s", got)
 	}
 }
+
+func TestPosixPath(t *testing.T) {
+	for in, want := range map[string]string{
+		`C:\Users\a\p`: "/c/Users/a/p",
+		`d:/x`:         "/d/x",
+		`C:`:           "/c",
+		"/home/u":      "/home/u",
+	} {
+		if got := posixPath(in); got != want {
+			t.Errorf("posixPath(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

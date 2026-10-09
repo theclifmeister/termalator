@@ -113,3 +113,11 @@ func mustOpen(t *testing.T, p string) *os.File {
 	t.Cleanup(func() { f.Close() })
 	return f
 }
+
+func TestProjectKeyForwardSlash(t *testing.T) {
+	// Claude keys projects by forward-slash path; on Windows that is
+	// ToSlash of the backslash path (a no-op elsewhere).
+	if got, want := projectKey(filepath.Join("a", "b")), "a/b"; got != want {
+		t.Fatalf("projectKey = %q, want %q", got, want)
+	}
+}
