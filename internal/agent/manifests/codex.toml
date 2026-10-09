@@ -70,8 +70,8 @@ args = [
   # Codex's network proxy, an experimental feature in 0.160: without it
   # "limited" opens everything), so gh and az escalate to auto-review as
   # before and a merge stays reviewed. Its Commands (coordinator_merges)
-  # have no equivalent: an execpolicy allow rule doesn't get past the
-  # proxy, and allowing the PR host's domain would open all of gh.
+  # aren't mapped (user, 2026-10-09: keep auto-review): the PR host's
+  # domain stays closed, which would open all of gh, not just the merge.
   # A newer Codex may rename or change the proxy or this syntax: the Go
   # agent probes the profile before a coordinator starts and drops these
   # flags, with a logged warning, when it doesn't hold (probe.go).
