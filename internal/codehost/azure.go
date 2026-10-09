@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"os"
 	"os/exec"
 	"regexp"
 	"slices"
@@ -15,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/theclifmeister/terminatr/internal/plat/shell"
 )
 
 // Azure is the Azure DevOps host: its REST API, asked through az rest
@@ -60,9 +61,9 @@ func RunAZ(dir string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), azTimeout)
 	defer cancel()
 	args = append(slices.Clip(args), "--only-show-errors", "--output", "json")
-	cmd := exec.CommandContext(ctx, "az", args...)
+	cmd := shell.CLICommand(ctx, "az", args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(),
+	cmd.Env = append(cmd.Environ(),
 		"AZURE_CORE_NO_COLOR=true",
 		"AZURE_CORE_ONLY_SHOW_ERRORS=true",
 		"AZURE_CORE_SURVEY_MESSAGE=false",
