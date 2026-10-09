@@ -46,6 +46,9 @@ type row struct {
 	project string
 	thread  *ThreadRow
 	task    *tasks.Task // a needs-you task's row in NEEDS YOU
+	// questions is the coordinator's open questions on its row in NEEDS
+	// YOU: enter has it open them.
+	questions int
 }
 
 func (r row) selectable() bool { return r.key != "" }
@@ -237,6 +240,11 @@ func buildRows(d Data, project string) []row {
 	var needs []row
 	for _, p := range d.Projects {
 		needs = append(needs, needsOf[p.Slug]...)
+		if p.Questions > 0 {
+			needs = append(needs, row{key: "nq:" + p.Slug, project: p.Slug, questions: p.Questions,
+				mark: markNeeds, who: p.Slug, what: questionsWaiting(p.Questions), state: "blocked",
+				rest: "enter answers them", pct: -1})
+		}
 		for _, t := range p.NeedsYou {
 			r := row{key: fmt.Sprintf("nt:%s:%d", p.Slug, t.ID), project: p.Slug, task: t,
 				mark: markNeeds, who: p.Slug, what: t.Ref() + " " + oneLine(t.Title), state: string(t.Status), rest: t.Thread, pct: -1}

@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/theclifmeister/terminatr/internal/project"
 )
 
 // Actions: the list's keys. One table drives the key handling, the help
@@ -59,7 +61,7 @@ func init() {
 		}},
 		{keys: []string{"tab", "shift+tab"}, label: "tab shift+tab", help: "the keyboard to the next / previous area: the list, the details panel, the projects sidebar (its keys below); esc back to the list",
 			mouse: "a click on the area", run: (*dash).cycleFocus},
-		{keys: []string{"enter"}, label: "enter", help: "attach to the selected session; on a project, open its coordinator; a task in NEEDS YOU shows in the project popup",
+		{keys: []string{"enter"}, label: "enter", help: "attach to the selected session; on a project, open its coordinator; a task in NEEDS YOU shows in the project popup; questions waiting there open in the coordinator's question dialog",
 			menu: []string{"open the selected row"},
 			foot: func(_ *dash, r row, ok bool) string {
 				switch {
@@ -67,6 +69,8 @@ func init() {
 					return ""
 				case r.task != nil:
 					return "show"
+				case r.questions > 0:
+					return "answer"
 				case r.session != "":
 					return "attach"
 				case r.thread == nil && r.project != "":
@@ -156,6 +160,8 @@ func (m *dash) enter(string) tea.Cmd {
 	case !ok:
 	case r.task != nil:
 		return m.showTask(r.project, r.task.ID)
+	case r.questions > 0:
+		return m.answerQuestions(r.project)
 	case r.session != "":
 		return m.act(func() actionMsg { return actionMsg{attach: r.session, current: r.project} })
 	case r.thread != nil:
@@ -226,4 +232,22 @@ func (m *dash) sideKey(key string) tea.Cmd {
 		m.msg = msg
 	}
 	return nil
+}
+
+// questionsWaiting is "2 questions waiting" (project.QuestionsWaiting),
+// for where a project variable hides the package.
+func questionsWaiting(n int) string { return project.QuestionsWaiting(n) }
+
+// answerQuestions has slug's coordinator open its questions in its
+// question dialog; the footer says what came of it.
+func (m *dash) answerQuestions(slug string) tea.Cmd {
+	src := m.src
+	return m.act(func() actionMsg {
+		res, err := src.OpenQuestions(slug)
+		if err != nil {
+			return actionMsg{err: err}
+		}
+		return actionMsg{msg: fmt.Sprintf("asked %s's coordinator to open its %s; the dialog shows in its pane once it is free",
+			slug, strings.TrimSuffix(project.QuestionsWaiting(res.Open), " waiting"))}
+	})
 }

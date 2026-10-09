@@ -3,7 +3,7 @@ import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 
 import type { TerminatrWatch } from '../types'
-import { ciToast, statusText } from '../hooks/view'
+import { answeredText, ciToast, questions, statusText } from '../hooks/view'
 
 const thread = (over: Partial<TerminatrWatch> = {}): TerminatrWatch => ({
   session: { id: 's-7', role: 'thread', project: 'demo', thread: 't-0044', state: 'working' },
@@ -171,4 +171,53 @@ test('mobile and vscode: the band validates there too, the status entry carries 
     expect(await rows(ui)).toEqual(['T50 · steps 1/3 · #12 open, checks pending', 'now: Write the band'])
     await ui.unmount()
   }
+})
+
+test('a coordinator with open questions: the band offers them, a press asks tm to open them', async ($, on) => {
+  const runs: string[][] = []
+  let code = 0
+  on('process.run', async (_$, e) => {
+    runs.push([...e.argv])
+    return { value: { exitCode: code, stdout: '', stderr: code ? 'tm ask: refused: project demo has no coordinator running; open it first\n' : '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  const { statuses, toasts } = await start($, on, [{ ...coordinator(1, 0), questions: 2 }])
+  // The counts stay in the status entry; the questions are the band's.
+  expect(statuses).toEqual(['1 needs you'])
+  for (const surface of ['terminal', 'desktop', 'mobile'] as const) {
+    const ui = await $.ui.mount({ plugin: 'terminatr', surface, ...band(80) })
+    expect(await ui.find({ key: 'questions' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: '2 questions waiting · ' })).toBeDefined()
+    const answer = (await ui.find({ key: 'answer' })) as { props: Record<string, unknown> } | undefined
+    expect(answer?.props.hotkey).toBe('a')
+    expect(answer?.props.label).toBe('Answer')
+    await ui.unmount()
+  }
+  const ui = await $.ui.mount({ plugin: 'terminatr', surface: 'terminal', ...band(80) })
+  await ui.press({ key: 'answer' })
+  for (let i = 0; i < 100; i++) await Promise.resolve()
+  expect(runs).toEqual([['/opt/tm', 'ask', 'open']])
+  expect(toasts).toEqual(['Asked: your questions open in a dialog once the coordinator is free'])
+  code = 1
+  await ui.press({ key: 'answer' })
+  for (let i = 0; i < 100; i++) await Promise.resolve()
+  expect(toasts[1]).toBe('Not asked: refused: project demo has no coordinator running; open it first')
+  await ui.unmount()
+})
+
+test('no questions band for a thread, an ended coordinator, or none open', async () => {
+  expect(questions({ ...coordinator(0, 0), questions: 0 })).toBe(0)
+  expect(questions({ ...coordinator(0, 0) })).toBe(0)
+  expect(questions({ ...thread(), questions: 3 })).toBe(0)
+  const ended = coordinator(0, 0)
+  expect(questions({ ...ended, session: { ...ended.session, state: 'exited' }, questions: 2 })).toBe(0)
+  expect(questions(null)).toBe(0)
+  expect(answeredText(3, '')).toBe('Not asked: tm ask open exited 3')
+})
+
+test('[mods] band = false: no questions band either', async ($, on) => {
+  await start($, on, [{ ...coordinator(0, 0), questions: 1 }], { TERMINATR_BAND: 'off' })
+  const ui = await $.ui.mount({ plugin: 'terminatr', surface: 'terminal', ...band(120) })
+  expect(await ui.find({ key: 'questions' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: 'engine' })).toBeDefined()
+  await ui.unmount()
 })

@@ -42,6 +42,9 @@ type ProjectWatch struct {
 	// Context is the coordinator's context window use; nil when no
 	// coordinator runs or its mod hasn't reported a turn.
 	Context *WatchContext `json:"context,omitempty"`
+	// Questions counts the coordinator's open questions (tm ask), which
+	// the coordinator's info panel offers to open in its question dialog.
+	Questions int `json:"questions,omitempty"`
 	// Ticker is when the ticker last polled the project's PRs and
 	// synced its repos; nil when it hasn't yet.
 	Ticker *WatchTicker `json:"ticker,omitempty"`

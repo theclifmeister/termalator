@@ -35,6 +35,11 @@
 // same socket (hooks/tools.ts): typed, checked by the server, run as the
 // thread, and let through without a permission prompt.
 //
+// In a coordinator with open questions (tm ask) the band says so instead,
+// "2 questions waiting · a: Answer": a click, or a with the band focused,
+// runs `tm ask open`, which queues the prompt that has the coordinator
+// open them in its question dialog.
+//
 // It sends each AskUserQuestion menu to the server (`tm session ask`) and
 // answers it with what `tm thread answer` gave, unless the user answers
 // in the pane first.
@@ -50,7 +55,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { TerminatrTurn, TerminatrWatch } from '../types'
 import { answers, question } from './ask'
-import { drawBand } from './band'
+import { drawBand, drawQuestions } from './band'
 import { withBlock } from './context'
 import { errorText, handled, offerOf } from './deliver'
 import type { Ack, Offer } from './deliver'
@@ -62,7 +67,7 @@ import { initialTurn, stateOf, step, waitKey } from './turn'
 import { initialUsage, reportOf } from './usage'
 import type { TurnUsageIn, UsageReport } from './usage'
 import type { Seen } from './turn'
-import { bandShows, ciToast, statusText } from './view'
+import { answeredText, bandShows, ciToast, questions, statusText } from './view'
 
 const watch = atom({ plugin: 'terminatr', key: 'watch' } as const, null)
 const band = atom({ plugin: 'terminatr', key: 'band' } as const, true)
@@ -179,7 +184,10 @@ export const register: Register = on => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     sawViewport(e.viewport)
     const w = await read($, watch)
-    if (e.props.hasSurvey || !(await read($, band)) || !bandShows(w)) return next(e)
+    if (e.props.hasSurvey || !(await read($, band))) return next(e)
+    const n = questions(w)
+    if (n > 0) return drawQuestions($.ui.resolve(e), n, () => void answerQuestions($))
+    if (!bandShows(w)) return next(e)
     return drawBand($.ui.resolve(e), e.props.bodyColumns, w)
   })
 
@@ -252,6 +260,20 @@ export const register: Register = on => {
   })
 
   registerPane(on)
+}
+
+// answerQuestions has the coordinator open its questions (tm ask open):
+// the server queues the prompt that does it, so it waits while a turn
+// runs, and toasts what came of it.
+async function answerQuestions($: EngineInterface) {
+  const bin = await $.env.get('TERMINATR_BIN')
+  if (!bin) return
+  try {
+    const r = await $.process.run([bin, 'ask', 'open'])
+    $.ui.toast(answeredText(r.exitCode, r.stderr))
+  } catch (err) {
+    $.ui.toast(answeredText(null, String(err)))
+  }
 }
 
 // clearedContext tells the server the context is gone after /clear, so

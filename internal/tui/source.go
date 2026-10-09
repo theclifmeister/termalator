@@ -67,6 +67,9 @@ type ProjectData struct {
 	// NeedsYou are the tasks in the board's Needs you group (review or
 	// blocked), in board order, for NEEDS YOU.
 	NeedsYou []*tasks.Task
+	// Questions counts the coordinator's open questions (tm ask), a
+	// NEEDS YOU row whose enter has it open them.
+	Questions int
 	// Checkouts are notes on the repos whose local default branch is
 	// behind origin, by repo path, as the ticker last saw them.
 	Checkouts map[string]string
@@ -126,6 +129,9 @@ type Source interface {
 	// agent session outside the projects, as a thread (docs/SPEC.md §4,
 	// Adopt). It reports false when an item already asks it.
 	AskAdopt(slug string, s proto.SessionInfo) (bool, error)
+	// OpenQuestions has the project's coordinator put its open questions
+	// (tm ask) to the user in its question dialog (questions.open).
+	OpenQuestions(slug string) (proto.QuestionsOpenResult, error)
 	// Review is how to check task t, in review, and whether its change
 	// has shipped.
 	Review(slug string, t *tasks.Task) Review
@@ -262,6 +268,8 @@ func (s *ServerSource) Load() Data {
 			}
 			items, _ := p.Inbox()
 			pd.Unread, pd.Items = len(items), items
+			qs, _ := p.Questions()
+			pd.Questions = len(qs)
 		}
 		d.Projects = append(d.Projects, pd)
 	}
@@ -442,6 +450,12 @@ func (s *ServerSource) Ask(slug string, id int, kind, note string) (bool, error)
 		return p.AskSendBack(s.Caller, t.Ref(), note)
 	}
 	return p.AskDelegate(s.Caller, t.Ref())
+}
+
+func (s *ServerSource) OpenQuestions(slug string) (proto.QuestionsOpenResult, error) {
+	var res proto.QuestionsOpenResult
+	err := s.call(proto.MethodQuestionsOpen, proto.QuestionsOpenParams{Project: slug}, &res)
+	return res, err
 }
 
 func (s *ServerSource) AskAdopt(slug string, sess proto.SessionInfo) (bool, error) {

@@ -619,6 +619,12 @@ func (s *Server) dispatch(req proto.Request, peerPID int) (any, *proto.Error) {
 		res, perr := s.asks.answer(p.ID, p.Index, p.Answer)
 		s.watch.wake()
 		return res, perr
+	case proto.MethodQuestionsOpen:
+		var p proto.QuestionsOpenParams
+		if err := decodeParams(req.Params, &p); err != nil {
+			return nil, err
+		}
+		return s.openQuestions(p)
 	case proto.MethodSessionRemote:
 		var p proto.SessionRemoteParams
 		if err := decodeParams(req.Params, &p); err != nil {

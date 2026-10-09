@@ -498,3 +498,24 @@ type ToolRunResult struct {
 	Text    string `json:"text"`
 	IsError bool   `json:"is_error,omitempty"`
 }
+
+// MethodQuestionsOpen has a project's coordinator open its open
+// questions (tm ask) in its question dialog (docs/SPEC.md §7.5,
+// Questions): the band in its pane, a dashboard key or `tm ask open`.
+// The server queues a fixed-word prompt to the coordinator, dropped at
+// delivery when no question is open any more.
+const MethodQuestionsOpen = "questions.open"
+
+// QuestionsOpenParams are the params of questions.open.
+type QuestionsOpenParams struct {
+	Project string `json:"project"`
+}
+
+// QuestionsOpenResult is what questions.open did: the coordinator
+// session prompted, how (as session.prompt's Via) and how many
+// questions were open.
+type QuestionsOpenResult struct {
+	Session string `json:"session"`
+	Via     string `json:"via"`
+	Open    int    `json:"open"`
+}

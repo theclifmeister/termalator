@@ -1,7 +1,7 @@
 import type { Color, Elements, RenderSurface } from 'claude-code'
 
 import type { TerminatrWatch } from '../types'
-import { isPRBad, steps } from './view'
+import { isPRBad, questionsText, steps } from './view'
 
 // A part of the band's first row: its text and how it is painted.
 type Part = { text: string; bold?: boolean; dimColor?: boolean; color?: Color }
@@ -42,6 +42,20 @@ export function drawBand({ Box, Text }: Elements[RenderSurface], bodyColumns: nu
       {head}
       {!isOneRow && current ? <Text wrap="truncate-end">{current}</Text> : null}
       {ask ? <Text color="warning" wrap="truncate-end">{ask}</Text> : null}
+    </Box>
+  )
+}
+
+// drawQuestions draws a coordinator's band: "2 questions waiting · a:
+// Answer". A click on Answer, or a once the band has the focus (ctrl+x
+// tab, or a click), runs onAnswer, which has the coordinator open them
+// in its question dialog. It never blocks: the prompt box stays the
+// user's, and an answer typed in chat works as before.
+export function drawQuestions({ Box, Button, Text }: Elements[RenderSurface], n: number, onAnswer: () => void) {
+  return (
+    <Box key="questions" flexDirection="row">
+      <Text color="warning" wrap="truncate-end">{questionsText(n) + ' · '}</Text>
+      <Button key="answer" label="Answer" hotkey="a" plain onPress={onAnswer} />
     </Box>
   )
 }

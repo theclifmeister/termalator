@@ -32,6 +32,9 @@ type Watch struct {
 	Inbox    int `json:"inbox"`
 	// Queued counts the prompts waiting to be pasted into the session.
 	Queued int `json:"queued_prompts"`
+	// Questions counts the coordinator's open questions (tm ask), for a
+	// coordinator's watch only: its band offers to open them.
+	Questions int `json:"questions,omitempty"`
 }
 
 // WatchSession is the session part of a Watch.

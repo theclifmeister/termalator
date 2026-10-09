@@ -109,6 +109,11 @@ func watchOf(info proto.SessionInfo, tickerState string) proto.Watch {
 	if items, err := p.Inbox(); err == nil {
 		w.Inbox = len(items)
 	}
+	if info.Role == proto.RoleCoordinator {
+		if qs, err := p.Questions(); err == nil {
+			w.Questions = len(qs)
+		}
+	}
 	if info.Role != proto.RoleThread || !thread.ValidID(info.Thread) {
 		return w
 	}

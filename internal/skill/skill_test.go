@@ -38,7 +38,8 @@ func TestText(t *testing.T) {
 		"`accept` T<n>: their word", "It is the only way besides chat", "`send-back` T<n>", "propose a new thread for it with the note", "`--note \"Check: …\"`", "standing acceptance", "`task-done`: tm completed a task", "A send-back on a done task reopens it", "`pr-conflict`", "`close-held`", "Approve a thread's permission prompt only", "--model", "unknown-model", "project-paused", "model-not-allowed",
 		"Propose nothing yet", "to memory as they happen, without being asked", "only when the user asks you to", "a slot is free", "anything it assumed",
 		"`tm thread answer <id> --choice N` or `--option \"<label>\"`", "`--question K`", "Never choose an answer yourself", "uploads/ folder", "attachments",
-		"or a task id", "Talk to the user in task ids", "short and factual", "merge and rewrite", "re-read it", "no longer true", "your own short summary", "Upkeep section", "`## Needs you` heading", "auto_clear", "`terminatr` context block holds `tm context`"} {
+		"or a task id", "Talk to the user in task ids", "short and factual", "merge and rewrite", "re-read it", "no longer true", "your own short summary", "Upkeep section", "`## Needs you` heading", "auto_clear", "`terminatr` context block holds `tm context`",
+		"`tm ask add", "`[tm] answer questions`", "`tm ask list --json`", "AskUserQuestion", "`tm ask done Q<n>`", "Never open the dialog unasked"} {
 		if !strings.Contains(coord, w) {
 			t.Errorf("coordinator rules lack %q", w)
 		}

@@ -31,6 +31,9 @@ export type TerminatrWatch = {
   needs_you: number
   inbox: number
   queued_prompts: number
+  // A coordinator's open questions (tm ask), which its band offers to
+  // open in the question dialog; absent for none.
+  questions?: number
 }
 
 // The session's turn as the mod's own events left it (hooks/turn.ts),
@@ -55,6 +58,8 @@ export type TerminatrProject = {
   ready: TerminatrTodo[]
   context?: TerminatrContext
   ticker?: TerminatrTicker
+  // The coordinator's open questions (tm ask); the band offers them.
+  questions?: number
 }
 
 // The ticker's timers: ISO times, so a line only changes when the ticker

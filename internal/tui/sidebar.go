@@ -158,7 +158,7 @@ func buildTree(ps []ProjectData, sessions []proto.SessionInfo, in treeIn) []tree
 	var out []treeRow
 	for _, p := range ps {
 		pr := treeRow{kind: treeProject, slug: p.Slug, pct: -1, threads: len(p.Threads), current: p.Slug == in.current,
-			hint: p.Counts["needs_you"] > 0, paused: p.Safety != nil && p.Safety.Paused}
+			hint: p.Counts["needs_you"] > 0 || p.Questions > 0, paused: p.Safety != nil && p.Safety.Paused}
 		remote, ctx := false, -1
 		for _, s := range sessions {
 			if s.Role == proto.RoleCoordinator && s.Project == p.Slug {
@@ -342,7 +342,8 @@ func treeSel(r treeRow, focused bool) (bool, lipgloss.Style) {
 //
 //	" ■ terminatr       2 ◆"  a project: its name, its open threads,
 //	                           the hint that one of them is blocked or
-//	                           waiting, or that a task needs you
+//	                           waiting, that a task needs you, or that
+//	                           the coordinator has questions waiting
 //	" └─ coordinator     ⌁ ○"  its coordinator, ⌁ while its remote
 //	                           control is on
 //	"    ├─ T12 Bump…  40% ●"  a thread's task id and title (an ad hoc
