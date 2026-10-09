@@ -52,6 +52,9 @@ func TestSmokeCodexSandbox(t *testing.T) {
 	if help, _ := exec.Command(bin, "sandbox", "--help").CombinedOutput(); !strings.Contains(string(help), "--permission-profile") {
 		t.Skip("codex sandbox has no --permission-profile (Codex before 0.128): the thread profile needs 0.128 or later")
 	}
+	if b, _ := os.ReadFile("/proc/sys/kernel/apparmor_restrict_unprivileged_userns"); strings.TrimSpace(string(b)) == "1" {
+		t.Skip("bwrap can't map a user namespace here: sysctl kernel.apparmor_restrict_unprivileged_userns=0 to run it")
+	}
 	env := New(t)
 	// Everything outside /tmp and $TMPDIR, which the profile makes
 	// writable: as in a real install, below the user's home. The socket
