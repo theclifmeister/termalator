@@ -88,6 +88,14 @@ func sh(t testing.TB) string {
 	return p
 }
 
+// shSession is how a shell session names sh: by name, found on PATH
+// (basePath), so screens show "sh" whatever the machine's Git path.
+func shSession(t testing.TB) string {
+	t.Helper()
+	sh(t)
+	return "sh"
+}
+
 // linkExe makes link run the program at target under another name: a
 // hard link (symlinks need Developer Mode).
 func linkExe(target, link string) error { return os.Link(target, link) }

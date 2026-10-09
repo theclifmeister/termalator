@@ -31,6 +31,9 @@ func osVars(home string) []string { return []string{"HOME=" + home} }
 // sh is the POSIX shell that shell windows and sessions run.
 func sh(t testing.TB) string { return "/bin/sh" }
 
+// shSession is how a shell session names sh: the dashboard shows it.
+func shSession(t testing.TB) string { return "/bin/sh" }
+
 // linkExe makes link run the program at target under another name.
 func linkExe(target, link string) error { return os.Symlink(target, link) }
 

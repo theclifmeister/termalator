@@ -287,11 +287,13 @@ func TestSmokeThreadLifecycle(t *testing.T) {
 		}
 	}
 	b, _ := os.ReadFile(filepath.Join(env.HomeDir(), ".claude.json"))
-	if err := json.Unmarshal(b, &claudeCfg); err != nil || !claudeCfg.Projects[rec.Worktree].HasTrustDialogAccepted {
+	// Keys use forward slashes (Claude Code's on Windows).
+	wt := filepath.ToSlash(rec.Worktree)
+	if err := json.Unmarshal(b, &claudeCfg); err != nil || !claudeCfg.Projects[wt].HasTrustDialogAccepted {
 		t.Errorf("worktree not trusted (%v): %s", err, b)
 	}
 	for d := range claudeCfg.Projects {
-		if r, _ := filepath.EvalSymlinks(rec.Worktree); d != rec.Worktree && d != r && strings.HasPrefix(d, filepath.Join(env.Home, "worktrees")) {
+		if r, _ := filepath.EvalSymlinks(rec.Worktree); d != wt && d != filepath.ToSlash(r) && strings.HasPrefix(d, filepath.ToSlash(filepath.Join(env.Home, "worktrees"))) {
 			t.Errorf("trusted more than the worktree: %s", d)
 		}
 	}

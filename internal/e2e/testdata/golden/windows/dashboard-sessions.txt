@@ -1,0 +1,24 @@
+ PROJECTS                    1 │ tm dashboard                          ● server ok · 1 session · dev
+ ■ demo                    0   │ demo ──────────────────────────────────────────────────────────────
+ └─ coordinator              · │  coordinator               —           not running; enter starts it
+                               │  tasks: 0 need you · 1 in motion · 1 on deck
+                               │ OTHER SESSIONS 1 ──────────────────────────────────────────────────
+                               │  <session>           sh                    ▷ running   <duration>  C:\
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │────────────────────────────────────────────────────────────────────
+                               │ ≡ menu · enter open · a project · t tasks · i inbox · , settings ·…
+                               │

@@ -308,7 +308,7 @@ func (e *Env) StartSize(cols, rows int, app string, args ...string) *Session {
 	argv := append([]string{app}, args...)
 	switch {
 	case app == "shell":
-		argv[0] = sh(e.T)
+		argv[0] = shSession(e.T)
 	case isApp(app):
 		argv[0] = filepath.Join(filepath.Dir(e.Bin), exe(app))
 	}

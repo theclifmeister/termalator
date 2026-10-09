@@ -55,6 +55,20 @@ const (
 	codexContext    = 258400
 )
 
+// hookSourceIn is codexHookSource as Codex names it in a session in cwd:
+// on Windows made absolute on cwd's drive (C:\<session-flags>\config.toml,
+// Codex 0.162).
+func hookSourceIn(cwd string) string {
+	if filepath.Separator == '/' {
+		return codexHookSource
+	}
+	vol := filepath.VolumeName(cwd)
+	if vol == "" {
+		vol = "C:"
+	}
+	return vol + filepath.FromSlash(codexHookSource)
+}
+
 // isCodex reports whether the fake runs as Codex.
 func isCodex() bool {
 	return strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe") == "codex" || os.Getenv("FAKEAGENT_FLAVOR") == "codex"
@@ -278,7 +292,7 @@ func codexMain() {
 	} else {
 		a.sid = newUUID()
 	}
-	a.hooks, cx.untrusted = codexHooks(cfg, false)
+	a.hooks, cx.untrusted = codexHooks(cfg, false, hookSourceIn(a.cwd))
 	if n, err := strconv.Atoi(os.Getenv("FAKEAGENT_UNTRUSTED_HOOKS")); err == nil {
 		cx.untrusted += n // the user's own, never trusted for the session
 	}
@@ -321,7 +335,8 @@ func (a *app) codexLogStart() {
 
 // codexHooks compiles -c hooks={…}: every command handler hooks.state
 // trusts (all of them with trustAll), and how many it doesn't.
-func codexHooks(cfg map[string]any, trustAll bool) ([]hookCmd, int) {
+// source names the flags in hooks.state keys (hookSourceIn).
+func codexHooks(cfg map[string]any, trustAll bool, source string) ([]hookCmd, int) {
 	hooks, _ := cfg["hooks"].(map[string]any)
 	state, _ := hooks["state"].(map[string]any)
 	var events []string
@@ -341,7 +356,7 @@ func codexHooks(cfg map[string]any, trustAll bool) ([]hookCmd, int) {
 				if t, ok := h["timeout"].(int64); ok {
 					timeout = int(t)
 				}
-				key := fmt.Sprintf("%s:%s:%d:%d", codexHookSource, snakeCase(ev), gi, hi)
+				key := fmt.Sprintf("%s:%s:%d:%d", source, snakeCase(ev), gi, hi)
 				entry, _ := state[key].(map[string]any)
 				if h["type"] != "command" || command == "" {
 					continue
@@ -459,7 +474,7 @@ func (a *app) codexStartup() {
 		n, _ := a.waitDialog(context.Background(), d)
 		a.log("hooks-review", map[string]any{"choice": n, "untrusted": cx.untrusted})
 		if n == 2 {
-			a.hooks, _ = codexHooks(cx.cfg, true)
+			a.hooks, _ = codexHooks(cx.cfg, true, hookSourceIn(a.cwd))
 		}
 	}
 	if os.Getenv("FAKEAGENT_CODEX_UPDATE") != "" && cx.cfg["check_for_update_on_startup"] != false {

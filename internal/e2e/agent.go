@@ -116,10 +116,11 @@ func (e *Env) Trust(dirs ...string) {
 	if projects == nil {
 		projects = map[string]any{}
 	}
+	// Keys use forward slashes, as Claude Code's do on Windows.
 	for _, d := range dirs {
-		projects[d] = map[string]any{"hasTrustDialogAccepted": true}
+		projects[filepath.ToSlash(d)] = map[string]any{"hasTrustDialogAccepted": true}
 		if r, err := filepath.EvalSymlinks(d); err == nil {
-			projects[r] = map[string]any{"hasTrustDialogAccepted": true}
+			projects[filepath.ToSlash(r)] = map[string]any{"hasTrustDialogAccepted": true}
 		}
 	}
 	cfg["projects"] = projects
@@ -277,7 +278,7 @@ func (e *Env) HookEvents() []string {
 func (e *Env) StartShell(dir string, argv ...string) string {
 	e.T.Helper()
 	if len(argv) == 0 {
-		argv = []string{sh(e.T)}
+		argv = []string{shSession(e.T)}
 	}
 	return strings.TrimSpace(e.MustCLI(append([]string{"session", "start", "--cwd", dir, "--cols", "100", "--rows", "30", "--"}, argv...)...))
 }
