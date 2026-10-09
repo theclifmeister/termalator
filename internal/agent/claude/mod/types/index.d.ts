@@ -58,6 +58,8 @@ export type TerminatrProject = {
   ready: TerminatrTodo[]
   context?: TerminatrContext
   ticker?: TerminatrTicker
+  // The coordinator's open questions (tm ask); the band offers them.
+  questions?: number
 }
 
 // The ticker's timers: ISO times, so a line only changes when the ticker

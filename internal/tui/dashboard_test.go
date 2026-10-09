@@ -41,6 +41,7 @@ type fakeSource struct {
 	delegated  []string
 	asked      []string
 	adopted    []string // "slug s-3"
+	answered   []string // slugs whose questions were opened
 	reviews    map[int]Review
 	agents     []string
 	remote     []string // "slug on" or "slug off"
@@ -117,6 +118,10 @@ func (f *fakeSource) SetRepo(slug, path string, add bool) error {
 		}
 	}
 	return nil
+}
+func (f *fakeSource) OpenQuestions(slug string) (proto.QuestionsOpenResult, error) {
+	f.answered = append(f.answered, slug)
+	return proto.QuestionsOpenResult{Session: "s-1", Via: "queued", Open: 2}, nil
 }
 func (f *fakeSource) AskAdopt(slug string, s proto.SessionInfo) (bool, error) {
 	f.adopted = append(f.adopted, slug+" "+s.ID)

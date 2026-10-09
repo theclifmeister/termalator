@@ -164,6 +164,9 @@ func ProjectWatchOf(p *project.Project, sessions []proto.SessionInfo, tickerStat
 		}
 		w.Ticker = &proto.WatchTicker{PRChecked: timing.PRPolled, Synced: timing.Synced, PRPollSeconds: secs, GHFailing: timing.GHFailing}
 	}
+	if qs, err := p.Questions(); err == nil {
+		w.Questions = len(qs)
+	}
 	slices.SortStableFunc(w.NeedsYou, func(a, b proto.WatchNeed) int {
 		if c := cmp.Compare(whyRank(a.Why), whyRank(b.Why)); c != 0 {
 			return c

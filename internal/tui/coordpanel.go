@@ -122,11 +122,18 @@ func coordLines(pw *proto.ProjectWatch, w int, now time.Time) ([]string, []infoH
 			hits = append(hits, infoHit{})
 		}
 	}
-	if len(pw.NeedsYou) == 0 {
+	if len(pw.NeedsYou) == 0 && pw.Questions == 0 {
 		gap()
 		line(styleFaint.Render("Nothing waits for you."), infoHit{})
 	} else {
 		heading("NEEDS YOU")
+	}
+	// The coordinator's open questions (tm ask): a click, or a, has it
+	// open them in its question dialog.
+	if pw.Questions > 0 {
+		h := infoHit{kind: hitQuestions}
+		g, _ := stateLook("blocked")
+		item(styleWarn.Render(g+" "+project.QuestionsWaiting(pw.Questions))+styleFaint.Render(" · a or click answers"), h)
 	}
 	for _, n := range pw.NeedsYou {
 		h := taskHit(n.Task)
@@ -285,7 +292,7 @@ func coordLines(pw *proto.ProjectWatch, w int, now time.Time) ([]string, []infoH
 // coordSummary is the panel's second line: "3 need you · 1 in inbox · 5
 // threads", as /tm's title says it.
 func coordSummary(pw *proto.ProjectWatch) string {
-	n := len(pw.NeedsYou)
+	n := len(pw.NeedsYou) + pw.Questions
 	parts := []string{fmt.Sprintf("%d need%s you", n, plural(n == 1, "s"))}
 	if len(pw.Inbox) > 0 {
 		parts = append(parts, fmt.Sprintf("%d in inbox", len(pw.Inbox)))

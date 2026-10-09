@@ -1295,7 +1295,7 @@ func (c *client) status() {
 	case c.kb == areaSide:
 		where = sideHint
 	case c.kb == areaInfo:
-		where = infoHint
+		where = c.infoHintNow()
 	}
 	if c.flash != "" {
 		where = strings.TrimPrefix(where+" · "+c.flash, " · ")

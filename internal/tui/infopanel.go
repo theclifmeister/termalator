@@ -2,6 +2,7 @@ package tui
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -100,6 +101,7 @@ const (
 	hitTask            // the task view over the session
 	hitPR              // the PR in the browser
 	hitSession         // that session in the pane (a coordinator's thread row)
+	hitQuestions       // the coordinator opens its questions (tm ask open)
 )
 
 // prURL is the thread's PR's address: the ticker's, else its report's.
@@ -434,6 +436,18 @@ func (c *client) appendInfo(b []byte, wrote bool) ([]byte, bool) {
 // infoHint is the status bar's note while the panel has the keyboard.
 const infoHint = "info panel ▸ ↑ ↓ scroll · enter task · esc back to the pane"
 
+// infoHintNow is infoHint, naming a when a coordinator's panel has open
+// questions to answer. c.mu held.
+func (c *client) infoHintNow() string {
+	if c.info == nil {
+		return infoHint
+	}
+	if d := c.info.data; d != nil && d.watch != nil && d.watch.Questions > 0 {
+		return strings.Replace(infoHint, " · esc", " · a answers questions · esc", 1)
+	}
+	return infoHint
+}
+
 // setInfo changes the view's info panel: a layout change, so every
 // console's pane follows. save also keeps it in ui.json, as the default
 // of new views.
@@ -480,13 +494,16 @@ func (c *client) infoToggle() {
 }
 
 // infoKeyboard runs a key while the panel has the keyboard: the arrows
-// scroll it, enter shows the task, esc and tab give the keyboard back to
-// the pane (tab, as prefix+tab, to the next area: the pane); any other
-// key is dropped. c.mu held; released here.
+// scroll it, enter shows the task, a has a coordinator open its
+// questions, esc and tab give the keyboard back to the pane (tab, as
+// prefix+tab, to the next area: the pane); any other key is dropped.
+// c.mu held; released here.
 func (c *client) infoKeyboard(k uv.Key) {
 	c.flash = ""
-	task := false
+	task, answer := false, false
 	switch keyName(k) {
+	case "a":
+		answer = true
 	case "up", "k":
 		c.infoScroll(-1)
 	case "down", "j":
@@ -510,6 +527,59 @@ func (c *client) infoKeyboard(k uv.Key) {
 	if task {
 		c.infoTask(0)
 	}
+	if answer {
+		c.infoQuestions()
+	}
+}
+
+// openQuestions has project slug's coordinator open its questions
+// (questions.open); a variable for tests.
+var openQuestions = func(paths server.Paths, slug string) (proto.QuestionsOpenResult, error) {
+	var res proto.QuestionsOpenResult
+	cl, err := server.Connect(paths, false)
+	if err != nil {
+		return res, err
+	}
+	defer cl.Close()
+	err = cl.Call(proto.MethodQuestionsOpen, proto.QuestionsOpenParams{Project: slug}, &res)
+	return res, err
+}
+
+// infoQuestions has the coordinator whose panel shows open its questions
+// in its question dialog, and says so in the status bar.
+func (c *client) infoQuestions() {
+	if !c.lock() {
+		return
+	}
+	d, paths := c.info.data, c.paths
+	c.mu.Unlock()
+	slug, n := "", 0
+	if d != nil && d.watch != nil {
+		slug, n = d.slug, d.watch.Questions
+	}
+	flash := "no open questions"
+	if n > 0 {
+		flash = questionsFlash(openQuestions(paths, slug))
+	}
+	if c.lock() {
+		c.flash = flash
+		c.status()
+		c.mu.Unlock()
+		c.poke()
+	}
+}
+
+// questionsFlash says what came of asking the coordinator to open its
+// questions.
+func questionsFlash(res proto.QuestionsOpenResult, err error) string {
+	if err != nil {
+		var perr *proto.Error
+		if errors.As(err, &perr) {
+			return "not asked: " + perr.Message
+		}
+		return "not asked: " + err.Error()
+	}
+	return "asked the coordinator: your questions open in its dialog once it is free"
 }
 
 // infoTask opens the task view on task id over the session; 0 is the
@@ -610,6 +680,8 @@ func (c *client) infoMouse(m emu.Mouse) {
 		c.infoTask(h.task)
 	case hitSession:
 		c.sideGo(Target{Project: slug, Session: h.session})
+	case hitQuestions:
+		c.infoQuestions()
 	case hitPR:
 		if err := openURL(h.url); err != nil && c.lock() {
 			c.flash = "can't open the browser: " + err.Error() + "; the PR is " + h.url
