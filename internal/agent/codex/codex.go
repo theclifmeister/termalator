@@ -6,11 +6,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
 	"unicode"
+
+	"github.com/BurntSushi/toml"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/plat/shell"
@@ -92,6 +95,9 @@ func (a *Agent) Launch(spec agent.LaunchSpec) (agent.Launch, error) {
 		at -= len(a.m.Launch.KickoffArgs)
 	}
 	extra := []string{"-c", hooks, "-c", state}
+	if windowsSandboxArgs(l.Argv, runtime.GOOS) {
+		extra = append(extra, "-c", `windows.sandbox="unelevated"`)
+	}
 	l.Argv = append(l.Argv[:at:at], append(extra, l.Argv[at:]...)...)
 	if spec.Role == "coordinator" {
 		l = sandboxed(l, spec) // probe.go
@@ -112,6 +118,39 @@ func socketAccess(spec agent.LaunchSpec, goos string) agent.LaunchSpec {
 	dir := filepath.Dir(spec.Socket)
 	spec.Access.Write = append(spec.Access.Write[:len(spec.Access.Write):len(spec.Access.Write)], dir)
 	return spec
+}
+
+// windowsSandboxArgs says whether a launch on Windows needs
+// windows.sandbox set: Codex applies a permission profile there only when
+// [windows] sandbox is "elevated" or "unelevated". Unset, it runs commands
+// unsandboxed behind approvals ("Environment: local"; exec refuses them),
+// and `codex sandbox` alone, which doesn't read the key, proves nothing
+// (T204). "unelevated" (a restricted token) needs no administrator; a
+// user's own choice in $CODEX_HOME/config.toml stands.
+func windowsSandboxArgs(argv []string, goos string) bool {
+	if goos != "windows" {
+		return false
+	}
+	if idx, _, _ := profileFlags(argv); len(idx) == 0 {
+		return false // yolo: no sandbox to shape
+	}
+	home := os.Getenv("CODEX_HOME")
+	if home == "" {
+		h, err := os.UserHomeDir()
+		if err != nil {
+			return true
+		}
+		home = filepath.Join(h, ".codex")
+	}
+	var cfg struct {
+		Windows struct {
+			Sandbox string `toml:"sandbox"`
+		} `toml:"windows"`
+	}
+	if _, err := toml.DecodeFile(filepath.Join(home, "config.toml"), &cfg); err != nil {
+		return true
+	}
+	return cfg.Windows.Sandbox == ""
 }
 
 // Hook is the manifest's, after noting that a prompt ran on the thread

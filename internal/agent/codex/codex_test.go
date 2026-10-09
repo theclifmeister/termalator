@@ -438,3 +438,28 @@ func TestStateSourceFor(t *testing.T) {
 		}
 	}
 }
+
+// TestWindowsSandboxArgs: tm sets windows.sandbox on Windows unless the
+// user chose a mode, and not for a yolo launch.
+func TestWindowsSandboxArgs(t *testing.T) {
+	prof := []string{"codex", "-c", `default_permissions="tm"`, "-c", "permissions={tm={}}"}
+	home := t.TempDir()
+	t.Setenv("CODEX_HOME", home)
+	if windowsSandboxArgs(prof, "linux") {
+		t.Error("linux")
+	}
+	if windowsSandboxArgs([]string{"codex", "--dangerously-bypass-approvals-and-sandbox"}, "windows") {
+		t.Error("yolo")
+	}
+	if !windowsSandboxArgs(prof, "windows") {
+		t.Error("no config.toml: want set")
+	}
+	os.WriteFile(filepath.Join(home, "config.toml"), []byte("[tui]\nx = 1\n"), 0o600)
+	if !windowsSandboxArgs(prof, "windows") {
+		t.Error("no [windows]: want set")
+	}
+	os.WriteFile(filepath.Join(home, "config.toml"), []byte("[windows]\nsandbox = \"elevated\"\n"), 0o600)
+	if windowsSandboxArgs(prof, "windows") {
+		t.Error("user chose elevated: want left alone")
+	}
+}
