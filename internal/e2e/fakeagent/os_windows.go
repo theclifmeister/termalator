@@ -17,3 +17,9 @@ func shell() string {
 	}
 	return "sh.exe"
 }
+
+// codexHookShell is how Codex runs a hook command on Windows: always in
+// PowerShell (internal/agent/codex.HookCommand).
+func codexHookShell(command string) (string, []string) {
+	return "powershell.exe", []string{"-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command}
+}

@@ -63,11 +63,9 @@ type Config struct {
 }
 
 // PinDir and PinName place the server's own copy of its binary, the
-// pin, under its run dir: RunDir/bin/tm (docs/SPEC.md §3.6).
-const (
-	PinDir  = "bin"
-	PinName = "tm"
-)
+// pin, under its run dir: RunDir/bin/tm (docs/SPEC.md §3.6), tm.exe on
+// Windows (PinName is in pinname_*.go).
+const PinDir = "bin"
 
 // PinPath is the pin's path in runDir.
 func PinPath(runDir string) string { return filepath.Join(runDir, PinDir, PinName) }

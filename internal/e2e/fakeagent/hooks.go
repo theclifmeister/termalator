@@ -92,11 +92,16 @@ func eventNames(groups map[string][]hookGroup) []string {
 }
 
 // runHookCmd runs one command hook with payload on stdin and returns its
-// stdout and exit code (-1 when it could not run or timed out).
-func runHookCmd(h hookCmd, payload []byte, dir string, env []string) (string, int) {
+// stdout and exit code (-1 when it could not run or timed out). A shell
+// command runs in sh, or as Codex runs it (codexHookShell) when codex.
+func runHookCmd(h hookCmd, payload []byte, dir string, env []string, codex bool) (string, int) {
 	ctx, cancel := context.WithTimeout(context.Background(), h.timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, shell(), "-c", h.command)
+	if codex {
+		name, args := codexHookShell(h.command)
+		cmd = exec.CommandContext(ctx, name, args...)
+	}
 	if h.args != nil {
 		cmd = exec.CommandContext(ctx, h.command, h.args...)
 	}
@@ -149,7 +154,7 @@ func (a *app) fireHook(ctx context.Context, event string, extra map[string]any) 
 				continue
 			}
 		}
-		out, code := runHookCmd(h, b, a.cwd, a.childEnv())
+		out, code := runHookCmd(h, b, a.cwd, a.childEnv(), a.cx != nil)
 		outs = append(outs, out)
 		a.log("hook", map[string]any{"event": event, "payload": json.RawMessage(b), "stdout": out, "exit_code": code})
 	}

@@ -16,8 +16,8 @@ func TestSocketPath(t *testing.T) {
 		env  Env
 		want string
 	}{
-		{"home", Env{TerminatrHome: "/Users/me/.terminatr", UID: 501}, "/Users/me/.terminatr/run/tm.sock"},
-		{"xdg", Env{TerminatrHome: "/home/me/.terminatr", XDGRuntimeDir: "/run/user/1000", UID: 1000}, "/run/user/1000/terminatr/tm.sock"},
+		{"home", Env{TerminatrHome: "/Users/me/.terminatr", UID: 501}, filepath.FromSlash("/Users/me/.terminatr/run/tm.sock")},
+		{"xdg", Env{TerminatrHome: "/home/me/.terminatr", XDGRuntimeDir: "/run/user/1000", UID: 1000}, filepath.FromSlash("/run/user/1000/terminatr/tm.sock")},
 		{"override", Env{TerminatrSocket: "/tmp/t.sock", TerminatrHome: "/h"}, "/tmp/t.sock"},
 	}
 	for _, c := range cases {
@@ -32,7 +32,8 @@ func TestSocketPath(t *testing.T) {
 }
 
 // TestSocketPathLongHomes: homes too long for a socket under them fall back
-// to /tmp, one run directory per home, so they never share a server.
+// to /tmp (Windows: %TEMP%), one run directory per home, so they never
+// share a server.
 func TestSocketPathLongHomes(t *testing.T) {
 	long := func(name string) string { return "/Users/" + strings.Repeat("x", 100) + "/" + name }
 	a, errA := SocketPath(Env{TerminatrHome: long("a"), UID: 501})
@@ -40,7 +41,9 @@ func TestSocketPathLongHomes(t *testing.T) {
 	if errA != nil || errB != nil {
 		t.Fatal(errA, errB)
 	}
-	if ok := regexp.MustCompile(`^/tmp/terminatr-501-[0-9a-f]{8}/tm\.sock$`); !ok.MatchString(a) || !ok.MatchString(b) {
+	fallback := regexp.QuoteMeta(filepath.Join(ipc.ShortDir(), "terminatr-"))
+	sep := regexp.QuoteMeta(string(filepath.Separator))
+	if ok := regexp.MustCompile(`^` + fallback + `501-[0-9a-f]{8}` + sep + `tm\.sock$`); !ok.MatchString(a) || !ok.MatchString(b) {
 		t.Fatalf("fallback sockets %q, %q", a, b)
 	}
 	if a == b {
@@ -54,7 +57,7 @@ func TestSocketPathLongHomes(t *testing.T) {
 	}
 	// An XDG run dir that is too long falls back per home too.
 	x, _ := SocketPath(Env{TerminatrHome: "/home/me/.terminatr", XDGRuntimeDir: "/run/" + strings.Repeat("r", 100), UID: 1000})
-	if !strings.HasPrefix(x, "/tmp/terminatr-1000-") {
+	if !strings.HasPrefix(x, filepath.Join(ipc.ShortDir(), "terminatr-1000-")) {
 		t.Fatalf("long XDG run dir: %s", x)
 	}
 }
@@ -65,7 +68,7 @@ func TestResolveStable(t *testing.T) {
 	real := t.TempDir()
 	link := filepath.Join(t.TempDir(), "link")
 	if err := os.Symlink(real, link); err != nil {
-		t.Fatal(err)
+		t.Skip(err) // Windows: symlinks need developer mode or the privilege
 	}
 	want := resolve(filepath.Join(real, "home"))
 	if got := resolve(filepath.Join(link, "home")); got != want {

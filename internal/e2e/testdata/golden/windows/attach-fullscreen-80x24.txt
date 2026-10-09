@@ -1,0 +1,5 @@
+fullscreen ready  👨‍👩‍👧 🇯🇵 👍🏽 ❤️ |
+in: "\x1b[13;2u"
+in: "x"
+in: "\x1b[200~one\ntwo\x1b[201~"
+in: "\x1b[<64;5;6M"

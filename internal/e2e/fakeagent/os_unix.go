@@ -8,3 +8,6 @@ const sockDir = "/tmp"
 
 // shell is the shell that runs hook commands and the Bash tool's.
 func shell() string { return "/bin/sh" }
+
+// codexHookShell is how Codex runs a hook command: in sh.
+func codexHookShell(command string) (string, []string) { return shell(), []string{"-c", command} }

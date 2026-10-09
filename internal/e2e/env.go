@@ -67,6 +67,14 @@ func build(t testing.TB) string {
 			buildErr = err
 			return
 		}
+		// The first run of a new binary can wait seconds for a virus
+		// scanner (Windows Defender asks its cloud about an unknown
+		// exe): run tm once now, not inside a scenario's server start.
+		defer func() {
+			if buildErr == nil {
+				exec.Command(filepath.Join(binDir, exe("tm")), "version").Run()
+			}
+		}()
 		if pre := os.Getenv("E2E_BIN"); pre != "" {
 			buildErr = copyBin(pre, binDir)
 			return

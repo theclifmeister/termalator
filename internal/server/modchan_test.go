@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
+	"github.com/theclifmeister/terminatr/internal/plat/ipc"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/session"
@@ -63,7 +64,7 @@ func (l *lockedBuffer) String() string {
 // socket; the server takes it, refuses what isn't a state, and closes
 // the socket with the session.
 func TestModChannel(t *testing.T) {
-	rt, err := os.MkdirTemp("/tmp", "tmmod")
+	rt, err := os.MkdirTemp(ipc.ShortDir(), "tmmod")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +83,7 @@ func TestModChannel(t *testing.T) {
 		t.Fatal(err)
 	}
 	sess, err := session.Start(session.Config{
-		ID: "s-1", Role: proto.RoleThread, Argv: []string{"/bin/sh", "-c", "exec cat"}, Cwd: rt,
+		ID: "s-1", Role: proto.RoleThread, Argv: []string{testSh(t), "-c", "exec cat"}, Cwd: rt,
 		Env: []string{"PATH=/usr/bin:/bin"}, Cols: 80, Rows: 24, Logf: t.Logf,
 		Agent: &session.AgentConfig{Agent: agent.FromManifest(m), Home: rt, ModSocket: sock},
 	})
@@ -160,7 +161,7 @@ func TestModChannel(t *testing.T) {
 	if code := postMod(t, c, "/v1/other", `{}`); code != http.StatusNotFound {
 		t.Fatalf("other path: %d", code)
 	}
-	if fi, err := os.Stat(sock); err != nil || fi.Mode().Perm() != 0o600 {
+	if fi, err := os.Stat(sock); err != nil || chmodApplies && fi.Mode().Perm() != 0o600 {
 		t.Fatalf("socket: %v %v", fi, err)
 	}
 
@@ -199,7 +200,7 @@ func TestModChannel(t *testing.T) {
 // once it is live, and its acks move the queue on; what isn't an ack is
 // refused.
 func TestModPrompts(t *testing.T) {
-	rt, err := os.MkdirTemp("/tmp", "tmmod")
+	rt, err := os.MkdirTemp(ipc.ShortDir(), "tmmod")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +218,7 @@ func TestModPrompts(t *testing.T) {
 		t.Fatal(err)
 	}
 	sess, err := session.Start(session.Config{
-		ID: "s-1", Role: proto.RoleThread, Argv: []string{"/bin/sh", "-c", "exec cat"}, Cwd: rt,
+		ID: "s-1", Role: proto.RoleThread, Argv: []string{testSh(t), "-c", "exec cat"}, Cwd: rt,
 		Env: []string{"PATH=/usr/bin:/bin"}, Cols: 80, Rows: 24, Logf: t.Logf,
 		Agent: &session.AgentConfig{Agent: agent.FromManifest(m), Home: rt, ModSocket: sock},
 	})

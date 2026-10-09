@@ -2,9 +2,6 @@ package server
 
 import "errors"
 
-// pinExt is the pin's extension: Windows runs only a file named .exe.
-const pinExt = ".exe"
-
 // companions are pinned beside tm.exe: the ConPTY that plat/pty loads
 // from beside the running exe (the release ships it).
 var companions = []string{"conpty.dll", "OpenConsole.exe"}

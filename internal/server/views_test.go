@@ -410,7 +410,7 @@ func TestViewSubscribeStream(t *testing.T) {
 	}
 	defer c.Close()
 	var started proto.SessionStartResult
-	call(t, c, proto.MethodSessionStart, proto.SessionStartParams{Argv: []string{"/bin/sh"}, Cwd: "/"}, &started)
+	call(t, c, proto.MethodSessionStart, proto.SessionStartParams{Argv: []string{testSh(t)}, Cwd: t.TempDir()}, &started)
 	id := started.Session.ID
 
 	a, v, err := SubscribeView(p, proto.ViewSubscribeParams{Cols: 100, Rows: 30})

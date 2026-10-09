@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/emu"
+	"github.com/theclifmeister/terminatr/internal/plat/proc"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/server"
 )
@@ -171,7 +172,19 @@ func (e *Env) AssertMirrorsServer(w *Window) {
 	if err != nil {
 		e.T.Fatalf("dial server: %v", err)
 	}
+	// The client is the window's process, or its child where a re-exec
+	// started a new process (Windows: proc.Exec).
 	err = c.Call(proto.MethodViewDigest, proto.ViewDigestParams{PID: w.PID()}, nil)
+	if err != nil {
+		if ps, lerr := proc.List(); lerr == nil {
+			for _, p := range ps {
+				if p.PPID == w.PID() && c.Call(proto.MethodViewDigest, proto.ViewDigestParams{PID: p.PID}, nil) == nil {
+					err = nil
+					break
+				}
+			}
+		}
+	}
 	c.Close()
 	if err != nil {
 		e.T.Fatalf("ask attach client for a digest: %v", err)

@@ -20,7 +20,6 @@ import (
 // server.
 var (
 	hookDial     = 50 * time.Millisecond
-	hookWrite    = 100 * time.Millisecond
 	hookAck      = 250 * time.Millisecond // total, for events nobody answers
 	hookResponse = 500 * time.Millisecond // total, when a response is expected
 	// hookContext is the total for a [[hooks]] entry with timeout =
@@ -113,8 +112,10 @@ func sendHook(socket string, p proto.HookEventParams, total time.Duration) strin
 		return ""
 	}
 	defer c.Close()
-	c.SetWriteDeadline(time.Now().Add(hookWrite))
-	c.SetReadDeadline(deadline)
+	// The write shares the total: a write of its own deadline (100 ms)
+	// lost events on a loaded Windows machine, where a socket write
+	// completes through the runtime's poller (T217).
+	c.SetDeadline(deadline)
 	hello, _ := json.Marshal(proto.Hello{Protocol: proto.Protocol, Version: version.Version, Build: version.BuildID(), Kind: proto.KindHook})
 	params, err := json.Marshal(p)
 	if err != nil {

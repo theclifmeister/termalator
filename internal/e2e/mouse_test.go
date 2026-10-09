@@ -171,7 +171,9 @@ func TestSmokeMousePopupsAndAttach(t *testing.T) {
 // own OSC 52 reaches the window too.
 func TestSmokeDragCopies(t *testing.T) {
 	env := New(t)
-	s1 := env.StartSize(120, 29, "shell")
+	// At the pane's size: no resize lands while the shell reads the
+	// first key (Git for Windows' sh drops a key that comes with one).
+	s1 := env.StartSize(int(paneCols(120)), 28, "shell")
 	w := env.Window(120, 30)
 	w.WaitFor(s1.ID+" ", wait)
 	w.Key(Enter)
