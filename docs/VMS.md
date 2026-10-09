@@ -46,8 +46,8 @@ it; live model calls only when a test needs them.
 
 ## Known
 
-Linux: `kernel.apparmor_restrict_unprivileged_userns = 1` (Ubuntu's default),
-so bubblewrap cannot create user namespaces and `tm doctor` warns, including
-that a Codex coordinator's sandbox doesn't hold. Left as is, to test the
-default; `sysctl kernel.apparmor_restrict_unprivileged_userns=0` (as root)
-lifts it.
+Linux: the VM keeps Ubuntu's default `kernel.apparmor_restrict_unprivileged_userns = 1`
+on purpose, since that is what most users run (CI sets it to 0). So
+bubblewrap cannot create user namespaces and `tm doctor` warns about
+user namespaces/bwrap, and that a Codex coordinator's sandbox doesn't hold.
+These warnings are expected there. Don't change the sysctl.
