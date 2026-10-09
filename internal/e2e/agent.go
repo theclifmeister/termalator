@@ -280,7 +280,11 @@ func (e *Env) StartShell(dir string, argv ...string) string {
 	if len(argv) == 0 {
 		argv = []string{shSession(e.T)}
 	}
-	return strings.TrimSpace(e.MustCLI(append([]string{"session", "start", "--cwd", dir, "--cols", "100", "--rows", "30", "--"}, argv...)...))
+	// The pane of a 120×30 window, the scenarios' usual: a window of that
+	// size resizes nothing while the shell reads the first key (Git for
+	// Windows' sh drops a key that comes with a resize).
+	cols, rows := strconv.Itoa(120-SideCols(120)), strconv.Itoa(30-statusRows)
+	return strings.TrimSpace(e.MustCLI(append([]string{"session", "start", "--cwd", dir, "--cols", cols, "--rows", rows, "--"}, argv...)...))
 }
 
 // OpenSession selects the session's row on the dashboard with a click

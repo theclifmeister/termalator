@@ -348,7 +348,10 @@ func waitPaneSize(t *testing.T, env *Env, s *Session, cols, rows uint16) {
 // prefix key itself.
 func TestSmokeAttachPane(t *testing.T) {
 	env := New(t)
-	s1 := env.StartSize(120, 29, "shell")
+	// At the pane's size: no resize lands while the shell reads the
+	// first key (Git for Windows' sh drops a key that comes with one).
+	// TestSmokeFirstViewFills covers a pane filling its first console.
+	s1 := env.StartSize(int(paneCols(120)), 28, "shell")
 	w := env.Window(120, 30)
 	w.WaitFor(s1.ID+" ", wait)
 	w.Key(Enter)

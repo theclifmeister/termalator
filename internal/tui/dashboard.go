@@ -497,12 +497,16 @@ func (m *dash) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
+		changed := msg.Width != m.winW || msg.Height != m.h
 		m.h = msg.Height
 		m.setWidth(msg.Width)
 		if m.view != nil {
 			// The first size is the window as it was; later ones are the
-			// user resizing it (docs/SPEC.md §3.3).
-			resize := m.sized
+			// user resizing it (docs/SPEC.md §3.3). The same size again
+			// is none: the terminal's report after the size the
+			// dashboard started at (DashOptions.Width) would make this
+			// console the view's latest.
+			resize := m.sized && changed
 			m.sized = true
 			return m, m.call(proto.MethodViewSize, proto.ViewParams{Cols: uint16(msg.Width), Rows: uint16(msg.Height), Resize: resize})
 		}
