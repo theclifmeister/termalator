@@ -1,6 +1,6 @@
 # Release targets as Zig triples. Linux pins the glibc floor: binaries run
 # on glibc 2.28 and later (Debian 10, RHEL 8, Ubuntu 18.10).
-RELEASE_TARGETS="aarch64-macos x86_64-macos aarch64-linux-gnu.2.28 x86_64-linux-gnu.2.28"
+RELEASE_TARGETS="aarch64-macos x86_64-macos aarch64-linux-gnu.2.28 x86_64-linux-gnu.2.28 aarch64-windows-gnu x86_64-windows-gnu"
 
 # zig_triple GOOS GOARCH prints the Zig triple for a Go target.
 zig_triple() {
@@ -9,6 +9,8 @@ zig_triple() {
 	darwin/amd64) echo x86_64-macos ;;
 	linux/arm64) echo aarch64-linux-gnu.2.28 ;;
 	linux/amd64) echo x86_64-linux-gnu.2.28 ;;
+	windows/arm64) echo aarch64-windows-gnu ;;
+	windows/amd64) echo x86_64-windows-gnu ;;
 	*) echo "no release target for $1/$2" >&2; return 1 ;;
 	esac
 }
