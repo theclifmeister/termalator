@@ -60,6 +60,11 @@ jobs:
       - name: selftest
         run: ./bin/tm selftest
 
+      # For TestSmokeCodexSandbox: the thread sandbox under Linux's
+      # bubblewrap/Landlock (T189). `codex sandbox` needs no login.
+      - name: codex
+        run: npm install -g @openai/codex@0.160.0
+
       # Internal/e2e TestSmoke*.
       - name: e2e smoke
         run: make e2e-smoke
