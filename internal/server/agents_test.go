@@ -54,8 +54,8 @@ func TestOwnWorktree(t *testing.T) {
 // TestWriteLaunchFilesFails: a runtime dir that can't be written to is an
 // error, not a session started without its hooks and settings.
 func TestWriteLaunchFilesFails(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("root ignores directory permissions")
+	if os.Geteuid() == 0 || !chmodApplies {
+		t.Skip("directory permissions don't apply")
 	}
 	rt := t.TempDir()
 	if err := writeLaunchFiles(rt, map[string][]byte{"settings.json": []byte("{}"), "hooks/a": []byte("x")}); err != nil {

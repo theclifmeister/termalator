@@ -112,7 +112,9 @@ func TestSmokeAttachDetachReattach(t *testing.T) {
 // streams output as fast as it can, then reattaches.
 func TestSmokeAttachCloseWindowMidStream(t *testing.T) {
 	env := New(t)
-	s := env.Start("shell")
+	// At the pane's size: no resize lands while the shell reads the
+	// first key (Git for Windows' sh drops a key that comes with one).
+	s := env.StartSize(int(paneCols(90)), 30-statusRows, "shell")
 	env.WaitFor(s, "$", wait)
 	w := env.Attach(90, 30, s.ID)
 	w.WaitFor("$", wait)
@@ -152,7 +154,11 @@ func TestAttachKillClient(t *testing.T) {
 // its terminal back.
 func TestSmokeAttachFullscreenInput(t *testing.T) {
 	env := New(t)
-	s := env.Start("fullscreen")
+	var args []string
+	if !passesReports {
+		args = append(args, "-no-scheme")
+	}
+	s := env.Start("fullscreen", args...)
 	env.WaitFor(s, "fullscreen ready", wait)
 
 	side := SideCols(87)
@@ -162,8 +168,7 @@ func TestSmokeAttachFullscreenInput(t *testing.T) {
 		t.Fatalf("modes not mirrored onto the window: %+v", w.Modes())
 	}
 	// The window answered the client's colour-scheme query; the app asked
-	// for reports (2031), so it gets one (not through ConPTY, whose input
-	// parser drops the report).
+	// for reports (2031), so it gets one (not on Windows: see passesReports).
 	if passesReports {
 		w.WaitFor(`in: "\x1b[?997;1n"`, wait)
 	}

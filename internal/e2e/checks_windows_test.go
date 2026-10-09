@@ -11,9 +11,10 @@ import (
 // a process it didn't start).
 const politeTerminate = false
 
-// passesReports: ConPTY's input parser drops a terminal report the window
-// sends (CSI ? 997 ; 1 n) before it reaches the program (seen on Windows
-// 11 ARM64 with the shipped OpenConsole 1.25).
+// passesReports: the window's ConPTY (OpenConsole 1.25, shipped or inbox)
+// passes a terminal report it sends (CSI ? 997 ; 1 n) on to tm attach
+// only now and then (seen once in four runs, T217), so the app asks for
+// none (fullscreen -no-scheme) and its screen has its own golden file.
 const passesReports = false
 
 // fallbackRunDirs holds a server's run dir when its home is too long.

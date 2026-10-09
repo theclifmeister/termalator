@@ -26,7 +26,7 @@ const pinDir = service.PinDir
 // the server from it (service.Config.Program), because TCC keeps the
 // path launchd started a process with, whatever that process execs. On
 // Windows it is tm.exe.
-const pinName = service.PinName + pinExt
+const pinName = service.PinName
 
 // legacyPinDir is where servers before T87 pinned it, under the home.
 const legacyPinDir = "server-bin"

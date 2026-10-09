@@ -13,6 +13,7 @@ import (
 
 	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/caller"
+	"github.com/theclifmeister/terminatr/internal/plat/ipc"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/session"
 	"github.com/theclifmeister/terminatr/internal/thread"
@@ -23,7 +24,7 @@ import (
 // stands for, and what isn't a tool's input is refused before anything
 // runs.
 func TestModTools(t *testing.T) {
-	rt, err := os.MkdirTemp("/tmp", "tmmod")
+	rt, err := os.MkdirTemp(ipc.ShortDir(), "tmmod")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +56,7 @@ func TestModTools(t *testing.T) {
 		t.Fatal(err)
 	}
 	sess, err := session.Start(session.Config{
-		ID: "s-1", Role: proto.RoleThread, Argv: []string{"/bin/sh", "-c", "exec cat"}, Cwd: rt,
+		ID: "s-1", Role: proto.RoleThread, Argv: []string{testSh(t), "-c", "exec cat"}, Cwd: rt,
 		Env: []string{"PATH=/usr/bin:/bin"}, Cols: 80, Rows: 24, Logf: t.Logf,
 		Agent: &session.AgentConfig{Agent: agent.FromManifest(m), Home: rt, ModSocket: sock},
 	})

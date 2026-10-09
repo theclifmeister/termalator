@@ -24,6 +24,9 @@ func (modder) ModsMinVersion() string      { return "2.1.289" }
 func (modder) ModRequired() bool           { return false }
 func (x modder) Manifest() *agent.Manifest { return x.m }
 
+// nowhere is a PATH entry that holds nothing, with its list separator.
+var nowhere = filepath.FromSlash("/nowhere") + string(os.PathListSeparator)
+
 func modsServer(t *testing.T, enabled bool, version string) (*Server, agent.Agent, *int, *bytes.Buffer) {
 	t.Helper()
 	h := t.TempDir()
@@ -32,17 +35,17 @@ func modsServer(t *testing.T, enabled bool, version string) (*Server, agent.Agen
 		os.WriteFile(filepath.Join(h, "config.toml"), []byte("[mods]\nenabled = true\n"), 0o600)
 	}
 	bin := t.TempDir()
-	os.WriteFile(filepath.Join(bin, "claude"), []byte("#!/bin/sh\n"), 0o700)
+	os.WriteFile(filepath.Join(bin, "claude"+testExe), []byte("#!/bin/sh\n"), 0o700)
 	m, err := agent.ParseManifest([]byte("manifest_version = 1\nname = \"claude\"\n[identify]\nversion_args = [\"--version\"]\n[launch]\ncommand = \"claude\"\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	runs := new(int)
 	var buf bytes.Buffer
-	s := &Server{opts: Options{Env: []string{"PATH=/nowhere:" + bin}}, log: log.New(&buf, "", 0)}
+	s := &Server{opts: Options{Env: []string{"PATH=" + nowhere + bin}}, log: log.New(&buf, "", 0)}
 	s.versions.run = func(_ context.Context, path string, args, _ []string) ([]byte, error) {
 		*runs++
-		if path != filepath.Join(bin, "claude") || strings.Join(args, " ") != "--version" {
+		if path != filepath.Join(bin, "claude"+testExe) || strings.Join(args, " ") != "--version" {
 			t.Errorf("ran %s %v", path, args)
 		}
 		return []byte(version + " (Claude Code)\n"), nil
@@ -77,7 +80,7 @@ func TestModsFor(t *testing.T) {
 func TestVersionsSeeUpgrade(t *testing.T) {
 	s, a, runs, _ := modsServer(t, true, "2.1.291")
 	s.modsFor(a, "s-1")
-	path := filepath.Join(strings.TrimPrefix(s.opts.Env[0], "PATH=/nowhere:"), "claude")
+	path := filepath.Join(strings.TrimPrefix(s.opts.Env[0], "PATH="+nowhere), "claude"+testExe)
 	os.WriteFile(path, []byte("#!/bin/sh\n# upgraded\n"), 0o700)
 	os.Chtimes(path, time.Now().Add(time.Minute), time.Now().Add(time.Minute))
 	s.modsFor(a, "s-2")

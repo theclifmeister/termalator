@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/theclifmeister/terminatr/internal/plat/proc"
 	"github.com/theclifmeister/terminatr/internal/project"
@@ -23,7 +24,9 @@ other consoles don't follow; tm (the dashboard) joins the shared view.
 A click on the projects sidebar switches to that shared view.`
 
 // reexecEnv marks a tm that was re-executed as the server's binary, so a
-// build mismatch that survives the re-exec fails instead of looping.
+// build mismatch that survives the re-exec fails instead of looping. Its
+// value is the pid of the tm that re-executed it, which the attach log
+// keeps naming: on Windows a re-exec is a new process.
 const reexecEnv = "TERMINATR_REEXEC"
 
 // attachLogEnv names a file for the attach client's diagnostics (digest
@@ -118,10 +121,14 @@ func (e *Env) tookOver(s proto.SessionInfo) error {
 func (e *Env) attach(p server.Paths, vc *tui.ViewConn, side *tui.SidebarOptions, flash, command string, args []string) (tui.Result, int) {
 	id := vc.View().Focus
 	logger := log.New(io.Discard, "", 0)
+	pid := os.Getpid()
+	if n, err := strconv.Atoi(e.Getenv(reexecEnv)); err == nil && n > 0 {
+		pid = n
+	}
 	if path := e.Getenv(attachLogEnv); path != "" {
 		if f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
 			defer f.Close()
-			logger = log.New(f, fmt.Sprintf("attach %s pid %d: ", id, os.Getpid()), log.Lmicroseconds)
+			logger = log.New(f, fmt.Sprintf("attach %s pid %d: ", id, pid), log.Lmicroseconds)
 		}
 	}
 	res, err := tui.Attach(tui.Options{Paths: p, View: vc, In: os.Stdin, Out: os.Stdout, Log: logger,
@@ -131,8 +138,11 @@ func (e *Env) attach(p server.Paths, vc *tui.ViewConn, side *tui.SidebarOptions,
 		// The snapshot format is only stable within one build: become the
 		// server's binary and attach again.
 		logger.Printf("re-exec %s: %v", verr.Bin, err)
+		// Leave the view first: on Windows this process lives on until
+		// the new one exits, and would stay a console in it.
+		vc.Close()
 		argv := append([]string{verr.Bin}, args...)
-		err = proc.Exec(verr.Bin, argv, append(os.Environ(), reexecEnv+"=1"))
+		err = proc.Exec(verr.Bin, argv, append(os.Environ(), reexecEnv+"="+strconv.Itoa(pid)))
 		return res, e.srvFail("attach", fmt.Errorf("re-exec %s: %w", verr.Bin, err))
 	}
 	if err != nil {

@@ -18,9 +18,6 @@ var (
 	procGetHandleInfo = kernel32.NewProc("GetHandleInformation")
 )
 
-// stillActive is GetExitCodeProcess's answer for a process that runs.
-const stillActive = 259
-
 // Alive reports whether a process has pid, whoever owns it.
 func Alive(pid int) bool {
 	if pid <= 0 {

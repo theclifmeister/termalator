@@ -13,7 +13,7 @@ func TestPinCompanions(t *testing.T) {
 	defer func(c []string) { companions = c }(companions)
 	companions = []string{"conpty.dll", "OpenConsole.exe"}
 	src := t.TempDir()
-	bin := filepath.Join(src, "tm"+pinExt)
+	bin := filepath.Join(src, pinName)
 	os.WriteFile(bin, []byte("build one"), 0o755)
 	os.WriteFile(filepath.Join(src, "conpty.dll"), []byte("dll one"), 0o644)
 	run := t.TempDir()

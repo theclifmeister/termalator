@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/guard"
+	"github.com/theclifmeister/terminatr/internal/plat/ipc"
 	"github.com/theclifmeister/terminatr/internal/proto"
 )
 
@@ -74,7 +75,7 @@ func writeConfig(t *testing.T, body string) {
 func TestGuardRoutes(t *testing.T) {
 	testPaths(t)
 	p := newWatchProject(t)
-	rt, err := os.MkdirTemp("/tmp", "tmguard")
+	rt, err := os.MkdirTemp(ipc.ShortDir(), "tmguard")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,6 +325,7 @@ func TestGuardSecrets(t *testing.T) {
 	p := newWatchProject(t)
 	home, codexHome := t.TempDir(), t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // Windows' home
 	t.Setenv("CODEX_HOME", codexHome)
 	s := &Server{log: log.New(os.Stderr, "", 0), records: map[string]SessionRecord{}}
 	rec := SessionRecord{ID: "s-2", Role: proto.RoleThread, Agent: "codex", Project: p.Slug, Thread: "t-0001", Cwd: t.TempDir()}
@@ -335,7 +337,8 @@ func TestGuardSecrets(t *testing.T) {
 	}
 	s.records["s-2"] = rec
 	judge := s.hookGuardOf("s-2", false)
-	if d := judge("Bash", map[string]any{"command": "cat " + filepath.Join(codexHome, "auth.json")}); d == nil || d.Rule != "credentials" {
+	// Bash takes forward slashes on Windows too (Git Bash).
+	if d := judge("Bash", map[string]any{"command": "cat " + filepath.ToSlash(filepath.Join(codexHome, "auth.json"))}); d == nil || d.Rule != "credentials" {
 		t.Errorf("cat of $CODEX_HOME/auth.json: %+v", d)
 	}
 	if d := judge("Bash", map[string]any{"command": "cat ~/.codex/auth.json"}); d == nil || d.Rule != "credentials" {

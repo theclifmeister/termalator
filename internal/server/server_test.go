@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/emu"
+	"github.com/theclifmeister/terminatr/internal/plat/ipc"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/version"
 )
@@ -24,7 +25,7 @@ import (
 func testPaths(t *testing.T) Paths {
 	t.Helper()
 	home := t.TempDir()
-	sockDir, err := os.MkdirTemp("/tmp", "tmt")
+	sockDir, err := os.MkdirTemp(ipc.ShortDir(), "tmt")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +162,7 @@ func TestControlSessionLifecycle(t *testing.T) {
 
 	var started proto.SessionStartResult
 	call(t, c, proto.MethodSessionStart, proto.SessionStartParams{
-		Argv: []string{"/bin/sh"}, Cwd: t.TempDir(), Cols: 90, Rows: 20,
+		Argv: []string{testSh(t)}, Cwd: t.TempDir(), Cols: 90, Rows: 20,
 	}, &started)
 	id := started.Session.ID
 	if id != "s-1" || started.Session.Cols != 90 {
@@ -202,7 +203,7 @@ func TestControlSessionLifecycle(t *testing.T) {
 	}
 
 	// A session left running is recorded at a clean stop.
-	call(t, c, proto.MethodSessionStart, proto.SessionStartParams{Argv: []string{"/bin/sh"}, Cwd: "/"}, &started)
+	call(t, c, proto.MethodSessionStart, proto.SessionStartParams{Argv: []string{testSh(t)}, Cwd: t.TempDir()}, &started)
 	r.stop(t)
 	st1, _ := loadState(p.Sessions)
 	if st1.Shutdown != "clean" || len(st1.Sessions) != 1 || !st1.Sessions[0].CleanExit || st1.NextID != 3 {
@@ -309,7 +310,7 @@ func TestCrashIsDetected(t *testing.T) {
 		t.Fatalf("status %+v", st)
 	}
 	var started proto.SessionStartResult
-	call(t, c, proto.MethodSessionStart, proto.SessionStartParams{Argv: []string{"/bin/sh"}, Cwd: "/"}, &started)
+	call(t, c, proto.MethodSessionStart, proto.SessionStartParams{Argv: []string{testSh(t)}, Cwd: t.TempDir()}, &started)
 	if started.Session.ID != "s-7" {
 		t.Fatalf("ids must not be reused across restarts: got %s", started.Session.ID)
 	}
@@ -454,7 +455,7 @@ func TestAttachStream(t *testing.T) {
 	}
 	defer c.Close()
 	var started proto.SessionStartResult
-	call(t, c, proto.MethodSessionStart, proto.SessionStartParams{Argv: []string{"/bin/sh"}, Cwd: "/", Cols: 80, Rows: 24}, &started)
+	call(t, c, proto.MethodSessionStart, proto.SessionStartParams{Argv: []string{testSh(t)}, Cwd: t.TempDir(), Cols: 80, Rows: 24}, &started)
 	id := started.Session.ID
 
 	if _, _, err := Attach(p, proto.AttachParams{Session: "s-404"}); err == nil {
@@ -571,15 +572,17 @@ func TestResolvePathsKeepsTestsIsolated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Socket != "/tmp/x/tm.sock" || p.Lock != "/tmp/x/server.lock" || p.PID != "/tmp/x/server.pid" {
+	// On Windows the paths are on the current drive.
+	abs := func(p string) string { a, _ := filepath.Abs(filepath.FromSlash(p)); return a }
+	if p.Socket != abs("/tmp/x/tm.sock") || p.Lock != abs("/tmp/x/server.lock") || p.PID != abs("/tmp/x/server.pid") {
 		t.Fatalf("lock and pid must sit next to the socket: %+v", p)
 	}
-	if p.Log != "/h/custom/logs/server.log" || p.Sessions != "/h/custom/state/sessions.json" {
+	if p.Log != abs("/h/custom/logs/server.log") || p.Sessions != abs("/h/custom/state/sessions.json") {
 		t.Fatalf("home files: %+v", p)
 	}
 	t.Setenv("TERMINATR_SOCKET", "")
 	p, _ = ResolvePaths()
-	if p.Socket != "/h/custom/run/tm.sock" {
+	if p.Socket != abs("/h/custom/run/tm.sock") {
 		t.Fatalf("a custom home must not use XDG_RUNTIME_DIR: %s", p.Socket)
 	}
 }
@@ -623,15 +626,22 @@ func TestSessionEnvStripsInheritedIdentity(t *testing.T) {
 }
 
 func TestWithBinFirst(t *testing.T) {
-	got := withBinFirst([]string{"HOME=/h", "PATH=/opt/homebrew/bin:/run/bin:/usr/bin"}, "/run/bin/tm")
-	if want := "PATH=/run/bin:/opt/homebrew/bin:/usr/bin"; got[1] != want || got[0] != "HOME=/h" {
+	list := func(dirs ...string) string {
+		for i, d := range dirs {
+			dirs[i] = filepath.FromSlash(d)
+		}
+		return strings.Join(dirs, string(os.PathListSeparator))
+	}
+	tm := filepath.FromSlash("/run/bin/tm")
+	got := withBinFirst([]string{"HOME=/h", "PATH=" + list("/opt/homebrew/bin", "/run/bin", "/usr/bin")}, tm)
+	if want := "PATH=" + list("/run/bin", "/opt/homebrew/bin", "/usr/bin"); got[1] != want || got[0] != "HOME=/h" {
 		t.Errorf("got %v, want %s", got, want)
 	}
-	again := withBinFirst(got, "/run/bin/tm")
+	again := withBinFirst(got, tm)
 	if again[1] != got[1] {
 		t.Errorf("resume duplicated the entry: %v", again)
 	}
-	if got := withBinFirst([]string{"HOME=/h"}, "/run/bin/tm"); got[1] != "PATH=/run/bin" {
+	if got := withBinFirst([]string{"HOME=/h"}, tm); got[1] != "PATH="+list("/run/bin") {
 		t.Errorf("no PATH: %v", got)
 	}
 }
