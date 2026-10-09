@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"golang.org/x/sys/windows"
+	xterm "golang.org/x/term"
 )
 
 // resizePoll is how often the console size is read for changes. Reading
@@ -96,4 +97,24 @@ func events(ctx context.Context, ch chan<- Event) {
 			return
 		}
 	}
+}
+
+// size reads f's console screen buffer. A console input handle has none:
+// for it, the size is the console's active screen buffer's (CONOUT$),
+// which a program whose stdout is redirected can still open.
+func size(f *os.File) (cols, rows int, err error) {
+	cols, rows, err = xterm.GetSize(int(f.Fd()))
+	if err == nil {
+		return cols, rows, nil
+	}
+	var mode uint32
+	if windows.GetConsoleMode(windows.Handle(f.Fd()), &mode) != nil {
+		return 0, 0, err
+	}
+	out, oerr := os.OpenFile("CONOUT$", os.O_RDWR, 0)
+	if oerr != nil {
+		return 0, 0, err
+	}
+	defer out.Close()
+	return xterm.GetSize(int(out.Fd()))
 }

@@ -6,6 +6,8 @@ import (
 	"context"
 	"os"
 	"os/signal"
+
+	xterm "golang.org/x/term"
 )
 
 // No port: RawMode never sees raw mode, and only an interrupt arrives, as
@@ -33,3 +35,5 @@ func events(ctx context.Context, ch chan<- Event) {
 		}
 	}
 }
+
+func size(f *os.File) (cols, rows int, err error) { return xterm.GetSize(int(f.Fd())) }

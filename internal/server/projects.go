@@ -21,7 +21,7 @@ import (
 // descends from a coordinator or thread session is that agent; anything
 // else (a shell outside terminatr, a shell session) is the human. This
 // is soft, as the spec says: an agent can start a process outside its
-// tree. File access rules are the second layer (§5.2). The walk stops at a
+// tree. On Windows the session's job settles it first (Session.Holds). File access rules are the second layer (§5.2). The walk stops at a
 // parent that started after its child: the real parent is gone and its
 // pid reused (Windows keeps a dead parent's pid; Unix hands the orphan
 // to init).
@@ -30,6 +30,15 @@ func (s *Server) callerOf(pid int) caller.Caller {
 	byPID := make(map[int]SessionRecord, len(s.sessions))
 	for id, sess := range s.sessions {
 		byPID[sess.PID()] = s.records[id]
+	}
+	// Where the system tracks a session's processes (a Windows job), that
+	// settles it: a parent chain can break where a process (MSYS's exec,
+	// say) ends before its child.
+	for id, sess := range s.sessions {
+		if sess.Holds(pid) {
+			byPID[pid] = s.records[id]
+			break
+		}
 	}
 	s.mu.Unlock()
 	var child proc.Info // pid's child on the way up, once there is one

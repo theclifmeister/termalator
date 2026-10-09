@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net"
+	"os"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -146,3 +147,8 @@ func processSID(pid uint32) (*windows.SID, error) {
 	}
 	return u.User.Sid.Copy()
 }
+
+// ShortDir is a short directory to make a socket directory in, for a run
+// directory whose usual place is too long: the user's own temp dir
+// (%TEMP%, e.g. C:\Users\<user>\AppData\Local\Temp).
+func ShortDir() string { return os.TempDir() }

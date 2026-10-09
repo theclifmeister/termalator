@@ -1,5 +1,3 @@
-//go:build unix
-
 // Package e2e is terminatr's end-to-end test harness (docs/SPEC.md §16.2).
 // Scenarios run the real tm against an isolated server and look at what a
 // user would see: a Window is a PTY whose output a libghostty-vt emulator
@@ -33,10 +31,10 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
+	"github.com/theclifmeister/terminatr/internal/plat/proc"
 	"github.com/theclifmeister/terminatr/internal/proto"
 )
 
@@ -52,14 +50,14 @@ var apps = []string{"printer", "fullscreen", "termquery"}
 
 // build compiles tm and the apps once per test process. E2E_RACE=1 builds
 // tm with the race detector (make e2e-smoke-race, main and weekly in CI).
+// E2E_BIN names a dir of binaries built beforehand instead (tm, the apps
+// and fakeagent, with .exe on Windows, plus whatever tm needs beside it),
+// for a machine without Go or cgo: a Windows test box gets the test
+// binary and E2E_BIN cross-built (scripts/e2e-windows.sh).
 func build(t testing.TB) string {
 	t.Helper()
 	buildOnce.Do(func() {
-		root, err := moduleRoot()
-		if err != nil {
-			buildErr = err
-			return
-		}
+		var err error
 		if binDir, err = os.MkdirTemp("", binPrefix); err != nil {
 			buildErr = err
 			return
@@ -69,15 +67,24 @@ func build(t testing.TB) string {
 			buildErr = err
 			return
 		}
-		args := []string{"build", "-o", filepath.Join(binDir, "tm")}
+		if pre := os.Getenv("E2E_BIN"); pre != "" {
+			buildErr = copyBin(pre, binDir)
+			return
+		}
+		root, err := moduleRoot()
+		if err != nil {
+			buildErr = err
+			return
+		}
+		args := []string{"build", "-o", filepath.Join(binDir, exe("tm"))}
 		if os.Getenv("E2E_RACE") == "1" {
 			args = append(args, "-race")
 		}
 		targets := [][]string{append(args, "./cmd/tm")}
 		for _, a := range apps {
-			targets = append(targets, []string{"build", "-o", filepath.Join(binDir, a), "./internal/e2e/apps/" + a})
+			targets = append(targets, []string{"build", "-o", filepath.Join(binDir, exe(a)), "./internal/e2e/apps/" + a})
 		}
-		targets = append(targets, []string{"build", "-o", filepath.Join(binDir, "fakeagent"), "./internal/e2e/fakeagent"})
+		targets = append(targets, []string{"build", "-o", filepath.Join(binDir, exe("fakeagent")), "./internal/e2e/fakeagent"})
 		for _, tg := range targets {
 			cmd := exec.Command("go", tg...)
 			cmd.Dir = root
@@ -91,6 +98,33 @@ func build(t testing.TB) string {
 		t.Fatal(buildErr)
 	}
 	return binDir
+}
+
+// copyBin copies the files of dir src into dst: the run's processes run
+// from a bin dir of its own, which finish removes.
+func copyBin(src, dst string) error {
+	ents, err := os.ReadDir(src)
+	if err != nil {
+		return fmt.Errorf("E2E_BIN: %w", err)
+	}
+	for _, ent := range ents {
+		if !ent.Type().IsRegular() {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(src, ent.Name()))
+		if err == nil {
+			err = os.WriteFile(filepath.Join(dst, ent.Name()), b, 0o755)
+		}
+		if err != nil {
+			return fmt.Errorf("E2E_BIN: %w", err)
+		}
+	}
+	for _, name := range append([]string{"tm", "fakeagent"}, apps...) {
+		if _, err := os.Stat(filepath.Join(dst, exe(name))); err != nil {
+			return fmt.Errorf("E2E_BIN %s has no %s", src, exe(name))
+		}
+	}
+	return nil
 }
 
 func moduleRoot() (string, error) {
@@ -116,7 +150,7 @@ type Env struct {
 	T      testing.TB
 	Bin    string // the tm under test
 	Home   string // TERMINATR_HOME
-	Socket string // TERMINATR_SOCKET, in a short run dir under /tmp
+	Socket string // TERMINATR_SOCKET, in a short run dir (runDirBase)
 	// AttachLog is where attach clients log digest checks and keys
 	// (TERMINATR_ATTACH_LOG).
 	AttachLog string
@@ -137,8 +171,7 @@ func New(t testing.TB) *Env {
 		t.Skip("end-to-end scenario: run with make e2e or make e2e-smoke (E2E=1)")
 	}
 	dir := build(t)
-	// macOS temp dirs are too long for a socket path; /tmp is short.
-	runDir, err := os.MkdirTemp("/tmp", "tme2e")
+	runDir, err := os.MkdirTemp(runDirBase, "tme2e")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +179,7 @@ func New(t testing.TB) *Env {
 	root := t.TempDir()
 	e := &Env{
 		T:      t,
-		Bin:    filepath.Join(dir, "tm"),
+		Bin:    filepath.Join(dir, exe("tm")),
 		Home:   filepath.Join(root, "terminatr"),
 		Socket: filepath.Join(runDir, "tm.sock"),
 		pids:   map[int]string{},
@@ -154,13 +187,12 @@ func New(t testing.TB) *Env {
 	e.AttachLog = filepath.Join(root, "attach.log")
 	home := filepath.Join(root, "home")
 	os.MkdirAll(home, 0o700)
-	e.Vars = append(cleanEnv(os.Environ()),
-		"HOME="+home,
+	e.Vars = append(append(cleanEnv(os.Environ()), osVars(home)...),
 		"TERMINATR_HOME="+e.Home,
 		"TERMINATR_SOCKET="+e.Socket,
-		"PATH="+dir+":/usr/bin:/bin:/usr/sbin:/sbin",
+		"PATH="+dir+string(os.PathListSeparator)+basePath(),
 		"LANG=C.UTF-8",
-		"SHELL=/bin/sh",
+		"SHELL="+sh(t),
 		"PS1=$ ",
 		"TM="+e.Bin,
 		"TERMINATR_ATTACH_LOG="+e.AttachLog,
@@ -186,9 +218,11 @@ func cleanEnv(env []string) []string {
 	var out []string
 	for _, kv := range env {
 		k, _, _ := strings.Cut(kv, "=")
+		// Windows names are case-insensitive (Path is PATH).
+		k = strings.ToUpper(k)
 		switch {
 		case strings.HasPrefix(k, "TERMINATR"), strings.HasPrefix(k, "LC_"),
-			k == "HOME", k == "CLAUDE_CONFIG_DIR", k == "PATH", k == "LANG", k == "PS1", k == "SHELL", k == "TMUX", k == "ENV",
+			k == "HOME", k == "USERPROFILE", k == "APPDATA", k == "LOCALAPPDATA", k == "CLAUDE_CONFIG_DIR", k == "PATH", k == "LANG", k == "PS1", k == "SHELL", k == "TMUX", k == "ENV",
 			k == "TERM_PROGRAM": // icons auto would pick Nerd Font icons under Ghostty
 			continue
 		}
@@ -259,8 +293,9 @@ type Session struct {
 	PID int
 }
 
-// Start starts a session in "/" with an 80×24 pane (auto-starting the
-// server). app is "shell" for /bin/sh, the name of a deterministic app
+// Start starts a session in the root dir ("/"; on Windows the system
+// drive's) with an 80×24 pane (auto-starting the
+// server). app is "shell" for /bin/sh (a POSIX sh on Windows), the name of a deterministic app
 // (internal/e2e/apps), or any command.
 func (e *Env) Start(app string, args ...string) *Session {
 	e.T.Helper()
@@ -273,11 +308,11 @@ func (e *Env) StartSize(cols, rows int, app string, args ...string) *Session {
 	argv := append([]string{app}, args...)
 	switch {
 	case app == "shell":
-		argv[0] = "/bin/sh"
+		argv[0] = shSession(e.T)
 	case isApp(app):
-		argv[0] = filepath.Join(filepath.Dir(e.Bin), app)
+		argv[0] = filepath.Join(filepath.Dir(e.Bin), exe(app))
 	}
-	id := strings.TrimSpace(e.MustCLI(append([]string{"session", "start", "--cwd", "/",
+	id := strings.TrimSpace(e.MustCLI(append([]string{"session", "start", "--cwd", rootDir,
 		"--cols", strconv.Itoa(cols), "--rows", strconv.Itoa(rows), "--"}, argv...)...))
 	s := &Session{ID: id}
 	for _, info := range e.Sessions() {
@@ -348,15 +383,16 @@ func (e *Env) AssertAlive(s *Session) {
 	e.T.Fatalf("server no longer lists session %s", s.ID)
 }
 
-// KillServer SIGKILLs the server, as a crash would, and waits until it is
-// gone. Its sessions die with it (their PTYs close).
+// KillServer SIGKILLs the server (on Windows terminates it), as a crash
+// would, and waits until it is gone. Its sessions die with it (their PTYs
+// close).
 func (e *Env) KillServer() {
 	e.T.Helper()
 	pid := e.ServerPID()
 	if !Alive(pid) {
 		e.T.Fatalf("no server to kill (pid file says %d)", pid)
 	}
-	syscall.Kill(pid, syscall.SIGKILL)
+	proc.Kill(pid)
 	if !Poll(DefaultTimeout, func() bool { return !Alive(pid) }) {
 		e.T.Fatalf("server %d survived SIGKILL", pid)
 	}
@@ -413,13 +449,12 @@ func (e *Env) cleanup() {
 	deadline := time.Now().Add(3 * time.Second)
 	for pid, label := range e.pids {
 		// A session leads its own process group: check the whole group.
-		for (Alive(pid) || groupAlive(pid)) && time.Now().Before(deadline) {
+		for proc.GroupAlive(pid) && time.Now().Before(deadline) {
 			time.Sleep(20 * time.Millisecond)
 		}
-		if Alive(pid) || groupAlive(pid) {
+		if proc.GroupAlive(pid) {
 			orphans = append(orphans, fmt.Sprintf("%s (pid %d)", label, pid))
-			syscall.Kill(-pid, syscall.SIGKILL)
-			syscall.Kill(pid, syscall.SIGKILL)
+			proc.KillGroup(pid)
 		}
 	}
 	if len(orphans) > 0 {
@@ -435,7 +470,7 @@ func (e *Env) saveArtifacts() string {
 	if base == "" {
 		base = filepath.Join(os.TempDir(), "tm-e2e-artifacts")
 	}
-	dir := filepath.Join(base, strings.NewReplacer("/", "_", " ", "_").Replace(e.T.Name()))
+	dir := filepath.Join(base, strings.NewReplacer("/", "_", " ", "_", ":", "_").Replace(e.T.Name()))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return ""
 	}
@@ -466,9 +501,7 @@ func (e *Env) saveArtifacts() string {
 }
 
 // Alive reports whether a process exists.
-func Alive(pid int) bool { return pid > 0 && syscall.Kill(pid, 0) == nil }
-
-func groupAlive(pgid int) bool { return pgid > 0 && syscall.Kill(-pgid, 0) == nil }
+func Alive(pid int) bool { return proc.Alive(pid) }
 
 // Poll calls cond until it returns true or timeout passes.
 func Poll(timeout time.Duration, cond func() bool) bool {

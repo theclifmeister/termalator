@@ -8,6 +8,7 @@ import (
 	"os/signal"
 
 	"golang.org/x/sys/unix"
+	xterm "golang.org/x/term"
 )
 
 func enableVT(f *os.File) func() { return func() {} }
@@ -43,3 +44,5 @@ func events(ctx context.Context, ch chan<- Event) {
 		}
 	}
 }
+
+func size(f *os.File) (cols, rows int, err error) { return xterm.GetSize(int(f.Fd())) }

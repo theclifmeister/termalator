@@ -1,5 +1,3 @@
-//go:build unix
-
 package e2e
 
 // tm watch (docs/SPEC.md §10): a mod's push feed of a session's state.

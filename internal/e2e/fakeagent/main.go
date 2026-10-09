@@ -1,5 +1,3 @@
-//go:build unix
-
 // Command fakeagent is a scripted stand-in for Claude Code 2.1.289, as the
 // t-0004 spike recorded it (docs/research/claude.md, docs/SPEC.md §16.3).
 // Tests run it under the real manifests/claude.toml with only
@@ -20,12 +18,12 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strconv"
 	"sync"
-	"syscall"
 	"time"
+
+	"github.com/theclifmeister/terminatr/internal/plat/term"
 )
 
 // app is the whole agent. mu guards the screen and session state; hookMu
@@ -236,10 +234,11 @@ func (a *app) picker() {
 	a.log("start", map[string]any{"argv": os.Args, "pid": a.pid, "resume": ""})
 	a.log("picker", map[string]any{})
 	fmt.Println("fake picker")
-	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, syscall.SIGHUP, syscall.SIGTERM, syscall.SIGINT)
-	<-ch
-	os.Exit(0)
+	for ev := range term.Events(context.Background()) {
+		if ev.Kind == term.Detach {
+			os.Exit(0)
+		}
+	}
 }
 
 // startup shows the trust and bypass screens when needed, then starts
@@ -282,15 +281,14 @@ func (a *app) startup() {
 	a.requestRedraw()
 }
 
-// signals handles SIGHUP/SIGTERM (session end) and SIGWINCH (redraw).
+// signals handles SIGHUP/SIGTERM (session end; on Windows the console
+// closing) and SIGWINCH (redraw).
 func (a *app) signals() {
-	ch := make(chan os.Signal, 4)
-	signal.Notify(ch, syscall.SIGHUP, syscall.SIGTERM, syscall.SIGWINCH, syscall.SIGINT)
-	for s := range ch {
-		switch s {
-		case syscall.SIGWINCH:
+	for ev := range term.Events(context.Background()) {
+		switch {
+		case ev.Kind == term.Resize:
 			a.requestRedraw()
-		case syscall.SIGINT:
+		case ev.Why == "interrupt":
 			// Raw mode delivers Ctrl+C as a key; ignore a stray signal.
 		default:
 			a.exit(0, "other")

@@ -1,5 +1,3 @@
-//go:build unix
-
 package main
 
 import (
@@ -8,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/sys/unix"
+	"github.com/theclifmeister/terminatr/internal/plat/term"
 )
 
 const (
@@ -22,35 +20,23 @@ const (
 // setupTerm puts stdin in raw mode and switches to the full-screen modes.
 // It returns the function that undoes both.
 func setupTerm() func() {
-	fd := int(os.Stdin.Fd())
-	old, err := unix.IoctlGetTermios(fd, ioctlGetTermios)
-	if err == nil {
-		raw := *old
-		raw.Iflag &^= unix.IGNBRK | unix.BRKINT | unix.PARMRK | unix.ISTRIP | unix.INLCR | unix.IGNCR | unix.ICRNL | unix.IXON
-		raw.Oflag &^= unix.OPOST
-		raw.Lflag &^= unix.ECHO | unix.ECHONL | unix.ICANON | unix.ISIG | unix.IEXTEN
-		raw.Cflag &^= unix.CSIZE | unix.PARENB
-		raw.Cflag |= unix.CS8
-		raw.Cc[unix.VMIN] = 1
-		raw.Cc[unix.VTIME] = 0
-		_ = unix.IoctlSetTermios(fd, ioctlSetTermios, &raw)
-	}
+	restore, err := term.MakeRaw(os.Stdin)
 	os.Stdout.WriteString(termSetup)
 	return func() {
 		os.Stdout.WriteString(termRestore)
-		if old != nil {
-			_ = unix.IoctlSetTermios(fd, ioctlSetTermios, old)
+		if err == nil {
+			_ = restore()
 		}
 	}
 }
 
 // termSize is the terminal size, 80x24 when unknown.
 func termSize() (cols, rows int) {
-	ws, err := unix.IoctlGetWinsize(int(os.Stdout.Fd()), unix.TIOCGWINSZ)
-	if err != nil || ws.Col == 0 || ws.Row == 0 {
+	cols, rows, ok := term.Size(os.Stdout)
+	if !ok {
 		return 80, 24
 	}
-	return int(ws.Col), int(ws.Row)
+	return cols, rows
 }
 
 // convLine is one line of the conversation. Streaming text is revealed

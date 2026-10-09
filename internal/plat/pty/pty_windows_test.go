@@ -221,6 +221,20 @@ func TestForeground(t *testing.T) {
 	}
 }
 
+// TestHolds: the console holds its process and that one's child (its
+// job), not this process.
+func TestHolds(t *testing.T) {
+	c := startChild(t, conpty(), "tree", 80, 24)
+	defer func() { c.Stop(0); c.Close(); c.Wait() }()
+	kid := waitChild(t, c)
+	if !c.Holds(c.PID()) || !c.Holds(kid) {
+		t.Fatalf("Holds(%d) = %v, Holds(child %d) = %v", c.PID(), c.Holds(c.PID()), kid, c.Holds(kid))
+	}
+	if c.Holds(os.Getpid()) {
+		t.Fatal("the console holds the test process")
+	}
+}
+
 func TestStop(t *testing.T) {
 	for name, api := range apis(t) {
 		t.Run(name, func(t *testing.T) {

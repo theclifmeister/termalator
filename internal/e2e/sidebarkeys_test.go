@@ -1,5 +1,3 @@
-//go:build unix
-
 package e2e
 
 import (
@@ -65,7 +63,7 @@ func TestSmokeSidebarKeys(t *testing.T) {
 	// reaches it.
 	w.Detach()
 	w.WaitFor("SESSIONS", wait)
-	id := env.StartShell("/")
+	id := env.StartShell(rootDir)
 	w.OpenSession(id)
 	w.WaitUntil("attached", wait, func(sc string) bool { return lastLine(sc, "prefix+d dashboard") && strings.Contains(sc, "$") })
 	w.Prefix("\t")

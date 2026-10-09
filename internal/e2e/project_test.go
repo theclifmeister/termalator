@@ -1,5 +1,3 @@
-//go:build unix
-
 package e2e
 
 // M4 scenarios with projects: tm project open, the

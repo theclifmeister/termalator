@@ -21,8 +21,9 @@ type Env struct {
 // project path, which can be long (docs/SPEC.md §3.2).
 //
 // When the usual place would make the socket path too long, it falls back
-// to /tmp/terminatr-<uid>-<hash>, the hash naming TERMINATR_HOME: every
-// home keeps its own server, even with the fallback.
+// to /tmp/terminatr-<uid>-<hash> (ipc.ShortDir: on Windows %TEMP%), the
+// hash naming TERMINATR_HOME: every home keeps its own server, even with
+// the fallback.
 func RunDir(e Env) string {
 	dir := filepath.Join(e.TerminatrHome, "run")
 	if e.XDGRuntimeDir != "" {
@@ -30,7 +31,7 @@ func RunDir(e Env) string {
 	}
 	if !ipc.Fits(dir, ipc.ServerName) {
 		h := sha256.Sum256([]byte(resolve(e.TerminatrHome)))
-		dir = fmt.Sprintf("/tmp/terminatr-%d-%x", e.UID, h[:4])
+		dir = filepath.Join(ipc.ShortDir(), fmt.Sprintf("terminatr-%d-%x", e.UID, h[:4]))
 	}
 	return dir
 }

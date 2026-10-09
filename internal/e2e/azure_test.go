@@ -1,5 +1,3 @@
-//go:build unix
-
 package e2e
 
 // The ticker against Azure DevOps (docs/SPEC.md §7.5): the repo's
@@ -50,7 +48,7 @@ case "$1 $path" in
 *) echo "ERROR: the fake az doesn't know: $*" >&2; exit 2 ;;
 esac
 `
-	if err := os.WriteFile(filepath.Join(dir, "az"), []byte(script), 0o755); err != nil {
+	if err := WriteScript(dir, "az", script); err != nil {
 		t.Fatal(err)
 	}
 	path := ""
@@ -59,7 +57,7 @@ esac
 			path = v
 		}
 	}
-	env.Setenv("PATH", dir+":"+path)
+	env.Setenv("PATH", dir+string(os.PathListSeparator)+path)
 	env.Setenv("AZ_STATE", state)
 	env.Setenv("AZ_POLICY", policy)
 	env.Setenv("AZ_LOG", logf)

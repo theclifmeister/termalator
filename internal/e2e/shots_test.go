@@ -1,5 +1,3 @@
-//go:build unix
-
 package e2e
 
 // TestShots captures every screen, panel and popup of the dashboard and
@@ -429,7 +427,7 @@ func shootSize(t *testing.T, env *Env, dir string, sz shotSize) {
 	// The shell.
 	w.Prefix("d")
 	time.Sleep(500 * time.Millisecond)
-	if attach("/bin/sh") {
+	if attach(sh(t)) {
 		s.shot("attach-shell")
 	}
 	w.Prefix("d")

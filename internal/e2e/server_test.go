@@ -1,5 +1,3 @@
-//go:build unix
-
 package e2e
 
 // M1 scenarios: the server lifecycle with real processes. TestSmoke* run
@@ -10,32 +8,18 @@ import (
 	"encoding/json"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
-	"golang.org/x/sys/unix"
-
+	"github.com/theclifmeister/terminatr/internal/plat/flock"
 	"github.com/theclifmeister/terminatr/internal/proto"
 )
 
 const wait = 10 * time.Second
-
-// controllingTTY returns ps's tty column for pid ("?" or "??" for none).
-func controllingTTY(t *testing.T, pid int) string {
-	t.Helper()
-	out, err := exec.Command("ps", "-o", "tty=", "-p", strconv.Itoa(pid)).Output()
-	if err != nil {
-		t.Fatalf("ps: %v", err)
-	}
-	return strings.TrimSpace(string(out))
-}
 
 func staleSocket(t *testing.T, path string) {
 	t.Helper()
@@ -79,32 +63,13 @@ func TestSmokeServerSurvivesClientAndTerminal(t *testing.T) {
 	}
 	// Full detachment: its own session, no controlling terminal, stdio on
 	// /dev/null, a private socket.
-	if sid, _ := unix.Getsid(spid); sid != spid {
-		t.Errorf("server sid %d, want %d (setsid)", sid, spid)
-	}
-	if wsid, _ := unix.Getsid(w.PID()); wsid == spid {
-		t.Error("server shares the window's session")
-	}
-	if tty := controllingTTY(t, spid); tty != "?" && tty != "??" {
-		t.Errorf("server has controlling tty %q", tty)
-	}
-	if runtime.GOOS == "linux" {
-		for _, fd := range []string{"0", "1", "2"} {
-			if target, _ := os.Readlink("/proc/" + strconv.Itoa(spid) + "/fd/" + fd); target != os.DevNull {
-				t.Errorf("server fd %s -> %q, want /dev/null", fd, target)
-			}
-		}
-	}
-	if fi, err := os.Stat(env.Socket); err != nil || fi.Mode().Perm() != 0o600 {
-		t.Errorf("socket mode: %v %v", fi, err)
-	}
+	assertDetached(t, spid, w.PID(), env.Socket)
 
 	// Kill the client's whole process group, then close the window, then
 	// send the signals a terminal or a careless user might still send.
 	w.KillClient()
 	w.CloseWindow()
-	syscall.Kill(spid, syscall.SIGHUP)
-	syscall.Kill(spid, syscall.SIGINT)
+	terminalSignals(spid)
 	time.Sleep(200 * time.Millisecond)
 	env.AssertAlive(s)
 
@@ -160,9 +125,7 @@ func TestSmokeServerCommands(t *testing.T) {
 		t.Fatal("hand-started server never answered")
 	}
 	spid := env.ServerPID()
-	if sid, _ := unix.Getsid(spid); sid != spid {
-		t.Errorf("hand-started server sid %d, want %d", sid, spid)
-	}
+	assertOwnSession(t, spid)
 
 	if out := env.MustCLI("server", "start"); !strings.Contains(out, "already running") {
 		t.Fatalf("second start: %q", out)
@@ -280,14 +243,11 @@ func TestCrashThenAutoStart(t *testing.T) {
 func TestHungServer(t *testing.T) {
 	env := New(t)
 	run := filepath.Dir(env.Socket)
-	f, err := os.OpenFile(filepath.Join(run, "server.lock"), os.O_RDWR|os.O_CREATE, 0o600)
+	lock, err := flock.TryLock(filepath.Join(run, "server.lock"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
-	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		t.Fatal(err)
-	}
+	defer lock.Unlock()
 	os.WriteFile(filepath.Join(run, "server.pid"), []byte("4242\n"), 0o600)
 	ln, err := net.Listen("unix", env.Socket)
 	if err != nil {
@@ -368,8 +328,9 @@ func serverSocket(env *Env) string {
 }
 
 // TestSmokeLongHomesSeparateServers: two TERMINATR_HOMEs too long for a
-// socket under them each get their own fallback run directory under /tmp,
-// and so their own server and sessions (docs/SPEC.md §3.2).
+// socket under them each get their own fallback run directory under /tmp
+// (fallbackRunDirs), and so their own server and sessions (docs/SPEC.md
+// §3.2).
 func TestSmokeLongHomesSeparateServers(t *testing.T) {
 	a, b := New(t), New(t)
 	longHome(a)
@@ -387,7 +348,7 @@ func TestSmokeLongHomesSeparateServers(t *testing.T) {
 		t.Fatalf("both homes use the socket %s", a.Socket)
 	}
 	for _, s := range []string{a.Socket, b.Socket} {
-		if !strings.HasPrefix(s, "/tmp/terminatr-") || len(s) > 100 {
+		if !strings.HasPrefix(s, filepath.Join(fallbackRunDirs, "terminatr-")) || len(s) > 100 {
 			t.Fatalf("fallback socket %s", s)
 		}
 	}

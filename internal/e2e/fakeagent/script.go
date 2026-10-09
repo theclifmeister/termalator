@@ -1,5 +1,3 @@
-//go:build unix
-
 package main
 
 import (
@@ -13,10 +11,10 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/theclifmeister/terminatr/internal/plat/proc"
 )
 
 //go:embed scripts/*.toml
@@ -642,11 +640,10 @@ func (a *app) runCmd(ctx context.Context, st step) error {
 	if _, err := a.fireHook(ctx, "PreToolUse", map[string]any{"tool_name": "Bash", "tool_input": input, "tool_use_id": id}); err != nil {
 		return err
 	}
-	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", st.Cmd)
+	cmd := exec.CommandContext(ctx, shell(), "-c", st.Cmd)
 	cmd.Dir = a.cwd
 	cmd.Env = a.childEnv()
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+	proc.Group(cmd)
 	cmd.WaitDelay = time.Second
 	var stdout, stderr strings.Builder
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

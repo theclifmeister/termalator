@@ -1,5 +1,3 @@
-//go:build unix
-
 package e2e
 
 // The coordinator's questions (docs/SPEC.md §7.5, Questions): tm ask

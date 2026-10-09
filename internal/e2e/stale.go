@@ -1,5 +1,3 @@
-//go:build unix
-
 package e2e
 
 import (
@@ -75,7 +73,7 @@ func sweepStale() {
 	}
 	// Run dirs of dead runs: no live server, and old enough that no
 	// running test is between creating one and starting its server.
-	runs, _ := filepath.Glob("/tmp/tme2e*")
+	runs, _ := filepath.Glob(filepath.Join(runDirBase, "tme2e*"))
 	for _, d := range runs {
 		fi, err := os.Stat(d)
 		if err != nil || time.Since(fi.ModTime()) < 10*time.Minute {

@@ -1,5 +1,3 @@
-//go:build unix
-
 package e2e
 
 import (
@@ -31,12 +29,16 @@ var DefaultMasks = []Mask{
 	{Name: "duration", Re: regexp.MustCompile(`\b\d+(\.\d+)?(ns|µs|ms|s|m|h)\b`)},
 }
 
-// WaitGolden compares what screen returns with testdata/golden/<name>,
+// WaitGolden compares what screen returns with testdata/golden/<name>
+// (on Windows testdata/golden/windows/<name> when there is one: screens
+// that show paths or shells differ there),
 // after applying DefaultMasks and any extra masks (a masked part reads
 // <name> in the golden file). It retries until the screen matches, for up
 // to timeout, so a frame caught half drawn (the wait before it saw only
 // its first rows) doesn't fail the test. With -update it lets the screen
-// settle first and rewrites the file.
+// settle first and rewrites the file; on Windows it writes the override
+// only for a screen that differs from the shared file, and removes one
+// that no longer does.
 func WaitGolden(t testing.TB, timeout time.Duration, screen func() string, name string, masks ...Mask) {
 	t.Helper()
 	mask := func(s string) string {
@@ -50,6 +52,13 @@ func WaitGolden(t testing.TB, timeout time.Duration, screen func() string, name 
 		return s
 	}
 	path := filepath.Join("testdata", "golden", name)
+	override := ""
+	if goldenOS != "" {
+		override = filepath.Join("testdata", "golden", goldenOS, name)
+		if _, err := os.Stat(override); err == nil && !*Update {
+			path = override
+		}
+	}
 	if *Update {
 		got := mask(screen())
 		// Settled: the same screen twice, 300 ms apart.
@@ -60,6 +69,13 @@ func WaitGolden(t testing.TB, timeout time.Duration, screen func() string, name 
 				break
 			}
 			got = next
+		}
+		if override != "" {
+			if shared, err := os.ReadFile(path); err == nil && string(shared) == got+"\n" {
+				os.Remove(override)
+				return
+			}
+			path = override
 		}
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)

@@ -20,9 +20,10 @@ import (
 func IsTerminal(f *os.File) bool { return xterm.IsTerminal(int(f.Fd())) }
 
 // Size returns f's terminal size; ok is false when f is not a terminal or
-// reports no size.
+// reports no size. On Windows a console's input handle has no size of its
+// own: it reports the console's screen buffer.
 func Size(f *os.File) (cols, rows int, ok bool) {
-	cols, rows, err := xterm.GetSize(int(f.Fd()))
+	cols, rows, err := size(f)
 	if err != nil || cols <= 0 || rows <= 0 {
 		return 0, 0, false
 	}

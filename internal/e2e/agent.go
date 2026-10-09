@@ -1,5 +1,3 @@
-//go:build unix
-
 package e2e
 
 // Agent helpers (M3): the scripted fake agent (internal/e2e/fakeagent)
@@ -64,11 +62,11 @@ func (e *Env) FakeAgent(name string) {
 // `codex queue` for prompts, are tm's own.
 func (e *Env) FakeCodex(edit ...func(string) string) {
 	e.T.Helper()
-	link := filepath.Join(e.Home, "fakebin", "codex")
+	link := filepath.Join(e.Home, "fakebin", exe("codex"))
 	if err := os.MkdirAll(filepath.Dir(link), 0o700); err != nil {
 		e.T.Fatal(err)
 	}
-	if err := os.Symlink(filepath.Join(filepath.Dir(e.Bin), "fakeagent"), link); err != nil {
+	if err := linkExe(filepath.Join(filepath.Dir(e.Bin), exe("fakeagent")), link); err != nil {
 		e.T.Fatal(err)
 	}
 	e.installManifest("codex", "codex", link, edit...)
@@ -77,7 +75,7 @@ func (e *Env) FakeCodex(edit ...func(string) string) {
 
 func (e *Env) fakeManifest(name string, edit ...func(string) string) {
 	e.T.Helper()
-	e.installManifest("claude", name, filepath.Join(filepath.Dir(e.Bin), "fakeagent"), edit...)
+	e.installManifest("claude", name, filepath.Join(filepath.Dir(e.Bin), exe("fakeagent")), edit...)
 }
 
 // installManifest writes the built-in manifest base, with its launch
@@ -118,10 +116,11 @@ func (e *Env) Trust(dirs ...string) {
 	if projects == nil {
 		projects = map[string]any{}
 	}
+	// Keys use forward slashes, as Claude Code's do on Windows.
 	for _, d := range dirs {
-		projects[d] = map[string]any{"hasTrustDialogAccepted": true}
+		projects[filepath.ToSlash(d)] = map[string]any{"hasTrustDialogAccepted": true}
 		if r, err := filepath.EvalSymlinks(d); err == nil {
-			projects[r] = map[string]any{"hasTrustDialogAccepted": true}
+			projects[filepath.ToSlash(r)] = map[string]any{"hasTrustDialogAccepted": true}
 		}
 	}
 	cfg["projects"] = projects
@@ -273,13 +272,13 @@ func (e *Env) HookEvents() []string {
 	return out
 }
 
-// StartShell starts a shell session (`tm session start -- argv`; /bin/sh
-// when argv is empty) in dir and returns its id. The dashboard has no
+// StartShell starts a shell session (`tm session start -- argv`; /bin/sh,
+// a POSIX sh on Windows, when argv is empty) in dir and returns its id. The dashboard has no
 // key for it: shells are started from the command line.
 func (e *Env) StartShell(dir string, argv ...string) string {
 	e.T.Helper()
 	if len(argv) == 0 {
-		argv = []string{"/bin/sh"}
+		argv = []string{shSession(e.T)}
 	}
 	return strings.TrimSpace(e.MustCLI(append([]string{"session", "start", "--cwd", dir, "--cols", "100", "--rows", "30", "--"}, argv...)...))
 }

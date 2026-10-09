@@ -36,6 +36,8 @@ func Start(argv []string, dir string, env []string, cols, rows uint16) (Console,
 
 func (c *console) PID() int { return c.cmd.Process.Pid }
 
+func (c *console) Holds(pid int) bool { return false }
+
 func (c *console) Resize(cols, rows uint16) error { return resize(c.File, cols, rows) }
 
 func (c *console) Foreground() (int, error) { return foreground(c.File) }

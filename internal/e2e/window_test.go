@@ -1,5 +1,3 @@
-//go:build unix
-
 package e2e
 
 import (
@@ -15,7 +13,7 @@ import (
 // the dashboard's top rows, not yet its footer).
 func TestSmokeWindowWholeFrames(t *testing.T) {
 	env := New(t)
-	w := env.WindowCmd(40, 5, "/bin/sh", "-c",
+	w := env.WindowCmd(40, 5, sh(t), "-c",
 		`printf 'before'; sleep 0.3; printf '\033[?2026h\r\033[Khalf'; sleep 0.5; printf ' done\033[?2026l'; `+
 			`sleep 0.3; printf '\r\ntop'; sleep 0.5; printf '\r\nfoot'; sleep 10`)
 	w.WaitFor("before", wait)
