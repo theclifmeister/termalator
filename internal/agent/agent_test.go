@@ -466,9 +466,16 @@ func TestStatusFile(t *testing.T) {
 		t.Fatalf("shell: %+v %v", r, err)
 	}
 
-	_, err = f.Read([]byte(`{"status":"idle","version":"3.0.0"}`), src)
-	if !errors.Is(err, ErrUntestedVersion) {
-		t.Fatalf("an untested version must be refused, got %v", err)
+	// No version gate (docs/SPEC.md §8.8): a newer Claude's file is read
+	// as long as what it says is known.
+	if r, err := f.Read([]byte(`{"status":"idle","version":"3.0.0"}`), src); err != nil || r.Signal.State != StateIdle {
+		t.Fatalf("a newer version must be read: %+v %v", r, err)
+	}
+	// A manifest that pins tested_versions still refuses the others.
+	pinned := *src
+	pinned.TestedVersions = []string{"2.1."}
+	if _, err := f.Read([]byte(`{"status":"idle","version":"3.0.0"}`), &pinned); !errors.Is(err, ErrUntestedVersion) {
+		t.Fatalf("tested_versions must still refuse an untested version, got %v", err)
 	}
 	if _, err := f.Read([]byte(`{"status":"thinking","version":"2.1.300"}`), src); err == nil {
 		t.Fatal("an unknown status must be refused")

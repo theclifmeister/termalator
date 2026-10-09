@@ -25,6 +25,22 @@ Codex threads run `gpt-6-luna` unless a model is chosen; `gpt-5.6-terra` is the 
 - Codex keeps its sessions under `~/.codex`. tm adds nothing there; its settings are passed on the command line.
 - If you have your own Codex hooks that are untrusted, tm skips them in its sessions instead of stopping at Codex's review screen.
 
+## Tested versions and drift
+
+tm was last tested with Codex **0.162.0**. That number is information, not a requirement:
+- A newer Codex is supported, and `tm doctor` says so beside the version.
+- tm doesn't refuse a version. It watches for what a new release changes and falls back where it can.
+
+What tm relies on, and what it does when that changes:
+- **Launch flags** (`resume <id>`, `-m`, `-a on-request`, `--approve-for-me`, `--dangerously-bypass-approvals-and-sandbox`). If Codex refuses one, it exits at once. The server log then says `agent drift: codex <version> … exited … after its launch`, with Codex's error.
+- **`-c` settings**: update check, folder trust, the brief, the `terminatr` MCP server, the thread's `tm` permission profile, and the hooks with their trust. Codex ignores a setting it doesn't know, so a renamed one isn't noticed in a session; the weekly canary catches it.
+- **Hooks** (each one trusted for the session by a hash). If none arrive while Codex works, the log says `no hook event came`. State then comes from the rollout and the screen.
+- **`codex queue`**, for prompts. If it fails, the prompt is pasted instead, and the log says so once per session.
+- **The rollout** (`~/.codex/sessions/…`): usage and turn ends. If it changes, only usage and that state source are lost.
+- **Screen text**: the trust, hooks-review and update screens, the approval and question dialogs, "Implement this plan?", and the composer. If one changes, its dialog may go unseen; the other sources still give the state.
+
+`tm agent explain <session>` lists the session's drift notes, its Codex version and the last tested version. Every week, CI installs the latest Codex and Claude Code and checks the flags, settings, hooks and screen text, with no login and no model calls. If something changed, it opens an `agent-drift` issue. The full list and what to check when bumping the tested version: [SPEC.md §8.8](SPEC.md#88-tested-versions-and-drift-t190).
+
 ## For contributors
 
 `make test-codex` runs the end-to-end scenarios against the real `codex` and costs a little usage. Keep its sessions out of `~/.codex` with a home of its own, logged in once:

@@ -41,8 +41,8 @@ func TestDoctor(t *testing.T) {
 
 	env.Setenv("FAKEAGENT_VERSION", "9.9.9")
 	r = env.CLI("doctor")
-	if r.Code != 0 || !strings.Contains(r.Stdout, "9.9.9 is not in tested_versions") {
-		t.Fatalf("untested version: exit %d\n%s", r.Code, r.Stdout)
+	if r.Code != 0 || !strings.Contains(r.Stdout, "9.9.9 (newer than the last tested") {
+		t.Fatalf("newer version: exit %d\n%s", r.Code, r.Stdout)
 	}
 }
 

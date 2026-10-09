@@ -391,8 +391,9 @@ func TestAgentIdentifyByProcess(t *testing.T) {
 }
 
 // TestAgentCommands: tm agent list/check/reload/explain, with a broken
-// user manifest skipped and reported, and an untested version making
-// the status file untrusted.
+// user manifest skipped and reported, and a version newer than the last
+// tested one still trusted: the version is information, never a gate
+// (docs/SPEC.md §8.8).
 func TestAgentCommands(t *testing.T) {
 	env := New(t)
 	env.FakeClaude()
@@ -412,16 +413,13 @@ func TestAgentCommands(t *testing.T) {
 	dir := env.Workdir()
 	env.Trust(dir)
 	s := env.StartAgent("claude", dir)
-	info := env.WaitState(s, "idle", agentWait)
-	if strings.Contains(info.StateSources, "status_file") {
-		t.Fatalf("an untested version's status file was used: %s", info.StateSources)
-	}
+	env.WaitState(s, "idle", agentWait)
 	var x agent.Explanation
-	if !Poll(agentWait, func() bool { x = env.Explain(s); return strings.Contains(x.StatusErr, "tested_versions") }) {
-		t.Fatalf("explain: status error %q", x.StatusErr)
+	if !Poll(agentWait, func() bool { x = env.Explain(s); return x.StatusFile != nil && x.Extra["version"] == "9.9.9" }) {
+		t.Fatalf("a newer version's status file wasn't read: error %q, extra %v", x.StatusErr, x.Extra)
 	}
-	if info, _ := env.Info(s); strings.Contains(info.StateSources, "status_file") {
-		t.Fatalf("an untested version's status file was used: %s", info.StateSources)
+	if x.Extra["last_tested"] == "" || x.Extra["drift"] != "" {
+		t.Fatalf("explain: %v", x.Extra)
 	}
 	out = env.MustCLI("agent", "explain", s.ID)
 	for _, want := range []string{"sources, highest rank first", "SessionStart", "status file"} {

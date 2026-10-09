@@ -962,8 +962,8 @@ An agent is first of all a TOML manifest. `internal/agent/manifests/claude.toml`
 |---|---|
 | `manifest_version`, `name`, `display` | identity; the file name must equal `name` |
 | `role_files` | extra names the coordinator's `AGENTS.md` is symlinked under in the project folder, for this agent to read (Claude: `["CLAUDE.md"]`); the union over all agents is linked (T165) |
-| `tested_versions` | version prefixes the manifest was verified against (Claude: `["2.1."]`). Undocumented sources are trusted only for these, and `tm doctor` warns outside them |
-| `[identify]` | `argv0` (process basenames, after the core has unwrapped `node`/`bun`/`sh -c`), `version_args`, `min_version` (the oldest agent version terminatr's generated files work with; `tm doctor` warns below it. Claude: `2.1.139`, the exec-form hooks) |
+| `tested_versions` | optional version prefixes a manifest may pin its status file and prompt channel to; outside them `tm doctor` warns and those sources are ignored. The built-in manifests set none (§8.8): the version is never a gate there |
+| `[identify]` | `argv0` (process basenames, after the core has unwrapped `node`/`bun`/`sh -c`), `version_args`, `min_version` (the oldest agent version terminatr's generated files work with; `tm doctor` warns below it, with `min_version_why`. Claude: `2.1.139`, the exec-form hooks), `last_tested` (the newest version the manifest was checked against: information only, never a gate, §8.8) |
 | `[launch]` | `command`, `args`, `resume_args`, `yolo_args`, `model_args`, `kickoff_args`, `env` and `unset_env`. Values are Go `text/template`s over `LaunchSpec` (`.SessionID`, `.AgentSID`, `.Cwd`, `.RepoRoot`, `.GitDir`, `.RuntimeDir`, `.BriefPath`, `.Kickoff`, `.Resume`, `.Yolo`, `.Model`, `.TMBin`, `.Socket`, `.Role`, `.Mods`, `.Access.Read`, `.Access.Write`, `.Access.NoWrite`, `.Access.NoWriteFiles`), plus `.HookEvents`: the hook events the manifest names in `[[hooks]]`, `[[todos]]` and `todos_snapshot.on`, in manifest order, each once (Claude's `hooks.json` registers these; Codex's `-c hooks` the same list). `.RepoRoot` is the main checkout's folder of the repo the cwd is in, a linked worktree's too (Codex keys folder trust by it), and `.GitDir` the checkout's own git dir (`<repo>/.git/worktrees/<name>` for a worktree); both are empty outside a repo. Helpers for every template: `json` (a JSON value, a string quoted), `toml` (a string as a TOML basic string), `file` (an absolute path's text, at most 256 KiB, the launch failing when it can't be read: `-c developer_instructions={{toml (file .BriefPath)}}` hands Codex the brief as a value), `pathmodes` (an `Access` as a TOML table of path = `"read"`|`"write"`, for Codex's permission profile), and `rules`/`concat` below. An argument that renders empty is dropped. `kickoff_args` always comes last, and must start with `--` when the CLI has variadic flags that would swallow a positional prompt (Claude does). A resume with an empty `AgentSID` is refused. `unset_env` entries ending in `*` match a prefix |
 | `[[launch.files]]` | templated files written into the session's runtime dir before launch: a hook plugin, an extension, the harness's permission and sandbox settings rendered from `.Access` (helpers: `json`, `toml`, `file`, `pathmodes`, `rules`, `concat`) |
 | `[inject] prompt` | `paste`, `channel` or `none` |
@@ -1105,7 +1105,7 @@ Claude Code is pure data (`manifests/claude.toml`), except for the optional sock
 
      It was right in every case where hooks go stale. Those cases **fire no closing hook at all**: Esc on a permission dialog, Esc while text streams, Esc during a running tool. It updated within one 100 ms sample of the screen.
 
-     It is trusted only for `tested_versions = ["2.1."]`. The server knows the pid because it spawned `claude` itself.
+     It is trusted for any version (T190, §8.8): what it says is checked instead, and an unknown `status` distrusts the whole file and is logged as drift. The server knows the pid because it spawned `claude` itself.
   2. **Hooks:**
 
      | Event (match) | Signal |
@@ -1135,7 +1135,7 @@ Claude Code is pure data (`manifests/claude.toml`), except for the optional sock
      | blocked / question | `Enter to select` + `to navigate` + `Esc to cancel` |
      | working | title spinner `◐◑◒◓` (or Braille), or the `✢ Churning… (` spinner line. `esc to interrupt` isn't used: a custom statusline hides it |
      | idle | a `✳` title (ranked below the blockers, because it also shows while blocked), or a `❯` prompt with dim ghost text skipped |
-     | unknown | `showing detailed transcript` |
+     | unknown | `detailed transcript` (Claude writes `Showing detailed transcript · <key> to toggle`; the lowercase text the rule had never matched, T190) |
 - **Todo mirroring:** Claude 2.1 has **no `TodoWrite`**, and enables `TaskCreate`/`TaskUpdate` only for legacy or unset models: the manifest launches every role with `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` (`[launch.env]`) so current models (sonnet/opus/haiku 5.5) report todos too. Its list is managed with `TaskCreate`/`TaskUpdate`, which send **diffs**, one item per call:
   - `PostToolUse(TaskCreate)` → upsert: id `tool_response.task.id`, text `tool_input.subject`, `activeForm`.
   - `PostToolUse(TaskUpdate)` → upsert: id `tool_input.taskId`, plus whichever of `status`, `subject` and `activeForm` changed.
@@ -1154,7 +1154,7 @@ Claude Code is pure data (`manifests/claude.toml`), except for the optional sock
     - **Framing (M3):** 2.1.289 delivers a socket message to the model as "Another Claude session sent a message: … not typed by your user", with caveats against treating it as the user's approval; 2.1.291 queues it as a peer message (`isMeta`) with slash commands skipped. That is wrong for prompts from the human or the coordinator, so `claude.toml` keeps `paste`, and the Claude adapter reads `inject.prompt = "channel"` as paste too.
     - **Auth (2.1.291):** the inbox may require a first line `{"type":"auth","token":…}` and then drops unauthenticated lines silently. Claude gives its children a valid token in `CLAUDE_CODE_MESSAGING_TOKEN`; `claude.toml` names it in `inject.token_env`, so `tm hook` passes it to the server with each event (`hook.event` param `token`, outside the payload). The session keeps the latest in memory only, never logs or stores it, and the channel writes the auth line and the message in one write.
     - **Sent, not delivered:** the socket never answers on the sending connection (receipts go only to a Claude-style inbox, which tm doesn't run), and may still hold a message for approval or drop it. A nil write is journaled `prompt.sent` and logged "delivery not confirmed".
-    - It is used only for a tested version with a socket named in a trusted status file. A failed connect or write drops the held prompt with the error.
+    - It is used only with a socket named in a trusted status file (any version, §8.8). A failed connect or write drops the held prompt with the error.
   - **Liveness** (the optional `agent.Prober`): every 5 s the session checks the agent's pid (`kill(pid, 0)`), then the agent's probe. Claude's is a connect-only dial of the messaging socket (250 ms, nothing written; Claude closes it): no socket file (ENOENT) or a refused connection (ECONNREFUSED) means gone, any other error is unknown. A gone pid makes the status file stale (a crashed agent leaves its last state behind), so state falls back to hooks and the screen; a gone probe keeps held prompts off the channel. `tm agent explain` shows `liveness`.
 - **Re-injection after `/clear` and compaction:** the `SessionStart` response carries `hookSpecificOutput.additionalContext`, fetched fresh from the server each time (verified for `startup`, `clear` and `compact`; §7.8). With the mod it is a one-line pointer, and the context itself arrives as a context block (**Mods**, The role's context).
 - **Workspace trust.** Trust gates every hook, ours included. Claude records an accepted dialog in `~/.claude.json` (`$CLAUDE_CONFIG_DIR/.claude.json` when set) as `projects["<dir>"].hasTrustDialogAccepted`, and a directory below a trusted one is trusted too. **A thread never waits on it** (T35): before launching a thread whose cwd is a worktree tm created (`~/.terminatr/worktrees/<slug>/<dir>`, nothing above or beside it), the server asks the agent to trust that directory (the optional `agent.Truster`; Go, `internal/agent/claude`). Claude's adapter adds the entry for the worktree and its real path, keeping every other key and entry; it writes atomically (temp file and rename, the file's mode kept), takes a `.lock` directory next to the file for up to 2 s (best effort), and leaves a file that isn't valid JSON alone. A failure is logged and the launch goes on. Coordinators and sessions started by hand get nothing: elsewhere the dialog shows as blocked / trust, and the human answers it. The bypass-permissions warning (yolo) is never pre-accepted. Keys sent within about 0.5 s of the dialog painting are dropped.
@@ -1235,7 +1235,7 @@ Claude Code is pure data (`manifests/claude.toml`), except for the optional sock
 ### 8.7 Adding a new agent
 
 1. Write `~/.terminatr/agents/<name>.toml`, starting from a copy of `claude.toml`. Fill in `[identify]`, `[launch]` (including `resume_args` and the §7.8 kickoff), and the files the harness loads per session (a plugin dir, an `-e` extension, a settings file). Render `.Access` into the harness's permission and sandbox settings, so a thread can read the project but not write it, and can reach the socket. If the harness has no way to enforce read-only, say so in a comment; `tm agent list` then marks it `unenforced`.
-2. Find the agent's best **level** signal. Is there a file it keeps current with its state (`[status_file]`), or a log it appends to (`[jsonl_tail]`)? Pin `tested_versions` if the file is undocumented. Then map hook or extension events in `[[hooks]]`. Check for cases where a hook never fires (cancel with Esc, interrupts), because those are exactly what goes stale. Add a `counter` for background work, `session_field`, and `[hook]` trimming.
+2. Find the agent's best **level** signal. Is there a file it keeps current with its state (`[status_file]`), or a log it appends to (`[jsonl_tail]`)? Set `[identify] last_tested`; rather than pinning `tested_versions`, make the manifest check what the file says (an unknown value distrusts it), §8.8. Then map hook or extension events in `[[hooks]]`. Check for cases where a hook never fires (cancel with Esc, interrupts), because those are exactly what goes stale. Add a `counter` for background work, `session_field`, and `[hook]` trimming.
 3. If it has a todo or plan tool, add `[[todos]]` entries: `replace` for a whole-list tool, `upsert` for diffs, `reset` on its context reset. Add a `respond` template on the event that fires after a context clear, if the harness has one.
 4. List where it keeps its login under `[guard] secrets`, and any folder of its own that its threads write to outside the worktree under `[guard] writable` (§8.2). Map its shell, file-writing, patch and file-reading tools to their kinds under `[guard.tools]`, with the input fields that hold the command, path or patch (pi and opencode: lowercase `bash`, `edit`, `write`, `read`, paths in `filePath`); a tool left out is not guarded. If its hook payload names the event, the tool and its input other than `hook_event_name`, `tool_name` and `tool_input`, set `[hook]` `event_field`, `tool_field` and `input_field`; a plugin shim written for it should rather speak the canonical wire format (§8.2).
 5. Add 3–6 `[[rules]]` for what only the screen shows: pre-hook dialogs (trust), blockers, and the idle prompt (with `skip_dim` if it shows ghost text).
@@ -1244,6 +1244,76 @@ Claude Code is pure data (`manifests/claude.toml`), except for the optional sock
 8. To make it built-in: move the manifest into `internal/agent/manifests/`, and add fixture tests for its rules (captured emulator text for each state).
 
 Built in besides Claude: **Codex** (§8.6, **Codex**). Expected next: **pi** (an `-e` extension file as data; Go only for `sendUserMessage` injection).
+
+### 8.8 Tested versions and drift (T190)
+
+Claude Code and Codex ship often. A release can rename a flag or a config key, change a hook payload, change the text tm matches on screen, or drop an experimental feature. **tm is not tied to an agent version** (user, 2026-10-09):
+- A newer agent is supported until something actually breaks.
+- The version is information only: each built-in manifest's `[identify] last_tested`, shown by `tm doctor`, `tm agent list`, `tm agent explain` and the session log. It never gates anything and never raises an alarm by itself. The built-in manifests pin no `tested_versions` (§8.2).
+- tm checks what the agent actually does and falls back where it can.
+- It logs what it finds changed (**drift**, below), and a weekly CI canary tries the latest releases.
+
+**Versions.**
+- Last tested: Claude Code **2.1.295** and Codex **0.162.0** (built and checked live on 0.160–0.162).
+- `min_version` is the oldest version tm's generated files work with. `tm doctor` warns below it, naming `min_version_why`. Claude: 2.1.139 (exec-form hooks, T185). Codex: none set.
+
+**What tm relies on.** "Fragile" means undocumented or experimental: the first things to check when a release notes changes.
+
+| Surface | Claude Code | Codex | Stability | When it changes |
+|---|---|---|---|---|
+| Launch flags | `--plugin-dir`, `--settings`, `--session-id`, `--resume`, `--append-system-prompt-file` (not in `--help`), `--dangerously-skip-permissions`, `--model`, `--remote-control`, `--` | `resume <id>`, `-c`, `-m`, `-a on-request`, `--approve-for-me`, `--dangerously-bypass-approvals-and-sandbox`, `--` | documented, except Claude's hidden `--append-system-prompt-file` and Codex's newer `--approve-for-me` | the agent refuses to start: drift *early exit*, with its error |
+| Config | `--settings` JSON: `permissions.allow/deny`, `sandbox.enabled`, `sandbox.network.allowUnixSockets` | `-c` keys: `check_for_update_on_startup`, `projects={"<dir>"={trust_level="trusted"}}` (inline table only), `developer_instructions`, `mcp_servers.terminatr.{command,args,env_vars,default_tools_approval_mode}`, `default_permissions` and `permissions.tm` (`extends=":workspace"`, `filesystem`, `network.unix_sockets`) | Claude documented; Codex's permission profiles are **fragile** (new) | Codex ignores an unknown key without `--strict-config`, so a renamed key is silent: only the canary sees it. A value it can't read refuses the launch (early exit) |
+| Hook registration | plugin `hooks/hooks.json`, exec-form command hooks (`command` + `args`, 2.1.139+) | `-c hooks={…}` plus `-c hooks.state={…}`, trusted by a SHA-256 of the canonical JSON under `/<session-flags>/config.toml` | Claude documented; Codex's trust hash is **fragile** (reproduced from codex-rs, undocumented) | no hooks: drift *no hooks*; state from the status file, rollout or transcript, and the screen |
+| Hook events | `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PreCompact`, `PermissionRequest`, `Notification` (`permission_prompt`, `idle_prompt`, `elicitation_dialog`, `agent_needs_input`), `Stop`, `StopFailure`, `SubagentStart`, `SubagentStop`, `SessionEnd` | `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PreCompact`, `PermissionRequest`, `Stop`, `Interrupt`, `SubagentStart`, `SubagentStop`, `SessionEnd` | Claude documented; Codex's `Interrupt` **fragile** | an event tm didn't register: drift *hook event*; a renamed one stops arriving (canary) |
+| Hook payload and answer | `session_id`, `transcript_path`, `cwd`, `hook_event_name`, `source`, `reason`, `notification_type`, `tool_name`, `tool_use_id`, `tool_input`, `tool_response`, `agent_id`, `agent_type`, `prompt`, `last_assistant_message`; answers `hookSpecificOutput.additionalContext` and `permissionDecision: deny` | the same names (Codex mirrors Claude's), plus `trigger` | documented (Claude) | no `session_id`: drift *hook session*. Other missing fields lose only what they carry |
+| Prompt channel | `uds-messaging` socket from the status file, `CLAUDE_CODE_MESSAGING_TOKEN`; only for the server's own held prompts | `codex queue --thread=<id> --message=<text>` | **fragile** (undocumented; Codex's is new) | the prompt is pasted (Codex) or dropped and logged (Claude). A Codex command that fails: drift *channel* |
+| State files | `~/.claude/sessions/<pid>.json` (`status`: idle, shell, busy, waiting; `waitingFor`, `sessionId`, `version`, `messagingSocketPath`, `bridgeSessionId`); transcript JSONL (`[Request interrupted by user`, `system`/`turn_duration`); `~/.claude/tasks/<sid>/*.json` | rollout `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` (`event_msg` `task_started`, `task_complete`, `turn_aborted`, `token_count` with `last_token_usage`, `cached_input_tokens`, `model_context_window`, `rate_limits.primary.used_percent`) | **fragile** (undocumented) | an unknown `status` distrusts the file: drift *status file*. A changed rollout or transcript only loses that source and usage |
+| Trust | `~/.claude.json` `projects["<dir>"].hasTrustDialogAccepted` (written for a thread's worktree) | the `projects` `-c` flag | **fragile** (Claude's file is undocumented) | the trust dialog shows: blocked / trust on the screen, the human answers |
+| Screen text (§8.6 rules) | `Yes, I trust this folder`; `Yes, I accept` + `Bypass Permissions`; `detailed transcript`; `Do you want to ` + `❯ 1. Yes` + `Esc to cancel`; `Enter to select` + `to navigate`; `Type something`; spinners; `✳` title; `❯` box; `Disconnect this session`, `Remote Control disconnected` | `Trust this folder?`, `Hooks need review`, `Update available`, `Press enter to confirm or esc to cancel`, `Question k/N` + `enter to submit`, `None of the above`, `Implement this plan?`, `Where should the new conversation run?`, `• Working (` + `esc to interrupt`, the `›` composer | **fragile** (UI text, changes often) | a rule that stops matching can't be told from a screen that never showed it, so this isn't detected at run time. The other sources still carry the state; the canary looks for the text in each release |
+| Env vars | sets `CLAUDE_CODE_ENABLE_TODO_TOOLS` (needed from 2.1.295), unsets `CLAUDECODE`, `CLAUDE_PID`, `CLAUDE_CODE_SESSION_*`, …; reads `CLAUDE_CONFIG_DIR` | unsets `CODEX_THREAD_ID`, `CODEX_SANDBOX`, `CODEX_SANDBOX_NETWORK_DISABLED`; reads `CODEX_HOME` | **fragile** (undocumented) | a renamed variable is inherited by a nested agent; the canary checks the names |
+| Other | `claude plugin list --json` (doctor's plugin check); the Mods API (early access, from `ModsMinVersion` 2.1.289, off unless turned on, with the hooks as fallback); model aliases `opus`, `sonnet`, `haiku` | model names (`gpt-6-luna` by default) | the models are the user's to edit (T181); tm reads no models cache | doctor warns; a refused model shows in the agent |
+
+**Drift at run time.**
+- A session notes each kind of drift once, in the server log, with the agent's version and the last tested one: `session s-4: agent drift: codex 0.170.0, last tested 0.162.0: hook event "TurnEnded" is none tm registered (docs/SPEC.md §8.8)`.
+- `tm agent explain` shows the notes as `drift`, beside `version` and `last_tested`.
+- The version comes from the agent's `version_args` (cached per binary, read after the launch, never on its path), or from the status file when it names one. A newer version is logged once per session as information.
+- The kinds:
+  - *hook event*: an event the manifest doesn't register.
+  - *hook session*: an event without the manifest's `session_field`.
+  - *no hooks*: the screen has shown the agent working for 2 minutes and no hook event came.
+  - *early exit*: the agent exited within 20 s of its launch, with its last three lines on screen (an unknown flag, a config value it can't read).
+  - *channel*: the prompt channel's command failed (an exit status, or not found), so the prompt was pasted. The adapter's own refusals (no thread id yet, a slash command) are not drift.
+  - *status file*: a value the manifest doesn't know.
+- Nothing is refused because of a version, and every source keeps its fallback.
+
+**The weekly canary** (`weekly.yml`, job `agent-canary`; `scripts/agent-canary.sh`, which refuses to run outside CI):
+- Runs every week, and by hand, whatever main did. It installs the latest `@openai/codex` and `@anthropic-ai/claude-code` on a Linux runner and runs non-live checks only: a home of its own, so no login, and a dead proxy, so no model is called.
+- It checks the flags and subcommands in `--help`.
+- It runs the launch tm renders (`tm agent check --render DIR FILE`, which writes a sample launch's files and prints its argv and env):
+  - Codex: `codex exec --strict-config` loads the `-c` flags, then each key group alone, so a failure names the key. tm's hooks, trusted by their hash, fire offline in `exec` with the fields tm reads, and SessionStart's context reaches the rollout.
+  - Claude: in print mode it loads tm's plugin and settings and fires the exec-form hooks before it finds no login. `claude plugin validate` and `claude plugin test` run on the mod (`TestModPlugin`).
+- It looks for the screen and file text of the table above in the binaries. That is a hint: text assembled at run time can be missed.
+- A failure opens an `agent-drift` issue, or comments on the open one.
+- Running agent binaries is for CI only, never on a developer's machine, which holds the user's logins.
+
+**When bumping `last_tested`:**
+1. Read the releases' notes for hooks (events, fields, trust), flags, config keys and permission profiles, the status file and rollout, and the dialogs tm matches (the table above).
+2. Run the canary by hand (Actions, weekly, *Run workflow*): it must be green.
+3. Run `make test-claude` or `make test-codex` (real agents, logged in, by hand; their version test logs a version newer than `last_tested`).
+4. Capture any changed screen as a fixture in `internal/detect`.
+5. Then bump `last_tested`. The mod's pin (`ModsMinVersion`, CI's `CLAUDE_CODE_VERSION`) moves only with the mod.
+
+**Older versions** (notes, not gates; T190 probed them offline on macOS before the work moved to newer versions):
+- Claude Code:
+  - Exec-form hooks need 2.1.139 (doctor warns below it).
+  - npm ships a native binary from 2.1.120, `cli.js` before.
+  - The mod needs 2.1.289.
+  - 2.1.295 enables the task tools only with `CLAUDE_CODE_ENABLE_TODO_TOOLS`; older builds ignore the variable.
+- Codex:
+  - 0.160 passed every check above offline.
+  - In 0.100–0.130 the binaries lack several screens tm matches ("Trust this folder", "Hooks need review", the composer's placeholder). 0.100 also lacks the hook `permissionDecision` answer.
+  - Codex builds 0.130 and older were killed on start on the test Mac (macOS 27), so their flags and keys weren't run.
+  - No Codex minimum is set; anything below 0.160 is unverified.
 
 ---
 
@@ -1512,7 +1582,7 @@ The spike code itself was removed in T39 and is in git history under `spikes/` a
 | 1 | Real outer terminals other than libghostty (Ghostty.app, iTerm2, Terminal.app): grapheme widths, terminals without the kitty keyboard protocol | 3.3 | Test during M2; fallbacks for legacy keyboards |
 | 2 | Linux: Claude in a pane, the bubblewrap sandbox with the §5.2 policy | 5.2, 8.6 | Check in M3 and M6 on a Linux box with a Claude login |
 | 3 | Claude edge cases: auto-compaction, `async` hooks, `PermissionDenied`/`StopFailure`/MCP elicitation, the status file after a Claude crash, Ctrl+U, `skipDangerousModePermissionPrompt`, the `deleted` task status | 8.6 | Fixtures in M3; the dead-pid rule covers the crash case |
-| 4 | The undocumented status file and `uds-messaging` socket can change in any Claude release | 8.6 | `tested_versions` guard and fallbacks (in place); `tm doctor` warns |
+| 4 | The undocumented status file and `uds-messaging` socket can change in any Claude release | 8.6, 8.8 | content checks and fallbacks (in place), drift logged; the weekly agent canary |
 | 5 | Live server upgrade (PTY handoff over `SCM_RIGHTS` + snapshots) | 3.6 | Later spike; v0.1 resumes agents instead |
 | 6 | Codex and pi under the same harness | 8.7 | After v0.1 |
 
@@ -1658,7 +1728,7 @@ Sizes: **S** ≤ 2 days, **M** 3–5 days, **L** 1–2 weeks, for one developer 
 - **Goal:** v0.1 that someone else can install and trust.
 - **Deliverables:**
   - crash and restart resume end to end (`kill -9` the server in e2e);
-  - `tm doctor [--fix]`: toolchain, sockets, manifests, Claude version against `tested_versions`, leftovers;
+  - `tm doctor [--fix]`: toolchain, sockets, manifests, the agents' versions (last tested as information, `min_version` as a warning), leftovers;
   - launchd and systemd service files;
   - release builds for darwin/linux × amd64/arm64 (glibc floor or musl, signing);
   - Linux checks for the open points in §14; README and operations docs.
@@ -1763,7 +1833,7 @@ Built in M3 (`internal/e2e/fakeagent`, a small Go TUI). It behaves like Claude C
 - Build tag `realclaude`; `make test-claude` runs them against the `claude` on `PATH`, using Haiku. They cost a few cents per run.
 - They run on demand (before a release, or after a Claude update) and nightly on a maintainer's machine or a self-hosted runner with a Claude login. GitHub-hosted CI has no login.
 - They check:
-  - `claude --version` is within `tested_versions`;
+  - `claude --version` against `last_tested` (logged; bump it once this suite passes on a newer version);
   - the session file still has `status`, `waitingFor`, `sessionId` and `messagingSocketPath`;
   - the hook sequences of the core scenarios (permission approve and deny, Esc cases, AskUserQuestion, subagent, `/clear`, `/compact`) and the task-tool payloads;
   - every screen rule still matches its screen;
@@ -1773,7 +1843,7 @@ Built in M3 (`internal/e2e/fakeagent`, a small Go TUI). It behaves like Claude C
 
 **Real Codex** (T105). Build tag `realcodex`; `make test-codex` runs it against the `codex` on `PATH` with gpt-6-luna and a ChatGPT login: `~/.codex`, or a dedicated `CODEX_HOME` logged in once (a fresh one has no login, and `auth.json` isn't copied). It skips when codex isn't logged in. A run takes about 3 minutes and 310k input tokens, mostly cached. On demand only, not in the weekly job (user, 2026-10-08). The regular e2e runs the same cases against the fake agent as Codex (`FakeCodex`: the fake called `codex`, under the real `codex.toml` and its Go agent). It checks:
 
-- `codex --version` is within `tested_versions`;
+- `codex --version` against `last_tested` (logged; bump it once this suite passes on a newer version);
 - a first prompt (pasted: Codex reports its thread id only with its first hook), then prompts through `codex queue`;
 - an approval approved and one cancelled with Esc (`Interrupt`), under the manifest's `-a on-request` (§8.6);
 - `/compact` (`PreCompact`; `SessionStart` with source `compact` at the next prompt) and `/clear` (a new thread, which reports itself at its first prompt; the thread left ends a minute later with a `SessionEnd` that must change nothing);
