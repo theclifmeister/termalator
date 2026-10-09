@@ -1,4 +1,4 @@
-//go:build !unix
+//go:build !unix && !windows
 
 package flock
 
@@ -7,8 +7,7 @@ import (
 	"os"
 )
 
-// Not yet ported: every call returns errors.ErrUnsupported. The Windows
-// port replaces this with LockFileEx (doc.go).
+// Not ported to this platform: every call returns errors.ErrUnsupported.
 
 var ErrLocked = errors.New("lock is held")
 
