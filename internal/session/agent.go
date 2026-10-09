@@ -184,6 +184,9 @@ type agentRT struct {
 	workingSince time.Time       // when the screen first showed it working
 	drifted      map[string]bool // drift keys noted (drift.go)
 	driftNotes   []string
+
+	typedMu sync.Mutex
+	typed   typedLine // the line typed into the prompt box (agent.Typist)
 }
 
 func newAgentRT(cfg AgentConfig, pid int, observed bool) (*agentRT, error) {

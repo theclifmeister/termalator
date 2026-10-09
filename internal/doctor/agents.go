@@ -2,6 +2,8 @@ package doctor
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -125,5 +127,42 @@ func Sandbox(d Deps) []Check {
 		out = append(out, Check{Group: g, Name: n, Status: Warn,
 			Detail: "not found" + hint + "; the agents' sandbox can't run, so threads rely on permission rules alone"})
 	}
+	if d.GOOS == "linux" {
+		if c, ok := userns(); ok {
+			out = append(out, c)
+		}
+	}
 	return out
+}
+
+// procSys is /proc/sys, moved by tests.
+var procSys = "/proc/sys"
+
+// userns checks that an unprivileged process may map a user namespace,
+// which bwrap needs. Ubuntu 24.04 restricts it through AppArmor: Codex
+// 0.160's sandbox then fails every command with "bwrap: setting up uid
+// map: Permission denied" (T189), unless AppArmor gives its bwrap a
+// userns profile. ok is false when /proc says nothing.
+func userns() (Check, bool) {
+	read := func(name string) string {
+		b, err := os.ReadFile(filepath.Join(procSys, name))
+		if err != nil {
+			return ""
+		}
+		return strings.TrimSpace(string(b))
+	}
+	c := Check{Group: "sandbox", Name: "user namespaces", Status: Warn}
+	switch {
+	case read("kernel/apparmor_restrict_unprivileged_userns") == "1":
+		c.Detail = "restricted by AppArmor (kernel.apparmor_restrict_unprivileged_userns=1): bwrap fails with \"setting up uid map\", so the agents' sandbox can't start (a Codex thread's every command fails); allow them with sysctl kernel.apparmor_restrict_unprivileged_userns=0 or an AppArmor profile for bwrap"
+	case read("kernel/unprivileged_userns_clone") == "0":
+		c.Detail = "off (kernel.unprivileged_userns_clone=0): bwrap can't run, so the agents' sandbox can't start (a Codex thread's every command fails); sysctl kernel.unprivileged_userns_clone=1"
+	case read("user/max_user_namespaces") == "0":
+		c.Detail = "off (user.max_user_namespaces=0): bwrap can't run, so the agents' sandbox can't start (a Codex thread's every command fails)"
+	case read("user/max_user_namespaces") == "":
+		return c, false
+	default:
+		c.Status, c.Detail = OK, "an unprivileged process may create one (bwrap)"
+	}
+	return c, true
 }
