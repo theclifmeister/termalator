@@ -195,16 +195,19 @@ func updateCmd(e *Env, args []string, u *updater) int {
 			return ExitRefused
 		}
 	}
-	tmp, err := u.Client.Download(ctx, rel, u.GOOS, u.GOARCH, filepath.Dir(in.Path))
+	dir := filepath.Dir(in.Path)
+	update.CleanOld(dir, u.GOOS)
+	staged, err := u.Client.Download(ctx, rel, u.GOOS, u.GOARCH, dir)
 	if err != nil {
 		if errors.Is(err, os.ErrPermission) {
-			err = fmt.Errorf("%w: %s is not writable; reinstall where you can write, or update as its owner", err, filepath.Dir(in.Path))
+			err = fmt.Errorf("%w: %s is not writable; reinstall where you can write, or update as its owner", err, dir)
 		}
 		fmt.Fprintf(e.Stderr, "tm update: %v\n", err)
 		return ExitIO
 	}
-	defer os.Remove(tmp) // gone after the rename; cleans up on failure
+	defer staged.Remove() // gone after the rename; cleans up on failure
 	fmt.Fprintf(e.Stdout, "checksum   ok (%s)\n", update.ArchiveName(u.GOOS, u.GOARCH))
+	tmp := staged.Program()
 	if u.Verify != nil {
 		team, err := u.Verify(tmp, u.Team)
 		if err != nil {
@@ -217,7 +220,7 @@ func updateCmd(e *Env, args []string, u *updater) int {
 		fmt.Fprintf(e.Stderr, "tm update: the downloaded tm doesn't run as %s (%v): %s; nothing changed\n", rel.Tag, err, out)
 		return ExitRefused
 	}
-	if err := update.Replace(tmp, in.Path); err != nil {
+	if err := staged.Install(dir); err != nil {
 		fmt.Fprintf(e.Stderr, "tm update: %v\n", err)
 		return ExitIO
 	}

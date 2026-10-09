@@ -155,3 +155,6 @@ release:
   # Formula/terminatr.rb.
   draft: true
   prerelease: auto
+  # The Windows installer, at releases/latest/download/install.ps1.
+  extra_files:
+    - glob: ./scripts/install.ps1

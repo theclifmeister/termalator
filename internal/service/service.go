@@ -1,6 +1,6 @@
 // Package service writes and loads the server's service files (docs/SPEC.md
 // §3.1): the optional start-at-login service (a launchd agent on macOS, a
-// systemd user unit on Linux), and on macOS the launchd job every start
+// systemd user unit on Linux, a Run key value on Windows), and on macOS the launchd job every start
 // goes through (Start), so the server runs in the desktop's session
 // whatever session tm was started from.
 package service
@@ -15,6 +15,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/theclifmeister/terminatr/internal/plat/autostart"
 )
 
 // Names of the service.
@@ -56,6 +58,8 @@ type Config struct {
 	Run func(name string, args ...string) error
 	// Output runs a command and returns its stdout; nil uses the real one.
 	Output func(name string, args ...string) (string, error)
+	// Store is the Windows startup list; nil uses the real one.
+	Store autostart.Store
 }
 
 // PinDir and PinName place the server's own copy of its binary, the
@@ -82,7 +86,7 @@ func (c Config) Program() string {
 }
 
 // ErrUnsupported means there is no service manager support for the OS.
-var ErrUnsupported = errors.New("start at login is supported on macOS (launchd) and Linux (systemd --user) only")
+var ErrUnsupported = errors.New("start at login is supported on macOS (launchd), Linux (systemd --user) and Windows (the Run key) only")
 
 // JobLabel is the launchd label: Label for the default home, and one per
 // home otherwise, so a dev or test server never takes the real one's.
@@ -101,13 +105,24 @@ func (c Config) File() (string, error) {
 		return filepath.Join(c.UserHome, "Library", "LaunchAgents", c.JobLabel()+".plist"), nil
 	case "linux":
 		return filepath.Join(c.UserHome, ".config", "systemd", "user", UnitName), nil
+	case "windows":
+		return c.runKey(), nil
 	}
 	return "", ErrUnsupported
 }
 
+// absolute reports whether p is an absolute path on c's OS (a Windows
+// path is judged by its form, wherever this runs).
+func (c Config) absolute(p string) bool {
+	if c.GOOS == "windows" {
+		return len(p) > 2 && (p[1] == ':' && p[2] == '\\' || strings.HasPrefix(p, `\\`))
+	}
+	return filepath.IsAbs(p)
+}
+
 // Render returns the service file's text.
 func (c Config) Render() ([]byte, error) {
-	if !filepath.IsAbs(c.Bin) {
+	if !c.absolute(c.Bin) {
 		return nil, fmt.Errorf("tm path %q is not absolute", c.Bin)
 	}
 	switch c.GOOS {
@@ -115,6 +130,9 @@ func (c Config) Render() ([]byte, error) {
 		return c.plist(true), nil
 	case "linux":
 		return c.unit(), nil
+	case "windows":
+		cmd, err := c.runCommand()
+		return []byte(cmd + "\n"), err
 	}
 	return nil, ErrUnsupported
 }
@@ -241,6 +259,9 @@ func (c Config) Install() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if c.GOOS == "windows" {
+		return path, c.installRunKey()
+	}
 	if c.LogDir != "" {
 		if err := os.MkdirAll(c.LogDir, 0o700); err != nil {
 			return "", err
@@ -280,6 +301,9 @@ func (c Config) Uninstall() (string, error) {
 	path, err := c.File()
 	if err != nil {
 		return "", err
+	}
+	if c.GOOS == "windows" {
+		return path, c.uninstallRunKey()
 	}
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		return path, nil
