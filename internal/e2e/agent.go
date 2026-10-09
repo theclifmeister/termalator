@@ -2,7 +2,7 @@ package e2e
 
 // Agent helpers (M3): the scripted fake agent (internal/e2e/fakeagent)
 // runs under the real claude.toml with only launch.command swapped
-// (docs/SPEC.md §16.3), so the manifest itself is under test.
+// (docs/SPEC.md §15.3), so the manifest itself is under test.
 
 import (
 	"bufio"

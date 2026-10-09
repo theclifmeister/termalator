@@ -63,17 +63,17 @@ shots.html` (a page with a dark and a light palette).
 | Key hint | key in accent, label faint, ` · ` faint between hints (`keysLine`) | lowercase |
 | Message | plain; red for an error | lowercase or Sentence case, cleared by the next key |
 
-- **T1.** Titles are Sentence case and name the thing: `Inbox · demo`,
+- **Y1.** Titles are Sentence case and name the thing: `Inbox · demo`,
   `Thread models`, `Accept T4`.
-- **T2.** One spelling per word everywhere: `needs you` (`2 need you`),
+- **Y2.** One spelling per word everywhere: `needs you` (`2 need you`),
   `in review`, `blocked`, `asks you`, `checks failed`, `prompts held`,
   `asked the coordinator`.
-- **T3.** No abbreviations people read: inbox kinds in words (`PR
+- **Y3.** No abbreviations people read: inbox kinds in words (`PR
   opened`, not `pr-opened`), `×3` for repeats. Ids (`T12`, `t-0003`,
   `s-4`, `#7`) are names and stay.
-- **T4.** `…` marks a cut and nothing else; a row cuts its least useful
+- **Y4.** `…` marks a cut and nothing else; a row cuts its least useful
   part first (a thread's own id is last on its row).
-- **T5.** `esc close` for a view, `esc cancel` for a dialog that would
+- **Y5.** `esc close` for a view, `esc cancel` for a dialog that would
   change something, `esc back` only when it returns to the popup under it.
 
 ## Colour roles

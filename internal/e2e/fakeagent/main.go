@@ -1,5 +1,5 @@
 // Command fakeagent is a scripted stand-in for Claude Code 2.1.289, as the
-// t-0004 spike recorded it (docs/research/claude.md, docs/SPEC.md §16.3).
+// t-0004 spike recorded it (docs/research/claude.md, docs/SPEC.md §15.3).
 // Tests run it under the real manifests/claude.toml with only
 // launch.command pointed here, so it takes the same flags and has the same
 // side effects: plugin hooks, the session status file, the transcript, the

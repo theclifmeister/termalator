@@ -725,7 +725,7 @@ func taskListKeys(t *tasks.Task, b *tasks.Board, doneAll bool, close string) str
 // kindStyle is the style of an inbox item's kind: red for what went
 // wrong, green for what finished, yellow for the rest.
 // kindWords are the inbox kinds in words, where the kind's own name is a
-// code (docs/STYLE.md T3).
+// code (docs/STYLE.md Y3).
 var kindWords = map[string]string{
 	"thread-resolved":  "resolved",
 	"takeover":         "you typed",

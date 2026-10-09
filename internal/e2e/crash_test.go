@@ -1,7 +1,7 @@
 package e2e
 
-// M8 scenarios: crash and restart resume end to end (docs/SPEC.md §3.6,
-// §15 M8). The fake agent plays the coordinator and the threads.
+// M8 scenarios: crash and restart resume end to end (docs/SPEC.md §3.6).
+// The fake agent plays the coordinator and the threads.
 
 import (
 	"encoding/json"

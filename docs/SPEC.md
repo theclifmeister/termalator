@@ -89,7 +89,7 @@ One binary, several roles:
 | `internal/keychain` | Whether the server's sessions reach the macOS keychain (§3.1) |
 | `internal/version` | Version, build id, release channel |
 | `internal/mdfile` | Markdown with TOML front matter, lock files, atomic writes |
-| `internal/e2e` | The end-to-end harness and scenarios, with the scripted fake agent (§16) |
+| `internal/e2e` | The end-to-end harness and scenarios, with the scripted fake agent (§15) |
 
 The dependency rule: `server`, `session`, `ticker`, `tui`, `project`, `thread` and `tasks` MUST NOT import `internal/agent/<name>` or mention any agent by name. They see only `internal/agent`.
 
@@ -189,7 +189,7 @@ So that this keeps working, every server of every future protocol keeps three pr
 | sessions | `session.list`, `session.start`, `session.stop`, `session.read` (screen text), `session.prompt` (queued, pasted once the agent is idle; the answer's `via` says how it went), `questions.open {project}` (the project's coordinator opens its open questions, §7.5 **Questions**; refused with none open or no coordinator running; result `{session, via, open}`), `session.keys`, `session.wait` (until a state), `session.remote {id, on}` (a coordinator's remote control, §11.2), `session.adopt {id, project, thread, brief}` (a plain agent session becomes a thread's, §9 **Adopt**; refused unless it is a live shell-role session with an agent), `session.watch {id}` (the session's state; the connection then streams `watch.changed`, below; a server without it answers `unknown-method`), `project.watch {project}` (a project's dashboard for the coordinator's /tm pane; the connection then streams `project.changed`, **Watch** below), `session.ask {id, question}` (a mod's open question menu; the connection then waits for its answers, **Ask** below), `session.answer {id, index, answer}` (one question of it, from `tm thread answer`; `no-question` when none is open) |
 | agents | `agent.list`, `agent.reload`, `agent.explain` (which signals and rules produced a session's state) |
 | hooks | `hook.event` (from `tm hook`; also its own connection kind, §8.2) |
-| views | `view.subscribe` (join a view; the connection then streams `view.changed`), `view.attach`, `view.dashboard`, `view.project`, `view.select`, `view.sidesel`, `view.sidebar`, `view.info`, `view.size`, `view.input` (below), `view.digest` (tests: a console's digest check, §16.2) |
+| views | `view.subscribe` (join a view; the connection then streams `view.changed`), `view.attach`, `view.dashboard`, `view.project`, `view.select`, `view.sidesel`, `view.sidebar`, `view.info`, `view.size`, `view.input` (below), `view.digest` (tests: a console's digest check, §15.2) |
 | callers | `caller.who` (who the peer pid is: the hosted session it descends from, and its role, §11.1) |
 | projects | `cli.run {args, cwd, stdin}`: an agent's project command (`tm task`, `thread`, `report`, `status`, `done`, `inbox`, `context`, `project`) run inside the server with the caller from the peer pid (§11.1); its answer is the command's output and exit code |
 | tools | `tool.run {name, input}`: one of a thread's tools (§8.6) for `tm mcp`; the thread is the caller's, from the peer pid, and the answer is `{text, is_error}` as the mod socket's `POST /v1/tools/<name>` gives it |
@@ -869,7 +869,7 @@ Threads are grouped as herdr-projects does: Waiting on you → Ready for review 
 
 Sections are capped, and the output says what it left out. Two calls with the same files give identical output.
 
-**Keeping the context files small**. `CONTEXT.md` and the memory index are printed on every coordinator turn, and threads read `memory/` for their tasks, so each has a size budget (`internal/project/upkeep.go`): `CONTEXT.md` 6 KB; `MEMORY.md` 6 KB; each file under `memory/` 6 KB. A file over its budget is named in `tm context`'s `Upkeep` section and as a `tm doctor` warning (group `upkeep`, no fix: rewriting is the coordinator's work). The coordinator's skill (§7.7) says to keep them short and factual, to consolidate a growing memory file (re-read it, merge and rewrite it, drop what is no longer true) instead of appending, and to write `## Remember` lessons as its own summary. **Done tasks leave the board by themselves:** the ticker moves each task that has been `done` for `archive_tasks_days` (by its `updated` date) to `tasks/ARCHIVE.md`, journaled as `ticker task.archive T12`; `tm task archive` does it sooner, and `tm task unarchive` brings one back. That makes "clearing the coordinator loses nothing" testable: run scripted actions, clear the coordinator, run `tm context`, and compare (§16.6; it lands with M4 and M5).
+**Keeping the context files small**. `CONTEXT.md` and the memory index are printed on every coordinator turn, and threads read `memory/` for their tasks, so each has a size budget (`internal/project/upkeep.go`): `CONTEXT.md` 6 KB; `MEMORY.md` 6 KB; each file under `memory/` 6 KB. A file over its budget is named in `tm context`'s `Upkeep` section and as a `tm doctor` warning (group `upkeep`, no fix: rewriting is the coordinator's work). The coordinator's skill (§7.7) says to keep them short and factual, to consolidate a growing memory file (re-read it, merge and rewrite it, drop what is no longer true) instead of appending, and to write `## Remember` lessons as its own summary. **Done tasks leave the board by themselves:** the ticker moves each task that has been `done` for `archive_tasks_days` (by its `updated` date) to `tasks/ARCHIVE.md`, journaled as `ticker task.archive T12`; `tm task archive` does it sooner, and `tm task unarchive` brings one back. That makes "clearing the coordinator loses nothing" testable: run scripted actions, clear the coordinator, run `tm context`, and compare (§15.6; it lands with M4 and M5).
 
 **Retention**. Upkeep is the ticker's, not the coordinator's: once an hour, and on its first sweep after a start (so an upgrade cleans up existing projects at once), it moves what is old out of each project's working files, by the project's retention settings (§11.2, 30 days each by default; an archived project is left alone). Nothing is deleted (`internal/ticker/upkeep.go`):
 
@@ -1612,182 +1612,23 @@ All three spikes have reported: symlinks (`docs/research/symlinks.md`), Claude C
 
 ---
 
-## 15. Milestones
-
-Sizes: **S** ≤ 2 days, **M** 3–5 days, **L** 1–2 weeks, for one developer working with agents. Each milestone ends with a short demo note in its PR, a "Try it" that the user runs by hand, and **that "Try it" as automated scenarios** in `internal/e2e` (§16). The **Tests** line of each milestone says what it adds to the test suite. M5 can start in parallel with M2–M4, because its file layer doesn't need the server.
-
-> **★ M4 is the first local run:** server + attach + dashboard with a live Claude session. Everything before it is groundwork; everything after it adds projects, threads and the coordinator.
-
-### M1: Server core (L)
-- **Goal:** a detached server that owns shell sessions and survives everything except `tm server stop`.
-- **Deliverables:**
-  - `tm server run|start|stop|status`, with auto-start from any `tm` command;
-  - setsid detachment, `server.lock`, the run dir and socket rules (§3.1–3.2, `internal/server/paths.go`), peer-uid checks;
-  - the `hello` handshake and `proto.Check`; control NDJSON;
-  - `session.start|list|stop|read` for **shell** sessions;
-  - PTY plus authoritative emulator per session, with only the server answering terminal queries;
-  - `sessions.json`, logs;
-  - `tm session start|list|read|stop`.
-- **Try it:** `tm session start` (a shell), `tm session list`, `tm session read <id>` shows its screen as text. Close the terminal window, open a new one: `tm session list` still shows it. `tm server stop` ends it.
-- **Tests:**
-  - **`internal/e2e`** ported from the libghostty spike's `cmd/harness` (§16.2): `Env`, `Window`, golden screens with masks, the orphan-process check, failure artifacts, and the first deterministic app;
-  - integration tests for auto-start, detachment (close the launching terminal; the server survives), the lock, stale and overlong sockets, peer-uid rejection, the handshake, and session start/read/stop;
-  - a fuzz target for the control NDJSON decoder;
-  - `make e2e` and `make e2e-smoke`, with the smoke set wired into `ci.yml`, and the full set into `weekly.yml`.
-- **Depends on:** nothing (the skeleton, the emulator wrapper and the protocol types exist).
-
-### M2: Attach client (L)
-- **Goal:** attach to any session full-screen, detach, and reattach from anywhere, with nothing lost.
-- **Deliverables:**
-  - `tm attach <session>`: attach frames, snapshot + ordered stream, the mirror emulator;
-  - the cell renderer with dirty rows, 2026 holds and the grapheme re-anchor;
-  - input decoding (ultraviolet) and re-encoding with libghostty's key, mouse, focus and paste encoders;
-  - mouse and focus mode mirroring; the prefix detach; Shift+PgUp local scrollback;
-  - no resize on attach, plus `SET_SIZE`; byte-bounded queues with resync;
-  - the build check with re-exec; terminal restore on exit and on SIGHUP;
-  - a digest check (`DIGEST_REQ`) used by tests.
-- **Try it:** attach to an M1 shell and run `vim` or `htop`. Detach with the prefix and reattach from another window, at another size. Close a window while output streams. Run `claude` in the shell by hand: Shift+Enter, paste and the mouse wheel work.
-- **Tests:** e2e scenarios, each with `AssertMirrorsServer`:
-  - detach and reattach mid-stream at another size; window close mid-stream; `SIGKILL` of the client;
-  - a slow client forced into resync; no resize on attach (an inline redraw app shows no duplicated rows);
-  - keys through the encoders (Shift+Enter, the prefix, paste, wheel) against the full-screen app; 2026 holds; a grapheme row;
-  - the build-mismatch re-exec;
-  - golden screens for each.
-- **Depends on:** M1.
-
-### M3: Agent layer and Claude sessions (L)
-- **Goal:** start Claude as a first-class session whose state (working / blocked / idle / exited, with the reason) is right in every case the spike found.
-- **Deliverables:**
-  - the registry and manifest loading (exists); `tm hook` (stream socket, trimming, deadlines, exit 0);
-  - the core sources: status-file watcher, JSONL tailer, todo store with the snapshot re-read;
-  - `internal/detect` (the rule engine, including `skip_dim`); arbitration with source ranking and the background counter (§8.4);
-  - session-id tracking and resume; per-session runtime dir and generated files; `unset_env`;
-  - `tm session start --agent claude`; `tm agent list|check|reload|explain`;
-  - the paste injector with its preconditions, and `tm session prompt`;
-  - the Claude `uds-messaging` injector behind its probe;
-  - fixture tests from the spike's screens and events.
-- **Try it:**
-  1. `tm session start --agent claude` in a trusted repo, then `tm agent explain <id>` while you prompt it, approve a permission dialog, and press Esc on another one: the state follows each step.
-  2. `tm session prompt <id> "…"` while it is working queues the prompt.
-  3. `tm server restart` resumes the session.
-- **Tests:**
-  - **the scripted fake agent** (§16.3), with the spike's stale cases (s03, s04, s15), todo runs (s16–s18) and clear/compact (s07) as its first scripts;
-  - integration tests of `tm hook` (deadlines, server down, wedged, payload size), state arbitration end to end, the background counter, session-id rotation and resume;
-  - **the `realclaude` suite** and `make test-claude` (§16.4), with drift detection against the fake's scripts;
-  - fuzz targets for the status file, transcript and hooks (they exist; extend them with new sources).
-- **Depends on:** M1 (M2 for attaching).
-
-### ★ M4: Dashboard, first local run (M)
-- **Goal:** open `tm`, see every session with its live state, attach to a Claude session and back. This is the first thing to use day to day.
-- **Deliverables:**
-  - the Bubble Tea dashboard: a session list with state, reason, todo progress and age; NEEDS YOU first (blocked sessions);
-  - keys: `enter` attach, `s` new shell (removed later: shells start from the command line, `tm session start`), `c` new Claude session in a chosen directory, `?` help, `q` quit (`c` was removed later: the user's agents are coordinators, §4);
-  - hand-off to the M2 attach view and back with the prefix; the status line;
-  - the bell when a session becomes blocked (an OS notification was dropped later: alerts stay in the terminal, §4).
-- **Also:** `]`/`[` (§4; the project switcher was removed later, the sidebar replaces it), `tm project open`, the server-side caller check (§11.1), and `make run` opening the dashboard.
-- **Try it:** run `tm`, start Claude in a repo (`c` then; now `tm session start --agent claude --cwd <repo>`), give Claude a task, detach, watch the row go working → blocked (a permission dialog) → idle, with the bell. Attach, answer, detach. Close the terminal, run `tm` again: everything is still there.
-- **Tests:**
-  - dashboard golden screens (empty, several sessions, NEEDS YOU);
-  - the "first local run" scenario end to end with the fake agent: create, prompt, block, answer, detach, close the terminal, reopen;
-  - the same scenario against real Claude in the `realclaude` suite.
-- **Depends on:** M2, M3.
-
-### M5: Projects and tasks (M)
-- **Goal:** project folders and the tsk-style task board, usable from the CLI by a human and by the coordinator.
-- **Deliverables:**
-  - the `~/.terminatr` layout (§5.1) and `internal/mdfile` (lock + atomic rename);
-  - `tm project new|list|open`, `PROJECT.md`, generated `AGENTS.md` and the `CLAUDE.md` symlink;
-  - safety settings in `config.toml`;
-  - `TASKS.md` and all of `tm task` (§6) with the exit-code contract and `--json`;
-  - the human/coordinator/thread caller checks (§6.4, §11.1);
-  - `tm context`, `tm skill coordinator|thread` (§7.7–7.8), and the `JOURNAL.md` writer.
-- **Try it:**
-  1. `tm project new demo --repo ~/src/x`, then `tm task add`, `tm task list --json`, `tm task steps T1 add …`, `tm task status T1 done` from your own shell.
-  2. `tm project open demo` starts a coordinator Claude session that greets you from `tm context`; try `/clear`, and it still knows the project.
-- **Tests:**
-  - unit and fuzz for `mdfile` and the `TASKS.md` parser (`parse(render(x)) == x`);
-  - the exit-code contract for every `tm task` verb, and `--json` schemas;
-  - human, coordinator and thread caller checks against a real server;
-  - **the "clearing the coordinator loses nothing" invariant test** (§16.6). It lands with whichever of M4 and M5 finishes second, and runs on every PR from then on.
-- **Depends on:** M1 for the server-side checks and `project open` (M3 for the coordinator session). The file layer can start right away.
-
-### M6: Threads (L)
-- **Goal:** the coordinator hands a task to a thread that runs in its own worktree, reads the project read-only, and reports back only through `tm`.
-- **Deliverables:**
-  - worktree create and resolve (§9), with nothing terminatr-owned in the worktree;
-  - the per-role access policy (§5.2) rendered by the manifest;
-  - scoped briefs with absolute paths; kickoff and `SessionStart` re-injection (§7.8);
-  - `tm thread start|list|show|read|prompt|approve|ack|stop|restart|resolve` and `tm task delegate`;
-  - `tm report` (synchronous validation, storage, attachments), `tm status`, `tm done`;
-  - `STATUS.md` with mirrored todos and derived percent (§7.3); plan-as-steps.
-- **Try it:**
-  1. In the coordinator, ask for a small change. It proposes a thread; say go. Watch the thread add its plan as steps and tick them, and watch the percent move.
-  2. Try to make the thread write `TASKS.md`: it is refused.
-  3. Delete its worktree by hand: the report is still in `threads/<id>/`.
-- **Tests:** fake-agent scenarios for:
-  - delegation; plan-as-steps; derived percent from steps and todos;
-  - `tm report` validation errors; `tm done` without a report refused;
-  - a thread trying to write project files (the generated settings deny it), and `tm task` refusals for threads;
-  - a worktree removed by hand or `git clean -fdx` (nothing lost);
-  - restart with resume.
-
-  Also fuzz targets for `REPORT.md` and `STATUS.md`, and the access policy under real Claude in the `realclaude` suite (interactive and yolo; Linux when available).
-- **Depends on:** M3, M5.
-
-### M7: Ticker, inbox and the project dashboard (M)
-- **Goal:** the coordinator learns about everything without being asked, and the dashboard shows projects, threads and tasks.
-- **Deliverables:**
-  - the event loop and 15 s sweep; inbox items (§7.5) and `tm inbox list|done`;
-  - nudges through the injector; PR polling with `gh`; auto-resolve after merge;
-  - the dashboard project view: NEEDS YOU across projects, the per-thread progress line (§7.4), the task view, and `d` to mark a task done (removed later, with `a` and `1`–`9`: the coordinator does these, §4).
-- **Try it:** let a thread finish and open a PR. The coordinator gets a nudge with the report, the dashboard shows "Ready for review", you tell the coordinator the task is done. Merge the PR on its host (GitHub or Azure DevOps), and the thread resolves itself.
-- **Tests:**
-  - ticker scenarios with a scripted fake `gh` on `PATH` (PR opened, checks failed, merged);
-  - inbox item fuzzing; nudge rate limits and "never while working or blocked";
-  - "data is not instructions": hostile report and PR text never shows up in an injected prompt;
-  - golden screens for the project dashboard.
-- **Depends on:** M4, M6.
-
-### M8: Hardening and release (M–L)
-- **Goal:** v0.1 that someone else can install and trust.
-- **Deliverables:**
-  - crash and restart resume end to end (`kill -9` the server in e2e);
-  - `tm doctor [--fix]`: toolchain, sockets, manifests, the agents' versions (last tested as information, `min_version` as a warning), leftovers;
-  - launchd and systemd service files;
-  - release builds for darwin/linux × amd64/arm64 (glibc floor or musl, signing);
-  - Linux checks for the open points in §14; README and operations docs.
-- **Try it:** install from a release archive on a clean Mac and a Linux box, then run `tm doctor`. `kill -9` the server mid-turn: `tm` brings everything back, and the coordinator gets the "server restarted" item.
-- **Tests:**
-  - release smoke tests: install the archive in a clean macOS VM and a Linux container, run `tm doctor` and `make e2e-smoke` against the installed binary;
-  - the full real-Claude suite on both platforms;
-  - the invariant test extended across server crash and compaction.
-- **Depends on:** all.
-
-**Total:** about **10–13 weeks** to v0.1 (M1–M8). That is above the feasibility estimate for two reasons: the attach client now renders and encodes input itself, and the test infrastructure is built up front (the e2e harness in M1 is about 2–3 days, the fake agent in M3 about 3–4 days). **★ M4 lands after about 5–6 weeks.**
-
-**Suggested first tasks:**
-- M1 split into (a) lifecycle, lock and socket, (b) handshake and control methods, (c) PTY + emulator sessions;
-- M5's file layer (`mdfile`, `TASKS.md`, `tm task`) in parallel.
-
----
-
-## 16. Testing
+## 15. Testing
 
 Terminatr has a test strategy from the first milestone, not a test phase at the end. Four principles:
 - **Every milestone's "Try it" becomes an automated scenario.**
 - **Agents are faked by default.** The real `claude` is checked on demand and nightly, because we depend on its undocumented files.
 - **Every parser of outside input is fuzzed.**
 
-### 16.1 Layers
+### 15.1 Layers
 
 | Layer | What it covers | How it runs | When |
 |---|---|---|---|
 | **Unit** | One package, no processes, no sockets. Manifest mapping, arbitration tables, `ApplyTodo`, `TASKS.md` round trips, report validation, path rules | `go test -race ./...` | every PR |
-| **Fuzz** | Every parser of input we don't control (§16.5) | seed corpora run as unit tests on every PR; `make fuzz` (1 min per target, capped) weekly | every PR (seeds), weekly (search) |
+| **Fuzz** | Every parser of input we don't control (§15.5) | seed corpora run as unit tests on every PR; `make fuzz` (1 min per target, capped) weekly | every PR (seeds), weekly (search) |
 | **Integration** | A real `tm server` in an isolated `TERMINATR_HOME` (a `t.TempDir()`, with a short run dir under `/tmp`), driven through the CLI and the socket. Lifecycle, stale sockets, handshake, sessions, hooks, tasks, threads with the fake agent | `go test -race ./...` (packages under `internal/…` with `_integration_test.go` files) | every PR |
 | **End-to-end** | The whole product as the user sees it: `tm` and `tm attach` running inside a **virtual terminal** (libghostty), keys typed, screens compared with golden files, windows closed, clients and servers killed | `internal/e2e`, `make e2e` (all) / `make e2e-smoke` (a core set under about 2 minutes) | smoke on every PR and on main; race-built smoke and the full suite weekly |
 | **Real agent** | The same scenarios against the installed `claude`, to catch Claude releases that change hooks, screens, the session file, or the task tools | build tag `realclaude`, `make test-claude` | on demand, and nightly on a machine with a Claude login (not GitHub-hosted CI) |
-| **Real Codex** | The Codex scenarios against the installed `codex`, to catch Codex releases that change hooks, screens, the rollout or `codex queue` (§16.4) | build tag `realcodex`, `make test-codex` | on demand only, on a machine with a ChatGPT login |
+| **Real Codex** | The Codex scenarios against the installed `codex`, to catch Codex releases that change hooks, screens, the rollout or `codex queue` (§15.4) | build tag `realcodex`, `make test-codex` | on demand only, on a machine with a ChatGPT login |
 
 **On every PR** (macOS and Linux, `ci.yml`): gofmt, vet, build, `go test -race ./...` (unit, integration and fuzz seeds), `make e2e-smoke` (without `-race`, in its own job, two shards per OS: `make e2e-smoke E2E_SHARD=1/2`), `tm selftest`. The release snapshot (`make release-snapshot` on macOS) runs on every push to main and on PRs that touch the release build (`.goreleaser.yaml`, the Makefile, `go.mod`/`go.sum`, `scripts/release/`, `Formula/`, the workflows, libghostty bindings).
 
@@ -1795,7 +1636,7 @@ Terminatr has a test strategy from the first milestone, not a test phase at the 
 
 **On demand or nightly, on a logged-in machine:** `make test-claude`. **On demand only:** `make test-codex`.
 
-### 16.2 The end-to-end harness: `internal/e2e`
+### 15.2 The end-to-end harness: `internal/e2e`
 
 The harness is built in M1, ported from the libghostty spike's `cmd/harness` (§14), and lives in the product so every milestone can add scenarios to it. A test reads like the user's session:
 
@@ -1837,7 +1678,7 @@ What the harness provides (M1 built `Env`, `Window` without `Key`/`Paste`/`Wheel
 - **Deterministic apps.** Scenarios use small purpose-built TUIs under `internal/e2e/apps/`: a stream printer, a full-screen mouse app, an inline redraw app. Real programs such as `vim` and `htop` vary between machines.
 - **On Windows** the same scenarios run over ConPTY: a `Window` is a `plat/pty` console in a Job Object, the apps and the fake agent use `plat/term` for raw mode and sizes, and process groups become process trees (`proc.Group`, `proc.KillGroup`). Scenarios type sh syntax, so shells are Git for Windows' `sh.exe` (`$E2E_SH`, else `sh` on `PATH`, else Git's usual install), and git must be on `PATH`. A box without Go or cgo gets everything cross-built: `scripts/e2e-windows.sh arm64|amd64 OUT` writes `e2e.test.exe`, `testdata/` and `bin/` (tm.exe, the apps, fakeagent.exe, conpty.dll and OpenConsole.exe; the ConPTY files go beside `e2e.test.exe` too, for the harness's windows: the inbox conhost turns a pasted `\n` into ` \n`), and `E2E_BIN=OUT\bin` makes the harness use those binaries instead of building. Golden screens that differ on Windows (paths, the shell) live in `testdata/golden/windows/`, written by `-update` there only where the screen differs from the shared file. What only Unix has stays in `*_unix_test.go` (SIGSTOP, setsid and the controlling tty, `scripts/run.sh`); what differs on purpose is a per-OS constant in `checks_*_test.go`: ConPTY passes a terminal report the window sends only now and then (`passesReports`), and Windows can only kill a deaf server, not ask it to stop (`politeTerminate`). The fake Codex runs its hooks in PowerShell on Windows, as Codex does.
 
-### 16.3 The scripted fake agent
+### 15.3 The scripted fake agent
 
 Built in M3 (`internal/e2e/fakeagent`, a small Go TUI). It behaves like Claude Code 2.1.289 as the spike recorded it, so state detection, threads and coordinator tests run in seconds, cost nothing, and give the same result every time.
 
@@ -1853,7 +1694,7 @@ Built in M3 (`internal/e2e/fakeagent`, a small Go TUI). It behaves like Claude C
 - **Driven by a script.** A TOML list of steps per scenario: `screen`, `hook`, `status`, `stream`, `dialog`, `await_key`, `todo`, `cancel_silently` (no closing hook, as with a real Esc), `clear`, `compact`, `subagent`, `run` (execute a `tm` command, e.g. `tm report`), `exit`. The spike's stale cases (s03, s04, s15), todo runs (s16–s18) and clear/compact run (s07) are ported as the first scripts.
 - **Drift detection.** The nightly real-agent run records hook sequences, session-file states and screens for the same scenarios, and diffs them against the fake's scripts. A difference means Claude changed, and the fake (and probably the manifest) needs an update.
 
-### 16.4 Real-Claude tests
+### 15.4 Real-Claude tests
 
 - Build tag `realclaude`; `make test-claude` runs them against the `claude` on `PATH`, using Haiku. They cost a few cents per run.
 - They run on demand (before a release, or after a Claude update) and nightly on a maintainer's machine or a self-hosted runner with a Claude login. GitHub-hosted CI has no login.
@@ -1876,7 +1717,7 @@ Built in M3 (`internal/e2e/fakeagent`, a small Go TUI). It behaves like Claude C
 - a resume after a server restart (`codex resume <id>`);
 - the hook sequences against the fake's, and every dialog's screen rule. Screens captured live go to `internal/agent/testdata/codex/`, where every screen rule must decide at least one.
 
-### 16.5 Race detector and fuzzing
+### 15.5 Race detector and fuzzing
 
 - **Race detector:** `go test` runs with `-race` in CI on main and weekly (`make test-race`; pull requests run it without, for cost), and the e2e harness builds `tm` with `-race` for the weekly smoke set (`make e2e-smoke-race`). Concurrency is the server's core job: PTY readers, client queues, hook connections, the ticker.
 - **Fuzz targets.** Each one checks that the code never panics, and round trips where a format has both a reader and a writer:
@@ -1892,7 +1733,7 @@ Built in M3 (`internal/e2e/fakeagent`, a small Go TUI). It behaves like Claude C
 
 - **Crashers.** Every crasher found by the weekly run is committed under `testdata/fuzz/<Target>/`, which makes it a regression test on every PR.
 
-### 16.6 Invariants and properties
+### 15.6 Invariants and properties
 
 - **"Clearing the coordinator loses nothing."** This lands as soon as M4 and M5 are both in, not at the end.
   1. A fake-agent coordinator runs a script of actions: tasks, delegations, inbox handling, journal lines.

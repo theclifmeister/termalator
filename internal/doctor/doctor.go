@@ -1,4 +1,4 @@
-// Package doctor implements `tm doctor` (docs/SPEC.md §15 M8): checks of
+// Package doctor implements `tm doctor` (docs/SPEC.md): checks of
 // the toolchain, the server and its run dir (and, on macOS, whether its
 // sessions can reach the keychain), the agents' versions (the last tested
 // one as information, min_version as a warning), enabled Claude plugins known to be unsafe in
