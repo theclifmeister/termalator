@@ -1,4 +1,4 @@
-//go:build unix
+//go:build unix || windows
 
 package ipc
 
@@ -9,21 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 )
-
-// sockDir is a directory short enough for sockets (t.TempDir is too long
-// on macOS).
-func sockDir(t *testing.T) string {
-	dir, err := os.MkdirTemp("/tmp", "tmipc")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
-	return dir
-}
 
 func ctx(t *testing.T) context.Context {
 	c, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -32,23 +20,24 @@ func ctx(t *testing.T) context.Context {
 }
 
 func TestServerAddr(t *testing.T) {
-	if a, err := ServerAddr("/run/x", ""); err != nil || a != "/run/x/tm.sock" {
+	run := filepath.FromSlash("/run/x")
+	if a, err := ServerAddr(run, ""); err != nil || a != Addr(filepath.Join(run, "tm.sock")) {
 		t.Fatalf("ServerAddr = %q, %v", a, err)
 	}
-	if a, err := ServerAddr("/run/x", "/o/s.sock"); err != nil || a != "/o/s.sock" {
+	if a, err := ServerAddr(run, "/o/s.sock"); err != nil || a != "/o/s.sock" {
 		t.Fatalf("override: %q, %v", a, err)
 	}
 	long := "/" + strings.Repeat("d", MaxPath)
 	if _, err := ServerAddr(long, ""); err == nil {
 		t.Fatal("a run dir over the budget passed")
 	}
-	if _, err := ServerAddr("/run/x", long); err == nil {
+	if _, err := ServerAddr(run, long); err == nil {
 		t.Fatal("an override over the budget passed")
 	}
-	if !Fits("/run/x", ServerName) || Fits(long, ServerName) {
+	if !Fits(run, ServerName) || Fits(long, ServerName) {
 		t.Fatal("Fits disagrees with ServerAddr")
 	}
-	if a := SessionAddr("/run/s/1", "mod.sock"); a != "/run/s/1/mod.sock" {
+	if a := SessionAddr(filepath.FromSlash("/run/s/1"), "mod.sock"); a != Addr(filepath.FromSlash("/run/s/1/mod.sock")) {
 		t.Fatalf("SessionAddr = %q", a)
 	}
 }
@@ -60,9 +49,7 @@ func TestListenDialPeer(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer ln.Close()
-	if st, err := os.Stat(string(a)); err != nil || st.Mode().Perm() != 0o600 {
-		t.Fatalf("socket mode: %v, %v", st.Mode(), err)
-	}
+	checkPrivate(t, a)
 	type accepted struct {
 		peer Peer
 		err  error
@@ -106,7 +93,7 @@ func TestPeerOfNotASocket(t *testing.T) {
 func TestAbsent(t *testing.T) {
 	a := SessionAddr(sockDir(t), "x.sock")
 	_, err := Dial(ctx(t), a)
-	if !IsAbsent(err) || !errors.Is(err, syscall.ENOENT) {
+	if !IsAbsent(err) || !errors.Is(err, errNoSocket) {
 		t.Fatalf("no socket: %v", err)
 	}
 	ln, err := Listen(a)
@@ -118,7 +105,7 @@ func TestAbsent(t *testing.T) {
 		t.Fatalf("Close removed the socket: %v", err)
 	}
 	_, err = Dial(ctx(t), a)
-	if !IsAbsent(err) || !errors.Is(err, syscall.ECONNREFUSED) {
+	if !IsAbsent(err) || !errors.Is(err, errRefused) {
 		t.Fatalf("stale socket: %v", err)
 	}
 	if IsAbsent(nil) || IsAbsent(os.ErrPermission) || IsAbsent(context.DeadlineExceeded) {
@@ -127,7 +114,11 @@ func TestAbsent(t *testing.T) {
 	if _, err := Listen(a); err == nil {
 		t.Fatal("Listen over an existing socket succeeded")
 	}
-	if _, err := Listen(SessionAddr(filepath.Join(sockDir(t), "missing"), "x.sock")); err == nil {
+	missing := SessionAddr(filepath.Join(sockDir(t), "missing"), "x.sock")
+	if _, err := Listen(missing); err == nil {
 		t.Fatal("Listen in a missing dir succeeded")
+	}
+	if _, err := Dial(ctx(t), missing); !IsAbsent(err) {
+		t.Fatalf("socket in a missing dir: %v", err)
 	}
 }

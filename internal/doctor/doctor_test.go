@@ -863,3 +863,12 @@ func TestSandboxCheck(t *testing.T) {
 		t.Errorf("%+v", c)
 	}
 }
+
+func TestSandboxWindows(t *testing.T) {
+	d := testDeps(t)
+	d.GOOS = "windows"
+	cs := Sandbox(d)
+	if len(cs) != 1 || cs[0].Status != Warn || !strings.Contains(cs[0].Detail, "no sandbox on Windows") {
+		t.Fatalf("windows: %+v", cs)
+	}
+}

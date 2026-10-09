@@ -2,9 +2,11 @@
 // per-session mod sockets, the peer at the other end, and dialing an
 // agent's own socket (Claude's messaging socket).
 //
-// This file set is Unix only (AF_UNIX sockets). The Windows port adds
-// files that use named pipes (go-winio) behind this API: an Addr is then
-// a pipe name, and PeerOf compares the client's token SID.
+// AF_UNIX sockets on every OS, Windows included (10 1803 and later), so
+// Claude's mod reaches the same paths there: its fetch only takes a unix
+// socket path, never a named pipe. On Windows, Listen restricts the
+// socket file with a DACL rather than a mode, and PeerOf gets the pid
+// from SIO_AF_UNIX_GETPEERPID and compares the token's user SID.
 package ipc
 
 import (
@@ -12,11 +14,11 @@ import (
 	"path/filepath"
 )
 
-// Addr is a local address: a socket path on Unix.
+// Addr is a local address: a socket path.
 type Addr string
 
 // MaxPath keeps a margin under the sun_path limit (104 bytes on macOS,
-// 108 on Linux, both including the trailing NUL).
+// 108 on Linux and Windows, all including the trailing NUL).
 const MaxPath = 100
 
 // ServerName is the server socket's name in its run directory.

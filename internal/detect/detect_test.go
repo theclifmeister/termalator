@@ -189,3 +189,17 @@ func TestRegionsAndNot(t *testing.T) {
 		t.Fatal("bad region accepted")
 	}
 }
+
+// TestClaudeWindowsGlyphs: Claude on Windows draws ">" for "❯" (the
+// figures package's fallback), in the idle box and the permission dialog.
+func TestClaudeWindowsGlyphs(t *testing.T) {
+	e := claudeEngine(t)
+	idle := "──────\n>\u00a0\n──────"
+	if m, _ := e.Eval(screen("", idle)); m == nil || m.Rule != "idle-empty-box" && m.Rule != "idle-prompt-box" {
+		t.Fatalf("idle: %+v", m)
+	}
+	dlg := strings.ReplaceAll(permission, "❯ 1. Yes", "> 1. Yes")
+	if m, _ := e.Eval(screen("", dlg)); m == nil || m.Rule != "blocked-permission-dialog" {
+		t.Fatalf("dialog: %+v", m)
+	}
+}

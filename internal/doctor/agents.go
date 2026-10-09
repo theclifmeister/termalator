@@ -131,6 +131,9 @@ func Sandbox(d Deps) []Check {
 		need = []string{"sandbox-exec"}
 	case "linux":
 		need = []string{"bwrap", "socat"}
+	case "windows":
+		return []Check{{Group: g, Name: "claude sandbox", Status: Warn,
+			Detail: "Claude Code has no sandbox on Windows; a Claude thread relies on permission rules, tm's guard and auto mode"}}
 	default:
 		return nil
 	}

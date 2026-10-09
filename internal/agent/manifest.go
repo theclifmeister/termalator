@@ -869,7 +869,7 @@ var funcs = template.FuncMap{
 	"rules": func(format string, dirs []string) []string {
 		out := make([]string, 0, len(dirs))
 		for _, d := range dirs {
-			out = append(out, fmt.Sprintf(format, d))
+			out = append(out, fmt.Sprintf(format, posixPath(d)))
 		}
 		return out
 	},
@@ -892,6 +892,15 @@ var funcs = template.FuncMap{
 		}
 		return out
 	},
+}
+
+// posixPath is d in the form Claude matches permission rules against on
+// Windows: C:\Users\a becomes /c/Users/a. Any other path is unchanged.
+func posixPath(d string) string {
+	if len(d) >= 2 && d[1] == ':' && (d[0] >= 'a' && d[0] <= 'z' || d[0] >= 'A' && d[0] <= 'Z') && (len(d) == 2 || d[2] == '\\' || d[2] == '/') {
+		return "/" + strings.ToLower(d[:1]) + strings.ReplaceAll(d[2:], "\\", "/")
+	}
+	return d
 }
 
 // pathModes renders a's paths as {"/p"="read","/q"="write",…}: Read
