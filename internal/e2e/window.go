@@ -80,8 +80,9 @@ func (e *Env) WindowCmd(cols, rows uint16, argv ...string) *Window {
 	})
 	env := append(append([]string(nil), e.Vars...), "TERM=xterm-256color")
 	// plat/pty gives a non-blocking master, so closing it really hangs
-	// up the window.
-	con, err := pty.Start(argv, rootDir, env, cols, rows)
+	// up the window. A terminal, not a session: a server it starts
+	// leaves it.
+	con, err := pty.StartTerminal(argv, rootDir, env, cols, rows)
 	if err != nil {
 		e.T.Fatal(err)
 	}

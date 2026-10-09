@@ -157,9 +157,9 @@ func bindToJob(pid int) {
 // group, so it outlives this process and its console (never
 // DETACHED_PROCESS: every console child of it would flash a window of its
 // own). It leaves the job this process runs in when the job allows it
-// (CREATE_BREAKAWAY_FROM_JOB): a session's job kills its tree when the
-// session closes, and a server auto-started from a session must outlive
-// it. It inherits no handles beyond s's standard files, and with no Dir
+// (CREATE_BREAKAWAY_FROM_JOB), as a terminal window's does: a server
+// auto-started from it must outlive the window. A session's job allows
+// none (plat/pty), so a server started there ends with the session. It inherits no handles beyond s's standard files, and with no Dir
 // it starts in the temp directory, so it holds no directory that someone
 // wants to delete or rename. Wait on the process to learn whether it
 // exited early, or Release it.

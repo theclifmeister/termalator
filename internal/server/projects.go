@@ -21,7 +21,9 @@ import (
 // descends from a coordinator or thread session is that agent; anything
 // else (a shell outside terminatr, a shell session) is the human. This
 // is soft, as the spec says: an agent can start a process outside its
-// tree. On Windows the session's job settles it first (Session.Holds). File access rules are the second layer (§5.2). The walk stops at a
+// tree. On Windows the session's job settles it first (Session.Holds):
+// nothing leaves a session's job, not even MSYS's children, which ask to.
+// File access rules are the second layer (§5.2). The walk stops at a
 // parent that started after its child: the real parent is gone and its
 // pid reused (Windows keeps a dead parent's pid; Unix hands the orphan
 // to init).
