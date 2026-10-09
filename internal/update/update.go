@@ -9,6 +9,7 @@ package update
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bufio"
 	"bytes"
 	"compress/gzip"
@@ -22,12 +23,17 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/theclifmeister/terminatr/internal/plat/fsx"
+	"github.com/theclifmeister/terminatr/internal/plat/proc"
 )
 
 // Method is how a tm binary was installed.
@@ -116,6 +122,7 @@ var releaseFiles = []string{
 	"checksums.txt",
 	ArchiveName("darwin", "arm64"), ArchiveName("darwin", "amd64"),
 	ArchiveName("linux", "arm64"), ArchiveName("linux", "amd64"),
+	ArchiveName("windows", "arm64"), ArchiveName("windows", "amd64"),
 }
 
 // Client finds and downloads releases, unauthenticated: the repository
@@ -281,9 +288,23 @@ func parse(v string) (semver, bool) {
 	return s, true
 }
 
-// ArchiveName is the release archive for a platform (.goreleaser.yaml).
+// ArchiveName is the release archive for a platform (.goreleaser.yaml): a
+// tar.gz, and on Windows a zip.
 func ArchiveName(goos, goarch string) string {
+	if goos == "windows" {
+		return "tm_" + goos + "_" + goarch + ".zip"
+	}
 	return "tm_" + goos + "_" + goarch + ".tar.gz"
+}
+
+// Files are the files of an archive that an update installs, by name in
+// the install directory. The program is first. On Windows Microsoft's
+// ConPTY comes with it (the three belong together).
+func Files(goos string) []string {
+	if goos == "windows" {
+		return []string{"tm.exe", "conpty.dll", "OpenConsole.exe"}
+	}
+	return []string{"tm"}
 }
 
 // Verifier checks a downloaded binary before it replaces the running one.
@@ -291,37 +312,59 @@ func ArchiveName(goos, goarch string) string {
 // is set); elsewhere it does nothing.
 type Verifier func(path, team string) (string, error)
 
+// Staged is one file of a downloaded release, in a new file next to where
+// it will go.
+type Staged struct {
+	// Name is the file's name in the install directory ("tm").
+	Name string
+	// Path is where it is now.
+	Path string
+}
+
+// Bundle is what Download stages: the program first, then its companions.
+type Bundle []Staged
+
+// Program is the new tm's path, for checking it before installing.
+func (b Bundle) Program() string { return b[0].Path }
+
+// Remove deletes whatever of the bundle is still staged.
+func (b Bundle) Remove() {
+	for _, s := range b {
+		os.Remove(s.Path)
+	}
+}
+
 // Download fetches the platform's archive and checksums.txt from r,
-// checks the archive's sha256, and writes its tm into a new file in dir
-// (so it can be renamed over the old one). It returns that file's path;
-// the caller removes it on failure.
-func (c *Client) Download(ctx context.Context, r Release, goos, goarch, dir string) (string, error) {
+// checks the archive's sha256, and writes the files of Files(goos) into
+// new files in dir (so they can be renamed into place). The caller
+// removes them (Bundle.Remove) after Install, and on failure.
+func (c *Client) Download(ctx context.Context, r Release, goos, goarch, dir string) (Bundle, error) {
 	name := ArchiveName(goos, goarch)
 	a, ok := r.asset(name)
 	if !ok {
-		return "", fmt.Errorf("release %s has no %s", r.Tag, name)
+		return nil, fmt.Errorf("release %s has no %s", r.Tag, name)
 	}
 	sa, ok := r.asset("checksums.txt")
 	if !ok {
-		return "", fmt.Errorf("release %s has no checksums.txt", r.Tag)
+		return nil, fmt.Errorf("release %s has no checksums.txt", r.Tag)
 	}
 	sums, err := c.fetch(ctx, sa)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	want, err := checksumFor(sums, name)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	archive, err := c.fetch(ctx, a)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	got := sha256.Sum256(archive)
 	if hex.EncodeToString(got[:]) != want {
-		return "", fmt.Errorf("%s: sha256 %x does not match checksums.txt (%s)", name, got, want)
+		return nil, fmt.Errorf("%s: sha256 %x does not match checksums.txt (%s)", name, got, want)
 	}
-	return extractTM(archive, dir)
+	return extract(archive, goos, dir)
 }
 
 func checksumFor(sums []byte, name string) (string, error) {
@@ -338,44 +381,90 @@ func checksumFor(sums []byte, name string) (string, error) {
 	return "", fmt.Errorf("checksums.txt has no sha256 for %s", name)
 }
 
-// extractTM writes the archive's top-level tm into a new 0755 file in dir.
-func extractTM(archive []byte, dir string) (string, error) {
+// extract stages the files of Files(goos) from a release archive.
+func extract(archive []byte, goos, dir string) (Bundle, error) {
+	want := Files(goos)
+	got := map[string]string{}
+	stage := func(name string, r io.Reader) error {
+		f, err := os.CreateTemp(dir, ".tm-update-*")
+		if err != nil {
+			return err
+		}
+		got[name] = f.Name()
+		if _, err := io.Copy(f, r); err != nil {
+			f.Close()
+			return err
+		}
+		if err := f.Chmod(0o755); err != nil {
+			f.Close()
+			return err
+		}
+		return f.Close()
+	}
+	var err error
+	if goos == "windows" {
+		err = unzip(archive, want, stage)
+	} else {
+		err = untar(archive, want, stage)
+	}
+	var b Bundle
+	for _, name := range want {
+		if p, ok := got[name]; ok {
+			b = append(b, Staged{Name: name, Path: p})
+		} else if err == nil {
+			err = fmt.Errorf("the archive holds no %s", name)
+		}
+	}
+	if err != nil {
+		b.Remove()
+		return nil, err
+	}
+	return b, nil
+}
+
+func untar(archive []byte, want []string, stage func(string, io.Reader) error) error {
 	zr, err := gzip.NewReader(bytes.NewReader(archive))
 	if err != nil {
-		return "", err
+		return err
 	}
 	tr := tar.NewReader(zr)
 	for {
 		h, err := tr.Next()
 		if err == io.EOF {
-			return "", errors.New("the archive holds no tm")
+			return nil
 		}
 		if err != nil {
-			return "", err
+			return err
 		}
-		if h.Typeflag != tar.TypeReg || filepath.Clean(h.Name) != "tm" {
+		if name := filepath.Clean(h.Name); h.Typeflag == tar.TypeReg && slices.Contains(want, name) {
+			if err := stage(name, tr); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func unzip(archive []byte, want []string, stage func(string, io.Reader) error) error {
+	zr, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
+	if err != nil {
+		return err
+	}
+	for _, f := range zr.File {
+		name := path.Clean(f.Name)
+		if !f.Mode().IsRegular() || !slices.Contains(want, name) {
 			continue
 		}
-		f, err := os.CreateTemp(dir, ".tm-update-*")
+		rc, err := f.Open()
 		if err != nil {
-			return "", err
+			return err
 		}
-		if _, err := io.Copy(f, tr); err != nil {
-			f.Close()
-			os.Remove(f.Name())
-			return "", err
+		err = stage(name, rc)
+		rc.Close()
+		if err != nil {
+			return err
 		}
-		if err := f.Chmod(0o755); err != nil {
-			f.Close()
-			os.Remove(f.Name())
-			return "", err
-		}
-		if err := f.Close(); err != nil {
-			os.Remove(f.Name())
-			return "", err
-		}
-		return f.Name(), nil
 	}
+	return nil
 }
 
 // Codesign is the macOS Verifier: `codesign --verify --strict`, then the
@@ -427,15 +516,65 @@ func DefaultVerifier() Verifier {
 	return nil
 }
 
-// Replace renames the new binary over path, keeping path's mode. The
-// rename is atomic: a tm starting meanwhile runs the old or the new
-// binary, never half of one. A running server keeps its own copy
+// Install puts the staged files into dir, over the old ones, and
+// restores the old ones if one fails. Each goes in by a rename
+// (fsx.SwapIn): a tm starting meanwhile runs the old or the new binary,
+// never half of one, and a running one keeps its file (on Windows it
+// moves aside; see CleanOld). The program goes in last, so a failure
+// leaves tm as it was. A server has its own copy of its binary
 // (internal/server, pinBinary).
-func Replace(newBin, path string) error {
-	if fi, err := os.Stat(path); err == nil {
-		if err := os.Chmod(newBin, fi.Mode().Perm()|0o100); err != nil {
-			return err
+//
+// A file that can't be replaced fails with a *BusyError naming the
+// processes that hold it, where the system can say.
+func (b Bundle) Install(dir string) error {
+	var undo []func() error
+	for i := len(b) - 1; i >= 0; i-- {
+		s := b[i]
+		dst := filepath.Join(dir, s.Name)
+		restore, err := fsx.SwapIn(s.Path, dst)
+		if err != nil {
+			for j := len(undo) - 1; j >= 0; j-- {
+				undo[j]()
+			}
+			return busy(dst, err)
+		}
+		if restore != nil {
+			undo = append(undo, restore)
 		}
 	}
-	return os.Rename(newBin, path)
+	return nil
+}
+
+// CleanOld removes the files an earlier Install moved aside in dir, as
+// far as nothing runs them. (Only Windows moves files aside.)
+func CleanOld(dir, goos string) {
+	for _, name := range Files(goos) {
+		fsx.CleanAside(filepath.Join(dir, name))
+	}
+}
+
+// BusyError says a file couldn't be replaced and who holds it.
+type BusyError struct {
+	Path    string
+	Holders []proc.Holder
+	Err     error
+}
+
+func (e *BusyError) Error() string {
+	msg := fmt.Sprintf("can't replace %s: %v", e.Path, e.Err)
+	if len(e.Holders) > 0 {
+		var hs []string
+		for _, h := range e.Holders {
+			hs = append(hs, h.String())
+		}
+		msg += "; in use by " + strings.Join(hs, ", ") + " (close it and try again)"
+	}
+	return msg
+}
+
+func (e *BusyError) Unwrap() error { return e.Err }
+
+func busy(path string, err error) error {
+	hs, _ := proc.Holders(path)
+	return &BusyError{Path: path, Holders: hs, Err: err}
 }

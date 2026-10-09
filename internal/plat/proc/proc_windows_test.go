@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -60,6 +62,27 @@ func TestMain(m *testing.M) {
 			fmt.Println("handle:", err)
 			os.Exit(3)
 		}
+		os.Exit(0)
+	case "startdetached":
+		// Wait to be put in a job, then start a detached sleeper.
+		bufio.NewReader(os.Stdin).ReadString('\n')
+		p, err := StartDetached(Spec{Argv: []string{os.Args[0]}, Env: append(os.Environ(), helperEnv+"=sleep")})
+		if err != nil {
+			fmt.Println("start:", err)
+			os.Exit(2)
+		}
+		fmt.Println(p.Pid)
+		time.Sleep(time.Minute)
+		os.Exit(0)
+	case "hold":
+		// Open F without FILE_SHARE_DELETE, say so, sleep.
+		p, _ := windows.UTF16PtrFromString(os.Getenv("F"))
+		if _, err := windows.CreateFile(p, windows.GENERIC_READ, windows.FILE_SHARE_READ, nil, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL, 0); err != nil {
+			fmt.Println(err)
+			os.Exit(2)
+		}
+		fmt.Println("held")
+		time.Sleep(time.Minute)
 		os.Exit(0)
 	case "detach":
 		out := os.Getenv("OUT")
@@ -241,5 +264,118 @@ func TestStartDetachedAndDetach(t *testing.T) {
 	want := "true <nil> " + os.TempDir()
 	if got := string(b); !strings.EqualFold(strings.TrimSuffix(got, `\`), strings.TrimSuffix(want, `\`)) {
 		t.Fatalf("helper said %q, want %q (detached, no error, cwd the temp dir)", got, want)
+	}
+}
+
+// jobWith makes a kill-on-close job, with breakaway allowed or not, and
+// puts the started helper cmd in it.
+func jobWith(t *testing.T, cmd *exec.Cmd, breakaway bool) windows.Handle {
+	t.Helper()
+	job, err := windows.CreateJobObject(nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{}
+	info.BasicLimitInformation.LimitFlags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+	if breakaway {
+		info.BasicLimitInformation.LimitFlags |= windows.JOB_OBJECT_LIMIT_BREAKAWAY_OK
+	}
+	if _, err := windows.SetInformationJobObject(job, windows.JobObjectExtendedLimitInformation,
+		uintptr(unsafe.Pointer(&info)), uint32(unsafe.Sizeof(info))); err != nil {
+		t.Fatal(err)
+	}
+	h, err := windows.OpenProcess(windows.PROCESS_SET_QUOTA|windows.PROCESS_TERMINATE, false, uint32(cmd.Process.Pid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer windows.CloseHandle(h)
+	if err := windows.AssignProcessToJobObject(job, h); err != nil {
+		t.Skipf("can't put the helper in a job (this process's job forbids it): %v", err)
+	}
+	return job
+}
+
+// startedInJob runs a helper in a kill-on-close job that calls
+// StartDetached, closes the job, and returns the detached child's pid.
+func startedInJob(t *testing.T, breakaway bool) int {
+	t.Helper()
+	cmd := helper("startdetached")
+	in, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { cmd.Process.Kill(); cmd.Wait() })
+	job := jobWith(t, cmd, breakaway)
+	io.WriteString(in, "go\n")
+	line, err := bufio.NewReader(out).ReadString('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(line))
+	if err != nil {
+		t.Fatalf("helper said %q", line)
+	}
+	t.Cleanup(func() { Kill(pid) })
+	windows.CloseHandle(job)
+	cmd.Wait()
+	return pid
+}
+
+func TestStartDetachedBreaksAwayFromJob(t *testing.T) {
+	pid := startedInJob(t, true)
+	time.Sleep(500 * time.Millisecond)
+	if !Alive(pid) {
+		t.Error("the detached process died with the job it was started from")
+	}
+}
+
+func TestStartDetachedInJobWithoutBreakaway(t *testing.T) {
+	// The job forbids breakaway: the start must still work (inside it).
+	pid := startedInJob(t, false)
+	for range 100 {
+		if !Alive(pid) {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Error("the process started in a no-breakaway job outlived it")
+}
+
+func TestHolders(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "held.exe")
+	os.WriteFile(file, []byte("x"), 0o600)
+	cmd := helper("hold", "F="+file)
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { cmd.Process.Kill(); cmd.Wait() })
+	if line, err := bufio.NewReader(out).ReadString('\n'); err != nil {
+		t.Fatalf("helper: %q %v", line, err)
+	}
+	hs, err := Holders(file, filepath.Join(t.TempDir(), "missing"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(hs, func(h Holder) bool { return h.PID == cmd.Process.Pid }) {
+		t.Fatalf("Holders = %v, want pid %d", hs, cmd.Process.Pid)
+	}
+	cmd.Process.Kill()
+	cmd.Wait()
+	if hs, err := Holders(file); err != nil || len(hs) != 0 {
+		t.Errorf("after the holder exited: %v, %v", hs, err)
+	}
+	if hs, err := Holders(); err != nil || hs != nil {
+		t.Errorf("no paths: %v, %v", hs, err)
 	}
 }

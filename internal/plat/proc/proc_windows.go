@@ -156,7 +156,10 @@ func bindToJob(pid int) {
 // StartDetached starts s without a console window, in a new process
 // group, so it outlives this process and its console (never
 // DETACHED_PROCESS: every console child of it would flash a window of its
-// own). It inherits no handles beyond s's standard files, and with no Dir
+// own). It leaves the job this process runs in when the job allows it
+// (CREATE_BREAKAWAY_FROM_JOB): a session's job kills its tree when the
+// session closes, and a server auto-started from a session must outlive
+// it. It inherits no handles beyond s's standard files, and with no Dir
 // it starts in the temp directory, so it holds no directory that someone
 // wants to delete or rename. Wait on the process to learn whether it
 // exited early, or Release it.
@@ -175,19 +178,27 @@ func StartDetached(s Spec) (*os.Process, error) {
 		}
 		return f
 	}
-	cmd := exec.Command(s.Argv[0], s.Argv[1:]...)
-	cmd.Dir, cmd.Env = s.Dir, s.Env
-	if cmd.Dir == "" {
-		cmd.Dir = os.TempDir()
+	start := func(flags uint32) (*os.Process, error) {
+		cmd := exec.Command(s.Argv[0], s.Argv[1:]...)
+		cmd.Dir, cmd.Env = s.Dir, s.Env
+		if cmd.Dir == "" {
+			cmd.Dir = os.TempDir()
+		}
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = or(s.Stdin), or(s.Stdout), or(s.Stderr)
+		cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: flags}
+		if err := cmd.Start(); err != nil {
+			return nil, err
+		}
+		return cmd.Process, nil
 	}
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = or(s.Stdin), or(s.Stdout), or(s.Stderr)
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		CreationFlags: windows.CREATE_NO_WINDOW | windows.CREATE_NEW_PROCESS_GROUP,
+	const base = windows.CREATE_NO_WINDOW | windows.CREATE_NEW_PROCESS_GROUP
+	p, err := start(base | windows.CREATE_BREAKAWAY_FROM_JOB)
+	if errors.Is(err, windows.ERROR_ACCESS_DENIED) {
+		// A job that doesn't allow breakaway (a CI runner's, say) refuses
+		// the flag: start inside it, as this process is.
+		p, err = start(base)
 	}
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
-	return cmd.Process, nil
+	return p, err
 }
 
 // Detached reports whether this process has no console window: it was
