@@ -69,6 +69,38 @@ builds:
           - PKG_CONFIG_PATH={{ .Env.TM_ROOT }}/.build/release/ghostty-{{ .Env.TM_GHOSTTY_REV }}-{{ .Env.TM_GHOSTTY_CPU }}-x86_64-linux-gnu.2.28/share/pkgconfig
           - CGO_CFLAGS=-O2 -g -DTM_LIBGHOSTTY={{ .Env.TM_ROOT }}/.build/release/ghostty-{{ .Env.TM_GHOSTTY_REV }}-{{ .Env.TM_GHOSTTY_CPU }}-x86_64-linux-gnu.2.28
 
+  - id: tm-windows
+    main: ./cmd/tm
+    binary: tm
+    goos: [windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w
+      - -X github.com/theclifmeister/terminatr/internal/version.Version={{ if .IsSnapshot }}v{{ .Version }}{{ else }}{{ .Tag }}{{ end }}
+      - -X github.com/theclifmeister/terminatr/internal/version.LibGhostty={{ .Env.TM_GHOSTTY_REV }}
+      # Marks a binary built here, so `tm update` can tell it from a
+      # source build (internal/update).
+      - -X github.com/theclifmeister/terminatr/internal/version.Channel={{ if .IsSnapshot }}snapshot{{ else }}release{{ end }}
+      # The signing team, which `tm update` requires of the next binary.
+      - -X github.com/theclifmeister/terminatr/internal/version.TeamID={{ envOrDefault "TM_TEAM_ID" "" }}
+    env:
+      - CGO_ENABLED=1
+      - CC={{ .Env.TM_ROOT }}/scripts/release/cc.sh
+    overrides:
+      - goos: windows
+        goarch: arm64
+        env:
+          - TM_ZIG_TARGET=aarch64-windows-gnu
+          - PKG_CONFIG_PATH={{ .Env.TM_ROOT }}/.build/release/ghostty-{{ .Env.TM_GHOSTTY_REV }}-{{ .Env.TM_GHOSTTY_CPU }}-aarch64-windows-gnu/share/pkgconfig
+          - CGO_CFLAGS=-O2 -g -DTM_LIBGHOSTTY={{ .Env.TM_ROOT }}/.build/release/ghostty-{{ .Env.TM_GHOSTTY_REV }}-{{ .Env.TM_GHOSTTY_CPU }}-aarch64-windows-gnu
+      - goos: windows
+        goarch: amd64
+        env:
+          - TM_ZIG_TARGET=x86_64-windows-gnu
+          - PKG_CONFIG_PATH={{ .Env.TM_ROOT }}/.build/release/ghostty-{{ .Env.TM_GHOSTTY_REV }}-{{ .Env.TM_GHOSTTY_CPU }}-x86_64-windows-gnu/share/pkgconfig
+          - CGO_CFLAGS=-O2 -g -DTM_LIBGHOSTTY={{ .Env.TM_ROOT }}/.build/release/ghostty-{{ .Env.TM_GHOSTTY_REV }}-{{ .Env.TM_GHOSTTY_CPU }}-x86_64-windows-gnu
+
 # The darwin binaries are signed with a Developer ID (hardened runtime)
 # and notarised by the build hook above when the release workflow
 # provides the credentials (TM_SIGN_IDENTITY, TM_NOTARY_*). Snapshots are
@@ -76,6 +108,7 @@ builds:
 
 archives:
   - id: tm
+    ids: [tm]
     formats: [tar.gz]
     # No version in the name, so releases/latest/download/tm_<os>_<arch>.tar.gz
     # is a stable install URL (README.md).
@@ -84,6 +117,20 @@ archives:
       - LICENSE
       - README.md
       - docs/OPERATIONS.md
+
+  # Windows: a zip with Microsoft's ConPTY next to tm.exe
+  # (scripts/release/conpty.sh stages it).
+  - id: tm-windows
+    ids: [tm-windows]
+    formats: [zip]
+    name_template: "tm_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - docs/OPERATIONS.md
+      - src: '{{ .Env.TM_ROOT }}/.build/release/conpty/{{ .Arch }}/*'
+        dst: .
+        strip_parent: true
 
 checksum:
   name_template: checksums.txt

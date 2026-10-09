@@ -28,27 +28,41 @@ host_arch=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 n=0
-for a in "$dist"/tm_*.tar.gz; do
-	[ -e "$a" ] || fail "no archives in $dist"
+for a in "$dist"/tm_*.tar.gz "$dist"/tm_*.zip; do
+	[ -e "$a" ] || continue
 	n=$((n + 1))
-	name=$(basename "$a" .tar.gz)
+	name=$(basename "$a")
+	name=${name%.tar.gz}
+	name=${name%.zip}
 	os=$(echo "$name" | awk -F_ '{print $(NF-1)}')
 	arch=$(echo "$name" | awk -F_ '{print $NF}')
 	d="$tmp/$name"
 	mkdir -p "$d"
-	tar -xzf "$a" -C "$d"
-	for f in tm LICENSE README.md; do
+	bin=tm
+	case $a in
+	*.zip) unzip -q "$a" -d "$d"; bin=tm.exe ;;
+	*) tar -xzf "$a" -C "$d" ;;
+	esac
+	for f in $bin LICENSE README.md; do
 		[ -f "$d/$f" ] || fail "$name lacks $f"
 	done
-	desc=$(file -b "$d/tm")
+	desc=$(file -b "$d/$bin")
 	case "$os/$arch" in
 	darwin/arm64) want="Mach-O 64-bit executable arm64" ;;
 	darwin/amd64) want="Mach-O 64-bit executable x86_64" ;;
 	linux/arm64) want="ELF 64-bit LSB executable, ARM aarch64" ;;
 	linux/amd64) want="ELF 64-bit LSB executable, x86-64" ;;
+	windows/arm64) want="PE32+ executable (console) Aarch64" ;;
+	windows/amd64) want="PE32+ executable (console) x86-64" ;;
 	*) fail "$name: unexpected target $os/$arch" ;;
 	esac
 	case $desc in "$want"*) ;; *) fail "$name: tm is '$desc', want '$want'" ;; esac
+	if [ "$os" = windows ]; then
+		# ConPTY ships next to tm.exe (scripts/release/conpty.sh).
+		for f in conpty.dll OpenConsole.exe; do
+			[ -f "$d/$f" ] || fail "$name lacks $f"
+		done
+	fi
 	if [ "$os" = darwin ] && command -v otool >/dev/null; then
 		# Only libraries every Mac has: /usr/lib and system frameworks.
 		# Which ones depends on the Go release (Go 1.26 on arm64 adds
@@ -79,4 +93,4 @@ for a in "$dist"/tm_*.tar.gz; do
 	fi
 	echo "$name: ok ($desc)" | cut -c1-120
 done
-[ "$n" -eq 4 ] || fail "$n archives, want 4"
+[ "$n" -eq 6 ] || fail "$n archives, want 6"

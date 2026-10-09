@@ -186,7 +186,16 @@ $(STAMP): | toolchain $(if $(filter $(ZIG_LOCAL),$(ZIG)),$(ZIG_LOCAL))
 		{ echo "libghostty-vt build produced no pkg-config file" >&2; exit 1; }
 	@touch $@
 
+# Windows builds name their archive ghostty-vt-static.lib, which cgo's
+# linker-flag allowlist rejects (it knows .a, not .lib): publish it as
+# libghostty-vt.a, the name the other targets have, and point the .pc at it.
 $(READY): $(STAMP)
+	@if [ -f $(GHOSTTY_OUT)/lib/ghostty-vt-static.lib ]; then \
+		cp $(GHOSTTY_OUT)/lib/ghostty-vt-static.lib $(GHOSTTY_OUT)/lib/libghostty-vt.a && \
+		for pc in $(GHOSTTY_OUT)/share/pkgconfig/*.pc; do \
+			sed 's|ghostty-vt-static\.lib|libghostty-vt.a|' "$$pc" > "$$pc.tmp" && mv "$$pc.tmp" "$$pc" || exit 1; \
+		done; \
+	fi
 	@for pc in $(GHOSTTY_OUT)/share/pkgconfig/*.pc; do \
 		sed 's|^prefix=.*|prefix=$${pcfiledir}/../..|' "$$pc" > "$$pc.tmp" && mv "$$pc.tmp" "$$pc" || \
 		{ echo "can't rewrite $$pc: run make once where $(BUILD) is writable" >&2; exit 1; }; \
@@ -242,6 +251,7 @@ zig-path: | toolchain $(if $(filter $(ZIG_LOCAL),$(ZIG)),$(ZIG_LOCAL))
 
 release-ghostty:
 	./scripts/release/ghostty.sh
+	./scripts/release/conpty.sh
 
 release-snapshot: release-ghostty
 	$(RELEASE_ENV) $(GORELEASER) release --snapshot --clean

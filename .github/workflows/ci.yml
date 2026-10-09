@@ -271,5 +271,6 @@ jobs:
           name: release-snapshot
           path: |
             dist/*.tar.gz
+            dist/*.zip
             dist/checksums.txt
           retention-days: 7

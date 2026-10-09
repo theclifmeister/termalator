@@ -17,7 +17,7 @@ tm doctor
 
 The two-argument `brew tap` is needed because the formula lives in this repository (`Formula/terminatr.rb`), not in a `homebrew-terminatr` one. Newer Homebrew refuses to install from a tap it doesn't trust, hence `brew trust theclifmeister/terminatr` once after tapping (it trusts the tap, so the formula follows; `brew trust --formula` wants the full `theclifmeister/terminatr/terminatr`). `brew upgrade terminatr` (or `tm update`, which suggests it) picks up new releases.
 
-**Direct download.** Release archives are on the [releases page](https://github.com/theclifmeister/terminatr/releases). Each holds one static `tm` binary (plus this file, the README and the licence); `checksums.txt` lists their sha256. To install the latest into `~/.local/bin`:
+**Direct download.** Release archives are on the [releases page](https://github.com/theclifmeister/terminatr/releases). Each holds one static `tm` binary (`tm.exe` in the Windows zips; plus this file, the README and the licence); `checksums.txt` lists their sha256. To install the latest into `~/.local/bin`:
 
 ```sh
 mkdir -p ~/.local/bin && curl -fsSL "https://github.com/theclifmeister/terminatr/releases/latest/download/tm_$(uname -s | tr A-Z a-z)_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar -xz -C ~/.local/bin tm
@@ -28,6 +28,7 @@ tm doctor
 
 - **macOS:** the binary links only system libraries (libSystem, libresolv and, depending on the Go release, CoreFoundation). It is signed with a Developer ID (hardened runtime) and notarised. A bare binary can't carry a stapled ticket, so Gatekeeper checks the notarisation online the first time it meets a quarantined copy (one a browser downloaded); with no network that first run is refused. curl and Homebrew set no quarantine flag, so they never ask.
 - **Linux:** glibc 2.28 or later (Debian 10, Ubuntu 18.10, RHEL 8 and newer); musl is not supported.
+- **Windows (amd64, arm64):** `tm_windows_<arch>.zip` holds `tm.exe` with Microsoft's `conpty.dll` and `OpenConsole.exe` beside it (keep the three together; they give every Windows version the same console behaviour). The exe is not code-signed, so SmartScreen may warn on a browser download. Windows support is being built up in steps; the archive is built and checked by the release, but `tm` does not run sessions on Windows yet.
 - **Runtime:** git, and the agents you use (Claude Code, Codex; see [CODEX.md](CODEX.md)). For threads' sandbox Claude needs `bwrap` and `socat` on Linux. `tm doctor` checks all of these.
 
 To build from source instead, see the [Contributing](../CONTRIBUTING.md#build). How releases are made: [Releasing](#releasing).
@@ -323,7 +324,7 @@ Push a `v*` tag (`git tag v0.2.0 && git push origin v0.2.0`). `.github/workflows
 
 1. imports the Developer ID certificate into a temporary keychain;
 2. builds and checks a snapshot (`make release-snapshot`, `scripts/release/check.sh`), unsigned;
-3. runs goreleaser (`make release`): every target cross-compiled with `zig cc`, each darwin binary signed (hardened runtime) and notarised by `scripts/release/sign.sh`, archives and `checksums.txt` uploaded to a draft release;
+3. runs goreleaser (`make release`): every target cross-compiled with `zig cc` (the Windows targets as `*-windows-gnu`, their ConPTY files fetched by `scripts/release/conpty.sh`), each darwin binary signed (hardened runtime) and notarised by `scripts/release/sign.sh`, archives and `checksums.txt` uploaded to a draft release;
 4. checks the archives again with `--signed` (Developer ID, hardened runtime, Gatekeeper says `Notarized Developer ID`), and only then publishes the release;
 5. rewrites `Formula/terminatr.rb` from `checksums.txt` (`scripts/release/formula.sh`) and merges it through a pull request. Prereleases (`v1.2.0-rc1`) skip this step.
 
