@@ -3,8 +3,7 @@
 Every surface tm draws follows this guide: the dashboard, the sidebar,
 the details panel, the info panels, the status bar, every popup and
 dialog, and the Claude mod (band, status line entry, /tm pane, toasts).
-It was written for T93 and approved by the user on 2026-10-06; SPEC.md §4
-says what each screen shows, this says how. The unit is one terminal
+SPEC.md §4 says what each screen shows; this says how. The unit is one terminal
 cell. Colours are the terminal's 16 ANSI colours only, so tm follows the
 user's light or dark theme.
 
@@ -40,11 +39,11 @@ shots.html` (a page with a dark and a light palette).
 - **S4.** Key/value blocks use one faint, lowercase label column per block.
 - **S5.** A selection bar spans its region's full inner width.
 - **S6.** A rule inside a frame spans the full inner width.
-- **S7.** Popups come in two sizes (T122), whatever their
+- **S7.** Popups come in two sizes, whatever their
   content: a **dialog** (a confirmation, a single question, one input:
   the prefix key) is 64 columns by 12 rows; a **view** (the project popup
   and its tabs, the task view, the inbox, help, the settings, lists) is
-  four fifths of the window's width by four fifths of its height (T126),
+  four fifths of the window's width by four fifths of its height,
   with no cap. A view's content scrolls inside it
   (`more ↓`). Both are centred on the whole window, header and sidebar
   included, not on the body beside the sidebar; on a small window they

@@ -1,5 +1,7 @@
 # Test VMs (Parallels)
 
+> Contributor notes: how terminatr itself is tested. Not needed to use it.
+
 Two Parallels VMs on the Mac host for testing terminatr on Linux and macOS.
 Both are set up by a script in `scripts/vm/`, run from the Mac.
 
