@@ -212,6 +212,27 @@ func TestLaunch(t *testing.T) {
 			t.Errorf("coordinator on Codex %q: argv %q", v, l.Argv)
 		}
 	}
+	// The fallback in full: today's coordinator launch, nothing of the
+	// profile.
+	spec.Version = "0.140.0"
+	l, err = a.Launch(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fallback := []string{"codex",
+		"-c", "check_for_update_on_startup=false",
+		"-c", `projects={"/p"={trust_level="trusted"}}`,
+		"-c", `mcp_servers.terminatr.command="/bin/tm"`,
+		"-c", `mcp_servers.terminatr.args=["mcp"]`,
+		"-c", `mcp_servers.terminatr.env_vars=["TERMINATR_HOME"]`,
+		"-c", `mcp_servers.terminatr.default_tools_approval_mode="approve"`,
+		"--approve-for-me",
+		"-m", "gpt-6-luna",
+		"-c", hooks, "-c", state,
+	}
+	if !slices.Equal(l.Argv, fallback) {
+		t.Errorf("coordinator on Codex 0.140.0: argv\n%q\nwant\n%q", l.Argv, fallback)
+	}
 	spec.Version = "0.146.0"
 	if l, _ = a.Launch(spec); !slices.Contains(l.Argv, coord) {
 		t.Errorf("coordinator on Codex 0.146.0 lacks the profile: %q", l.Argv)
