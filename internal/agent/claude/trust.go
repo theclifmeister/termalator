@@ -35,12 +35,16 @@ const (
 	lockStale = 10 * time.Second
 )
 
+// projectKey is a folder's key in ~/.claude.json's projects: Claude keys
+// them by forward-slash path on Windows (C:/Users/a/p).
+func projectKey(dir string) string { return filepath.ToSlash(dir) }
+
 // TrustDir marks dir (and its real path, which Claude also looks up) as
 // trusted in Claude's config, keeping every other key as it is.
 func (a *Agent) TrustDir(home, dir string) error {
-	dirs := []string{dir}
+	dirs := []string{projectKey(dir)}
 	if r, err := filepath.EvalSymlinks(dir); err == nil && r != dir {
-		dirs = append(dirs, r)
+		dirs = append(dirs, projectKey(r))
 	}
 	return editProjects(home, func(projects map[string]json.RawMessage, path string) (bool, error) {
 		changed := false
