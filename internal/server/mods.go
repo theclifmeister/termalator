@@ -11,13 +11,13 @@ import (
 	"errors"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/config"
+	"github.com/theclifmeister/terminatr/internal/plat/shell"
 )
 
 // versionTimeout bounds `<agent> --version`, run with s.mu held, once per
@@ -94,7 +94,7 @@ func (vs *versions) of(a agent.Agent, env []string) (string, error) {
 	if m == nil || len(m.Identify.VersionArgs) == 0 {
 		return "", errors.New("the manifest has no version_args")
 	}
-	path, err := lookPathIn(m.Launch.Command, envValue(env, "PATH"))
+	path, err := shell.LookPathIn(m.Launch.Command, envValue(env, "PATH"))
 	if err != nil {
 		return "", err
 	}
@@ -132,24 +132,6 @@ func runVersion(ctx context.Context, path string, args, env []string) ([]byte, e
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Env = env
 	return cmd.Output()
-}
-
-// lookPathIn finds an executable named cmd in the directories of path
-// (a PATH value); a cmd with a slash is taken as it is.
-func lookPathIn(cmd, path string) (string, error) {
-	if strings.Contains(cmd, "/") {
-		return cmd, nil
-	}
-	for _, dir := range filepath.SplitList(path) {
-		if dir == "" {
-			continue
-		}
-		p := filepath.Join(dir, cmd)
-		if fi, err := os.Stat(p); err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0 {
-			return p, nil
-		}
-	}
-	return "", errors.New(cmd + " not found on the sessions' PATH")
 }
 
 // envValue is the value of key in env (KEY=VALUE entries), the last one

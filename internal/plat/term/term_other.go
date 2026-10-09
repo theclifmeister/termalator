@@ -1,4 +1,4 @@
-//go:build !unix
+//go:build !unix && !windows
 
 package term
 
@@ -8,9 +8,10 @@ import (
 	"os/signal"
 )
 
-// Not yet ported: RawMode never sees raw mode, and only an interrupt
-// arrives, as Detach; the Windows port reads the console mode and its
-// resize events (term.go).
+// No port: RawMode never sees raw mode, and only an interrupt arrives, as
+// Detach.
+
+func enableVT(f *os.File) func() { return func() {} }
 
 func RawMode(f *os.File) bool { return false }
 
