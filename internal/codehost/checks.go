@@ -33,6 +33,8 @@ func Checks(d DoctorDeps, hosts []RepoHost) []Check {
 		switch h.Target.Kind {
 		case AzureKind:
 			azure = true
+		case NoKind:
+			// nothing to poll, nothing to check
 		default:
 			github = true
 		}

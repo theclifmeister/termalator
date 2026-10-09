@@ -57,6 +57,10 @@ type WatchTicker struct {
 	// is when the next poll is due.
 	PRPollSeconds int  `json:"pr_poll_seconds"`
 	GHFailing     bool `json:"gh_failing,omitempty"`
+	// NoPRHost is set when the project has repos and none has a PR host
+	// (no origin, or one that is neither GitHub nor Azure DevOps): there
+	// is nothing to poll, which is not a failing host.
+	NoPRHost bool `json:"no_pr_host,omitempty"`
 }
 
 // WatchContext is how full the coordinator's context window is.
@@ -194,8 +198,8 @@ type TickerRow struct {
 }
 
 // Rows are the ticker's timers, a row each: "PRs  40s ago · next 1m20s",
-// "synced  1m ago", "PR host  ok" (or "failing", Bad). A timer not
-// known yet has no row. now is the reader's clock.
+// "synced  1m ago", "PR host  ok" (or "failing", Bad; "none" when no
+// repo has a PR host). A timer not known yet has no row. now is the reader's clock.
 func (t WatchTicker) Rows(now time.Time) []TickerRow {
 	var rows []TickerRow
 	if !t.PRChecked.IsZero() {
@@ -213,7 +217,9 @@ func (t WatchTicker) Rows(now time.Time) []TickerRow {
 	if !t.Synced.IsZero() {
 		rows = append(rows, TickerRow{Label: "synced", Value: AgeWords(now.Sub(t.Synced)) + " ago"})
 	}
-	if t.GHFailing {
+	if t.NoPRHost {
+		rows = append(rows, TickerRow{Label: "PR host", Value: "none"})
+	} else if t.GHFailing {
 		rows = append(rows, TickerRow{Label: "PR host", Value: "failing", Bad: true})
 	} else if !t.PRChecked.IsZero() {
 		rows = append(rows, TickerRow{Label: "PR host", Value: "ok"})
