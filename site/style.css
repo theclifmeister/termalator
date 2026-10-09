@@ -289,6 +289,11 @@ figcaption::before { content: "# "; color: var(--dim); }
 }
 .copy:hover { color: var(--cyan); }
 .copy.done { color: var(--green); }
+.installs { display: grid; gap: 1.4rem; }
+.os { display: grid; gap: 0.5rem; }
+.os h3 { margin: 0; font-size: 0.9rem; font-weight: 600; color: var(--fg); }
+.os .or { color: var(--dim); font-weight: 400; font-size: 0.8rem; margin-left: 0.3em; }
+.os .note { margin: 0; color: var(--muted); font-size: 0.85rem; }
 .after { color: var(--muted); margin-top: 1.6rem; max-width: 75ch; }
 
 /* Footer */

@@ -42,10 +42,10 @@
   <p class="tagline">One terminal for all your coding agents.<br><span class="hl">A coordinator you talk to, threads that do the work.</span></p>
   <p class="pitch">You talk to one <strong>coordinator</strong>. It splits the work into tasks and hands each to a <strong>thread</strong>: an agent in its own git worktree that opens a pull request and reports back. <code>tm</code>, a single binary, keeps every agent running in a background server when you close the terminal, and its dashboard shows what each one is doing and what waits for you. All progress lives in plain markdown under <code>~/.terminatr/projects/</code>, so clearing an agent's context loses nothing.</p>
   <div class="cta">
-    <a class="btn primary" href="#install">Install with Homebrew</a>
+    <a class="btn primary" href="#install">Install</a>
     <a class="btn" href="https://github.com/theclifmeister/terminatr">Source on GitHub</a>
   </div>
-  <p class="meta">macOS 13+ · Linux · one binary, <code>tm</code> · MIT · Claude Code and Codex</p>
+  <p class="meta">macOS 13+ · Linux · Windows · one binary, <code>tm</code> · MIT · Claude Code and Codex</p>
 
   <figure class="term hero-term">
     <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span>~ — tm</span></div>
@@ -115,7 +115,7 @@
     </li>
     <li>
       <h3><span class="glyph" aria-hidden="true">⇣</span> Homebrew, signed, self-updating</h3>
-      <p>One Go binary. macOS builds are signed with a Developer ID and notarised. Install from the Homebrew tap; <code>tm update</code> upgrades it and <code>tm doctor</code> checks the setup.</p>
+      <p>One Go binary. macOS builds are signed with a Developer ID and notarised. Install with Homebrew or a one-line script; <code>tm update</code> upgrades it and <code>tm doctor</code> checks the setup.</p>
     </li>
     <li>
       <h3><span class="glyph" aria-hidden="true">◈</span> Built on Claude Code mods</h3>
@@ -431,14 +431,31 @@
 
 <section id="install" aria-labelledby="install-title">
   <h2 id="install-title"><span class="num">03</span> Install</h2>
-  <p class="lede">macOS 13+ or Linux (glibc 2.28+), with Homebrew and Claude Code or Codex. Newer Homebrew wants you to trust a tap's formula once.</p>
-  <ol class="steps">
-    <li><span class="c">tap it</span><div class="cmdline"><code>brew tap theclifmeister/terminatr https://github.com/theclifmeister/terminatr</code><button class="copy" type="button" aria-label="Copy the tap command">copy</button></div></li>
-    <li><span class="c">trust it</span><div class="cmdline"><code>brew trust theclifmeister/terminatr</code><button class="copy" type="button" aria-label="Copy the trust command">copy</button></div></li>
-    <li><span class="c">install it</span><div class="cmdline"><code>brew install terminatr</code><button class="copy" type="button" aria-label="Copy the install command">copy</button></div></li>
-    <li><span class="c">run it</span><div class="cmdline"><code>tm</code><button class="copy" type="button" aria-label="Copy tm">copy</button></div></li>
-  </ol>
-  <p class="after">Then press <kbd>n</kbd> for a new project and <kbd>enter</kbd> to start its coordinator. <kbd>Ctrl+B</kbd> <kbd>d</kbd> brings you back to the dashboard, <kbd>?</kbd> lists every key. No Homebrew? The <a href="https://github.com/theclifmeister/terminatr#install">README</a> has a one-line install from the releases. Running Codex? <a href="https://github.com/theclifmeister/terminatr/blob/main/docs/CODEX.md">Using Codex</a> covers the setup.</p>
+  <p class="lede">macOS 13+, Linux (glibc 2.28+) or Windows, with Claude Code or Codex. Pick your system.</p>
+  <div class="installs">
+    <div class="os">
+      <h3>Linux <span class="or">or</span> macOS</h3>
+      <div class="cmdline"><code>curl -fsSL https://github.com/theclifmeister/terminatr/releases/latest/download/install.sh | sh</code><button class="copy" type="button" aria-label="Copy the Linux and macOS install command">copy</button></div>
+      <p class="note">Installs <code>tm</code> into <code>~/.local/bin</code> and checks the download's sha256.</p>
+    </div>
+    <div class="os">
+      <h3>Windows <span class="or">PowerShell</span></h3>
+      <div class="cmdline"><code>irm https://github.com/theclifmeister/terminatr/releases/latest/download/install.ps1 | iex</code><button class="copy" type="button" aria-label="Copy the Windows install command">copy</button></div>
+      <p class="note">No admin rights needed. Windows support is early.</p>
+    </div>
+    <div class="os">
+      <h3>macOS <span class="or">or</span> Linux, Homebrew</h3>
+      <div class="cmdline"><code>brew tap theclifmeister/terminatr https://github.com/theclifmeister/terminatr</code><button class="copy" type="button" aria-label="Copy the tap command">copy</button></div>
+      <div class="cmdline"><code>brew trust theclifmeister/terminatr</code><button class="copy" type="button" aria-label="Copy the trust command">copy</button></div>
+      <div class="cmdline"><code>brew install terminatr</code><button class="copy" type="button" aria-label="Copy the install command">copy</button></div>
+      <p class="note">Newer Homebrew wants you to trust a tap's formula once.</p>
+    </div>
+    <div class="os">
+      <h3>Then</h3>
+      <div class="cmdline"><code>tm</code><button class="copy" type="button" aria-label="Copy tm">copy</button></div>
+    </div>
+  </div>
+  <p class="after">Then press <kbd>n</kbd> for a new project and <kbd>enter</kbd> to start its coordinator. <kbd>Ctrl+B</kbd> <kbd>d</kbd> brings you back to the dashboard, <kbd>?</kbd> lists every key. The <a href="https://github.com/theclifmeister/terminatr#install">README</a> has the same commands. Running Codex? <a href="https://github.com/theclifmeister/terminatr/blob/main/docs/CODEX.md">Using Codex</a> covers the setup.</p>
 </section>
 
 </main>

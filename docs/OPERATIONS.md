@@ -17,12 +17,14 @@ tm doctor
 
 The two-argument `brew tap` is needed because the formula lives in this repository (`Formula/terminatr.rb`), not in a `homebrew-terminatr` one. Newer Homebrew refuses to install from a tap it doesn't trust, hence `brew trust theclifmeister/terminatr` once after tapping (it trusts the tap, so the formula follows; `brew trust --formula` wants the full `theclifmeister/terminatr/terminatr`). `brew upgrade terminatr` (or `tm update`, which suggests it) picks up new releases.
 
-**Direct download.** Release archives are on the [releases page](https://github.com/theclifmeister/terminatr/releases). Each holds one static `tm` binary (`tm.exe` in the Windows zips; plus this file, the README and the licence); `checksums.txt` lists their sha256. To install the latest into `~/.local/bin`:
+**Direct download.** Release archives are on the [releases page](https://github.com/theclifmeister/terminatr/releases). Each holds one static `tm` binary (`tm.exe` in the Windows zips; plus this file, the README and the licence); `checksums.txt` lists their sha256. On Linux and macOS, to install the latest into `~/.local/bin`:
 
 ```sh
-mkdir -p ~/.local/bin && curl -fsSL "https://github.com/theclifmeister/terminatr/releases/latest/download/tm_$(uname -s | tr A-Z a-z)_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar -xz -C ~/.local/bin tm
+curl -fsSL https://github.com/theclifmeister/terminatr/releases/latest/download/install.sh | sh
 tm doctor
 ```
+
+`scripts/install.sh` (POSIX sh) picks the tarball for your OS and CPU, checks it against `checksums.txt`, replaces `tm` in `~/.local/bin` in one rename (also while `tm` runs) and says if that folder isn't on your PATH. To pass options, use `sh -s --`: `--version v0.5.0`, `--dir <folder>`.
 
 `tm update` keeps a direct install up to date.
 

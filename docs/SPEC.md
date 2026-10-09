@@ -1567,7 +1567,7 @@ Never automated, in any mode: merging PRs, force-pushes, deleting branches with 
 - Importing `~/.herdr-projects` or `~/.tsk` data.
 - herdr-projects' switcher filter, routines, SSH machines, autoproject and checkout thread kind (user, 2026-10-05). Its thread adopt is in (§9, **Adopt**), for agents running in a `tm` session; agents in other terminals are not.
 - tsk's TUI polish: multi-select, undo, search, wide stage, notices, trash.
-- An installer script for macOS and Linux (`tm update`, the Homebrew tap and, on Windows, `scripts/install.ps1` exist, §10.1).
+- A native installer package (`tm update`, the Homebrew tap and `scripts/install.sh` and `scripts/install.ps1` exist, §10.1).
 
 ---
 
