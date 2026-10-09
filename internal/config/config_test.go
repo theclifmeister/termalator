@@ -359,3 +359,19 @@ pr_poll_seconds = 45
 		t.Errorf("default: %d", s.PRPollSeconds)
 	}
 }
+
+// TestUpdateCheck: [ui] update_check is on unless set false.
+func TestUpdateCheck(t *testing.T) {
+	write(t, "")
+	if c, _ := Load(); !c.UpdateCheck {
+		t.Fatal("off without a file")
+	}
+	write(t, "[ui]\nicons = \"ascii\"\n")
+	if c, err := Load(); err != nil || !c.UpdateCheck {
+		t.Fatalf("unset: %v %+v", err, c)
+	}
+	write(t, "[ui]\nupdate_check = false\n")
+	if c, err := Load(); err != nil || c.UpdateCheck || len(c.Unknown) != 0 {
+		t.Fatalf("false: %v %+v", err, c)
+	}
+}

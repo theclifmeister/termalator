@@ -1,4 +1,4 @@
- PROJECTS                    1 │ tm dashboard                                                                          ● server ok · 1 session
+ PROJECTS                    1 │ tm dashboard                                                                    ● server ok · 1 session · dev
  ■ demo                    1   │ demo ────────────────────────────────────────────────────────────────────────────────────────────────────────
  └─ coordinator              · │  coordinator                               —           not running; enter starts it  1 inbox
     └─ T1 Fix ╭─ demo ────────────────────────────────────────────────────────────────────────────────────────────────────────╮

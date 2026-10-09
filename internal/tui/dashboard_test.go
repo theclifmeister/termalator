@@ -18,6 +18,7 @@ import (
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/tasks"
 	"github.com/theclifmeister/terminatr/internal/thread"
+	"github.com/theclifmeister/terminatr/internal/version"
 )
 
 // statusLine is statusBar's line, without its buttons.
@@ -866,5 +867,30 @@ func TestInboxLinesRows(t *testing.T) {
 	}
 	if narrow, _, _ := inboxLines(items, -1, 50); strings.Contains(ansi.Strip(narrow[0]), "login") || !strings.Contains(ansi.Strip(narrow[0]), "report 2") {
 		t.Errorf("narrow row %q", ansi.Strip(narrow[0]))
+	}
+}
+
+func TestVersionHint(t *testing.T) {
+	own := ServerInfo{Version: version.Version, Build: version.BuildID()}
+	if h := versionHint(own); h != "" {
+		t.Errorf("same build: %q", h)
+	}
+	if h := versionHint(ServerInfo{}); h != "" {
+		t.Errorf("old server: %q", h)
+	}
+	newer := own
+	newer.Latest, newer.Upgrade = "v99.0.0", "brew upgrade terminatr"
+	if h := versionHint(newer); !strings.Contains(h, "v99.0.0") || !strings.Contains(h, "brew upgrade terminatr") {
+		t.Errorf("newer release: %q", h)
+	}
+	other := ServerInfo{Version: "v0.1.0", Build: "v0.1.0+x+y", Latest: "v99.0.0", Upgrade: "tm update"}
+	if h := versionHint(other); !strings.Contains(h, "tm server restart") {
+		t.Errorf("other build: %q", h)
+	}
+	if v := serverVersion(other); !strings.Contains(v, "v0.1.0") || !strings.Contains(v, "(tm "+version.Version+")") {
+		t.Errorf("header: %q", v)
+	}
+	if v := serverVersion(own); strings.Contains(v, "(tm") {
+		t.Errorf("header for the same version: %q", v)
 	}
 }
