@@ -179,6 +179,9 @@ type agentRT struct {
 	answerSince time.Time         // since when
 	answerAt    time.Time         // when its keys were last typed
 	answerTries int
+
+	typedMu sync.Mutex
+	typed   typedLine // the line typed into the prompt box (agent.Typist)
 }
 
 func newAgentRT(cfg AgentConfig, pid int, observed bool) (*agentRT, error) {

@@ -275,6 +275,16 @@ type Prober interface {
 	Probe(ctx context.Context, target PromptTarget) (Liveness, error)
 }
 
+// Typist is an Agent that hears of each line submitted in its pane by
+// keys while it is idle (docs/SPEC.md §8.6): the core rebuilds the line
+// from the keys typed or pasted into the pane, its own pasted prompts
+// among them. Exact is false when keys the core can't follow (arrows,
+// Tab, Esc, other control keys) edited it. Codex notes a /clear typed by
+// hand, which no hook reports.
+type Typist interface {
+	Typed(target PromptTarget, line string, exact bool)
+}
+
 // Truster is an Agent that can mark a directory as trusted ahead of
 // launch, so its folder-trust screen never shows there (docs/SPEC.md
 // §8.6). The core calls it only for a thread's own worktree, which tm

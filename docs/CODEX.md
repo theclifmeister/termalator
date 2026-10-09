@@ -20,7 +20,7 @@ Codex threads run `gpt-6-luna` unless a model is chosen; `gpt-5.6-terra` is the 
 
 ## What you'll see
 
-- Prompts you or the coordinator send reach Codex through `codex queue`, so they show up as your own prompt in its terminal: at once when it is idle, after the current turn when it is busy. Slash commands can't be sent that way.
+- Prompts you or the coordinator send reach Codex through `codex queue`, so they show up as your own prompt in its terminal: at once when it is idle, after the current turn when it is busy. Slash commands can't be sent that way. After `/clear` (`/new`, `/resume`, `/fork`), sent by tm or typed in the pane yourself, prompts are pasted until the new thread's first prompt reports its id, so none goes to the thread you left.
 - Usage shows the plan limit used (a percentage) rather than a cost.
 - Codex keeps its sessions under `~/.codex`. tm adds nothing there; its settings are passed on the command line.
 - If you have your own Codex hooks that are untrusted, tm skips them in its sessions instead of stopping at Codex's review screen.

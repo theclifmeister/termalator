@@ -292,6 +292,7 @@ func (s *Session) Input(p []byte) error {
 	if !s.in.push(p, true) {
 		return ErrExited
 	}
+	s.typed(p)
 	return nil
 }
 
