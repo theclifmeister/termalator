@@ -1,6 +1,7 @@
 package codehost
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"testing"
@@ -72,9 +73,34 @@ func TestDetect(t *testing.T) {
 		}
 	}
 	run("init", "-q")
-	if got := Detect(repo, Config{}); got != (Target{Kind: GitHubKind}) {
+	if got := Detect(repo, Config{}); got != (Target{Kind: NoKind}) {
 		t.Fatalf("no origin: %+v", got)
 	}
+	if _, ok := Pick(repo, Config{}).(NoHost); !ok {
+		t.Fatalf("no origin: Pick = %T, want NoHost", Pick(repo, Config{}))
+	}
+	if _, err := Pick(repo, Config{}).PR(repo, Ref{Branch: "x"}); !errors.Is(err, ErrNoRef) {
+		t.Fatalf("no origin: PR err = %v, want ErrNoRef (nothing to poll)", err)
+	}
+	for url, want := range map[string]string{
+		"https://github.com/o/r.git":   GitHubKind,
+		"git@ghe.corp.example:o/r.git": GitHubKind, // maybe GitHub Enterprise
+		"https://gitlab.com/o/r.git":   NoKind,
+		"git@bitbucket.org:o/r.git":    NoKind,
+		"/srv/git/r.git":               NoKind,
+		"file:///srv/git/r.git":        NoKind,
+		"../sibling":                   NoKind,
+	} {
+		run("config", "remote.origin.url", url)
+		if got := Detect(repo, Config{}).Kind; got != want {
+			t.Errorf("origin %s: kind %q, want %q", url, got, want)
+		}
+	}
+	run("config", "remote.origin.url", "https://gitlab.com/o/r.git")
+	if got := Detect(repo, Config{CodeHost: GitHubKind}).Kind; got != GitHubKind {
+		t.Errorf("override on a gitlab origin: %q", got)
+	}
+	run("remote", "remove", "origin")
 	run("remote", "add", "origin", "https://acme@dev.azure.com/acme/Shop/_git/web")
 	if got := Detect(repo, Config{}); got != (Target{Kind: AzureKind, OrgURL: "https://dev.azure.com/acme", Project: "Shop", Repo: "web"}) {
 		t.Fatalf("azure origin: %+v", got)
@@ -99,7 +125,7 @@ func TestDetect(t *testing.T) {
 	if h := Pick(repo, Config{}); h.Kind() != GitHubKind {
 		t.Fatalf("Pick: %s", h.Kind())
 	}
-	if got := Detect(os.DevNull, Config{}); got.Kind != GitHubKind {
+	if got := Detect(os.DevNull, Config{}); got.Kind != NoKind {
 		t.Fatalf("not a repo: %+v", got)
 	}
 }

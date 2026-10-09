@@ -74,6 +74,17 @@ func (a *Agent) Launch(spec agent.LaunchSpec) (agent.Launch, error) {
 	return l, nil
 }
 
+// Hook is the manifest's, after noting that a prompt ran on the thread
+// the event names (stay): only the thread shown takes prompts.
+func (a *Agent) Hook(ev agent.HookEvent, env agent.HookEnv) ([]agent.Signal, agent.HookResult, error) {
+	if ev.Event == "UserPromptSubmit" {
+		if sid, _ := ev.Payload[a.m.SessionField].(string); sid != "" {
+			a.stay(sid)
+		}
+	}
+	return a.Agent.Hook(ev, env)
+}
+
 // Events are the hook events the manifest names (Manifest.HookEvents).
 func (a *Agent) Events() []string { return a.m.HookEvents() }
 

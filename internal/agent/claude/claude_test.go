@@ -121,10 +121,14 @@ func TestPromptOverMessagingSocket(t *testing.T) {
 	if err := a.Prompt(context.Background(), agent.PromptTarget{Version: "2.1.289"}, "x"); !errors.Is(err, ErrNoSocket) {
 		t.Fatalf("no socket: %v", err)
 	}
+	// No version gate (docs/SPEC.md §8.8): a newer Claude's socket is
+	// used too; a changed one fails, and the core falls back.
+	got = accept()
 	target.Version = "3.0.0"
-	if err := a.Prompt(context.Background(), target, "x"); !errors.Is(err, agent.ErrUntestedVersion) {
-		t.Fatalf("untested version: %v", err)
+	if err := a.Prompt(context.Background(), target, "x"); err != nil {
+		t.Fatalf("newer version: %v", err)
 	}
+	<-got
 	target.Version = "2.1.289"
 	target.Fields[SocketField] = filepath.Join(dir, "gone.sock")
 	if err := a.Prompt(context.Background(), target, "x"); err == nil {

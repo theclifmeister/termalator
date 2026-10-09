@@ -12,6 +12,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"fmt"
+	"github.com/theclifmeister/terminatr/internal/codehost"
 	"io"
 	"net"
 	"slices"
@@ -155,14 +156,15 @@ func ProjectWatchOf(p *project.Project, sessions []proto.SessionInfo, tickerStat
 			Title: queueTitle(info, note)})
 	}
 	w.Context = contextOf(p.Slug, sessions)
-	if !timing.PRPolled.IsZero() || !timing.Synced.IsZero() {
+	noHost := noPRHost(p)
+	if !timing.PRPolled.IsZero() || !timing.Synced.IsZero() || noHost {
 		secs := config.DefaultPRPollSeconds
 		if cfg, err := config.Load(); err == nil {
 			if s, err := cfg.Safety(p.Slug); err == nil && s.PRPollSeconds > 0 {
 				secs = s.PRPollSeconds
 			}
 		}
-		w.Ticker = &proto.WatchTicker{PRChecked: timing.PRPolled, Synced: timing.Synced, PRPollSeconds: secs, GHFailing: timing.GHFailing}
+		w.Ticker = &proto.WatchTicker{PRChecked: timing.PRPolled, Synced: timing.Synced, PRPollSeconds: secs, GHFailing: timing.GHFailing && !noHost, NoPRHost: noHost}
 	}
 	if qs, err := p.Questions(); err == nil {
 		w.Questions = len(qs)
@@ -351,4 +353,19 @@ func contextOf(slug string, sessions []proto.SessionInfo) *proto.WatchContext {
 			Threshold: hint, Hint: hint > 0 && pct >= hint}
 	}
 	return nil
+}
+
+// noPRHost is whether p has repos and none has a PR host to poll: the
+// ticker has nothing to ask, so the pane says so instead of "ok" or
+// "failing".
+func noPRHost(p *project.Project) bool {
+	if len(p.Meta.Repos) == 0 {
+		return false
+	}
+	for _, r := range p.Meta.Repos {
+		if codehost.Detect(r, p.CodeHost()).Kind != codehost.NoKind {
+			return false
+		}
+	}
+	return true
 }

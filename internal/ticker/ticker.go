@@ -706,6 +706,19 @@ func (t *Ticker) ghRan(slug string, err error) {
 	}
 }
 
+// noHosts is whether project p has repos and none has a PR host to poll.
+func (t *Ticker) noHosts(p *project.Project) bool {
+	if len(p.Meta.Repos) == 0 {
+		return false
+	}
+	for _, r := range p.Meta.Repos {
+		if t.host(p, r).Kind() != codehost.NoKind {
+			return false
+		}
+	}
+	return true
+}
+
 // ghHealth raises one gh-failing item (gh or az, whichever failed) once
 // the code host CLI failed on GHFailPolls polls of a project in a row,
 // and moves it to done once a poll works. The summary is fixed text
@@ -715,10 +728,16 @@ func (t *Ticker) ghHealth(p *project.Project) {
 	last := t.ghErr[p.Slug]
 	delete(t.gh, p.Slug)
 	delete(t.ghErr, p.Slug)
+	pm := t.projectMemo(p.Slug)
+	if !ran && (pm.GHFails > 0 || pm.GHItem != "") && t.noHosts(p) {
+		// Nothing to poll (no repo, or none with a PR host), so the count
+		// and item of an earlier failure (a remote removed, an older tm
+		// that polled such a repo) can't clear by a poll that works.
+		ok, ran = true, true
+	}
 	if !ran {
 		return
 	}
-	pm := t.projectMemo(p.Slug)
 	if ok {
 		if pm.GHItem != "" {
 			if err := p.DoneItem(pm.GHItem); err != nil {

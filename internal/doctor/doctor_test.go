@@ -130,9 +130,10 @@ func TestAgentVersions(t *testing.T) {
 		detail  string
 	}{
 		{version: "2.1.289 (Claude Code)", want: OK, detail: "2.1.289 (tested)"},
-		{version: "2.1.138 (Claude Code)", want: Warn, detail: "older than 2.1.139"},
+		{version: "2.1.138 (Claude Code)", want: Warn, detail: "older than 2.1.139, the oldest terminatr's generated files work with (exec-form hooks"},
 		{version: "2.1.139 (Claude Code)", want: OK, detail: "(tested)"},
-		{version: "3.0.1 (Claude Code)", want: Warn, detail: "not in tested_versions"},
+		// Newer than the last tested: supported, said as information.
+		{version: "3.0.1 (Claude Code)", want: OK, detail: "3.0.1 (newer than the last tested"},
 		{version: "garbage", want: Warn, detail: "no version"},
 		{missing: true, want: Warn, detail: "not found on PATH"},
 	}
@@ -317,6 +318,33 @@ func TestSandbox(t *testing.T) {
 	}
 	d.GOOS = "darwin"
 	if cs := Sandbox(d); len(cs) != 1 || cs[0].Name != "sandbox-exec" || cs[0].Status != Warn {
+		t.Fatalf("darwin: %+v", cs)
+	}
+}
+
+func TestSandboxUserns(t *testing.T) {
+	d := testDeps(t)
+	d.LookPath = func(n string) (string, error) { return "/usr/bin/" + n, nil }
+	old := procSys
+	t.Cleanup(func() { procSys = old })
+	procSys = t.TempDir()
+	set := func(name, v string) {
+		os.MkdirAll(filepath.Dir(filepath.Join(procSys, name)), 0o755)
+		os.WriteFile(filepath.Join(procSys, name), []byte(v+"\n"), 0o644)
+	}
+	if cs := find(Sandbox(d), "user namespaces"); len(cs) != 0 {
+		t.Fatalf("no /proc: %+v", cs)
+	}
+	set("user/max_user_namespaces", "63000")
+	if cs := find(Sandbox(d), "user namespaces"); len(cs) != 1 || cs[0].Status != OK {
+		t.Fatalf("allowed: %+v", cs)
+	}
+	set("kernel/apparmor_restrict_unprivileged_userns", "1")
+	if cs := find(Sandbox(d), "user namespaces"); len(cs) != 1 || cs[0].Status != Warn || !strings.Contains(cs[0].Detail, "apparmor_restrict_unprivileged_userns=0") {
+		t.Fatalf("apparmor: %+v", cs)
+	}
+	d.GOOS = "darwin"
+	if cs := find(Sandbox(d), "user namespaces"); len(cs) != 0 {
 		t.Fatalf("darwin: %+v", cs)
 	}
 }

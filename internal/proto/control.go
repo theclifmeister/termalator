@@ -388,7 +388,8 @@ type AgentInfo struct {
 	Command    string   `json:"command"`
 	Injector   string   `json:"injector"`
 	Tested     []string `json:"tested_versions,omitempty"`
-	Unenforced bool     `json:"unenforced,omitempty"` // renders no access policy
+	LastTested string   `json:"last_tested,omitempty"` // information only
+	Unenforced bool     `json:"unenforced,omitempty"`  // renders no access policy
 }
 
 // AgentListResult is the result of agent.list and agent.reload.
