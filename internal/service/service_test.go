@@ -1,3 +1,5 @@
+//go:build !windows
+
 package service
 
 import (
@@ -166,9 +168,9 @@ func TestInstallUninstall(t *testing.T) {
 }
 
 func TestUnsupported(t *testing.T) {
-	c, _ := config(t, "windows")
+	c, _ := config(t, "freebsd")
 	if _, err := c.Install(); !errors.Is(err, ErrUnsupported) {
-		t.Fatalf("windows: %v", err)
+		t.Fatalf("freebsd: %v", err)
 	}
 	c, _ = config(t, "linux")
 	c.Bin = "tm"
