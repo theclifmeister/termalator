@@ -47,6 +47,11 @@ func TestSmokeCodexSandbox(t *testing.T) {
 	if err != nil {
 		t.Skip("codex is not on PATH")
 	}
+	// `codex sandbox -P` and the ":workspace" profile the thread
+	// profile extends came in 0.128.
+	if help, _ := exec.Command(bin, "sandbox", "--help").CombinedOutput(); !strings.Contains(string(help), "--permission-profile") {
+		t.Skip("codex sandbox has no --permission-profile (Codex before 0.128): the thread profile needs 0.128 or later")
+	}
 	env := New(t)
 	// Everything outside /tmp and $TMPDIR, which the profile makes
 	// writable: as in a real install, below the user's home. The socket
@@ -82,6 +87,8 @@ func TestSmokeCodexSandbox(t *testing.T) {
 	env.Socket = filepath.Join(run, "tm.sock")
 	env.Vars = append(env.Vars, "TERMINATR_SOCKET="+env.Socket)
 	env.MustCLI("server", "start")
+	// Before root goes, socket and all.
+	t.Cleanup(func() { env.CLI("server", "stop") })
 
 	// The thread's access policy (internal/server accessFor).
 	access := agent.Access{Read: []string{proj}, NoWrite: []string{proj},
@@ -113,7 +120,8 @@ func TestSmokeCodexSandbox(t *testing.T) {
 	}, "\n")
 	cmd := exec.Command(bin, append(args, "--", "sh", "-c", script)...)
 	cmd.Dir = wt
-	cmd.Env = env.Vars
+	// The npm codex is a node script: the user's PATH after tm's.
+	cmd.Env = append(env.Vars, "PATH="+filepath.Dir(env.Bin)+":"+os.Getenv("PATH"))
 	out, err := cmd.CombinedOutput()
 	t.Logf("codex %s\n%s", strings.Join(args, " "), out)
 	if err != nil {
