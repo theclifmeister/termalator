@@ -85,7 +85,7 @@ One binary, several roles:
 | `internal/skill` | The standing rules, `tm skill coordinator\|thread` (§7.7) |
 | `internal/doctor` | `tm doctor`'s checks and `--fix` (§10) |
 | `internal/update` | Install method, latest release, `tm update` (§10.1) |
-| `internal/service` | The launchd and systemd user service files (§3.1) |
+| `internal/service` | The launchd and systemd user service files, and on Windows the HKCU Run value (`internal/plat/autostart`, `tm.exe server start` at login) (§3.1) |
 | `internal/keychain` | Whether the server's sessions reach the macOS keychain (§3.1) |
 | `internal/version` | Version, build id, release channel |
 | `internal/mdfile` | Markdown with TOML front matter, lock files, atomic writes |
@@ -1440,6 +1440,7 @@ Every agent-facing command prints short, stable, plain text. It never prints unt
   - Source build: refuses (exit 1) and says `git pull && make`.
   - Homebrew: never touches Homebrew's files; prints `brew upgrade terminatr` and runs it after a `y` on a terminal or with `--yes`.
   - Direct: asks on a terminal (`--yes` skips; without a terminal it needs `--yes`), downloads the platform's archive and `checksums.txt`, checks the sha256, extracts `tm` next to the installed one, checks it on macOS with `codesign` (a valid Developer ID signature with the hardened runtime, of the same team as this build's `version.TeamID`), runs `version` on it, and renames it over the installed file.
+  - Windows (T206): the archive is a zip with `tm.exe`, `conpty.dll` and `OpenConsole.exe`, all three installed. A running exe or loaded dll can be renamed but not overwritten, so `fsx.SwapIn` moves each old file to `<name>.old-<utc>` and renames the new one into its name (the program last; a failure restores what was replaced, and the error names the processes that hold the file, from the Restart Manager, `proc.Holders`). `CleanOld` deletes the `.old-*` files that nothing runs, at the next update; `scripts/install.ps1` does the same. No folder is renamed (Windows 11 refuses to rename the folder of a running exe), so no copy of `tm` in `%TEMP%` is needed. `install.ps1` is also a release asset (`releases/latest/download/install.ps1`).
   - The server: it keeps running the old binary (pinned, §3.6). `tm update` says so and how many sessions it has, and that a restart ends running turns (agents resume, shells are lost). It restarts the server only with `--restart`, or after a `y` on a terminal, and then `tm server restart` still asks when agents are mid-turn. Otherwise it prints `tm server restart` for later. The restart runs the new binary's `tm server restart`, which stops a server of any protocol (§3.3), so it works even when the old server is older than the `tm` that runs the update.
   - **Newer-release hint** (T194). The server asks for the latest release itself, at most once a day: `session.list` consults `<home>/state/update.json` (`internal/update.CachedLatest`: the tag and when a check was last tried, a failed try included, so an offline machine makes one attempt a day and keeps the last tag) from a goroutine, never in the poll's way, at most hourly. It runs only for a release build (`version.Channel` set), and not with `[ui] update_check = false` or `TERMINATR_UPDATE_URL=off`. A newer tag goes out as `latest` and `upgrade` (`brew upgrade terminatr` for Homebrew, else `tm update`) in `session.list`; the dashboard shows it as its footer hint (§4, **Version**).
   - `--check` only reports the install method, path, and latest release (`--json` for scripts). `tm doctor` shows the same as its `install` group; `TERMINATR_UPDATE_URL=off` turns the network check off (the e2e harness does).
@@ -1566,7 +1567,7 @@ Never automated, in any mode: merging PRs, force-pushes, deleting branches with 
 - Importing `~/.herdr-projects` or `~/.tsk` data.
 - herdr-projects' switcher filter, routines, SSH machines, autoproject and checkout thread kind (user, 2026-10-05). Its thread adopt is in (§9, **Adopt**), for agents running in a `tm` session; agents in other terminals are not.
 - tsk's TUI polish: multi-select, undo, search, wide stage, notices, trash.
-- An installer script (`tm update` and the Homebrew tap exist, §10.1).
+- An installer script for macOS and Linux (`tm update`, the Homebrew tap and, on Windows, `scripts/install.ps1` exist, §10.1).
 
 ---
 
