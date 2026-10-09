@@ -308,7 +308,11 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	wide.WaitFor("report new  50% 1/2", wait)
 	wide.Type("j")
 	wide.WaitFor("enter attach", wait)
-	wide.Golden("dashboard-split.txt", dashMasks...)
+	// The row is cut at the window's edge, so a wider age (10s, not 5s)
+	// moves the cut: "t-…" or "t…".
+	wide.Golden("dashboard-split.txt", append([]Mask{
+		{Name: "cut", Re: regexp.MustCompile(`<duration>  PR #7  t-?…`), Repl: "<duration>  PR #7  t-…"},
+	}, dashMasks...)...)
 	wide.Quit()
 	wide.WaitExit(wait)
 
@@ -324,10 +328,16 @@ cmd = 'printf "PR: https://github.com/o/r/pull/7\n\n## Report\nDone.\n\n## Next\
 	w.Type("i")
 	w.WaitFor("The coordinator handles these", wait)
 	w.WaitFor("T1 handed in report 1 Fix the login", wait)
-	// The inbox pads the age to 4 cells ("5s  ", "10s "), and the duration
-	// mask keeps the padding: a slow (race-built) run reads 10s where a
-	// fast one reads 5s and the masked row would be a column short.
-	w.Golden("dashboard-inbox.txt", append([]Mask{{Name: "age", Re: regexp.MustCompile(`<duration> {3,4}`), Repl: "<duration>    "}}, dashMasks...)...)
+	// The age is not deterministic, and two things follow from its width
+	// (a slow, race-built run reads 10s where a fast one reads 5s). The
+	// inbox pads it to 4 cells and the duration mask keeps that padding,
+	// so the padding is normalized. And the thread's row behind the popup
+	// is a cell longer, so its last character shows past the popup's top
+	// right corner; that is dropped.
+	w.Golden("dashboard-inbox.txt", append([]Mask{
+		{Name: "age", Re: regexp.MustCompile(`<duration> {3,4}`), Repl: "<duration>    "},
+		{Name: "behind", Re: regexp.MustCompile(`(?m)╮.+$`), Repl: "╮"},
+	}, dashMasks...)...)
 	w.Key(keyEsc)
 
 	// enter on the thread: attached, with nothing to take over.
