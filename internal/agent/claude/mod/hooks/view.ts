@@ -8,7 +8,7 @@ import type { TerminatrWatch } from '../types'
 // thread without a task, and a quiet project, show nothing.
 export function shows(w: TerminatrWatch | null): w is TerminatrWatch {
   if (!w || w.session.state === 'exited') return false
-  return w.task !== null || waiting(w) > 0
+  return w.task !== null || waiting(w) > 0 || questions(w) > 0
 }
 
 // bandShows reports whether the band above the prompt has anything to
@@ -18,16 +18,17 @@ export function bandShows(w: TerminatrWatch | null): w is TerminatrWatch {
   return shows(w) && w.task !== null
 }
 
-// questions counts the open questions a coordinator's band offers to
-// open (tm ask): 0 for a thread, an ended session, or none.
+// questions counts the open questions a coordinator's status entry
+// offers to open (tm ask, /answer): 0 for a thread, an ended session, or none.
 export function questions(w: TerminatrWatch | null): number {
   if (!w || w.session.state === 'exited' || w.session.role !== 'coordinator') return 0
   return w.questions ?? 0
 }
 
-// questionsText is "2 questions waiting".
+// questionsText is "2 questions · /answer": the status entry has no
+// button, so the slash command that opens them is named.
 export function questionsText(n: number): string {
-  return n === 1 ? '1 question waiting' : `${n} questions waiting`
+  return `${n} ${n === 1 ? 'question' : 'questions'} · /answer`
 }
 
 // answeredText is the toast after a press on Answer: what `tm ask open`
@@ -55,11 +56,14 @@ export function isPRBad(pr: string): boolean {
   return /failed|conflicts|changes requested|behind/.test(pr)
 }
 
-// counts is "2 need you · 1 in inbox", leaving out what is zero.
+// counts is "2 need you · 1 in inbox · 2 questions · /answer", leaving
+// out what is zero.
 export function counts(w: TerminatrWatch): string {
   const parts: string[] = []
   if (w.needs_you > 0) parts.push(`${w.needs_you} need${w.needs_you === 1 ? 's' : ''} you`)
   if (w.inbox > 0) parts.push(`${w.inbox} in inbox`)
+  const q = questions(w)
+  if (q > 0) parts.push(questionsText(q))
   return parts.join(' · ')
 }
 

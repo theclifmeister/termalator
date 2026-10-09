@@ -173,38 +173,40 @@ test('mobile and vscode: the band validates there too, the status entry carries 
   }
 })
 
-test('a coordinator with open questions: the band offers them, a press asks tm to open them', async ($, on) => {
+test('a coordinator with open questions: the status entry counts them, /answer asks tm to open them', async ($, on) => {
   const runs: string[][] = []
   let code = 0
   on('process.run', async (_$, e) => {
     runs.push([...e.argv])
     return { value: { exitCode: code, stdout: '', stderr: code ? 'tm ask: refused: project demo has no coordinator running; open it first\n' : '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
-  const { statuses, toasts } = await start($, on, [{ ...coordinator(1, 0), questions: 2 }])
-  // The counts stay in the status entry; the questions are the band's.
-  expect(statuses).toEqual(['1 needs you'])
-  for (const surface of ['terminal', 'desktop', 'mobile'] as const) {
-    const ui = await $.ui.mount({ plugin: 'terminatr', surface, ...band(80) })
-    expect(await ui.find({ key: 'questions' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: '2 questions waiting · ' })).toBeDefined()
-    const answer = (await ui.find({ key: 'answer' })) as { props: Record<string, unknown> } | undefined
-    expect(answer?.props.hotkey).toBe('a')
-    expect(answer?.props.label).toBe('Answer')
-    await ui.unmount()
-  }
+  const commands: string[] = []
+  on('command.register', async (_$, e) => {
+    commands.push(e.name)
+    return { value: { command: e.name } }
+  })
+  const { statuses, toasts } = await start($, on, [{ ...coordinator(1, 1), questions: 2 }], { TERMINATR_ROLE: 'coordinator' })
+  expect(statuses).toEqual(['1 needs you · 1 in inbox · 2 questions · /answer'])
+  expect(commands).toContain('answer')
+  // No band of its own for them.
   const ui = await $.ui.mount({ plugin: 'terminatr', surface: 'terminal', ...band(80) })
-  await ui.press({ key: 'answer' })
-  for (let i = 0; i < 100; i++) await Promise.resolve()
+  expect(await ui.find({ key: 'questions' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: 'engine' })).toBeDefined()
+  await ui.unmount()
+  const cmd = { command: 'answer', args: '', origin: { kind: 'composer' as const }, presentation: { isFullscreen: false, columns: 100 } }
+  await $.command.run(cmd)
   expect(runs).toEqual([['/opt/tm', 'ask', 'open']])
   expect(toasts).toEqual(['Asked: your questions open in a dialog once the coordinator is free'])
   code = 1
-  await ui.press({ key: 'answer' })
-  for (let i = 0; i < 100; i++) await Promise.resolve()
+  await $.command.run(cmd)
   expect(toasts[1]).toBe('Not asked: refused: project demo has no coordinator running; open it first')
-  await ui.unmount()
 })
 
-test('no questions band for a thread, an ended coordinator, or none open', async () => {
+test('only questions waiting: the status entry says just that', () => {
+  expect(statusText({ ...coordinator(0, 0), questions: 1 })).toBe('1 question · /answer')
+})
+
+test('no questions for a thread, an ended coordinator, or none open', async () => {
   expect(questions({ ...coordinator(0, 0), questions: 0 })).toBe(0)
   expect(questions({ ...coordinator(0, 0) })).toBe(0)
   expect(questions({ ...thread(), questions: 3 })).toBe(0)
@@ -214,8 +216,9 @@ test('no questions band for a thread, an ended coordinator, or none open', async
   expect(answeredText(3, '')).toBe('Not asked: tm ask open exited 3')
 })
 
-test('[mods] band = false: no questions band either', async ($, on) => {
-  await start($, on, [{ ...coordinator(0, 0), questions: 1 }], { TERMINATR_BAND: 'off' })
+test('[mods] band = false: no questions entry or /answer either', async ($, on) => {
+  const { statuses } = await start($, on, [{ ...coordinator(0, 0), questions: 1 }], { TERMINATR_BAND: 'off', TERMINATR_ROLE: 'coordinator' })
+  expect(statuses).toEqual([])
   const ui = await $.ui.mount({ plugin: 'terminatr', surface: 'terminal', ...band(120) })
   expect(await ui.find({ key: 'questions' })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: 'engine' })).toBeDefined()
