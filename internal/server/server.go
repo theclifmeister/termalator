@@ -95,6 +95,11 @@ type Server struct {
 	// ctxOf is each session's latest context use (setContext), by id.
 	ctxOf sync.Map
 
+	// latest is the newer release's tag and upgrade its install hint
+	// ("" for none), from the daily update check (updatecheck.go).
+	latest    atomic.Pointer[latestRelease]
+	checkedAt atomic.Int64 // unix time update.CachedLatest was last consulted
+
 	mu       sync.Mutex
 	sessions map[string]*session.Session
 	records  map[string]SessionRecord
@@ -692,7 +697,12 @@ func (s *Server) list() proto.SessionListResult {
 		sessions = append(sessions, sess)
 	}
 	s.mu.Unlock()
-	res := proto.SessionListResult{Sessions: []proto.SessionInfo{}, Alerts: s.alerts.Load()}
+	res := proto.SessionListResult{Sessions: []proto.SessionInfo{}, Alerts: s.alerts.Load(),
+		Version: version.Version, Build: s.build}
+	if l := s.latest.Load(); l != nil {
+		res.Latest, res.Upgrade = l.Tag, l.Upgrade
+	}
+	s.checkForUpdate()
 	for _, sess := range sessions {
 		res.Sessions = append(res.Sessions, s.info(sess))
 	}

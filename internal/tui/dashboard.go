@@ -16,6 +16,7 @@ import (
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/tasks"
 	"github.com/theclifmeister/terminatr/internal/thread"
+	"github.com/theclifmeister/terminatr/internal/version"
 	"github.com/theclifmeister/terminatr/internal/view"
 )
 
@@ -1145,7 +1146,7 @@ func (m *dash) frame(title string, body []string, sel int, keys string) string {
 		right = styleBad.Render("▲ server down: " + oneLine(m.data.Err))
 	default:
 		n := len(m.data.Sessions)
-		right = styleGood.Render(ic().working) + " server ok" + styleFaint.Render(fmt.Sprintf(" · %d session%s", n, map[bool]string{true: "s"}[n != 1]))
+		right = styleGood.Render(ic().working) + " server ok" + styleFaint.Render(fmt.Sprintf(" · %d session%s", n, map[bool]string{true: "s"}[n != 1])+serverVersion(m.data.Server))
 	}
 	// The app, not a project: the project's own section is headed by its
 	// slug, which may well be "terminatr".
@@ -1170,6 +1171,8 @@ func (m *dash) frame(title string, body []string, sel int, keys string) string {
 	foot = append(foot, fit(" "+keysLine(keys), m.w)+reset)
 	msg := " " + oneLine(m.msg)
 	switch {
+	case m.msg == "" && !m.busy && m.loaded && versionHint(m.data.Server) != "":
+		msg = styleFaint.Render(" " + versionHint(m.data.Server))
 	case m.busy:
 		msg = styleFaint.Render(" working…")
 	case m.msg != "" && m.msg == m.errMsg:
@@ -1187,4 +1190,33 @@ func (m *dash) frame(title string, body []string, sel int, keys string) string {
 	}
 	out = append(out, foot...)
 	return strings.Join(out, "\n")
+}
+
+// serverVersion is the header's " · v0.15.0": the server's version, and
+// this tm's too when it differs (docs/SPEC.md §4). Empty from a server
+// too old to say.
+func serverVersion(s ServerInfo) string {
+	if s.Version == "" {
+		return ""
+	}
+	out := " · " + s.Version
+	if version.Version != s.Version {
+		out += " (tm " + version.Version + ")"
+	}
+	return out
+}
+
+// versionHint is the footer's faint line while it has no message: the
+// installed tm is not the one the server runs, else a newer release is
+// out. Empty for neither.
+func versionHint(s ServerInfo) string {
+	switch {
+	case s.Build == "":
+		return ""
+	case s.Build != version.BuildID():
+		return "tm " + version.Version + " is installed, the server runs " + s.Version + ": run tm server restart in a terminal"
+	case s.Latest != "":
+		return "tm " + s.Latest + " is out: " + s.Upgrade
+	}
+	return ""
 }

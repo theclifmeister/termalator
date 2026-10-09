@@ -40,7 +40,17 @@ type Data struct {
 	// ContextHint is [ui] context_hint: the percent of its context window
 	// from which a coordinator is told to consider /clear; 0 for never.
 	ContextHint int
-	Err         string // why the poll failed, shown in the header
+	// Server is what the server says about itself: its version and
+	// build, and a newer release it found (docs/SPEC.md §4).
+	Server ServerInfo
+	Err    string // why the poll failed, shown in the header
+}
+
+// ServerInfo is the running server's identity, from session.list.
+type ServerInfo struct {
+	Version, Build string
+	// Latest is the tag of a newer release; Upgrade how to install it.
+	Latest, Upgrade string
 }
 
 // ProjectData is one project's rows.
@@ -222,6 +232,7 @@ func (s *ServerSource) Load() Data {
 		d.Err = err.Error()
 	} else {
 		d.ServerOK, d.Sessions, d.Alerts = true, res.Sessions, res.Alerts
+		d.Server = ServerInfo{Version: res.Version, Build: res.Build, Latest: res.Latest, Upgrade: res.Upgrade}
 	}
 	if cfg, err := config.Load(); err == nil {
 		d.Mods, d.ModsBand, d.ModsPane, d.ContextHint = cfg.Mods, cfg.ModsBand, cfg.ModsPane, cfg.ContextHint

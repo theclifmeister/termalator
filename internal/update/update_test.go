@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestNewer(t *testing.T) {
@@ -214,5 +215,36 @@ func TestCodesign(t *testing.T) {
 	}
 	if _, err := Codesign(bin, "XXXXXXXXXX"); err == nil {
 		t.Fatal("another team: no error")
+	}
+}
+
+func TestCachedLatest(t *testing.T) {
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		fmt.Fprint(w, `{"tag_name":"v9.9.9"}`)
+	}))
+	defer srv.Close()
+	c := &Client{API: srv.URL, Web: srv.URL, HTTP: srv.Client()}
+	path := filepath.Join(t.TempDir(), "state", "update.json")
+	now := time.Now()
+	for i, at := range []time.Time{now, now.Add(time.Hour), now.Add(CheckEvery + time.Minute)} {
+		tag, err := CachedLatest(context.Background(), c, path, at)
+		if err != nil || tag != "v9.9.9" {
+			t.Fatalf("call %d: %q, %v", i, tag, err)
+		}
+	}
+	if hits != 2 {
+		t.Errorf("%d requests, want 2 (one a day)", hits)
+	}
+	// Offline: the failed try is cached too, and the old tag stays.
+	srv.Close()
+	later := now.Add(3 * CheckEvery)
+	tag, err := CachedLatest(context.Background(), c, path, later)
+	if err == nil || tag != "v9.9.9" {
+		t.Errorf("offline: %q, %v", tag, err)
+	}
+	if _, err := CachedLatest(context.Background(), c, path, later.Add(time.Hour)); err != nil {
+		t.Errorf("a failed check is not retried within the day: %v", err)
 	}
 }

@@ -1,4 +1,4 @@
- PROJECTS                    1 │ tm dashboard                                ● server ok · 1 session
+ PROJECTS                    1 │ tm dashboard                          ● server ok · 1 session · dev
  ■ demo                    0   │ demo ──────────────────────────────────────────────────────────────
  └─ coordinator              · │  coordinator               —           not running; enter starts it
                                │  tasks: 0 need you · 1 in motion · 1 on deck

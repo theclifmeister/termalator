@@ -295,6 +295,15 @@ type SessionListResult struct {
 	// thread reported); a client rings its bell when it goes up
 	// (docs/SPEC.md §4).
 	Alerts uint64 `json:"alerts"`
+	// Version and Build are the server's own (version.Version and
+	// version.BuildID()), which a client shows and compares with its
+	// own.
+	Version string `json:"version,omitempty"`
+	Build   string `json:"build,omitempty"`
+	// Latest is the tag of a release newer than the server, found by its
+	// daily check (docs/SPEC.md §10.1); Upgrade is how to install it.
+	Latest  string `json:"latest,omitempty"`
+	Upgrade string `json:"upgrade,omitempty"`
 }
 
 // SessionIDParams name one session.
