@@ -12,6 +12,7 @@ import (
 	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/thread"
+	"github.com/theclifmeister/terminatr/internal/version"
 )
 
 // Settings (docs/SPEC.md §4, §11.2): plain labels, each with a line on
@@ -380,8 +381,14 @@ func (sv *settingsView) render(m *dash) string {
 		lines = append(lines, faintLines("Every project follows these, a new one too, unless it sets its own in its popup (a on the dashboard, prefix+a in a session); x there makes it follow these again.", w)...)
 		keys = "enter change · + - number · ↑ ↓ move · ← → tabs · esc close"
 	}
-	head := []string{sv.tabBar(), ""}
-	all := append([]int{tabHit, noHit}, hits...)
+	about := aboutLines(m, w)
+	head := append([]string{sv.tabBar()}, about...)
+	head = append(head, "")
+	all := []int{tabHit}
+	for range len(head) - 1 {
+		all = append(all, noHit)
+	}
+	all = append(all, hits...)
 	for len(all) < len(head)+len(lines) {
 		all = append(all, noHit)
 	}
@@ -394,6 +401,23 @@ func (sv *settingsView) render(m *dash) string {
 	b := box{title: "Settings", head: head, body: lines, sel: -1, hits: all, keys: keys}
 	b.scroll = sv.scroll(m.boxRows(b)-len(head), sel, len(lines))
 	return m.popup(b)
+}
+
+// aboutLines is the popup's faint About line: this tm, the server it
+// talks to (and when that is another build, which a restart fixes) and
+// whether the daily check for a newer release is on.
+func aboutLines(m *dash, w int) []string {
+	text := "About: tm " + version.Version + " · server "
+	switch s := m.data.Server; {
+	case !m.loaded || !m.data.ServerOK || s.Version == "":
+		text += "unknown"
+	case s.Build != version.BuildID():
+		text += s.Version + " (another build)"
+	default:
+		text += s.Version
+	}
+	text += " · update check " + onOff(m.data.UpdateCheck)
+	return faintLines(text, w)
 }
 
 // scroll is the open tab's first line shown, as projectView.scroll.

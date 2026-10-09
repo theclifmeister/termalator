@@ -1,6 +1,6 @@
 name: weekly
 
-# Slow checks that don't run on pull requests (docs/SPEC.md §16): fuzzing,
+# Slow checks that don't run on pull requests (docs/SPEC.md §15): fuzzing,
 # the full end-to-end suite, and the smoke set with a race-built tm. Weekly
 # (and by hand), and only when main has changed since the last successful
 # scheduled run. Real-Claude tests need a logged-in claude, which GitHub-hosted

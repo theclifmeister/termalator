@@ -1,6 +1,6 @@
 package e2e
 
-// M6 scenarios: threads (docs/SPEC.md §15 M6). The fake agent plays both
+// M6 scenarios: threads (docs/SPEC.md). The fake agent plays both
 // the coordinator and the thread under the real claude.toml; their tm
 // calls go through the server, which tells them apart by process tree.
 

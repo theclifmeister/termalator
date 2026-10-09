@@ -122,7 +122,7 @@ fuzz: $(READY)
 		done; \
 	done
 
-# End-to-end scenarios (internal/e2e, docs/SPEC.md §16.2). The harness
+# End-to-end scenarios (internal/e2e, docs/SPEC.md §15.2). The harness
 # builds tm itself; E2E_FLAGS=-update rewrites golden screens. The smoke
 # set is every scenario named TestSmoke*. E2E_RACE=1 builds tm and the
 # test with -race; the harness then fails a scenario whose tm printed
@@ -146,7 +146,7 @@ e2e-smoke: $(READY)
 e2e-smoke-race:
 	$(MAKE) e2e-smoke E2E_RACE=1
 
-# The real-Claude suite (docs/SPEC.md §16.4): build tag realclaude, the
+# The real-Claude suite (docs/SPEC.md §15.4): build tag realclaude, the
 # claude on PATH, Haiku. On demand, and on a machine with a login.
 test-claude: $(READY)
 	E2E=1 $(GO) test -tags realclaude -count=1 -timeout 30m -run '^TestReal' -v ./internal/e2e $(E2E_FLAGS)

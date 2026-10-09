@@ -51,7 +51,7 @@ func TestIconsTree(t *testing.T) {
 	d := testData()
 	for _, set := range IconChoices[1:] {
 		setIcons(set)
-		lines := sidebarLines(buildTree(d.Projects, d.Sessions, treeIn{current: "beta"}), sideDefault, 8)
+		lines := sidebarLines(buildTree(d.Projects, d.Sessions, treeIn{current: "beta"}), sideDefault, 8, nil)
 		for i, l := range lines {
 			l = ansi.Strip(l)
 			if w := ansi.StringWidth(l); w != sideDefault {
