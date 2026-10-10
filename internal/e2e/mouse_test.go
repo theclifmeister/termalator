@@ -125,7 +125,7 @@ func TestSmokeMousePopupsAndAttach(t *testing.T) {
 	w.WaitFor("show its dashboard", wait)
 	w.ClickText("show its dashboard", 1)
 	w.WaitUntil("demo's dashboard", wait, func(sc string) bool {
-		return strings.Contains(sc, " demo ──") && !strings.Contains(sc, "show its dashboard")
+		return strings.Contains(sc, " demo · active ─") && !strings.Contains(sc, "show its dashboard")
 	})
 
 	w.ClickText("a project", 28)

@@ -72,7 +72,7 @@ func TestDashboardSidebar(t *testing.T) {
 	// listed, nothing is attached.
 	m.Update(tea.MouseClickMsg{X: 5, Y: 1, Button: tea.MouseLeft})
 	if m.current != "alpha" || m.sel != "p:alpha" || len(src.opened) != 0 || m.result.Attach != "" ||
-		!strings.Contains(screen(m), " alpha ─") {
+		!strings.Contains(screen(m), " alpha · active ─") {
 		t.Fatalf("project click: current %q sel %q opened %v:\n%s", m.current, m.sel, src.opened, whole(m))
 	}
 	// Its coordinator row opens the coordinator.

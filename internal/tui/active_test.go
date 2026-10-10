@@ -117,3 +117,41 @@ func TestExpandInactiveProject(t *testing.T) {
 		t.Fatalf("lifecycle %v, opened %v: want beta activated and its coordinator opened", src.lifecycle, src.opened)
 	}
 }
+
+// TestDashboardActiveToggle: the project's section header names its
+// state, the footer says what space does, and space on the dashboard
+// toggles the project shown, asking first while sessions run.
+func TestDashboardActiveToggle(t *testing.T) {
+	d := testData()
+	off := config.Defaults
+	off.Active = false
+	d.Projects[1].Safety = &off // beta
+	src := &fakeSource{data: d}
+	m := newDash(DashOptions{Source: src, Width: 120 + sideDefault, Height: 30, State: DashState{Current: "beta"}})
+	m.layout.Details = false
+	m.setData(src.data)
+	m.sel = "p:beta"
+	out := whole(m)
+	if !strings.Contains(out, " beta · inactive ─") || !strings.Contains(out, "space activate") {
+		t.Fatalf("inactive project: header or footer missing:\n%s", out)
+	}
+	run(m, keyPress(m, "space"))
+	if !slices.Equal(src.lifecycle, []string{"beta activate"}) {
+		t.Fatalf("lifecycle %v, want beta activated", src.lifecycle)
+	}
+	if out := whole(m); !strings.Contains(out, " beta · active ─") || !strings.Contains(out, "space deactivate") {
+		t.Fatalf("after activating:\n%s", out)
+	}
+	m.current, m.sel = "alpha", "p:alpha"
+	m.rebuild()
+	on := config.Defaults
+	m.projectData("alpha").Safety = &on
+	run(m, keyPress(m, "space"))
+	if len(src.lifecycle) != 1 || !strings.Contains(whole(m), "Deactivate alpha?") {
+		t.Fatalf("alpha runs sessions: want a question, lifecycle %v:\n%s", src.lifecycle, whole(m))
+	}
+	run(m, keyPress(m, "y"))
+	if !slices.Equal(src.lifecycle, []string{"beta activate", "alpha deactivate"}) {
+		t.Errorf("lifecycle %v", src.lifecycle)
+	}
+}
