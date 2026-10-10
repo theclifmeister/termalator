@@ -228,7 +228,6 @@ func TestLaunch(t *testing.T) {
 		"-c", `mcp_servers.terminatr.env_vars=["TERMINATR_HOME"]`,
 		"-c", `mcp_servers.terminatr.default_tools_approval_mode="approve"`,
 		"--approve-for-me",
-		"-m", "gpt-6-luna",
 		"-c", hooks, "-c", state,
 	}
 	if !slices.Equal(l.Argv, fallback) {

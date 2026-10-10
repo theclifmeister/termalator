@@ -48,11 +48,11 @@ func (e *Env) FakeClaude(edit ...func(string) string) {
 // FakeAgent installs the fake agent under another name as well: the
 // claude manifest renamed, so tests can pick between two agents. It has
 // none of claude's Go code (the trust of worktrees, say).
-func (e *Env) FakeAgent(name string) {
+func (e *Env) FakeAgent(name string, edit ...func(string) string) {
 	e.T.Helper()
-	e.fakeManifest(name, func(m string) string {
+	e.fakeManifest(name, append([]func(string) string{func(m string) string {
 		return strings.Replace(m, `name = "claude"`, "name = "+strconv.Quote(name), 1)
-	})
+	}}, edit...)...)
 }
 
 // FakeCodex installs the built-in codex manifest as a user manifest

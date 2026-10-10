@@ -95,16 +95,37 @@ TERMINATR_SESSION = "{{.SessionID}}"
 TERMINATR_SOCKET = "{{.Socket}}"
 TERMINATR_BIN = "{{.TMBin}}"
 
-[[models]]
-name = "gpt-6-luna"
-about = "fast and affordable, everyday coding tasks"
-# Passed when no model is chosen: the user's own Codex default may be one
-# a ChatGPT login refuses (T158).
-default = true
+# The models (docs/SPEC.md §8.2, Models): tm ships none and asks Codex's
+# app server (JSON-RPC over stdio): account/read names the login and
+# plan, model/list the models Codex offers, from the list it keeps
+# current for the login or, logged out, the one built into the binary.
+# The list is not filtered by plan (a ChatGPT login may refuse one it
+# lists); tm learns refusals from the sessions. Checked on 0.162.0.
+[list_models]
+args = ["app-server"]
+send = [
+  '{"id":1,"method":"initialize","params":{"clientInfo":{"name":"terminatr","version":"0"}}}',
+  '{"method":"initialized"}',
+  '{"id":2,"method":"account/read","params":{}}',
+  '{"id":3,"method":"model/list","params":{}}',
+]
 
-[[models]]
-name = "gpt-5.6-terra"
-about = "older balanced model for straightforward work"
+[list_models.models]
+reply = { id = "3" }
+path = "result.data"
+name = "id"
+display = "displayName"
+description = "description"
+hidden = { hidden = "true" }
+default = { isDefault = "true" }
+older = { upgrade = "*" }
+
+[list_models.account]
+reply = { id = "2" }
+path = "result.account"
+fingerprint = ["type", "planType"]
+label = ["type", "planType"]
+logged_out = { "result.account.type" = "!*", "result.requiresOpenaiAuth" = "true" }
 
 # The guard (docs/SPEC.md §8.6): Codex's login, in ~/.codex or $CODEX_HOME.
 [guard]

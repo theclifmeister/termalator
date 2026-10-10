@@ -185,7 +185,7 @@ func TestAgentSettings(t *testing.T) {
 	}
 	env.WaitState(coord, "idle", agentWait)
 	env.Prompt(coord, "run coord-agents")
-	if got := readOut(t, out, "context"); !strings.Contains(got, "Thread agent: other (config.toml; the human's): tm thread start runs it; --agent may name another: claude") {
+	if got := readOut(t, out, "context"); !strings.Contains(got, "Thread agent: other (config.toml; the human's): tm thread start runs it; --agent may name another installed agent: claude") {
 		t.Errorf("context:\n%s", got)
 	}
 	if got := readOut(t, out, "delegate"); !strings.Contains(got, "exit 0") {

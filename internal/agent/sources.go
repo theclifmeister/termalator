@@ -223,6 +223,17 @@ type JSONLTail struct {
 	// Usage reads what the agent used from the lines that report it,
 	// for an agent without a mod to report it (POST /v1/usage).
 	Usage *TailUsage `toml:"usage"`
+	// Refused are the lines that say the agent's provider refused the
+	// session's model (docs/SPEC.md §8.2, Models): tm then marks that
+	// model refused for the user's account.
+	Refused []RefusedRule `toml:"refused"`
+}
+
+// RefusedRule matches a line saying the model was refused; TextField
+// is the agent's message, kept as the reason.
+type RefusedRule struct {
+	Match     map[string]string `toml:"match"`
+	TextField string            `toml:"text_field"` // string, or a list of {type:"text", text} blocks
 }
 
 // TailRule matches one line.
@@ -300,6 +311,10 @@ type TailLine struct {
 	Signal    Signal
 	HasSignal bool
 	Usage     *Usage
+	// Refused is the agent's message when the line says the model was
+	// refused (a RefusedRule matched), "" otherwise.
+	Refused    string
+	HasRefused bool
 }
 
 // Parse interprets one line. The first matching rule wins.
@@ -321,6 +336,12 @@ func (t *JSONLTail) Parse(line []byte) TailLine {
 	}
 	if t.Usage != nil {
 		out.Usage = t.Usage.read(obj)
+	}
+	for _, r := range t.Refused {
+		if matches(r.Match, obj) {
+			out.Refused, out.HasRefused = cmp.Or(textOf(obj, r.TextField), "the model was refused"), true
+			break
+		}
 	}
 	return out
 }

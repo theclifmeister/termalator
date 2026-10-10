@@ -49,6 +49,7 @@ func TestDoctor(t *testing.T) {
 // terminal refuses unless --yes, and --fix --yes removes them.
 func TestDoctorStaleSocket(t *testing.T) {
 	env := New(t)
+	env.FakeClaude() // an agent installed: what most users have
 	env.Start("shell")
 	env.KillServer()
 	if _, err := os.Stat(env.Socket); err != nil {

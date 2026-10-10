@@ -48,6 +48,10 @@ type AgentConfig struct {
 	// OnUsage is called (without locks held) with what the agent used,
 	// as its JSONL file reports it ([jsonl_tail.usage]).
 	OnUsage func(*Session, agent.Usage)
+	// OnRefused is called (without locks held) with the agent's message
+	// when its JSONL file says the session's model was refused
+	// ([[jsonl_tail.refused]]).
+	OnRefused func(*Session, string)
 	// PromptHold bounds how long a queued prompt may be held while the
 	// agent is idle (a prompt box with text in it, a dialog on screen)
 	// before it is resolved: sent through the agent's channel when it
@@ -557,39 +561,41 @@ func (rt *agentRT) channelGone() error {
 }
 
 // readTail reads lines appended to the JSONL file since the last call,
-// and returns the usage they report.
-func (rt *agentRT) readTail() []agent.Usage {
+// and returns the usage they report and the refusals of the model
+// they say.
+func (rt *agentRT) readTail() ([]agent.Usage, []string) {
 	t := rt.src.JSONLTail
 	if t == nil {
-		return nil
+		return nil, nil
 	}
 	rt.mu.Lock()
 	p, off := rt.tailPath, rt.tailOff
 	rt.mu.Unlock()
 	if p == "" {
-		return nil
+		return nil, nil
 	}
 	f, err := os.Open(p)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 	defer f.Close()
 	if fi, err := f.Stat(); err == nil && fi.Size() < off {
 		off = 0 // truncated or replaced
 	}
 	if _, err := f.Seek(off, io.SeekStart); err != nil {
-		return nil
+		return nil, nil
 	}
 	data, err := io.ReadAll(io.LimitReader(f, 8<<20))
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 	// Only whole lines; a partial last line is read again next time.
 	end := bytes.LastIndexByte(data, '\n')
 	if end < 0 {
-		return nil
+		return nil, nil
 	}
 	var used []agent.Usage
+	var refused []string
 	rt.mu.Lock()
 	key := rt.usageKey
 	rt.mu.Unlock()
@@ -597,6 +603,9 @@ func (rt *agentRT) readTail() []agent.Usage {
 		l := t.Parse(line)
 		if l.HasSignal {
 			rt.tr.Tail(l.Signal)
+		}
+		if l.HasRefused {
+			refused = append(refused, l.Refused)
 		}
 		u := l.Usage
 		if u == nil || (u.Key != "" && u.Key == key) {
@@ -613,7 +622,7 @@ func (rt *agentRT) readTail() []agent.Usage {
 		rt.usageKey = key
 	}
 	rt.mu.Unlock()
-	return used
+	return used, refused
 }
 
 // evalScreen runs the screen rules on the emulator's current text.
@@ -728,9 +737,15 @@ func (s *Session) runAgent(rt *agentRT) {
 			if err := rt.pollStatus(now); err != nil {
 				s.drift(rt, "status-file", err.Error())
 			}
-			for _, u := range rt.readTail() {
+			used, refused := rt.readTail()
+			for _, u := range used {
 				if rt.cfg.OnUsage != nil {
 					rt.cfg.OnUsage(s, u)
+				}
+			}
+			for _, msg := range refused {
+				if rt.cfg.OnRefused != nil {
+					rt.cfg.OnRefused(s, msg)
 				}
 			}
 			dirty := s.output.Swap(false)

@@ -63,7 +63,7 @@ var steps = map[string]bool{
 	"notify": true, "todo_create": true, "todo_update": true, "subagent": true,
 	"suggestion": true, "hook": true, "status": true, "await_key": true,
 	"cancel_silently": true, "clear": true, "compact": true, "run": true,
-	"write": true, "stop": true, "exit": true, "crash": true,
+	"write": true, "stop": true, "exit": true, "crash": true, "transcript": true,
 }
 
 // errNoScript means no script has that name.
@@ -98,10 +98,15 @@ func parseScript(data []byte) (script, error) {
 	if und := md.Undecoded(); len(und) > 0 {
 		var keys []string
 		for _, k := range und {
+			if len(k) > 2 && k[0] == "step" && k[1] == "payload" {
+				continue // a payload is free-form, nested tables too
+			}
 			keys = append(keys, k.String())
 		}
 		sort.Strings(keys)
-		return s, fmt.Errorf("unknown keys: %s", strings.Join(keys, ", "))
+		if len(keys) > 0 {
+			return s, fmt.Errorf("unknown keys: %s", strings.Join(keys, ", "))
+		}
 	}
 	for i, st := range s.Step {
 		if !steps[st.Do] {
@@ -326,6 +331,14 @@ func (a *app) runStep(ctx context.Context, st step, next *step) error {
 		return a.stream(ctx, text, ms)
 	case "sleep":
 		return sleepCtx(ctx, ms)
+	case "transcript":
+		// A line of the agent's own, as is: an API error, say.
+		entry := map[string]any{}
+		for k, v := range st.Payload {
+			entry[k] = v
+		}
+		a.transcriptAppend(entry)
+		return nil
 	case "tool", "permission":
 		return a.toolStep(ctx, st)
 	case "question":

@@ -12,6 +12,8 @@ import (
 	"github.com/theclifmeister/terminatr/internal/caller"
 	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/home"
+	"github.com/theclifmeister/terminatr/internal/models"
+	"github.com/theclifmeister/terminatr/internal/models/modelstest"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/thread"
 )
@@ -28,6 +30,8 @@ func newHarness(t *testing.T) *harness {
 	t.Setenv(home.Env, root)
 	// Never the user's server: a session's socket would win over the home.
 	t.Setenv("TERMINATR_SOCKET", "")
+	// One agent installed, whatever this machine has (modelstest).
+	modelstest.Agents(t, "claude")
 	return &harness{t: t, root: root, env: map[string]string{}, cwd: t.TempDir()}
 }
 
@@ -391,127 +395,141 @@ func TestProjectLifecycle(t *testing.T) {
 	}
 }
 
+// TestThreadModel: --model is checked against what the installed agent
+// answered (internal/models): unknown while it can't be asked or is
+// logged out, refused for a name it doesn't offer, one the account
+// refused, or one the user hid; a model the user added passes. tm
+// context lists the models as the agent described them, older versions
+// on one line.
 func TestThreadModel(t *testing.T) {
-	h := newHarness(t)
+	h := newHarness(t) // claude installed, never asked
 	h.ok(human, "project", "new", "demo")
+	h.expect(1, "models-unknown", coord, "thread", "start", "Fix it", "--model", "alpha", "--project", "demo")
+	h.expect(1, "probe failed", coord, "thread", "start", "Fix it", "--model", "alpha", "--project", "demo")
+	modelstest.Answer(t, "claude", "alpha", "beta*", "old-1~")
 	h.expect(1, "unknown-model", coord, "thread", "start", "Fix it", "--model", "gpt-9", "--project", "demo")
-	h.expect(1, "opus, sonnet, haiku", coord, "thread", "start", "Fix it", "--model", "gpt-9", "--project", "demo")
-	h.expect(1, "unknown-agent", coord, "thread", "start", "Fix it", "--agent", "nope", "--model", "opus", "--project", "demo")
+	h.expect(1, "alpha, beta, old-1", coord, "thread", "start", "Fix it", "--model", "gpt-9", "--project", "demo")
+	h.expect(1, "agent-not-installed", coord, "thread", "start", "Fix it", "--agent", "codex", "--model", "alpha", "--project", "demo")
+	h.expect(1, "unknown-agent", coord, "thread", "start", "Fix it", "--agent", "nope", "--model", "alpha", "--project", "demo")
 	h.ok(human, "task", "add", "Fix it", "--project", "demo")
 	h.expect(1, "unknown-model", coord, "task", "delegate", "T1", "--model", "gpt-9", "--project", "demo")
-	if err := checkModel(nil, "claude", "haiku", nil); err != nil {
-		t.Fatal(err)
-	}
-	if err := checkModel(nil, "claude", "", nil); err != nil {
-		t.Fatal(err)
-	}
-	// A user manifest can change the list.
-	os.MkdirAll(filepath.Join(h.root, "agents"), 0o700)
-	b, _ := agentBuiltin("claude")
-	b = strings.Replace(b, "name = \"haiku\"", "name = \"tiny\"", 1)
-	os.WriteFile(filepath.Join(h.root, "agents", "claude.toml"), []byte(b), 0o600)
-	if err := checkModel(nil, "claude", "tiny", nil); err != nil {
-		t.Fatal(err)
-	}
-	if err := checkModel(nil, "claude", "haiku", nil); err == nil {
-		t.Fatal("haiku still allowed")
+	for _, m := range []string{"alpha", "old-1", ""} {
+		if err := checkModel(nil, "claude", m, nil); err != nil {
+			t.Fatalf("%q: %v", m, err)
+		}
 	}
 	out := h.ok(coord, "context", "--project", "demo")
-	if !strings.Contains(out, "Models of claude") || !strings.Contains(out, "  tiny: fastest, cheapest") {
-		t.Fatalf("context:\n%s", out)
-	}
-	if !strings.Contains(out, "gpt-6-luna: fast and affordable, everyday coding tasks (default)") {
-		t.Fatalf("context lacks codex's default:\n%s", out)
-	}
-}
-
-// TestThreadModelAllowList: the user's models setting narrows what a
-// thread may be started with and what tm context lists.
-func TestThreadModelAllowList(t *testing.T) {
-	h := newHarness(t)
-	h.ok(human, "project", "new", "demo")
-	h.ok(human, "task", "add", "Fix it", "--project", "demo")
-	cfg := filepath.Join(h.root, "config.toml")
-	if err := os.WriteFile(cfg, []byte("[projects.demo]\nmodels = [\"opus\", \"sonnet\"]\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	h.expect(1, "model-not-allowed", coord, "thread", "start", "Fix it", "--model", "haiku", "--project", "demo")
-	h.expect(1, "allowed: opus, sonnet", coord, "task", "delegate", "T1", "--model", "haiku", "--project", "demo")
-	h.expect(1, "unknown-model", coord, "thread", "start", "Fix it", "--model", "gpt-9", "--project", "demo")
-	out := h.ok(coord, "context", "--project", "demo")
-	if !strings.Contains(out, "  opus: ") || !strings.Contains(out, "  sonnet: ") || strings.Contains(out, "  haiku: ") ||
-		!strings.Contains(out, "The user limits the models to: opus, sonnet") {
-		t.Fatalf("context:\n%s", out)
-	}
-	if err := checkModel(nil, "claude", "opus", []string{"opus"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := checkModel(nil, "claude", "", []string{"opus"}); err != nil {
-		t.Fatal("the default needs no --model")
-	}
-}
-
-// TestThreadModelCatalog: the user's catalog in config.toml replaces
-// the manifest's models for --model and tm context, its default is
-// marked, and an allowed model it no longer lists is shown stale.
-func TestThreadModelCatalog(t *testing.T) {
-	h := newHarness(t)
-	h.ok(human, "project", "new", "demo")
-	body := "[agents.claude]\nmodels = [{ name = \"opus-6\", about = \"newest\" }, { name = \"sonnet\", about = \"balanced\" }]\ndefault_model = \"opus-6\"\n\n[projects.demo]\nmodels = [\"opus-6\", \"haiku\"]\n"
-	if err := os.WriteFile(filepath.Join(h.root, "config.toml"), []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := config.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := checkModel(cfg, "claude", "opus-6", nil); err != nil {
-		t.Fatal(err)
-	}
-	if err := checkModel(cfg, "claude", "haiku", nil); err == nil || !strings.Contains(err.Error(), "opus-6, sonnet") {
-		t.Fatalf("haiku, removed: %v", err)
-	}
-	if err := checkModel(cfg, "claude", "sonnet", []string{"opus-6", "haiku"}); err == nil || !strings.Contains(err.Error(), "allowed: opus-6 (") {
-		t.Fatalf("sonnet, not allowed: %v", err)
-	}
-	h.expect(1, "unknown-model", coord, "thread", "start", "Fix it", "--model", "haiku", "--project", "demo")
-	out := h.ok(coord, "context", "--project", "demo")
-	for _, want := range []string{"Models of claude (the user's list in config.toml;", "  opus-6: newest (default)", "stale: haiku is allowed but no agent lists it"} {
+	for _, want := range []string{"Thread agent: claude (the only agent installed)", "Models of claude (tm thread start --model; without it, claude's own default):",
+		"  alpha: about alpha", "  also (older versions): old-1"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("context lacks %q:\n%s", want, out)
 		}
 	}
-	if strings.Contains(out, "  haiku: ") || strings.Contains(out, "  sonnet: ") {
+	if strings.Contains(out, "codex") {
+		t.Fatalf("context names an agent that isn't installed:\n%s", out)
+	}
+	// The user's settings: a hidden model is refused, an added one and
+	// the default pass, and tm context says so.
+	cfg := filepath.Join(h.root, "config.toml")
+	os.WriteFile(cfg, []byte("[agents.claude]\nhide = [\"beta\"]\nadd = [\"mine-1\"]\ndefault_model = \"alpha\"\n"), 0o600)
+	h.expect(1, "unknown-model", coord, "thread", "start", "Fix it", "--model", "beta", "--project", "demo")
+	c, _ := config.Load()
+	if err := checkModel(c, "claude", "mine-1", nil); err != nil {
+		t.Fatal(err)
+	}
+	out = h.ok(coord, "context", "--project", "demo")
+	for _, want := range []string{"without it, alpha, the user's default", "  mine-1 (added by the user; claude doesn't list it)"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("context lacks %q:\n%s", want, out)
+		}
+	}
+	// A refusal the sessions learnt.
+	if err := models.MarkRefused("claude", "alpha", "There's an issue with the selected model"); err != nil {
+		t.Fatal(err)
+	}
+	h.expect(1, "model-refused", coord, "thread", "start", "Fix it", "--model", "alpha", "--project", "demo")
+	if out := h.ok(coord, "context", "--project", "demo"); !strings.Contains(out, "refused for the user's account: alpha") {
+		t.Fatalf("context:\n%s", out)
+	}
+	// Logged out: no model may be chosen.
+	modelstest.LoggedOut(t, "claude")
+	h.expect(1, "logged out of claude", coord, "thread", "start", "Fix it", "--model", "mine-1", "--project", "demo")
+	if out := h.ok(coord, "context", "--project", "demo"); !strings.Contains(out, "Models of claude: unknown (logged out of claude)") {
 		t.Fatalf("context:\n%s", out)
 	}
 }
 
-// TestThreadAgentSetting: tm thread start runs the user's thread_agent
-// unless --agent names another, refuses one tm doesn't know, and tm
-// context names the agents the coordinator may start.
+// TestThreadModelScope: the project's models setting narrows what a
+// thread may be started with and what tm context lists, and a name no
+// agent offers now is shown stale.
+func TestThreadModelScope(t *testing.T) {
+	h := newHarness(t)
+	h.ok(human, "project", "new", "demo")
+	h.ok(human, "task", "add", "Fix it", "--project", "demo")
+	modelstest.Answer(t, "claude", "alpha", "beta", "gamma")
+	cfg := filepath.Join(h.root, "config.toml")
+	if err := os.WriteFile(cfg, []byte("[projects.demo]\nmodels = [\"alpha\", \"beta\", \"zeta\"]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.expect(1, "model-not-allowed", coord, "thread", "start", "Fix it", "--model", "gamma", "--project", "demo")
+	h.expect(1, "allowed for claude: alpha, beta", coord, "task", "delegate", "T1", "--model", "gamma", "--project", "demo")
+	h.expect(1, "unknown-model", coord, "thread", "start", "Fix it", "--model", "zeta", "--project", "demo")
+	out := h.ok(coord, "context", "--project", "demo")
+	if !strings.Contains(out, "  alpha: ") || !strings.Contains(out, "  beta: ") || strings.Contains(out, "  gamma: ") ||
+		!strings.Contains(out, "The user limits this project's models to: alpha, beta, zeta") ||
+		!strings.Contains(out, "stale: zeta is allowed but no installed agent offers it now") {
+		t.Fatalf("context:\n%s", out)
+	}
+	if err := checkModel(nil, "claude", "", []string{"alpha"}); err != nil {
+		t.Fatal("the default needs no --model")
+	}
+}
+
+// TestThreadAgentSetting: tm thread start runs the user's thread_agent,
+// else the one installed agent, unless --agent names another; it
+// refuses before anything is created when the agent isn't installed,
+// none is, or several are and none is chosen, and tm context says the
+// same.
 func TestThreadAgentSetting(t *testing.T) {
 	h := newHarness(t)
 	h.ok(human, "project", "new", "demo")
 	cfg := filepath.Join(h.root, "config.toml")
-	if err := os.WriteFile(cfg, []byte("[projects.demo]\nthread_agent = \"pi\"\n"), 0o600); err != nil {
-		t.Fatal(err)
+	write := func(body string) {
+		if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
-	h.expect(1, "the user's settings name thread agent \"pi\"", coord, "thread", "start", "Fix it", "--project", "demo")
-	if out := h.ok(coord, "context", "--project", "demo"); !strings.Contains(out, "Thread agent: pi (config.toml; the human's), which tm doesn't know") {
+	write("[projects.demo]\nthread_agent = \"pi\"\n")
+	h.expect(1, "unknown-agent", coord, "thread", "start", "Fix it", "--project", "demo")
+	if out := h.ok(coord, "context", "--project", "demo"); !strings.Contains(out, "Thread agent: the thread agent is \"pi\", which tm doesn't know") {
 		t.Fatalf("context:\n%s", out)
 	}
-	// A second agent: claude's manifest under another name.
-	os.MkdirAll(filepath.Join(h.root, "agents"), 0o700)
-	b, _ := agentBuiltin("claude")
-	b = strings.Replace(b, "name = \"claude\"", "name = \"pi\"", 1)
-	os.WriteFile(filepath.Join(h.root, "agents", "pi.toml"), []byte(b), 0o600)
-	if err := checkAgent("pi", true); err != nil {
-		t.Fatal(err)
+	write("[projects.demo]\nthread_agent = \"codex\"\n")
+	h.expect(1, "agent-not-installed", coord, "thread", "start", "Fix it", "--project", "demo")
+	h.expect(1, "codex isn't installed (codex not found on PATH); installed: claude", coord, "thread", "start", "Fix it", "--project", "demo")
+	write("")
+	modelstest.Agents(t, "claude", "codex")
+	h.expect(1, "agent-not-chosen", coord, "thread", "start", "Fix it", "--project", "demo")
+	h.expect(1, "several agents are installed (claude, codex)", coord, "thread", "start", "Fix it", "--project", "demo")
+	if out := h.ok(coord, "context", "--project", "demo"); !strings.Contains(out, "Thread agent: several agents are installed") {
+		t.Fatalf("context:\n%s", out)
 	}
-	if out := h.ok(coord, "context", "--project", "demo"); !strings.Contains(out, "Thread agent: pi (config.toml; the human's): tm thread start runs it; --agent may name another: claude") {
+	write("[defaults]\nthread_agent = \"codex\"\n")
+	if out := h.ok(coord, "context", "--project", "demo"); !strings.Contains(out, "Thread agent: codex (config.toml; the human's): tm thread start runs it; --agent may name another installed agent: claude") {
 		t.Fatalf("context:\n%s", out)
 	}
 	h.expect(1, "no agent \"nope\" (tm agent list)", coord, "thread", "start", "Fix it", "--agent", "nope", "--project", "demo")
+	modelstest.Agents(t, "codex")
+	h.expect(1, "agent-not-installed", coord, "thread", "start", "Fix it", "--agent", "claude", "--project", "demo")
+	write("")
+	modelstest.Agents(t)
+	h.expect(1, "no-agent", coord, "thread", "start", "Fix it", "--project", "demo")
+	if out := h.ok(coord, "context", "--project", "demo"); !strings.Contains(out, "Agents: none installed") {
+		t.Fatalf("context:\n%s", out)
+	}
+	if out := h.ok(human, "project", "new", "other"); !strings.Contains(out, "no agent is installed") {
+		t.Fatalf("project new:\n%s", out)
+	}
 }
 
 func agentBuiltin(name string) (string, bool) {

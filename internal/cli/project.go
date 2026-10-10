@@ -12,6 +12,7 @@ import (
 
 	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/caller"
+	"github.com/theclifmeister/terminatr/internal/models"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/rename"
@@ -89,6 +90,9 @@ func projectNew(e *Env, args []string) error {
 		return e.printJSON(map[string]any{"slug": p.Slug, "dir": p.Dir, "goal": p.Meta.Goal, "repos": p.Meta.Repos})
 	}
 	fmt.Fprintf(e.Stdout, "created project %s at %s\n", p.Slug, p.Dir)
+	if reg := models.Registry(); reg != nil && len(models.Installed(reg, nil)) == 0 {
+		fmt.Fprintf(e.Stdout, "no agent is installed: the project can't run a coordinator or threads until one is (tm doctor)\n")
+	}
 	return nil
 }
 

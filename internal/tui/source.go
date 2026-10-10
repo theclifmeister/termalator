@@ -2,6 +2,7 @@ package tui
 
 import (
 	"cmp"
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -11,6 +12,7 @@ import (
 	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/caller"
 	"github.com/theclifmeister/terminatr/internal/config"
+	"github.com/theclifmeister/terminatr/internal/models"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/server"
@@ -46,6 +48,9 @@ type Data struct {
 	// build, and a newer release it found (docs/SPEC.md §4).
 	Server ServerInfo
 	Err    string // why the poll failed, shown in the header
+	// NoAgent: no agent tm knows is installed, so nothing can start;
+	// the header says so (docs/SPEC.md §8.2).
+	NoAgent bool
 }
 
 // ServerInfo is the running server's identity, from session.list.
@@ -118,20 +123,26 @@ type Source interface {
 	SetSetting(table, key string, value any) error
 	// SetRepo adds or removes one of a project's repositories.
 	SetRepo(slug, path string, add bool) error
-	// Agents lists the agents tm can run.
+	// Agents lists the installed agents: the ones tm can run.
 	Agents() []string
 	// ModsNote names the agents the Mods setting is for and the version
 	// each needs ("Claude Code 2.1.289").
 	ModsNote() string
-	// Catalogs are the agents' models catalogs, by agent name: the
-	// manifests' [[models]] and the user's settings over them
+	// Catalogs are the installed agents' models: what each agent said,
+	// with the user's settings and the learnt refusals over it
 	// (docs/SPEC.md §8.2, §11.2), for the General Models page and the
-	// choices of the Thread models setting.
+	// choices of the Thread models and Coordinator model settings.
 	Catalogs() []Catalog
-	// SetModels writes an agent's models catalog and default
-	// (config.toml [agents.<name>]); AgentSettings{} resets it to the
-	// manifest's. It is refused when tm runs inside an agent.
+	// SetModels writes an agent's model settings (config.toml
+	// [agents.<name>]: hide, add, default_model); AgentSettings{} resets
+	// it to what the agent lists. It is refused when tm runs inside an
+	// agent.
 	SetModels(agentName string, s config.AgentSettings) error
+	// RefreshModels asks the installed agent for its models again.
+	RefreshModels(agentName string) error
+	// Unrefuse forgets that the user's account refused one of the
+	// agent's models. It is refused when tm runs inside an agent.
+	Unrefuse(agentName, model string) error
 	// Ask asks the project's coordinator to act on task id: an inbox
 	// item of kind (project.KindDelegate, KindAccept or KindSendBack,
 	// with the user's note) that is the user's word (docs/SPEC.md §4).
@@ -241,6 +252,9 @@ func (s *ServerSource) Load() Data {
 		if all, err := cfg.AllProjects(); err == nil {
 			d.Defaults = &all
 		}
+	}
+	if reg, _ := agent.Load(s.Paths.AgentsDir()); reg != nil {
+		d.NoAgent = len(models.Installed(reg, nil)) == 0
 	}
 	list, err := project.List()
 	if err != nil && d.Err == "" {
@@ -547,10 +561,7 @@ func (s *ServerSource) SetRemote(slug string, on bool) (string, error) {
 
 func (s *ServerSource) Agents() []string {
 	reg, _ := agent.Load(s.Paths.AgentsDir())
-	if reg == nil {
-		return nil
-	}
-	return reg.Names()
+	return models.Installed(reg, nil)
 }
 
 func (s *ServerSource) ModsNote() string {
@@ -564,12 +575,7 @@ func (s *ServerSource) Catalogs() []Catalog {
 		return nil
 	}
 	cfg, _ := config.Load()
-	var out []Catalog
-	for _, n := range reg.Names() {
-		a, _ := reg.Get(n)
-		out = append(out, Catalog{Agent: n, Manifest: agent.ModelsOf(a), Settings: cfg.Agent(n)})
-	}
-	return out
+	return models.Catalogs(reg, cfg, models.Installed(reg, nil))
 }
 
 func (s *ServerSource) SetModels(agentName string, set config.AgentSettings) error {
@@ -579,25 +585,38 @@ func (s *ServerSource) SetModels(agentName string, set config.AgentSettings) err
 	return config.SetAgentModels(agentName, set)
 }
 
-// Catalog is one agent's models catalog: its manifest's [[models]] and
-// the user's config.toml settings over them.
-type Catalog struct {
-	Agent    string
-	Manifest []agent.Model
-	Settings config.AgentSettings
+func (s *ServerSource) RefreshModels(agentName string) error {
+	reg, _ := agent.Load(s.Paths.AgentsDir())
+	if reg == nil {
+		return errors.New("the agent manifests don't load")
+	}
+	a, ok := reg.Get(agentName)
+	m := agent.ManifestOf(a)
+	if !ok || m == nil {
+		return fmt.Errorf("no agent %s", agentName)
+	}
+	_, err := models.Refresh(context.Background(), m, nil)
+	return err
 }
 
-// Models is the catalog as threads see it (agent.MergeModels).
-func (c Catalog) Models() []agent.Model { return agent.MergeModels(c.Manifest, c.Settings) }
+func (s *ServerSource) Unrefuse(agentName, model string) error {
+	if s.Caller.IsAgent() {
+		return errHumanOnly
+	}
+	return models.Unrefuse(agentName, model)
+}
+
+// Catalog is one installed agent's models (models.Catalog).
+type Catalog = models.Catalog
 
 // catalogNames lists the models the catalogs offer, each name once: the
 // choices of the Thread models setting.
 func catalogNames(cats []Catalog) []string {
 	var out []string
 	for _, c := range cats {
-		for _, m := range c.Models() {
-			if !slices.Contains(out, m.Name) {
-				out = append(out, m.Name)
+		for _, n := range c.Names() {
+			if !slices.Contains(out, n) {
+				out = append(out, n)
 			}
 		}
 	}
@@ -622,19 +641,52 @@ func OpenCoordinator(call func(method string, params, result any) error, slug, a
 			return s.ID, nil
 		}
 	}
-	// The project's agent and remote control settings; a broken config.toml shows
-	// in the settings popup, it doesn't keep the coordinator from starting.
+	// The project's agent, model and remote control settings; a broken
+	// config.toml shows in the settings popup, it doesn't keep the
+	// coordinator from starting.
 	safety := config.Defaults
-	if cfg, err := config.Load(); err == nil {
+	cfg, err := config.Load()
+	if err == nil {
 		safety, _ = cfg.Safety(slug)
+	}
+	name, model, err := coordinatorAgent(cfg, agentName, safety)
+	if err != nil {
+		return "", err
 	}
 	var started proto.SessionStartResult
 	err = call(proto.MethodSessionStart, proto.SessionStartParams{
-		Agent: cmp.Or(agentName, safety.CoordinatorAgent), Role: proto.RoleCoordinator, Project: slug, Cwd: p.Dir,
+		Agent: name, Model: model, Role: proto.RoleCoordinator, Project: slug, Cwd: p.Dir,
 		Cols: uint16(cols), Rows: uint16(rows), Kickoff: coordinatorKickoff,
 		RemoteControl: safety.CoordinatorRemoteControl}, &started)
 	if err != nil {
 		return "", err
 	}
 	return started.Session.ID, nil
+}
+
+// coordinatorAgent is the agent and model a new coordinator runs: the
+// agent named (tm project open --agent), else the project's
+// coordinator_agent, else the one installed agent (docs/SPEC.md §8.2,
+// §11.2); and the project's coordinator_model while that agent offers
+// it in the project's scope, else none (the agent's own default, or the
+// user's default_model, which the server passes). An agent that isn't
+// installed, none, or several with none chosen are refused
+// (models.Error: the dashboard asks for CodeNotChosen).
+func coordinatorAgent(cfg *config.Config, flag string, safety config.Safety) (name, model string, err error) {
+	reg := models.Registry()
+	if reg == nil {
+		return "", "", errors.New("no home directory for the agent manifests")
+	}
+	installed := models.Installed(reg, nil)
+	setting := cmp.Or(flag, safety.CoordinatorAgent)
+	name, _, err = models.Resolve(reg, installed, setting, "coordinator agent")
+	if err != nil {
+		return "", "", err
+	}
+	if safety.CoordinatorModel != "" {
+		if c, ok := models.CatalogOf(reg, cfg, name, installed); ok && c.Check(safety.CoordinatorModel, safety.Models) == nil {
+			model = safety.CoordinatorModel
+		}
+	}
+	return name, model, nil
 }

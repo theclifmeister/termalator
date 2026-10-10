@@ -82,6 +82,7 @@ func saved(w *Window, desc string, cond func(screen string) bool) string {
 // session, on this console only; no screen names the settings file.
 func TestSmokeProjectPopup(t *testing.T) {
 	env := New(t)
+	env.FakeClaude() // an agent installed: what most users have
 	slug, _ := newProject(env, "demo")
 	repo := env.Workdir()
 	env.MustCLI("project", "repo", "add", repo, "--project", slug)

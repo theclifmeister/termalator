@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"fmt"
 	"regexp"
 	"slices"
@@ -629,23 +630,50 @@ func safetySettings(slug string) []setting {
 	// (tm agent list), so the file only ever names a known one.
 	agentRow := func(label, help, key string, get func(config.Safety) string, put func(*config.Safety, string), msg string) setting {
 		return setting{label: label, help: help,
-			value: func(m *dash) string { return get(safety(m)) },
+			value: func(m *dash) string { return agentWords(get(safety(m)), m.src.Agents()) },
 			change: func(m *dash) tea.Cmd {
-				names := m.src.Agents()
+				names := m.src.Agents() // the installed ones
 				cur := get(safety(m))
-				if len(names) == 0 || len(names) == 1 && names[0] == cur {
-					m.msg = "tm knows one agent; add others to choose between them (tm agent)"
+				switch {
+				case len(names) == 0:
+					m.msg = "no agent is installed: install one tm knows (tm agent list), then tm doctor"
+					return nil
+				case len(names) == 1 && names[0] == cur:
+					m.msg = "only " + cur + " is installed; install another to choose between them (tm agent list)"
 					return nil
 				}
 				next := names[(slices.Index(names, cur)+1)%len(names)]
 				return set(m, key, next, msg+next, func(s *config.Safety) { put(s, next) })
 			},
 			note: func(m *dash) []string {
-				if names := m.src.Agents(); len(names) > 0 && !slices.Contains(names, get(safety(m))) {
-					return []string{styleWarn.Render("tm knows no agent " + get(safety(m)) + " (tm agent list); enter picks one it knows")}
+				if cur, names := get(safety(m)), m.src.Agents(); cur != "" && !slices.Contains(names, cur) {
+					return []string{styleWarn.Render(cur + " isn't installed: nothing starts with it; enter picks an installed agent")}
 				}
 				return nil
 			}}
+	}
+	// coordModels are the models the project's coordinator may run: its
+	// agent's, in the project's scope.
+	coordModels := func(m *dash) (string, []string, string) {
+		s := safety(m)
+		name, why := resolvedAgent(s.CoordinatorAgent, m.src.Agents())
+		if name == "" {
+			return "", nil, why
+		}
+		for _, c := range m.src.Catalogs() {
+			if c.Agent != name {
+				continue
+			}
+			if !c.Known {
+				return name, nil, name + "'s models are unknown (" + c.Reason + ")"
+			}
+			var out []string
+			for _, x := range c.InScope(s.Models) {
+				out = append(out, x.Name)
+			}
+			return name, out, ""
+		}
+		return name, nil, name + " isn't installed"
 	}
 	yoloQ := "Turn yolo mode on for " + slug + "? Threads started from now on skip the agent's permission prompts (the file rules and the sandbox still hold)."
 	rows := []setting{
@@ -752,7 +780,7 @@ func safetySettings(slug string) []setting {
 			"thread_agent", func(s config.Safety) string { return s.ThreadAgent }, func(s *config.Safety, a string) { s.ThreadAgent = a }, "new threads "+ofWho+" run "),
 		agentRow("Coordinator agent", "The agent a new coordinator runs; a running one keeps its agent until it is started anew. Enter picks the next one tm knows.",
 			"coordinator_agent", func(s config.Safety) string { return s.CoordinatorAgent }, func(s *config.Safety, a string) { s.CoordinatorAgent = a }, "new coordinators "+ofWho+" run "),
-		{label: "Thread models", help: "The models the coordinator may pick for a thread. Enter lists them to allow or leave out; with none left out it chooses from all. A model it may not pick is refused (haiku has no auto mode, so its threads stop at every permission prompt).",
+		{label: "Thread models", help: "The models the coordinator may pick for a thread, from the ones the installed agents offer (General: Models). Enter lists them to allow or leave out; with none left out it chooses from all, new ones too. A model it may not pick is refused.",
 			value: func(m *dash) string { return modelWords(safety(m).Models) },
 			change: func(m *dash) tea.Cmd {
 				names := catalogNames(m.src.Catalogs())
@@ -768,6 +796,41 @@ func safetySettings(slug string) []setting {
 						}
 						return set(m, "models", list, "the coordinator may pick "+strings.Join(list, ", ")+" "+forWho, func(s *config.Safety) { s.Models = list })
 					}})
+				return nil
+			}},
+		{label: "Coordinator model", help: "The model a new coordinator runs, from its agent's models in Thread models; a running one keeps its model until it is started anew. Enter picks the next one; the agent's default is the first.",
+			value: func(m *dash) string {
+				if cur := safety(m).CoordinatorModel; cur != "" {
+					return cur
+				}
+				return "agent's default"
+			},
+			change: func(m *dash) tea.Cmd {
+				name, list, why := coordModels(m)
+				if len(list) == 0 {
+					m.msg = cmp.Or(why, "the coordinator's agent offers no models here") + ": the coordinator runs its agent's default"
+					return nil
+				}
+				choices := append([]string{""}, list...)
+				next := choices[(slices.Index(choices, safety(m).CoordinatorModel)+1)%len(choices)]
+				msg := "new coordinators " + ofWho + " run " + next
+				if next == "" {
+					msg = "new coordinators " + ofWho + " run " + name + "'s default"
+				}
+				return set(m, "coordinator_model", next, msg, func(s *config.Safety) { s.CoordinatorModel = next })
+			},
+			note: func(m *dash) []string {
+				cur := safety(m).CoordinatorModel
+				if cur == "" {
+					return nil
+				}
+				name, list, why := coordModels(m)
+				switch {
+				case why != "":
+					return []string{styleWarn.Render(why + ": the coordinator runs its agent's default")}
+				case !slices.Contains(list, cur):
+					return []string{styleWarn.Render(name + " doesn't offer " + cur + " in this project's models now: the coordinator runs " + name + "'s default")}
+				}
 				return nil
 			}},
 	}
@@ -804,7 +867,7 @@ func safetySettings(slug string) []setting {
 		}})
 	rows = scope(rows,
 		[][]string{{"start_threads"}, {"yolo"}, {"coordinator_approves"}, {"parallel_threads"}, {"auto_close", "auto_close_days"},
-			{"complete_tasks"}, {"pr_followup"}, {"coordinator_remote_control"}, {"auto_clear"}, {"coordinator_merges"}, {"fast_forward_checkout"}, {"thread_agent"}, {"coordinator_agent"}, {"models"}, config.ArchiveKeys},
+			{"complete_tasks"}, {"pr_followup"}, {"coordinator_remote_control"}, {"auto_clear"}, {"coordinator_merges"}, {"fast_forward_checkout"}, {"thread_agent"}, {"coordinator_agent"}, {"models"}, {"coordinator_model"}, config.ArchiveKeys},
 		[]func(config.Safety) string{startWords, onOffOf(func(s config.Safety) bool { return s.Yolo }),
 			onOffOf(func(s config.Safety) bool { return s.CoordinatorApproves }),
 			func(s config.Safety) string { return fmt.Sprint(s.ParallelThreads) }, closeWords,
@@ -814,8 +877,8 @@ func safetySettings(slug string) []setting {
 			onOffOf(func(s config.Safety) bool { return s.AutoClear }),
 			onOffOf(func(s config.Safety) bool { return s.CoordinatorMerges }),
 			onOffOf(func(s config.Safety) bool { return s.FastForwardCheckout }),
-			func(s config.Safety) string { return s.ThreadAgent }, func(s config.Safety) string { return s.CoordinatorAgent },
-			func(s config.Safety) string { return modelWords(s.Models) }, historyWords})
+			func(s config.Safety) string { return cmp.Or(s.ThreadAgent, "auto") }, func(s config.Safety) string { return cmp.Or(s.CoordinatorAgent, "auto") },
+			func(s config.Safety) string { return modelWords(s.Models) }, func(s config.Safety) string { return cmp.Or(s.CoordinatorModel, "agent's default") }, historyWords})
 	if all {
 		return rows
 	}
@@ -940,6 +1003,35 @@ func nextStep(steps []int, cur int) int {
 }
 
 // modelWords is the models setting as the popup shows it.
+// agentWords is an agent setting's value: the agent it names, or, unset,
+// the one installed agent (auto), or that none or several are installed.
+func agentWords(setting string, installed []string) string {
+	if setting != "" {
+		return setting
+	}
+	name, why := resolvedAgent(setting, installed)
+	if name != "" {
+		return name + " (auto)"
+	}
+	return why
+}
+
+// resolvedAgent is the agent an unset or set agent setting runs, or why
+// there is none (models.Resolve, in words).
+func resolvedAgent(setting string, installed []string) (string, string) {
+	switch {
+	case setting != "" && slices.Contains(installed, setting):
+		return setting, ""
+	case setting != "":
+		return "", setting + " isn't installed"
+	case len(installed) == 1:
+		return installed[0], ""
+	case len(installed) == 0:
+		return "", "no agent installed"
+	}
+	return "", "not chosen (" + strings.Join(installed, ", ") + ")"
+}
+
 func modelWords(allow []string) string {
 	if len(allow) == 0 {
 		return "any"

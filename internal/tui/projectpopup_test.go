@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/theclifmeister/terminatr/internal/config"
+	"github.com/theclifmeister/terminatr/internal/models/modelstest"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/tasks"
@@ -1167,6 +1168,7 @@ func TestSettingsKeysQueueDuringSave(t *testing.T) {
 // line once every model is allowed again.
 func TestModelsSetting(t *testing.T) {
 	src, m := popupData(t)
+	modelstest.Answer(t, "claude", "alpha", "beta", "gamma")
 	m.Update(tea.WindowSizeMsg{Width: 160, Height: 60})
 	keyPress(m, "a")
 	keyPress(m, "4")
@@ -1185,23 +1187,23 @@ func TestModelsSetting(t *testing.T) {
 	}
 	keyPress(m, "j")
 	keyPress(m, "j")
-	run(m, keyPress(m, "enter")) // haiku out
-	if n := len(src.settings); n != 1 || src.settings[0] != "projects.alpha.models=[opus sonnet]" {
+	run(m, keyPress(m, "enter")) // gamma out
+	if n := len(src.settings); n != 1 || src.settings[0] != "projects.alpha.models=[alpha beta]" {
 		t.Fatalf("settings %v", src.settings)
 	}
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s, _ := cfg.Safety("alpha"); !slices.Equal(s.Models, []string{"opus", "sonnet"}) {
+	if s, _ := cfg.Safety("alpha"); !slices.Equal(s.Models, []string{"alpha", "beta"}) {
 		t.Fatalf("saved %v", s.Models)
 	}
 	keyPress(m, "k")
-	run(m, keyPress(m, "enter")) // sonnet out
+	run(m, keyPress(m, "enter")) // beta out
 	keyPress(m, "k")
 	run(m, keyPress(m, "enter")) // the last one stays
 	mv := m.top().(*modelsView)
-	if mv.err == "" || !slices.Equal(mv.allow, []string{"opus"}) {
+	if mv.err == "" || !slices.Equal(mv.allow, []string{"alpha"}) {
 		t.Fatalf("last model left out: %q %v", mv.err, mv.allow)
 	}
 }
@@ -1491,9 +1493,10 @@ func agentsOf(t *testing.T, slug string) (thread, coordinator string) {
 }
 
 // TestAgentSettings: the thread and coordinator agent rows step through
-// the agents tm knows and save to the project's table, or all
-// projects'; the project's info names the coordinator agent a new one
-// runs, and an agent tm doesn't know is flagged.
+// the installed agents and save to the project's table, or all
+// projects'; unset with several installed they say none is chosen (the
+// project asks when it opens); the project's info names the coordinator
+// agent a new one runs, and an agent that isn't installed is flagged.
 func TestAgentSettings(t *testing.T) {
 	src, m := popupData(t)
 	src.data.Sessions = slices.DeleteFunc(src.data.Sessions, func(s proto.SessionInfo) bool {
@@ -1508,21 +1511,25 @@ func TestAgentSettings(t *testing.T) {
 		return i
 	}
 	keyPress(m, "a")
-	if out := screen(m); !strings.Contains(lineWith(out, "Coordinator"), "claude · not running") {
+	if out := screen(m); !strings.Contains(lineWith(out, "Coordinator"), "not chosen (claude, pi) · not running; enter on the project asks which agent") {
 		t.Fatalf("info's coordinator:\n%s", out)
 	}
 	keyPress(m, "4")
 	for range at(projectSettings("alpha"), "Thread agent") {
 		keyPress(m, "down")
 	}
-	if out := screen(m); !strings.Contains(lineWith(out, "Thread agent"), "claude · all projects") {
+	if out := screen(m); !strings.Contains(lineWith(out, "Thread agent"), "not chosen (claude, pi)") {
 		t.Fatalf("thread agent row:\n%s", out)
 	}
 	act(m, src, "enter")
-	if th, co := agentsOf(t, "alpha"); th != "pi" || co != "claude" {
+	if th, co := agentsOf(t, "alpha"); th != "claude" || co != "" {
 		t.Fatalf("alpha's agents %q %q", th, co)
 	}
-	if th, _ := agentsOf(t, "beta"); th != "claude" {
+	act(m, src, "enter")
+	if th, _ := agentsOf(t, "alpha"); th != "pi" {
+		t.Fatalf("alpha's thread agent %q", th)
+	}
+	if th, _ := agentsOf(t, "beta"); th != "" {
 		t.Fatalf("beta's thread agent %q", th)
 	}
 	if !strings.Contains(m.msg, "new threads of alpha run pi") {
@@ -1530,7 +1537,7 @@ func TestAgentSettings(t *testing.T) {
 	}
 	act(m, src, "enter") // and back round to claude
 	if th, _ := agentsOf(t, "alpha"); th != "claude" {
-		t.Fatalf("alpha's thread agent after two presses %q", th)
+		t.Fatalf("alpha's thread agent after three presses %q", th)
 	}
 
 	// All projects: coordinators of every project that doesn't set its own.
@@ -1541,6 +1548,7 @@ func TestAgentSettings(t *testing.T) {
 		keyPress(m, "down")
 	}
 	act(m, src, "enter")
+	act(m, src, "enter")
 	if _, co := agentsOf(t, "beta"); co != "pi" {
 		t.Fatalf("beta's coordinator agent %q", co)
 	}
@@ -1550,13 +1558,13 @@ func TestAgentSettings(t *testing.T) {
 		t.Fatalf("info's coordinator after the change:\n%s", out)
 	}
 
-	// An agent tm doesn't know (a hand edit, a removed manifest).
+	// An agent that isn't installed (uninstalled, a hand edit).
 	src.agents = []string{"claude"}
 	keyPress(m, "4")
 	for range at(projectSettings("alpha"), "Coordinator agent") {
 		keyPress(m, "down")
 	}
-	if out := screen(m); !strings.Contains(out, "tm knows no agent pi") {
+	if out := screen(m); !strings.Contains(out, "pi isn't installed") {
 		t.Fatalf("unknown agent not flagged:\n%s", out)
 	}
 	act(m, src, "enter")

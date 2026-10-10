@@ -41,6 +41,7 @@ func newProject(env *Env, name string) (slug, dir string) {
 // delegated.
 func TestSmokeDashboard(t *testing.T) {
 	env := New(t)
+	env.FakeClaude() // an agent installed: what most users have
 	w := env.Window(100, 24)
 	w.WaitFor("no sessions", wait)
 	w.Golden("dashboard-empty.txt")

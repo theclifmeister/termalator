@@ -376,8 +376,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		Mods: modSock != "",
 	}
 	if spec.Model == "" {
-		cfg, _ := config.Load()
-		spec = agent.WithDefaultModel(a, cfg, spec)
+		spec.Model = launchModel(a, r.Project)
 	}
 	launch, err := a.Launch(spec)
 	if err != nil {
@@ -440,6 +439,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 			Guard:      s.hookGuardOf(r.ID, modSock != ""),
 			OnChange:   s.agentChanged,
 			OnUsage:    s.tailUsage,
+			OnRefused:  s.modelRefused,
 			PromptHold: envDuration(envPromptHold), OnPromptResolved: s.promptResolved,
 			ModSocket: modSock,
 		},
@@ -451,6 +451,10 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 	}
 	s.sessions[r.ID] = sess
 	s.records[r.ID] = r
+	if s.launched == nil {
+		s.launched = map[string]string{}
+	}
+	s.launched[r.ID] = spec.Model
 	if err := s.saveLocked(""); err != nil {
 		s.log.Printf("sessions.json: %v", err)
 	}
@@ -467,6 +471,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 			return
 		}
 		sess.SetAgentVersion(v)
+		s.modelsVersion(a, v, env)
 		if m := agent.ManifestOf(a); m != nil && m.Identify.LastTested != "" && !agent.VersionAtLeast(m.Identify.LastTested, v) {
 			s.log.Printf("session %s: %s %s is newer than the last tested %s: supported; drift is logged as \"agent drift\"", r.ID, r.Agent, v, m.Identify.LastTested)
 		}

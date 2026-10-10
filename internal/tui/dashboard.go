@@ -297,6 +297,11 @@ type actionMsg struct {
 	sel     string
 	msg     string
 	err     error
+	// catalogs: the agents' models changed (asked again, a refusal
+	// forgotten); the Models page reads them again.
+	catalogs bool
+	// pick: the project that waits for the user to choose an agent.
+	pick string
 }
 
 func (m *dash) load() tea.Cmd {
@@ -548,6 +553,18 @@ func (m *dash) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case actionMsg:
 		m.busy = false
+		if msg.pick != "" {
+			m.push(&agentPickView{slug: msg.pick, agents: m.src.Agents()})
+			return m, nil
+		}
+		if msg.catalogs {
+			m.catalogs = m.src.Catalogs()
+			for _, o := range m.stack {
+				if v, ok := o.(*catalogView); ok {
+					v.reload(m)
+				}
+			}
+		}
 		if m.leaving && msg.err == nil && msg.attach == "" {
 			// Over a session, the view shows what the popup opened.
 			m.result.Attach = "view"
@@ -892,6 +909,10 @@ func (m *dash) openProject(slug string) tea.Cmd {
 	cols, rows := m.paneSize()
 	return m.act(func() actionMsg {
 		id, err := m.src.OpenProject(slug, cols, rows)
+		if notChosen(err) {
+			// Several agents and none chosen: ask (agentpick.go).
+			return actionMsg{pick: slug, sel: "p:" + slug}
+		}
 		return actionMsg{attach: id, current: slug, sel: "p:" + slug, err: err}
 	})
 }
@@ -1148,6 +1169,8 @@ func (m *dash) frame(title string, body []string, sel int, keys string) string {
 		right = styleFaint.Render("◌ loading…")
 	case !m.data.ServerOK:
 		right = styleBad.Render("▲ server down: " + oneLine(m.data.Err))
+	case m.data.NoAgent:
+		right = styleBad.Render("▲ no agent installed: nothing can start (tm doctor)")
 	default:
 		n := len(m.data.Sessions)
 		right = styleGood.Render(ic().working) + " server ok" + styleFaint.Render(fmt.Sprintf(" · %d session%s", n, map[bool]string{true: "s"}[n != 1]))

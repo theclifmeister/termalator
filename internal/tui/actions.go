@@ -177,7 +177,11 @@ func (m *dash) newProject(string) tea.Cmd {
 	m.prompt("New project", "Its name (becomes a lower-case slug, e.g. demo-app):", "", func(slug string) tea.Cmd {
 		return m.act(func() actionMsg {
 			slug, err := m.src.NewProject(slug)
-			return actionMsg{sel: "p:" + slug, msg: "created project " + slug + "; enter starts its coordinator", err: err}
+			msg := "created project " + slug + "; enter starts its coordinator"
+			if len(m.src.Agents()) == 0 {
+				msg = "created project " + slug + "; no agent is installed, so it can't run a coordinator or threads until one is (tm doctor)"
+			}
+			return actionMsg{sel: "p:" + slug, msg: msg, err: err}
 		})
 	})
 	return nil

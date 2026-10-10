@@ -579,7 +579,7 @@ func (pv *projectView) overview(m *dash, p ProjectData, w int) ([]string, int, [
 	out = append(out, field("Coordinator")+pv.coordinatorLine(m, p))
 	threads := map[string][]string{}
 	for _, t := range p.Threads {
-		a := cmp.Or(t.Agent, config.DefaultAgent)
+		a := cmp.Or(t.Agent, config.LegacyAgent)
 		threads[a] = append(threads[a], t.ID)
 	}
 	if len(threads) == 0 {
@@ -635,7 +635,7 @@ func lineHits(n int, at map[int]int) []int {
 func (pv *projectView) coordinatorLine(m *dash, p ProjectData) string {
 	for _, s := range m.data.Sessions {
 		if s.Role == proto.RoleCoordinator && s.Project == p.Slug {
-			line := cmp.Or(s.Agent, config.DefaultAgent) + styleFaint.Render(" · "+s.ID+" "+stateWord(s))
+			line := cmp.Or(s.Agent, config.LegacyAgent) + styleFaint.Render(" · "+s.ID+" "+stateWord(s))
 			if s.RemoteControl {
 				line += styleFaint.Render(" · remote control on")
 			}
@@ -646,7 +646,19 @@ func (pv *projectView) coordinatorLine(m *dash, p ProjectData) string {
 	if p.Safety != nil {
 		s = *p.Safety
 	}
-	return s.CoordinatorAgent + styleFaint.Render(" · not running; enter on the project starts it")
+	name, why := resolvedAgent(s.CoordinatorAgent, m.src.Agents())
+	switch {
+	case name == "" && len(m.src.Agents()) > 1 && s.CoordinatorAgent == "":
+		return styleWarn.Render(why) + styleFaint.Render(" · not running; enter on the project asks which agent")
+	case name == "":
+		return styleWarn.Render(why) + styleFaint.Render(" · nothing can start")
+	case s.CoordinatorAgent == "":
+		name += " (auto)"
+	}
+	if s.CoordinatorModel != "" {
+		name += styleFaint.Render(" · " + s.CoordinatorModel)
+	}
+	return name + styleFaint.Render(" · not running; enter on the project starts it")
 }
 
 // taskLines are the Tasks tab's lines.
@@ -739,6 +751,7 @@ var kindWords = map[string]string{
 	"close-held":       "kept open",
 	"gh-failing":       "PR host failing",
 	"guard":            "guard refused",
+	"model-refused":    "model refused",
 }
 
 // kindWord is an inbox kind (or an ask, "send-back") in words.
@@ -751,7 +764,7 @@ func kindWord(kind string) string {
 
 func kindStyle(kind string) lipgloss.Style {
 	switch kind {
-	case "pr-checks-failed", "pr-conflict", "exited", "gh-failing", "blocked", "needs-you", "guard":
+	case "pr-checks-failed", "pr-conflict", "exited", "gh-failing", "blocked", "needs-you", "guard", "model-refused":
 		return styleBad
 	case "report", "pr-merged", "pr-opened", "task-done", "thread-resolved":
 		return styleGood
