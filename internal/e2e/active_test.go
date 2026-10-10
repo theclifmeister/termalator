@@ -152,14 +152,14 @@ func TestSmokeSidebarInactive(t *testing.T) {
 	// on its row.
 	w := env.Window(120, 30)
 	w.WaitUntil("beta collapsed", wait, func(sc string) bool {
-		return strings.Contains(sc, " ■ "+beta+"⊘") && treeRow(sc, beta, "coordinator") < 0 &&
+		return inactiveRow(sc, beta) && treeRow(sc, beta, "coordinator") < 0 &&
 			treeRow(sc, "demo", "t-0001 ") >= 0
 	})
 	w.Type("\t")
 	w.WaitFor("sidebar: ↑ ↓ move", wait)
 	w.Type(" ")
 	w.WaitUntil("beta expanded", agentWait, func(sc string) bool {
-		return treeRow(sc, beta, "coordinator") >= 0 && !strings.Contains(sc, beta+"⊘")
+		return treeRow(sc, beta, "coordinator") >= 0 && !inactiveRow(sc, beta)
 	})
 	if got := projectSessions(env, beta); len(got) != 0 {
 		t.Fatalf("activating beta started %v; it had nothing to resume", got)
@@ -179,7 +179,7 @@ func TestSmokeSidebarInactive(t *testing.T) {
 	w.WaitFor("Deactivate demo?", wait)
 	w.Type("y")
 	w.WaitUntil("demo collapsed", agentWait, func(sc string) bool {
-		return strings.Contains(sc, " ■ demo⊘") && treeRow(sc, "demo", "t-0001 ") < 0
+		return inactiveRow(sc, "demo") && treeRow(sc, "demo", "t-0001 ") < 0
 	})
 	if !Poll(agentWait, func() bool { return len(projectSessions(env, "demo")) == 0 }) {
 		t.Fatalf("demo still runs %v", projectSessions(env, "demo"))
@@ -233,7 +233,7 @@ func TestSmokeSidebarExpandInactive(t *testing.T) {
 		return strings.Join(lines, "\n")
 	}
 	w.WaitUntil("demo collapsed", wait, func(sc string) bool {
-		return strings.Contains(sc, " ■ demo⊘") && treeRow(sc, beta, "coordinator") >= 0
+		return inactiveRow(sc, "demo") && treeRow(sc, beta, "coordinator") >= 0
 	})
 	WaitGolden(t, DefaultTimeout, sidebar, "sidebar-inactive.txt")
 
@@ -267,5 +267,5 @@ func TestSmokeSidebarExpandInactive(t *testing.T) {
 	if out := env.MustCLI("project", "list"); strings.Contains(out, "(inactive)") {
 		t.Errorf("demo still inactive:\n%s", out)
 	}
-	w.WaitUntil("demo active", wait, func(sc string) bool { return !strings.Contains(sc, "demo⊘") })
+	w.WaitUntil("demo active", wait, func(sc string) bool { return !inactiveRow(sc, "demo") })
 }

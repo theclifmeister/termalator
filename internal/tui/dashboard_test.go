@@ -839,7 +839,7 @@ func TestDashboardNeedsYouTasks(t *testing.T) {
 		}
 		at += i
 	}
-	if side := whole(m); !strings.Contains(side, " ■ alpha                   0 ⚑ │") {
+	if side := whole(m); !strings.Contains(side, " ■ alpha                 0   ⚑ │") {
 		t.Errorf("no sidebar hint for alpha:\n%s", side)
 	}
 

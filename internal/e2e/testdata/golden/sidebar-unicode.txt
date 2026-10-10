@@ -1,7 +1,7 @@
  PROJECTS                    2 │
- ■ beta                    0   │
+ ■ beta                  0     │
  └─ coordinator              · │
- ■ demo                    1   │
+ ■ demo                  1     │
  └─ coordinator              · │
     └─ t-0001 Small fix      ○ │
                                │

@@ -35,9 +35,9 @@ func TestDashboardSidebar(t *testing.T) {
 	m.setData(src.data)
 	want := []string{
 		" PROJECTS                    2 │ tm dashboard",
-		" ■ alpha                   0 ⚑ │", // a task needs you; a blank column before the border
+		" ■ alpha                 0   ⚑ │", // a task needs you; a blank column before the border
 		" └─ coordinator              ▲ │",
-		" ■ beta                    2 ⚑ │", // t-0005 waits on a question
+		" ■ beta                  2   ⚑ │", // t-0005 waits on a question
 		" └─ coordinator              · │",
 		"    ├─ T4 Write docs     60% ● │", // threads hang under the coordinator, task id and title
 		"    └─ t-0006 Old work       · │", // a thread without a task: its own id
@@ -451,15 +451,11 @@ func TestTreeHighlightRunsToBorder(t *testing.T) {
 						t.Errorf("%s: last two cells reverse %v %v, want %v", name, rev[cw-2], rev[cw-1], hl)
 					}
 					if r.remote {
-						// "⌁ ●  ": the remote glyph and the cell its Nerd
-						// Font icon draws into are highlighted too (T16).
-						// A Nerd Font icon draws two cells wide, so that set
-						// keeps two blanks: one always shows before the state.
-						at := cw - 4
-						if ic().name == IconsNerd {
-							at--
-						}
-						if string(plain[at]) != ic().remote || rev[at] != hl || rev[at+1] != hl || string(plain[at+1:cw-2]) != strings.Repeat(" ", cw-2-at-1) {
+						// "coordinator 0% ⌁ ": the remote glyph and the cell
+						// its Nerd Font icon draws into are highlighted too
+						// (T16).
+						at := slices.Index(plain, []rune(ic().remote)[0])
+						if at < 0 || rev[at] != hl || rev[at+1] != hl || plain[at-1] != ' ' || plain[at+1] != ' ' {
 							t.Errorf("%s: remote glyph %q reverse %v %v, want %v", name, string(plain[at]), rev[at], rev[at+1], hl)
 						}
 					}

@@ -107,7 +107,7 @@ func TestSmokeSidebar(t *testing.T) {
 	w.WaitFor(" ■ "+beta, wait)
 	w.WaitUntil("demo's thread", wait, func(sc string) bool {
 		d := projectRow(sc, demo)
-		return d >= 0 && strings.HasSuffix(sideCut(strings.Split(sc, "\n")[d], 120), " 1   │") &&
+		return d >= 0 && strings.HasSuffix(sideCut(strings.Split(sc, "\n")[d], 120), " 1     │") &&
 			treeRow(sc, demo, "coordinator") >= 0 && strings.Contains(sc, "    └─ t-0001 ")
 	})
 	w2 := env.Window(100, 26)
@@ -222,6 +222,13 @@ func sideRow(t *testing.T, screen, slug string) int {
 
 // projectRow is the screen row of slug's project row in the sidebar, -1
 // for none.
+// inactiveRow reports whether the project's row in the sidebar carries
+// the inactive mark, which sits at the row's far right.
+func inactiveRow(screen, slug string) bool {
+	i := projectRow(screen, slug)
+	return i >= 0 && strings.Contains(sideCut(strings.Split(screen, "\n")[i], 120), "⊘")
+}
+
 func projectRow(screen, slug string) int {
 	for i, l := range strings.Split(screen, "\n") {
 		r := []rune(l)
