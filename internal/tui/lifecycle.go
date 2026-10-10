@@ -15,8 +15,8 @@ import (
 )
 
 // A project's lifecycle, the human's (docs/SPEC.md §4, §10): activate
-// and deactivate, pause and resume, archive and unarchive, delete. tm project … and the project
-// popup's Settings tab share these. call is a control call, nil when no
+// and deactivate, pause and resume, archive and unarchive, delete. tm
+// project … and the project popup's Settings tab share these. call is a control call, nil when no
 // server runs.
 
 type callFn func(method string, params, result any) error
@@ -28,8 +28,10 @@ func humanOnly(c caller.Caller, what string) error {
 	return nil
 }
 
-// running lists the project's coordinator and thread sessions.
-func running(call callFn, slug string) ([]string, error) {
+// Running names the project's running coordinator and threads ("its
+// coordinator", T3, t-0004), none without a server: what archiving and
+// deleting wait for, and what deactivating stops.
+func Running(call callFn, slug string) ([]string, error) {
 	if call == nil {
 		return nil, nil
 	}
@@ -60,7 +62,7 @@ func runningIn(sessions []proto.SessionInfo, slug string) []string {
 
 // idle refuses while any of the project's agents runs.
 func idle(call callFn, slug, what string) error {
-	busy, err := running(call, slug)
+	busy, err := Running(call, slug)
 	if err != nil {
 		return err
 	}
@@ -93,15 +95,10 @@ func PauseProject(c caller.Caller, slug string, on bool) (string, error) {
 	return "resumed " + slug, nil
 }
 
-// Running names the project's running coordinator and threads ("its
-// coordinator", T3, t-0004): what deactivating it stops, for its
-// confirmation. None without a server.
-func Running(call callFn, slug string) ([]string, error) { return running(call, slug) }
-
 // DeactivateQuestion is the confirmation deactivating a project asks
 // while busy (its Running) run.
 func DeactivateQuestion(slug string, busy []string) string {
-	return "Deactivate " + slug + "? " + upperFirst(joinAnd(busy)) + " stop now and resume when you activate it."
+	return "Deactivate " + slug + "? This stops " + joinAnd(busy) + " now; they resume when you activate it."
 }
 
 // ActivateProject activates or deactivates a project (docs/SPEC.md
@@ -169,14 +166,6 @@ func sessionNames(p *project.Project, labels []string) []string {
 		out = append(out, threadName(task, l))
 	}
 	return out
-}
-
-// upperFirst capitalizes s's first letter.
-func upperFirst(s string) string {
-	if s == "" {
-		return s
-	}
-	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 // ArchiveProject archives or unarchives a project. An archived project

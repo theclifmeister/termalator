@@ -55,7 +55,7 @@ func TestInactiveProjectCollapsed(t *testing.T) {
 	if len(src.lifecycle) != 1 || src.lifecycle[0] != "beta activate" {
 		t.Fatalf("lifecycle %v, want beta activated and alpha asked", src.lifecycle)
 	}
-	if !strings.Contains(whole(m), "Deactivate alpha? Its coordinator and t-0002") {
+	if !strings.Contains(whole(m), "Deactivate alpha? This stops its coordinator and t-0002") {
 		t.Fatalf("no question:\n%s", whole(m))
 	}
 	keyPress(m, "n")
