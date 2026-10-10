@@ -66,3 +66,54 @@ func TestInactiveProjectCollapsed(t *testing.T) {
 		t.Errorf("lifecycle %v, want %v", src.lifecycle, want)
 	}
 }
+
+// TestExpandInactiveProject: → expands an inactive project without
+// activating it, its coordinator and threads dormant; a dormant thread
+// doesn't attach; ← folds it; enter on its coordinator activates the
+// project and opens the coordinator (docs/SPEC.md §4, §5.1).
+func TestExpandInactiveProject(t *testing.T) {
+	d := testData()
+	off := config.Defaults
+	off.Active = false
+	d.Projects[1].Safety = &off
+	src := &fakeSource{data: d}
+	m := newDash(DashOptions{Source: src, Width: 120, Height: 30, State: DashState{Current: "alpha"}})
+	m.setData(src.data)
+	keyPress(m, "tab")
+	m.sideSel = "p:beta"
+	run(m, keyPress(m, "right"))
+	var keys []string
+	for _, r := range m.tree() {
+		keys = append(keys, r.key())
+		if r.slug == "beta" && r.kind != treeProject && !r.dormant {
+			t.Errorf("%s isn't dormant", r.key())
+		}
+	}
+	if want := []string{"p:alpha", "c:alpha", "p:beta", "c:beta", "t:beta/t-0005", "t:beta/t-0006"}; !slices.Equal(keys, want) {
+		t.Fatalf("expanded tree %v, want %v", keys, want)
+	}
+	if m.sideSel != "c:beta" || len(src.lifecycle) != 0 {
+		t.Fatalf("cursor %q, lifecycle %v: expanding moves onto the coordinator and activates nothing", m.sideSel, src.lifecycle)
+	}
+	if !strings.Contains(whole(m), "coordinator") || !strings.Contains(whole(m), "T4 ") {
+		t.Fatalf("expanded beta:\n%s", whole(m))
+	}
+	// A dormant thread says why it doesn't attach.
+	m.sideSel = "t:beta/t-0005"
+	run(m, keyPress(m, "enter"))
+	if !strings.Contains(m.msg, "t-0005 is dormant") || m.result.Attach != "" {
+		t.Fatalf("enter on a dormant thread: msg %q attach %q", m.msg, m.result.Attach)
+	}
+	// ← on the project folds it.
+	m.sideSel = "p:beta"
+	run(m, keyPress(m, "left"))
+	if slices.ContainsFunc(m.tree(), func(r treeRow) bool { return r.key() == "c:beta" }) {
+		t.Fatal("← didn't fold beta")
+	}
+	// Expanded again, enter on its coordinator activates it and opens it.
+	run(m, keyPress(m, "right"))
+	run(m, keyPress(m, "enter"))
+	if !slices.Equal(src.lifecycle, []string{"beta activate"}) || !slices.Contains(src.opened, "beta") {
+		t.Fatalf("lifecycle %v, opened %v: want beta activated and its coordinator opened", src.lifecycle, src.opened)
+	}
+}

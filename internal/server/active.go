@@ -125,6 +125,7 @@ func (s *Server) setActive(p proto.ProjectActiveParams, c caller.Caller) (any, *
 		res.Resumed, res.Lost = s.wake(proj)
 	} else {
 		res.Stopped = s.sleep(proj.Slug)
+		s.views.collapse(proj.Slug)
 	}
 	s.log.Printf("project.active %s %v: changed %v, stopped %v, resumed %v, lost %v", proj.Slug, p.Active, changed, res.Stopped, res.Resumed, res.Lost)
 	return res, nil

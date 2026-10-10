@@ -75,8 +75,11 @@ type treeRow struct {
 	ctxHint bool // a coordinator row: ctx reached [ui] context_hint
 	paused  bool // a project: paused (no nudges, follow-up or new threads)
 	// inactive: a project the user deactivated, shown collapsed: its row
-	// alone, no coordinator or thread rows (§5.1).
+	// alone, no coordinator or thread rows (§5.1), unless the user
+	// expanded it; then its coordinator and threads are dormant rows.
 	inactive bool
+	expanded bool // an inactive project: the user expanded it
+	dormant  bool // a coordinator or thread row of an inactive project
 	threads  int  // a project: its open threads
 	here     bool // the row you are on
 	// cursor is the keyboard's row, set while the sidebar has this
@@ -149,6 +152,8 @@ type treeIn struct {
 	// ctxHint is [ui] context_hint: the percent from which a coordinator
 	// row says to consider /clear; 0 for never.
 	ctxHint int
+	// expanded are the inactive projects the user expanded (the view's).
+	expanded []string
 }
 
 // buildTree lays out the tree: every project, under each its
@@ -164,10 +169,11 @@ func buildTree(ps []ProjectData, sessions []proto.SessionInfo, in treeIn) []tree
 	for _, p := range ps {
 		pr := treeRow{kind: treeProject, slug: p.Slug, pct: -1, threads: len(p.Threads), current: p.Slug == in.current,
 			hint: p.Counts["needs_you"] > 0 || p.Questions > 0, paused: p.Safety != nil && p.Safety.Paused, inactive: p.inactive()}
-		if pr.inactive {
+		if pr.inactive && !slices.Contains(in.expanded, p.Slug) {
 			out = append(out, pr)
 			continue
 		}
+		pr.expanded = pr.inactive
 		remote, ctx := false, -1
 		for _, s := range sessions {
 			if s.Role == proto.RoleCoordinator && s.Project == p.Slug {
@@ -193,6 +199,13 @@ func buildTree(ps []ProjectData, sessions []proto.SessionInfo, in treeIn) []tree
 			ctx: ctx, ctxHint: ctx >= 0 && in.ctxHint > 0 && ctx >= in.ctxHint}
 		if len(kids) > 0 {
 			kids[len(kids)-1].last = true
+		}
+		if pr.inactive {
+			// Expanded but inactive: nothing of it runs (§5.1).
+			coord = treeRow{kind: treeCoordinator, slug: p.Slug, pct: -1, last: true, ctx: -1, dormant: true}
+			for i := range kids {
+				kids[i].dormant, kids[i].session, kids[i].state = true, "", ""
+			}
 		}
 		kids = append([]treeRow{coord}, kids...)
 		out = append(out, pr)
@@ -385,7 +398,9 @@ func treeSel(r treeRow, focused bool) (bool, lipgloss.Style) {
 // icon draws wide); never on the project's row, so
 // not in the slim strip either.
 // A paused project gets "∥" after its name, in either width, and an
-// inactive one "⊘", its name faint: it is collapsed, its row alone.
+// inactive one "⊘", its name faint: it is collapsed, its row alone,
+// unless the user expanded it; then its coordinator and threads are
+// faint, with "⊘" for their state: dormant.
 // The row you are on is in reverse video (and, in the slim strip, marked),
 // so colour is never the only signal. While the sidebar has the keyboard
 // focus, the keyboard's row is instead, in the accent colour.
@@ -480,6 +495,9 @@ func treeCells(r treeRow, cw int, slim, focused bool) string {
 	lw := max(cw-ld-rw, 1)
 	if r.kind == treeCoordinator {
 		g, st := coordLook(r.state)
+		if r.dormant {
+			g = i.inactive
+		}
 		// "⌁" sits at the right of the count column; "coordinator" may
 		// take the rest of it.
 		lw := max(cw-ld-2, 0) // the label column and the count's
@@ -515,6 +533,9 @@ func treeCells(r treeRow, cw int, slim, focused bool) string {
 	if g == "" {
 		g, st = i.none, styleFaint
 	}
+	if r.dormant {
+		g, st = i.inactive, styleFaint
+	}
 	// The percent has a column of its own, the same width on every row,
 	// so titles are cut at the same place. The name leads and is never
 	// cut: the title gives way; where even the name doesn't fit the label
@@ -538,6 +559,9 @@ func treeCells(r treeRow, cw int, slim, focused bool) string {
 	}
 	if r.here {
 		return lead + sel.Render(fit(label+right(pct, g, st, true), cw-ld))
+	}
+	if r.dormant {
+		label = styleFaint.Render(label)
 	}
 	return fit(lead+label+right(pct, g, st, false), cw)
 }
@@ -564,6 +588,9 @@ type Target struct {
 	// session; neither shows the project's dashboard.
 	Coordinator bool
 	Session     string
+	// Activate activates the project first: its coordinator's row in
+	// the tree of an inactive project the user expanded (§4, §5.1).
+	Activate bool
 }
 
 // target is where a click on r goes; ok is false for a thread without a
@@ -572,8 +599,11 @@ func (r treeRow) target() (t Target, ok bool, why string) {
 	t.Project = r.slug
 	switch r.kind {
 	case treeCoordinator:
-		t.Coordinator = true
+		t.Coordinator, t.Activate = true, r.dormant
 	case treeThread:
+		if r.dormant {
+			return t, false, r.thread + " is dormant: start " + r.slug + "'s coordinator, or activate " + r.slug
+		}
 		if r.session == "" {
 			return t, false, r.thread + " has no running session; its coordinator restarts it"
 		}
@@ -596,6 +626,12 @@ func OpenTarget(p server.Paths, vc *ViewConn, t Target) error {
 		c, err := server.Connect(p, true)
 		if err != nil {
 			return err
+		}
+		if t.Activate {
+			if _, err := ActivateProject(c.Call, caller.FromEnv(), t.Project, true); err != nil {
+				c.Close()
+				return err
+			}
 		}
 		v := vc.View()
 		cols, rows := int(v.Cols), int(v.Rows)
@@ -669,7 +705,7 @@ func (c *client) sideTree() []treeRow {
 	if c.focus != nil {
 		focus = c.focus.info.ID
 	}
-	rows := buildTree(c.side.projects, c.side.sessions, treeIn{current: c.sideCurrent(), focus: focus, ctxHint: c.side.ctxHint})
+	rows := buildTree(c.side.projects, c.side.sessions, treeIn{current: c.sideCurrent(), focus: focus, ctxHint: c.side.ctxHint, expanded: c.v.Expanded})
 	if c.kb == areaSide {
 		markCursor(rows, c.sideW, c.v.SideSel)
 	}
@@ -758,7 +794,28 @@ func (c *client) sideKeyboard(k uv.Key) {
 	if st.toggle != "" {
 		c.askActive(st.toggle, st.activate)
 	}
+	if st.expand != "" {
+		c.act(proto.MethodViewExpand, proto.ViewParams{Project: st.expand, On: st.expandOn})
+	}
 	c.poke()
+}
+
+// expandLabel is an inactive project row's menu item that expands or
+// collapses it, and its key.
+func expandLabel(r treeRow) (label, key string) {
+	if r.expanded {
+		return "collapse", "←"
+	}
+	return "expand", "→"
+}
+
+// coordLabel is a coordinator row's menu item that opens it: starting a
+// dormant one activates its project.
+func coordLabel(r treeRow) string {
+	if r.dormant {
+		return "start the coordinator"
+	}
+	return "open the coordinator"
 }
 
 // activeLabel is the menu item of a project row that space does.
@@ -1005,9 +1062,9 @@ type sideAction struct {
 var sideActions = []sideAction{
 	{[]string{"up", "k"}, sideUp, "↑ ↓ k j", "move through the tree"},
 	{[]string{"down", "j"}, sideDown, "", ""},
-	{[]string{"right", "l"}, sideIn, "→ ←", "→ on a project goes down into it, ← on a row under a project up to it"},
+	{[]string{"right", "l"}, sideIn, "→ ←", "→ on a project goes down into it, ← on a row under a project up to it; on an inactive project → expands it and ← folds it again, never activating it"},
 	{[]string{"left", "h"}, sideOut, "", ""},
-	{[]string{"enter"}, sideEnter, "enter", "what a click does: a project shows its dashboard, its coordinator or a thread attaches"},
+	{[]string{"enter"}, sideEnter, "enter", "what a click does: a project shows its dashboard, its coordinator or a thread attaches; an inactive project's coordinator starts, activating the project"},
 	{[]string{"esc"}, sideBack, "esc", "back to the list (in a session: to the pane)"},
 	{[]string{"space"}, sideActive, "space", "on a project: activate it, or deactivate it (its coordinator and threads stop, to resume when you activate it; asks first while they run)"},
 }
@@ -1033,6 +1090,9 @@ type sideStep struct {
 	// toggle is the project to activate (activate) or deactivate.
 	toggle   string
 	activate bool
+	// expand is the inactive project to expand (expandOn) or collapse.
+	expand   string
+	expandOn bool
 }
 
 // sideKeyStep decides what sidebar key op does with the cursor at sel in
@@ -1059,10 +1119,18 @@ func sideKeyStep(all []treeRow, w int, sel string, op int) sideStep {
 	case sideDown:
 		return moveTo(i + 1)
 	case sideIn:
-		if r.kind == treeProject && !r.inactive && w > sideSlim {
+		switch {
+		case r.kind != treeProject || w <= sideSlim:
+		case r.inactive && !r.expanded:
+			// Expanding never activates (§5.1).
+			return sideStep{expand: r.slug, expandOn: true, sel: "c:" + r.slug}
+		default:
 			return moveTo(i + 1)
 		}
 	case sideOut:
+		if r.kind == treeProject && r.expanded {
+			return sideStep{expand: r.slug}
+		}
 		for j := i - 1; j >= 0 && r.kind != treeProject; j-- {
 			if rows[j].kind == treeProject {
 				return moveTo(j)

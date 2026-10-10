@@ -169,6 +169,9 @@ type dash struct {
 	sideSel  string
 	sideSent string
 	sideBusy bool
+	// expanded are the inactive projects expanded in the sidebar's
+	// tree: the view's, changed here at once (expand).
+	expanded []string
 	msg      string
 	errMsg   string                  // msg when it reports a failure, drawn as one
 	busy     bool                    // an action is running
@@ -243,6 +246,7 @@ func newDash(o DashOptions) *dash {
 		m.sel = cmp.Or(v.Selected, m.sel)
 		m.current = v.Current
 		m.sideSel, m.sideSent = v.SideSel, v.SideSel
+		m.expanded = v.Expanded
 		m.layout.Sidebar, m.viewSide = v.Sidebar, v.Sidebar
 		m.layout.Info = v.Info
 		m.watch, m.stopWatch = vc.Watch()
@@ -455,6 +459,7 @@ func (m *dash) fromView() tea.Cmd {
 	if !m.sideBusy && m.sideSel == m.sideSent {
 		m.sideSel, m.sideSent = v.SideSel, v.SideSel
 	}
+	m.expanded = v.Expanded
 	if !m.sideDrag && v.Sidebar != m.viewSide {
 		m.layout.Sidebar, m.viewSide = v.Sidebar, v.Sidebar
 		m.setWidth(m.winW)
@@ -639,6 +644,18 @@ func (m *dash) openTarget(t Target) tea.Cmd {
 	switch {
 	case t.Session != "":
 		return m.act(func() actionMsg { return actionMsg{attach: t.Session, current: t.Project} })
+	case t.Coordinator && t.Activate:
+		// Starting an inactive project's coordinator from its row
+		// activates the project first (§4, §5.1).
+		src, slug := m.src, t.Project
+		cols, rows := m.paneSize()
+		return m.act(func() actionMsg {
+			if _, err := src.Lifecycle(slug, "activate"); err != nil {
+				return actionMsg{err: err}
+			}
+			id, err := src.OpenProject(slug, cols, rows)
+			return actionMsg{attach: id, current: slug, sel: "p:" + slug, err: err}
+		})
 	case t.Coordinator:
 		return m.openProject(t.Project)
 	}
@@ -667,7 +684,7 @@ func (m *dash) showProject(slug string) tea.Cmd {
 // current, and its row the one you are on; the keyboard's row is marked
 // while the sidebar has the focus.
 func (m *dash) tree() []treeRow {
-	rows := buildTree(m.data.Projects, m.data.Sessions, treeIn{current: listProject(m.data, m.current), ctxHint: m.data.ContextHint})
+	rows := buildTree(m.data.Projects, m.data.Sessions, treeIn{current: listProject(m.data, m.current), ctxHint: m.data.ContextHint, expanded: m.expanded})
 	if m.focus == areaSide {
 		markCursor(rows, m.sideW(), m.sideSel)
 	}
@@ -729,7 +746,22 @@ func (m *dash) sideKeyboard(key string) (tea.Cmd, bool) {
 	if st.toggle != "" {
 		cmds = append(cmds, m.toggleActive(st.toggle, st.activate))
 	}
+	if st.expand != "" {
+		cmds = append(cmds, m.expand(st.expand, st.expandOn))
+	}
 	return tea.Batch(cmds...), true
+}
+
+// expand expands or collapses an inactive project in the sidebar's
+// tree, here at once and in the view; it never activates it (§5.1).
+func (m *dash) expand(slug string, on bool) tea.Cmd {
+	v := view.View{Expanded: m.expanded}
+	v.Expand(slug, on)
+	m.expanded = v.Expanded
+	if m.view == nil {
+		return nil
+	}
+	return m.call(proto.MethodViewExpand, proto.ViewParams{Project: slug, On: on})
 }
 
 // setData takes a poll's result, rebuilds the rows and rings the bell

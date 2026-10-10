@@ -349,13 +349,16 @@ func (c *client) sideItems(r treeRow, t Target) []aitem {
 	switch r.kind {
 	case treeProject:
 		add("show its dashboard", "", func() { c.sideGo(Target{Project: r.slug}) })
-		if !r.inactive {
+		if r.inactive {
+			label, key := expandLabel(r)
+			add(label, key, func() { c.act(proto.MethodViewExpand, proto.ViewParams{Project: r.slug, On: !r.expanded}) })
+		} else {
 			add("open its coordinator", "", func() { c.sideGo(Target{Project: r.slug, Coordinator: true}) })
 		}
 		popups()
 		add(activeLabel(r), "space", func() { c.askActive(r.slug, r.inactive) })
 	case treeCoordinator:
-		add("open the coordinator", "", func() { c.sideGo(t) })
+		add(coordLabel(r), "", func() { c.sideGo(t) })
 		popups()
 	default:
 		add("attach", "", func() { c.attachThread(t) })

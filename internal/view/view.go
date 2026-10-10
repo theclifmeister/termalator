@@ -13,6 +13,7 @@ package view
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 )
 
 // Main is the view every console joins unless it asks for its own.
@@ -60,6 +61,12 @@ type View struct {
 	// "p:<project>", "c:<project>" or "t:<project>/<thread>"); a key no
 	// longer in the tree, or "", means the row you are on (Here).
 	SideSel string `json:"side_sel,omitempty"`
+	// Expanded are the inactive projects the user expanded in the
+	// sidebar's tree, by slug: their coordinator and threads show,
+	// dormant (docs/SPEC.md §4, §5.1). Active projects are always
+	// expanded. Not "expanded", which views of protocol 6 and before
+	// saved for every project.
+	Expanded []string `json:"expanded_inactive,omitempty"`
 	// Info is the info panel beside a thread's or a coordinator's pane;
 	// Panel says the session shown is one of those, so the panel shows
 	// (the server sets it from the session's role). Its JSON name is
@@ -99,10 +106,34 @@ func (v *View) Shown() string {
 	return v.Focus
 }
 
+// MaxExpanded bounds the projects a view keeps expanded.
+const MaxExpanded = 256
+
+// IsExpanded says whether the user expanded project slug.
+func (v *View) IsExpanded(slug string) bool { return slices.Contains(v.Expanded, slug) }
+
+// Expand expands or collapses project slug in the sidebar's tree; it
+// says whether that changed anything.
+func (v *View) Expand(slug string, on bool) bool {
+	i := slices.Index(v.Expanded, slug)
+	switch {
+	case on && i < 0 && slug != "" && len(slug) <= MaxKey && len(v.Expanded) < MaxExpanded:
+		v.Expanded = append(slices.Clone(v.Expanded), slug)
+		return true
+	case !on && i >= 0:
+		v.Expanded = slices.Delete(slices.Clone(v.Expanded), i, i+1)
+		return true
+	}
+	return false
+}
+
 // Valid checks a view read from disk or the wire.
 func (v *View) Valid() error {
 	if len(v.Focus) > MaxKey {
 		return fmt.Errorf("view %s: a session id too long", v.Name)
+	}
+	if len(v.Expanded) > MaxExpanded {
+		return fmt.Errorf("view %s: too many expanded projects", v.Name)
 	}
 	return nil
 }

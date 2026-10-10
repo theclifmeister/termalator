@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/theclifmeister/terminatr/internal/emu"
 )
 
 // dormantIDs are the session ids sessions.json keeps dormant.
@@ -185,4 +187,85 @@ func TestSmokeSidebarInactive(t *testing.T) {
 	if got := dormantIDs(env); len(got) != 1 {
 		t.Errorf("dormant %v, want demo's thread", got)
 	}
+}
+
+// TestSmokeSidebarExpandInactive: an inactive project expands like a
+// folder (→) without activating it, its coordinator and thread shown
+// dormant; enter on the dormant coordinator activates the project, which
+// resumes the coordinator and the thread, and attaches the coordinator
+// (docs/SPEC.md §4, §5.1). The collapsed and the expanded trees are
+// golden screens.
+func TestSmokeSidebarExpandInactive(t *testing.T) {
+	env, projDir, _ := threadEnv(t)
+	beta, betaDir := newProject(env, "beta")
+	env.Trust(betaDir)
+	coord := env.StartAgent("claude", projDir, "--role", "coordinator", "--project", "demo")
+	env.WaitState(coord, "idle", agentWait)
+	env.Prompt(coord, "hello")
+	env.WaitFake("prompt", agentWait, func(r FakeRecord) bool { return r.Str("text") == "hello" })
+	coordSID := env.WaitState(coord, "idle", agentWait).AgentSID
+	th := startThread(t, env, projDir)
+	threadSID := env.WaitState(th, "idle", agentWait).AgentSID
+	if !Poll(agentWait, func() bool {
+		var st struct{ Sessions []struct{ Prompted bool } }
+		b, _ := os.ReadFile(filepath.Join(env.Home, "state", "sessions.json"))
+		json.Unmarshal(b, &st)
+		n := 0
+		for _, r := range st.Sessions {
+			if r.Prompted {
+				n++
+			}
+		}
+		return n == 2
+	}) {
+		t.Fatal("sessions.json never recorded the prompts")
+	}
+	env.MustCLI("project", "deactivate", "demo", "--yes")
+
+	w := env.Window(100, 12)
+	side := SideCols(100)
+	sidebar := func() string {
+		lines := strings.Split(w.Screen(), "\n")
+		for i, l := range lines {
+			r := []rune(l)
+			lines[i] = string(r[:min(side, len(r))])
+		}
+		return strings.Join(lines, "\n")
+	}
+	w.WaitUntil("demo collapsed", wait, func(sc string) bool {
+		return strings.Contains(sc, " ■ demo⊘") && treeRow(sc, beta, "coordinator") >= 0
+	})
+	WaitGolden(t, DefaultTimeout, sidebar, "sidebar-inactive.txt")
+
+	// beta is current: ↓ ↓ past its coordinator to demo, → expands it.
+	w.Key(keyTab)
+	w.WaitFor("sidebar: ↑ ↓ move", wait)
+	for _, k := range []emu.Key{keyDown, keyDown, keyRight} {
+		w.Key(k)
+	}
+	w.WaitUntil("demo expanded", wait, func(sc string) bool {
+		return treeRow(sc, "demo", "coordinator") >= 0 && treeRow(sc, "demo", "t-0001 ") >= 0
+	})
+	WaitGolden(t, DefaultTimeout, sidebar, "sidebar-inactive-expanded.txt")
+	if got := projectSessions(env, "demo"); len(got) != 0 {
+		t.Fatalf("expanding demo started %v", got)
+	}
+	if out := env.MustCLI("project", "list"); !strings.Contains(out, "demo (inactive)") {
+		t.Fatalf("expanding activated demo:\n%s", out)
+	}
+
+	// enter on the dormant coordinator (the cursor is on it) activates
+	// demo: both resume, and the coordinator attaches.
+	w.Key(keyEnter)
+	w.WaitUntil("on demo's coordinator", agentWait, func(sc string) bool { return lastLine(sc, "demo coordinator") })
+	if got := env.WaitState(coord, "idle", agentWait).AgentSID; got != coordSID {
+		t.Errorf("coordinator came back with %q, want %q", got, coordSID)
+	}
+	if got := env.WaitState(th, "idle", agentWait).AgentSID; got != threadSID {
+		t.Errorf("t-0001 came back with %q, want %q", got, threadSID)
+	}
+	if out := env.MustCLI("project", "list"); strings.Contains(out, "(inactive)") {
+		t.Errorf("demo still inactive:\n%s", out)
+	}
+	w.WaitUntil("demo active", wait, func(sc string) bool { return !strings.Contains(sc, "demo⊘") })
 }
