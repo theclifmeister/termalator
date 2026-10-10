@@ -1,5 +1,5 @@
  PROJECTS                    1 │ tm dashboard                                                                          ● server ok · 1 session
- ■ demo                    1   │ demo ────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ■ demo                  1     │ demo ────────────────────────────────────────────────────────────────────────────────────────────────────────
  └─ coordinator              · │  coordinator                               —           not running; enter starts it  1 inbox
     └─ T1 Fix the login  50% ○ │  T1 Fix the login                          ○ idle      report new  ▰▰▰▱▱  50% 1/2 ▸ Fix  <duration>  PR #7  t-0001
                                │        steps 1/2
