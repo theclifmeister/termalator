@@ -817,9 +817,32 @@ func safetySettings(slug string) []setting {
 				if next == "" {
 					msg = "new coordinators " + ofWho + " run " + name + "'s default"
 				}
-				return set(m, "coordinator_model", next, msg, func(s *config.Safety) { s.CoordinatorModel = next })
+				save := set(m, "coordinator_model", next, msg, func(s *config.Safety) { s.CoordinatorModel = next })
+				// The running coordinators it reaches switch now, live
+				// where their agent can (session.model); the ticker
+				// catches any this misses.
+				var ids []string
+				for _, s := range m.data.Sessions {
+					if s.Role == proto.RoleCoordinator && s.Agent != "" && (s.Project == slug || all && !ownsModel(m, s.Project)) {
+						ids = append(ids, s.ID)
+					}
+				}
+				src := m.src
+				return tea.Sequence(save, func() tea.Msg {
+					for _, id := range ids {
+						src.SyncModel(id)
+					}
+					return nil
+				})
 			},
 			note: func(m *dash) []string {
+				if !all {
+					for _, s := range m.data.Sessions {
+						if s.Role == proto.RoleCoordinator && s.Project == slug && s.ModelPending {
+							return []string{styleWarn.Render("the running coordinator runs " + modelWord(s.Model) + "; " + modelWord(s.ModelNext) + " on its next start (" + s.Agent + " can't switch models live)")}
+						}
+					}
+				}
 				cur := safety(m).CoordinatorModel
 				if cur == "" {
 					return nil
@@ -918,6 +941,12 @@ func safetySettings(slug string) []setting {
 				return nil
 			}},
 	}...)
+}
+
+// ownsModel reports whether project slug sets its own coordinator_model.
+func ownsModel(m *dash, slug string) bool {
+	p := m.projectData(slug)
+	return p != nil && slices.Contains(p.Own, "coordinator_model")
 }
 
 // ownsAny reports whether own (a project's own settings) has one of keys.

@@ -651,6 +651,12 @@ func (s *Server) dispatch(req proto.Request, peerPID int) (any, *proto.Error) {
 			return nil, err
 		}
 		return s.remote(p)
+	case proto.MethodSessionModel:
+		var p proto.SessionModelParams
+		if err := decodeParams(req.Params, &p); err != nil {
+			return nil, err
+		}
+		return s.syncModel(p.ID)
 	case proto.MethodSessionAdopt:
 		var p proto.SessionAdoptParams
 		if err := decodeParams(req.Params, &p); err != nil {

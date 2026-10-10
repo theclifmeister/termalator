@@ -84,21 +84,24 @@ func (s *Server) modelsVersion(a agent.Agent, version string, env []string) {
 }
 
 // launchModel is the model a session launches with when none is chosen:
-// the user's default_model for the agent, while the agent offers it and
-// the project's scope takes it; "" is the agent's own default.
-func launchModel(a agent.Agent, project string) string {
+// a coordinator's coordinator_model while its agent offers it in the
+// project's scope, else the user's default_model for the agent on the
+// same terms; "" is the agent's own default.
+func launchModel(a agent.Agent, project string, coordinator bool) string {
 	m := agent.ManifestOf(a)
 	if m == nil {
 		return ""
 	}
 	cfg, _ := config.Load()
-	var scope []string
+	var safety config.Safety
 	if project != "" {
-		if safety, err := cfg.Safety(project); err == nil {
-			scope = safety.Models
-		}
+		safety, _ = cfg.Safety(project)
 	}
-	return models.Get(m, cfg, true).LaunchModel(scope)
+	c := models.Get(m, cfg, true)
+	if coordinator {
+		return c.CoordinatorModel(safety)
+	}
+	return c.LaunchModel(safety.Models)
 }
 
 // modelRefused learns, from a session's transcript, that the user's
@@ -157,4 +160,84 @@ func (s *Server) modelRefused(sess *session.Session, msg string) {
 	if _, err := p.AddItem("model-refused", ref, summary, false); err != nil {
 		s.log.Printf("session %s: inbox: %v", r.ID, err)
 	}
+}
+
+// syncModel applies the project's coordinator_model to its running
+// coordinator (session.model; docs/SPEC.md §8.2, Models): the model the
+// setting wants on the coordinator's agent (models.Catalog's
+// CoordinatorModel) is switched to live with the agent's switch command
+// ([inject] switch_model), pasted like any prompt once the agent is idle
+// with an empty prompt box, so the conversation stays; an agent that
+// can't switch gets it on its next start, and the session says so until
+// then. Threads keep the model they were launched with.
+func (s *Server) syncModel(id string) (any, *proto.Error) {
+	s.mu.Lock()
+	sess, ok := s.sessions[id]
+	r := s.records[id]
+	running := s.launched[id]
+	s.mu.Unlock()
+	if !ok {
+		return nil, proto.Errorf(proto.ErrUnknownSession, "no session %s", id)
+	}
+	if r.Role != proto.RoleCoordinator || r.Project == "" {
+		return nil, proto.Errorf(proto.ErrRefused, "the model setting is for coordinators; a thread keeps the model it was launched with")
+	}
+	a := sess.Agent()
+	if a == nil {
+		a = s.agentOr(r.Agent)
+	}
+	m := agent.ManifestOf(a)
+	if m == nil {
+		return nil, proto.Errorf(proto.ErrRefused, "agent %s has no manifest", r.Agent)
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, proto.Errorf(proto.ErrRefused, "%v", err)
+	}
+	safety, err := cfg.Safety(r.Project)
+	if err != nil {
+		return nil, proto.Errorf(proto.ErrRefused, "%v", err)
+	}
+	want := models.Get(m, cfg, true).CoordinatorModel(safety)
+	set := func(model, next string, pending bool) {
+		s.mu.Lock()
+		rec := s.records[id]
+		if model != running || rec.ModelNext != next || rec.ModelPending != pending {
+			s.launched[id] = model
+			rec.Model, rec.ModelNext, rec.ModelPending = model, next, pending
+			s.records[id] = rec
+			if err := s.saveLocked(""); err != nil {
+				s.log.Printf("sessions.json: %v", err)
+			}
+		}
+		s.mu.Unlock()
+		sess.SetModel(session.ModelState{Model: model, Next: next, Pending: pending})
+	}
+	if want == running {
+		if r.ModelPending {
+			set(running, "", false)
+		}
+		return proto.SessionModelResult{Model: want, How: proto.ModelUnchanged}, nil
+	}
+	text := m.SwitchText(want)
+	if text == "" {
+		if !r.ModelPending || r.ModelNext != want {
+			s.log.Printf("session %s: coordinator model %s on its next start (%s can't switch live)", id, cmpOr(want, "default"), r.Agent)
+		}
+		set(running, want, true)
+		return proto.SessionModelResult{Model: want, How: proto.ModelNextStart}, nil
+	}
+	if _, err := sess.Prompt(text); err != nil {
+		return nil, sessionError(id, err)
+	}
+	set(want, "", false)
+	s.log.Printf("session %s: coordinator model %s -> %s (%q, queued until idle)", id, cmpOr(running, "default"), cmpOr(want, "default"), text)
+	return proto.SessionModelResult{Model: want, How: proto.ModelSwitched}, nil
+}
+
+func cmpOr(s, alt string) string {
+	if s == "" {
+		return alt
+	}
+	return s
 }

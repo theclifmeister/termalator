@@ -138,6 +138,10 @@ type Source interface {
 	// it to what the agent lists. It is refused when tm runs inside an
 	// agent.
 	SetModels(agentName string, s config.AgentSettings) error
+	// SyncModel applies the project's coordinator_model to its running
+	// coordinator session (session.model): switched live when its agent
+	// can, else on its next start.
+	SyncModel(session string) error
 	// RefreshModels asks the installed agent for its models again.
 	RefreshModels(agentName string) error
 	// Unrefuse forgets that the user's account refused one of the
@@ -585,6 +589,11 @@ func (s *ServerSource) SetModels(agentName string, set config.AgentSettings) err
 	return config.SetAgentModels(agentName, set)
 }
 
+func (s *ServerSource) SyncModel(session string) error {
+	var res proto.SessionModelResult
+	return s.call(proto.MethodSessionModel, proto.SessionModelParams{ID: session}, &res)
+}
+
 func (s *ServerSource) RefreshModels(agentName string) error {
 	reg, _ := agent.Load(s.Paths.AgentsDir())
 	if reg == nil {
@@ -684,8 +693,10 @@ func coordinatorAgent(cfg *config.Config, flag string, safety config.Safety) (na
 		return "", "", err
 	}
 	if safety.CoordinatorModel != "" {
-		if c, ok := models.CatalogOf(reg, cfg, name, installed); ok && c.Check(safety.CoordinatorModel, safety.Models) == nil {
-			model = safety.CoordinatorModel
+		// An agent never asked (the server just started) is asked first.
+		models.Ensure(context.Background(), reg, name, nil)
+		if c, ok := models.CatalogOf(reg, cfg, name, installed); ok {
+			model = c.CoordinatorModel(safety)
 		}
 	}
 	return name, model, nil

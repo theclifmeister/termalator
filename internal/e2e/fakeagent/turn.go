@@ -76,7 +76,8 @@ func (a *app) worker() {
 	}
 }
 
-// runSlash runs /clear, /compact, /exit or /remote-control.
+// runSlash runs /clear, /compact, /exit, /remote-control or /model
+// <name>.
 func (a *app) runSlash(j job) {
 	a.mu.Lock()
 	a.running = &j
@@ -88,6 +89,15 @@ func (a *app) runSlash(j job) {
 	switch {
 	case strings.HasPrefix(j.text, "/remote-control"):
 		a.doRemote()
+	case strings.HasPrefix(j.text, "/model "):
+		// As Claude 2.1.296: a local command, no model call; the
+		// conversation stays.
+		name := strings.TrimSpace(strings.TrimPrefix(j.text, "/model "))
+		a.mu.Lock()
+		a.opts.model = name
+		a.mu.Unlock()
+		a.say("  ⎿  ", "Set model to "+name+" for this session only")
+		a.log("model", map[string]any{"model": name})
 	}
 	if a.cx != nil {
 		switch j.text {
@@ -392,6 +402,8 @@ func (a *app) handleKey(k key) {
 		case text == "/clear", text == "/compact", text == "/exit",
 			text == "/remote-control", strings.HasPrefix(text, "/remote-control "):
 			kind = "slash"
+		case a.cx == nil && strings.HasPrefix(text, "/model "):
+			kind = "slash" // Codex hands it to the model as text
 		case a.cx != nil && (text == "/new" || text == "/quit"):
 			kind = "slash"
 		}

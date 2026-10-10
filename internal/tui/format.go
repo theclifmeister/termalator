@@ -199,6 +199,10 @@ func statusBar(s proto.SessionInfo, ts *thread.Status, pending bool, cols int, w
 	if s.RemoteControl {
 		parts = append(parts, "remote control on")
 	}
+	if s.ModelPending {
+		// The coordinator's agent can't switch models live (§8.2).
+		parts = append(parts, modelWord(s.ModelNext)+" on next start")
+	}
 	if where != "" {
 		parts = append(parts, where)
 	}
@@ -259,4 +263,12 @@ func threadProgress(st *thread.Status) string {
 		parts = append(parts, `"`+oneLine(st.Activity)+`"`)
 	}
 	return strings.Join(parts, " ")
+}
+
+// modelWord is a model's name, or the agent's own default.
+func modelWord(m string) string {
+	if m == "" {
+		return "agent's default model"
+	}
+	return "model " + m
 }

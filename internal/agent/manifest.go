@@ -77,6 +77,17 @@ type Manifest struct {
 		// idle coordinator (auto_clear) sends it. Empty: the agent has
 		// none, and auto-clear leaves its sessions alone.
 		Clear string `toml:"clear"`
+		// SwitchModel is the in-session command that switches the
+		// running agent's model, keeping its conversation ("/model
+		// {model}"), pasted like any prompt once the agent is idle with
+		// an empty prompt box: a coordinator's coordinator_model change
+		// applies live (docs/SPEC.md §8.2, Models). {model} is the
+		// model's name, or SwitchModelDefault for the agent's own
+		// default. Empty: the agent can't switch, so the change applies
+		// on its next start; so does a switch to its own default without
+		// SwitchModelDefault.
+		SwitchModel        string `toml:"switch_model"`
+		SwitchModelDefault string `toml:"switch_model_default"`
 	} `toml:"inject"`
 
 	// RemoteControl: reaching the session from another device, e.g.
@@ -364,6 +375,12 @@ func (m *Manifest) validate() error {
 	}
 	if d := m.RemoteControl.DisableDialog; d != nil && (m.RemoteControl.Disable == "" || d.Contains == "" || d.Keys == "" || d.Done == "") {
 		errs = append(errs, errors.New("remote_control.disable_dialog: needs disable, and contains, keys and done"))
+	}
+	if sm := m.Inject.SwitchModel; sm != "" && !strings.Contains(sm, "{model}") {
+		errs = append(errs, errors.New("inject.switch_model must name {model}"))
+	}
+	if m.Inject.SwitchModelDefault != "" && m.Inject.SwitchModel == "" {
+		errs = append(errs, errors.New("inject.switch_model_default needs switch_model"))
 	}
 	if l := m.ListModels; l != nil {
 		if err := l.validate(); err != nil {

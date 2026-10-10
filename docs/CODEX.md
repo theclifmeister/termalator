@@ -12,6 +12,8 @@ terminatr runs [Codex](https://developers.openai.com/codex) next to Claude Code:
 
 tm asks your Codex which models you can use (`codex app-server`, `model/list`), so the list follows your Codex and your login without a tm release. Settings > General > **Models** shows them, and `tm doctor` says when they were last asked. Threads run Codex's own default unless a model is chosen: pick one with `--model` (`tm thread start --agent codex --model <name> …`), or set a default, hide models or add one Codex doesn't list in the Models page. If the project limits its models (**Thread models** in Settings, or `models` in `config.toml`), the list must include the Codex models, or `--model` is refused with `model-not-allowed`.
 
+A Codex coordinator can't switch models while it runs (its `/model` only opens a picker), so a change to **Coordinator model** applies when the coordinator next starts; until then its status bar says `model … on next start`. A Claude coordinator switches at once.
+
 Codex lists every model whatever your plan, so a model your ChatGPT plan doesn't include still shows; Codex says so in the thread's pane when it refuses it. Logged out, tm can't tell which models you have: `tm doctor` says so, threads run Codex's default, and `--model` is refused until you `codex login`.
 
 ## Approvals and the sandbox

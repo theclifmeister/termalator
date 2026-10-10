@@ -68,3 +68,39 @@ func TestListState(t *testing.T) {
 		t.Error("no models reply reads")
 	}
 }
+
+// TestSwitchText: the switch command with the model, or with the
+// agent's word for its own default; none without switch_model (Codex).
+func TestSwitchText(t *testing.T) {
+	reg, err := Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	claude, _ := reg.Get("claude")
+	codex, _ := reg.Get("codex")
+	for _, c := range []struct {
+		a     Agent
+		model string
+		want  string
+	}{
+		{claude, "alpha", "/model alpha"},
+		{claude, "", "/model default"},
+		{codex, "alpha", ""},
+		{codex, "", ""},
+	} {
+		if got := ManifestOf(c.a).SwitchText(c.model); got != c.want {
+			t.Errorf("%s %q: %q, want %q", c.a.Name(), c.model, got, c.want)
+		}
+	}
+	const base = "manifest_version = 1\nname = \"a\"\n[launch]\ncommand = \"a\"\n[inject]\n"
+	for body, ok := range map[string]bool{
+		"switch_model = \"/model {model}\"\n":                              true,
+		"switch_model = \"/model\"\n":                                      false,
+		"switch_model_default = \"default\"\n":                             false,
+		"switch_model = \"/m {model}\"\nswitch_model_default = \"auto\"\n": true,
+	} {
+		if _, err := ParseManifest([]byte(base + body)); (err == nil) != ok {
+			t.Errorf("%q: %v", body, err)
+		}
+	}
+}

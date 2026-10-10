@@ -107,6 +107,14 @@ func (h tickerHost) Remote(id string, on bool) (proto.SessionRemoteResult, error
 	return res.(proto.SessionRemoteResult), nil
 }
 
+func (h tickerHost) SyncModel(id string) (proto.SessionModelResult, error) {
+	res, perr := h.s.syncModel(id)
+	if perr != nil {
+		return proto.SessionModelResult{}, perr
+	}
+	return res.(proto.SessionModelResult), nil
+}
+
 func (h tickerHost) Resolve(slug, id string) (string, error) {
 	if h.s.opts.RunCLI == nil {
 		return "", fmt.Errorf("this server runs no project commands")

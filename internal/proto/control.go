@@ -72,6 +72,9 @@ const (
 	// MethodSessionRemote turns a coordinator's remote control on or off
 	// in the running session (docs/SPEC.md §8.2).
 	MethodSessionRemote = "session.remote"
+	// MethodSessionModel applies the project's coordinator_model to its
+	// running coordinator (docs/SPEC.md §8.2, Models).
+	MethodSessionModel = "session.model"
 	// MethodSessionAdopt makes a plain agent session a project thread's
 	// (docs/SPEC.md §9, Adopt).
 	MethodSessionAdopt = "session.adopt"
@@ -113,6 +116,26 @@ type SessionRemoteResult struct {
 	// remote control on; the ticker leaves it off until the coordinator
 	// is started anew (docs/SPEC.md §11.2).
 	Held bool `json:"held,omitempty"`
+}
+
+// SessionModelParams are the params of session.model: the coordinator
+// session whose project's coordinator_model the server applies.
+type SessionModelParams struct {
+	ID string `json:"id"`
+}
+
+// How session.model applied the setting.
+const (
+	ModelUnchanged = "unchanged"  // the coordinator already runs it
+	ModelSwitched  = "switched"   // the agent's switch command was sent
+	ModelNextStart = "next-start" // the agent can't switch: on its next start
+)
+
+// SessionModelResult is the result of session.model: the model wanted
+// ("" the agent's own default) and how it was applied.
+type SessionModelResult struct {
+	Model string `json:"model"`
+	How   string `json:"how"`
 }
 
 // ServerStatus is the result of server.status.
@@ -218,6 +241,13 @@ type SessionInfo struct {
 	// (session.remote); the ticker doesn't turn it back on until the
 	// coordinator is started anew.
 	RemoteHeld bool `json:"remote_held,omitempty"`
+	// Model is the model the agent runs as tm launched or switched it
+	// ("" its own default). ModelPending: the coordinator's setting
+	// wants ModelNext, which its agent can't switch to live, so it
+	// applies on the next start (docs/SPEC.md §8.2, Models).
+	Model        string `json:"model,omitempty"`
+	ModelNext    string `json:"model_next,omitempty"`
+	ModelPending bool   `json:"model_pending,omitempty"`
 	// Question is the question menu open in the agent, as its mod sent it
 	// (session.ask); nil without one, or without a mod.
 	Question *Question `json:"question,omitempty"`

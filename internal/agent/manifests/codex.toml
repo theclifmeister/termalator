@@ -155,6 +155,9 @@ prompt = "channel"
 empty_rule = "idle-empty-box"
 # /clear starts over in place; /new first asks where to run.
 clear = "/clear"
+# No switch_model: /model only opens a picker; "/model <name>" goes to
+# the model as text (0.162.0), so a coordinator_model change applies on
+# the coordinator's next start.
 
 # Hook payloads are trimmed before they leave the hook process.
 [hook]

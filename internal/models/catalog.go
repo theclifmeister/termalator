@@ -156,6 +156,16 @@ func (c Catalog) LaunchModel(scope []string) string {
 	return ""
 }
 
+// CoordinatorModel is the model a project's coordinator runs on this
+// agent: its coordinator_model while the agent offers it in the
+// project's scope, else LaunchModel's ("" the agent's own default).
+func (c Catalog) CoordinatorModel(s config.Safety) string {
+	if m := s.CoordinatorModel; m != "" && c.Check(m, s.Models) == nil {
+		return m
+	}
+	return c.LaunchModel(s.Models)
+}
+
 // Check refuses a model the project may not start a thread with: none
 // may be chosen while the agent's models are unknown; one the agent
 // doesn't offer, one the account refused, and one outside the project's

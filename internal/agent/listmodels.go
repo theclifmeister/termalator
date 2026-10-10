@@ -28,6 +28,23 @@ type ModelLister struct {
 	Account ListAccount `toml:"account"`
 }
 
+// SwitchText is the in-session text that switches the running agent to
+// model ("" its own default), or "" when it can't switch live
+// ([inject] switch_model).
+func (m *Manifest) SwitchText(model string) string {
+	sm := m.Inject.SwitchModel
+	if sm == "" {
+		return ""
+	}
+	if model == "" {
+		if m.Inject.SwitchModelDefault == "" {
+			return ""
+		}
+		model = m.Inject.SwitchModelDefault
+	}
+	return strings.ReplaceAll(sm, "{model}", model)
+}
+
 // DefaultListTimeout is a lister's timeout_seconds when unset.
 const DefaultListTimeout = 10
 

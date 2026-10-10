@@ -276,3 +276,92 @@ payload = { type = "assistant", error = "model_not_found", isApiErrorMessage = t
 		t.Fatalf("inbox items %v", items)
 	}
 }
+
+// coordinator opens demo's coordinator and waits for it to be idle.
+func coordinator(t *testing.T, env *Env) *Session {
+	t.Helper()
+	c := &Session{ID: strings.TrimSpace(env.MustCLI("project", "open", "demo"))}
+	info, _ := env.Info(c)
+	c.PID = info.PID
+	env.track(info.PID, "coordinator "+c.ID)
+	env.WaitState(c, "idle", agentWait)
+	return c
+}
+
+// TestCoordinatorModelLive: a coordinator_model change reaches the
+// running coordinator. Claude switches live: tm pastes "/model <name>"
+// once it is idle, the conversation stays, and the session reports the
+// new model; a running thread keeps its own. Codex can't switch: the
+// coordinator reports the model waiting for its next start, which a
+// resume applies.
+func TestCoordinatorModelLive(t *testing.T) {
+	t.Run("claude", func(t *testing.T) {
+		env := New(t)
+		env.FakeClaude()
+		env.Setenv("TERMINATR_TICK_SWEEP", "1s")
+		modelsProject(t, env)
+		writeConfig(t, env, "[projects.demo]\ncoordinator_model = \"fake-big\"\n")
+		c := coordinator(t, env)
+		info, _ := env.Info(c)
+		if !strings.Contains(strings.Join(info.Argv, " "), "--model fake-big") || info.Model != "fake-big" {
+			t.Fatalf("coordinator launched with %q, model %q", info.Argv, info.Model)
+		}
+		env.Prompt(c, "remember this")
+		env.WaitState(c, "idle", agentWait)
+		threadArgv(t, env, "--model", "fake-big", "Fix it")
+		writeConfig(t, env, "[projects.demo]\ncoordinator_model = \"fake-small\"\n")
+		if !Poll(agentWait, func() bool { i, _ := env.Info(c); return i.Model == "fake-small" && !i.ModelPending }) {
+			i, _ := env.Info(c)
+			t.Fatalf("not switched: %+v", i)
+		}
+		env.WaitFor(c, "Set model to fake-small for this session only", agentWait)
+		if !Poll(agentWait, func() bool { return strings.Contains(fakeLog(t, env), `"kind":"model","model":"fake-small"`) }) {
+			t.Fatalf("the fake never switched:\n%s", fakeLog(t, env))
+		}
+		if strings.Contains(fakeLog(t, env), `"kind":"clear"`) {
+			t.Fatal("the switch cleared the conversation")
+		}
+		for _, s := range env.Sessions() {
+			if s.Thread != "" && s.Model == "fake-small" {
+				t.Fatalf("a running thread switched: %+v", s)
+			}
+		}
+	})
+	t.Run("codex", func(t *testing.T) {
+		env := New(t)
+		env.FakeCodex()
+		env.Setenv("TERMINATR_TICK_SWEEP", "1s")
+		modelsProject(t, env)
+		writeConfig(t, env, "[projects.demo]\ncoordinator_model = \"fake-codex-1\"\n")
+		c := coordinator(t, env)
+		writeConfig(t, env, "[projects.demo]\ncoordinator_model = \"fake-codex-2\"\n")
+		if !Poll(agentWait, func() bool { i, _ := env.Info(c); return i.ModelPending && i.ModelNext == "fake-codex-2" }) {
+			i, _ := env.Info(c)
+			t.Fatalf("no pending model: %+v", i)
+		}
+		if i, _ := env.Info(c); i.Model != "fake-codex-1" {
+			t.Fatalf("the running model changed: %+v", i)
+		}
+		if strings.Contains(fakeLog(t, env), "/model") {
+			t.Fatal("tm typed /model into codex")
+		}
+		env.MustCLI("server", "restart", "--yes")
+		if !Poll(agentWait, func() bool {
+			for _, s := range env.Sessions() {
+				if s.Role == "coordinator" && strings.Contains(strings.Join(s.Argv, " "), "-m fake-codex-2") && !s.ModelPending {
+					return true
+				}
+			}
+			return false
+		}) {
+			t.Fatalf("the resume didn't apply it: %+v", env.Sessions())
+		}
+	})
+}
+
+// fakeLog is the fake agent's log so far.
+func fakeLog(t *testing.T, env *Env) string {
+	t.Helper()
+	b, _ := os.ReadFile(env.FakeLog())
+	return string(b)
+}

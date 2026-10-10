@@ -225,6 +225,12 @@ token_env = "CLAUDE_CODE_MESSAGING_TOKEN"
 empty_rule = "idle-empty-box"
 # What auto_clear pastes into an idle coordinator past its context hint.
 clear = "/clear"
+# A coordinator_model change applies live: /model takes the model as its
+# argument, a local command (no model call) that keeps the conversation
+# ("Set model to `Sonnet 5.5` for this session only", checked on 2.1.296;
+# "default" is the user's own default).
+switch_model = "/model {model}"
+switch_model_default = "default"
 
 # Hook payloads are trimmed before they leave the hook process.
 [hook]

@@ -368,6 +368,11 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 			s.log.Printf("session %s: no mod: %v", r.ID, err)
 		}
 	}
+	if r.ModelPending {
+		// The coordinator's setting changed while its agent couldn't
+		// switch live: this start applies it (session.model).
+		r.Model, r.ModelNext, r.ModelPending = r.ModelNext, "", false
+	}
 	spec := agent.LaunchSpec{
 		Role: agent.Role(r.Role), SessionID: r.ID, AgentSID: r.AgentSessionID,
 		Cwd: r.Cwd, RepoRoot: repo.RepoRoot, GitDir: repo.GitDir, RuntimeDir: rt, BriefPath: r.Brief, Kickoff: l.kick, Resume: l.resume,
@@ -376,7 +381,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		Mods: modSock != "",
 	}
 	if spec.Model == "" {
-		spec.Model = launchModel(a, r.Project)
+		spec.Model = launchModel(a, r.Project, r.Role == proto.RoleCoordinator)
 	}
 	launch, err := a.Launch(spec)
 	if err != nil {
@@ -455,6 +460,7 @@ func (s *Server) launchAgent(l agentLaunch) (*session.Session, *proto.Error) {
 		s.launched = map[string]string{}
 	}
 	s.launched[r.ID] = spec.Model
+	sess.SetModel(session.ModelState{Model: spec.Model})
 	if err := s.saveLocked(""); err != nil {
 		s.log.Printf("sessions.json: %v", err)
 	}

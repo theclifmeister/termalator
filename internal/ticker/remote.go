@@ -88,3 +88,30 @@ func (t *Ticker) keepRemote(p *project.Project, sessions []proto.SessionInfo, sa
 	}
 	t.o.Log.Printf("ticker: %s: remote control on for %s (%s)", p.Slug, coord.ID, res.How)
 }
+
+// keepModel applies the project's coordinator_model to its running
+// coordinator each sweep (docs/SPEC.md §8.2, Models), so a change made
+// outside the settings popup (a hand edit, all projects' value) reaches
+// it too: the host switches it live once it is idle, or keeps the
+// change for its next start. A no-op while it already runs the model.
+func (t *Ticker) keepModel(p *project.Project, sessions []proto.SessionInfo) {
+	for _, s := range sessions {
+		if s.Role != proto.RoleCoordinator || s.Project != p.Slug || s.Agent == "" {
+			continue
+		}
+		res, err := t.o.Host.SyncModel(s.ID)
+		switch {
+		case err != nil:
+			t.o.Log.Printf("ticker: %s: coordinator model: %v", p.Slug, err)
+		case res.How == proto.ModelSwitched:
+			t.o.Log.Printf("ticker: %s: coordinator %s switches to model %s when idle", p.Slug, s.ID, cmpOrDefault(res.Model))
+		}
+	}
+}
+
+func cmpOrDefault(m string) string {
+	if m == "" {
+		return "its agent's default"
+	}
+	return m
+}

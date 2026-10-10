@@ -196,6 +196,10 @@ func (f *fakeSource) RefreshModels(name string) error {
 	return nil
 }
 func (f *fakeSource) Unrefuse(name, model string) error { return models.Unrefuse(name, model) }
+func (f *fakeSource) SyncModel(id string) error {
+	f.settings = append(f.settings, "sync "+id)
+	return nil
+}
 func (f *fakeSource) SetModels(name string, s config.AgentSettings) error {
 	f.settings = append(f.settings, fmt.Sprintf("agents.%s=%v", name, s))
 	return config.SetAgentModels(name, s)
