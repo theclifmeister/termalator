@@ -54,11 +54,16 @@ func Probe(ctx context.Context, path string, l *agent.ModelLister, env []string)
 	if err := cmd.Start(); err != nil {
 		return agent.Listing{}, err
 	}
-	defer func() {
-		_ = proc.KillGroup(cmd.Process.Pid)
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-	}()
+	waited := false
+	wait := func() {
+		if !waited {
+			waited = true
+			_ = proc.KillGroup(cmd.Process.Pid)
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait() // and stderr is all copied
+		}
+	}
+	defer wait()
 	go func() {
 		for _, line := range l.Send {
 			if _, err := io.WriteString(stdin, line+"\n"); err != nil {
@@ -81,6 +86,7 @@ func Probe(ctx context.Context, path string, l *agent.ModelLister, env []string)
 			if ctx.Err() != nil {
 				return agent.Listing{}, ErrTimeout
 			}
+			wait()
 			if msg := stderr.String(); msg != "" {
 				return agent.Listing{}, fmt.Errorf("the agent stopped before it answered: %s", msg)
 			}
