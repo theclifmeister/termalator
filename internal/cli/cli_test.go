@@ -531,7 +531,6 @@ func TestThreadAgentSetting(t *testing.T) {
 	}
 }
 
-
 // TestArchivedShow: tm thread show prints an archived thread from its
 // tarball, its report marked as the thread's data.
 func TestArchivedShow(t *testing.T) {
