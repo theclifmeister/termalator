@@ -1165,7 +1165,11 @@ func (m *dash) listLines(w int, inline bool) (lines, keys []string, sel int) {
 			add(m.ruleIn(countLabel(r.head, r.count), sectionStyle(r.head), w), "")
 		case r.head != "":
 			// A project's own section is headed by its name.
-			add(m.ruleIn(countLabel(r.head, r.count), styleTitle, w), "")
+			title := countLabel(r.head, r.count)
+			if r.headNote != "" {
+				title += " · " + r.headNote
+			}
+			add(m.ruleIn(title, styleTitle, w), "")
 		case r.key != "" && r.key == m.sel:
 			sel = len(lines)
 			st := styleSel

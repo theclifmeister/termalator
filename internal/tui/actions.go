@@ -88,6 +88,15 @@ func init() {
 				return ""
 			},
 			run: (*dash).adopt},
+		{keys: []string{"space"}, label: "space", help: "activate the project shown (named in the header of its section), or deactivate it: its coordinator and threads stop, to resume when you activate it; asks first while they run",
+			menu: []string{"activate / deactivate the project"},
+			foot: func(m *dash, _ row, _ bool) string {
+				if p := m.projectData(m.projectHere()); p != nil && p.Safety != nil {
+					return activeWord(!p.inactive())
+				}
+				return ""
+			},
+			run: (*dash).toggleHere},
 		{keys: []string{"n"}, label: "n", help: "new project", menu: []string{"new project"},
 			foot: func(m *dash, _ row, _ bool) string {
 				if len(m.data.Projects) == 0 {
@@ -254,4 +263,23 @@ func (m *dash) answerQuestions(slug string) tea.Cmd {
 		return actionMsg{msg: fmt.Sprintf("asked %s's coordinator to open its %s; the dialog shows in its pane once it is free",
 			slug, strings.TrimSuffix(project.QuestionsWaiting(res.Open), " waiting"))}
 	})
+}
+
+// activeWord is what space does to a project that is on (active) or not.
+func activeWord(active bool) string {
+	if active {
+		return "deactivate"
+	}
+	return "activate"
+}
+
+// toggleHere activates or deactivates the project shown, as space does
+// on its row in the sidebar.
+func (m *dash) toggleHere(string) tea.Cmd {
+	p := m.projectData(m.projectHere())
+	if p == nil || p.Safety == nil {
+		m.msg = "no project; n creates one"
+		return nil
+	}
+	return m.toggleActive(p.Slug, p.inactive())
 }
