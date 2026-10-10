@@ -101,3 +101,42 @@ func TestListModelsRecorded(t *testing.T) {
 		t.Errorf("codex logged out: %+v", cxo)
 	}
 }
+
+// TestRefusedRecorded: the built-in [[jsonl_tail.refused]] rules against
+// the lines Claude Code 2.1.296 and Codex 0.162.0 wrote for a refused
+// model (live, on a test VM); a failed turn for another reason and a
+// plain turn end are no refusal.
+func TestRefusedRecorded(t *testing.T) {
+	reg, err := agent.Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tail := func(name string) *agent.JSONLTail {
+		a, _ := reg.Get(name)
+		return agent.ManifestOf(a).JSONLTail
+	}
+	read := func(file string) []byte {
+		b, err := os.ReadFile(filepath.Join("testdata", file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return []byte(strings.TrimSpace(string(b)))
+	}
+	if l := tail("claude").Parse(read("claude-refused.jsonl")); !l.HasRefused || !strings.HasPrefix(l.Refused, "There's an issue with the selected model (claude-nonexistent-1)") {
+		t.Errorf("claude: %+v", l)
+	}
+	if l := tail("codex").Parse(read("codex-refused.jsonl")); !l.HasRefused || l.Refused != "The 'gpt-nonexistent-1' model is not supported when using Codex with a ChatGPT account." {
+		t.Errorf("codex: %+v", l)
+	}
+	for _, line := range []string{
+		`{"type":"event_msg","payload":{"type":"task_complete","error":{"message":"{\"type\":\"error\",\"status\":429,\"error\":{\"message\":\"Rate limit reached\"}}","codex_error_info":"other"}}}`,
+		`{"type":"event_msg","payload":{"type":"task_complete","last_agent_message":"ok"}}`,
+	} {
+		if l := tail("codex").Parse([]byte(line)); l.HasRefused {
+			t.Errorf("not a refusal: %s -> %+v", line, l)
+		}
+	}
+	if l := tail("claude").Parse([]byte(`{"type":"assistant","error":"rate_limit","isApiErrorMessage":true,"message":{"content":"Rate limited"}}`)); l.HasRefused {
+		t.Errorf("claude rate limit: %+v", l)
+	}
+}

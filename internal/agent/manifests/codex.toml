@@ -205,6 +205,16 @@ turn = { type = "event_msg", "payload.type" = "task_complete" }
 match = { type = "event_msg", "payload.type" = "task_started" }
 state = "working"
 
+# A model the login refuses (checked live on 0.162.0, ChatGPT Plus): the
+# turn ends with task_complete carrying the API's 400 as JSON text,
+# "The '<model>' model is not supported when using Codex with a ChatGPT
+# account.", codex_error_info "other" like any failed turn, hence the
+# text. An API key's unknown model is OpenAI's 404 model_not_found.
+[[jsonl_tail.refused]]
+match = { type = "event_msg", "payload.type" = "task_complete", "payload.error.message" = "*" }
+text_field = "payload.error.message"
+contains = ["model is not supported", "does not exist or you do not have access"]
+
 [[jsonl_tail.rules]]
 match = { type = "event_msg", "payload.type" = "task_complete" }
 state = "idle"

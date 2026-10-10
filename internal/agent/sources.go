@@ -230,10 +230,38 @@ type JSONLTail struct {
 }
 
 // RefusedRule matches a line saying the model was refused; TextField
-// is the agent's message, kept as the reason.
+// is the agent's message, kept as the reason (an API error's JSON body
+// gives its error.message). With Contains, the message must also hold
+// one of them: for an agent whose failed turns all look alike (Codex).
 type RefusedRule struct {
 	Match     map[string]string `toml:"match"`
 	TextField string            `toml:"text_field"` // string, or a list of {type:"text", text} blocks
+	Contains  []string          `toml:"contains"`
+}
+
+// refusedText is the rule's message from obj, and whether the rule
+// takes it.
+func (r RefusedRule) refusedText(obj map[string]any) (string, bool) {
+	text := textOf(obj, r.TextField)
+	if t := strings.TrimSpace(text); strings.HasPrefix(t, "{") {
+		var body struct {
+			Error struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if json.Unmarshal([]byte(t), &body) == nil && body.Error.Message != "" {
+			text = body.Error.Message
+		}
+	}
+	if len(r.Contains) == 0 {
+		return text, true
+	}
+	for _, c := range r.Contains {
+		if strings.Contains(text, c) {
+			return text, true
+		}
+	}
+	return "", false
 }
 
 // TailRule matches one line.
@@ -338,8 +366,11 @@ func (t *JSONLTail) Parse(line []byte) TailLine {
 		out.Usage = t.Usage.read(obj)
 	}
 	for _, r := range t.Refused {
-		if matches(r.Match, obj) {
-			out.Refused, out.HasRefused = cmp.Or(textOf(obj, r.TextField), "the model was refused"), true
+		if !matches(r.Match, obj) {
+			continue
+		}
+		if text, ok := r.refusedText(obj); ok {
+			out.Refused, out.HasRefused = cmp.Or(text, "the model was refused"), true
 			break
 		}
 	}

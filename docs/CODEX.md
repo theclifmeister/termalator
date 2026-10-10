@@ -14,7 +14,7 @@ tm asks your Codex which models you can use (`codex app-server`, `model/list`), 
 
 A Codex coordinator can't switch models while it runs (its `/model` only opens a picker), so a change to **Coordinator model** applies when the coordinator next starts; until then its status bar says `model … on next start`. A Claude coordinator switches at once.
 
-Codex lists every model whatever your plan, so a model your ChatGPT plan doesn't include still shows; Codex says so in the thread's pane when it refuses it. Logged out, tm can't tell which models you have: `tm doctor` says so, threads run Codex's default, and `--model` is refused until you `codex login`.
+Codex lists every model whatever your plan, so a model your ChatGPT plan doesn't include still shows. The first thread that tries it learns it: Codex refuses it ("not supported when using Codex with a ChatGPT account"), the coordinator gets a `model-refused` item, and tm stops offering that model for your login. Logged out, tm can't tell which models you have: `tm doctor` says so, threads run Codex's default, and `--model` is refused until you `codex login`.
 
 ## Approvals and the sandbox
 
