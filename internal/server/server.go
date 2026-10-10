@@ -147,6 +147,17 @@ type Server struct {
 	asks asks
 	// mods are the sessions' mod listeners by session id (modchan.go).
 	mods map[string]*http.Server
+	// launched is the model each agent session was launched with ("" its
+	// agent's own default), and refusedSeen the sessions whose refusal
+	// was learnt, both under mu; modelsBusy are the agents being asked
+	// for their models, under modelsMu (models.go).
+	launched    map[string]string
+	refusedSeen map[string]bool
+	modelsMu    sync.Mutex
+	modelsBusy  map[string]bool
+	// modelsCtx ends the agents' models probes when the server stops.
+	modelsCtx  context.Context
+	modelsStop context.CancelFunc
 
 	// protocol is the protocol the hello claims, and deaf hangs up on
 	// every hello: test hooks (testhooks.go).
@@ -236,6 +247,9 @@ func Run(ctx context.Context, opts Options) error {
 	s.watchOwner()
 	s.views = newViews(s, filepath.Join(filepath.Dir(p.Sessions), "views.json"), logger.Printf)
 	s.loadAgents()
+	s.modelsCtx, s.modelsStop = context.WithCancel(context.Background())
+	defer s.modelsStop()
+	s.refreshModels()
 	toResume, lost := s.loadPrevious()
 	if err := s.saveLocked(""); err != nil {
 		logger.Printf("sessions.json: %v", err)
@@ -278,6 +292,7 @@ func Run(ctx context.Context, opts Options) error {
 	case <-s.stopReq:
 		logger.Printf("stopping: requested by a client")
 	}
+	s.modelsStop()
 	// Let a sweep in progress finish while the socket still answers.
 	stopTicker()
 	select {
@@ -671,6 +686,12 @@ func (s *Server) dispatch(req proto.Request, peerPID int) (any, *proto.Error) {
 			return nil, err
 		}
 		return s.remote(p)
+	case proto.MethodSessionModel:
+		var p proto.SessionModelParams
+		if err := decodeParams(req.Params, &p); err != nil {
+			return nil, err
+		}
+		return s.syncModel(p.ID)
 	case proto.MethodSessionAdopt:
 		var p proto.SessionAdoptParams
 		if err := decodeParams(req.Params, &p); err != nil {
@@ -936,6 +957,8 @@ func (s *Server) sessionExited(sess *session.Session) {
 	}
 	os.RemoveAll(s.runtimeDir(sess.ID()))
 	delete(s.records, sess.ID())
+	delete(s.launched, sess.ID())
+	delete(s.refusedSeen, sess.ID())
 	if err := s.saveLocked(""); err != nil {
 		s.log.Printf("sessions.json: %v", err)
 	}

@@ -52,8 +52,13 @@ type SessionRecord struct {
 	RemoteControl bool `json:"remote_control,omitempty"`
 	// RemoteHeld: the user turned remote control off (session.remote);
 	// it holds across resumes until the coordinator is started anew.
-	RemoteHeld bool      `json:"remote_held,omitempty"`
-	Created    time.Time `json:"created"`
+	RemoteHeld bool `json:"remote_held,omitempty"`
+	// ModelNext, with ModelPending, is the model a coordinator's setting
+	// wants and its agent couldn't switch to live: the next start
+	// (a resume too) launches with it (session.model).
+	ModelNext    string    `json:"model_next,omitempty"`
+	ModelPending bool      `json:"model_pending,omitempty"`
+	Created      time.Time `json:"created"`
 	// CleanExit is true when the session was stopped by a clean server
 	// stop rather than lost in a crash.
 	CleanExit bool `json:"clean_exit"`

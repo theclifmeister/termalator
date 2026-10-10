@@ -14,6 +14,7 @@ import (
 
 	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/config"
+	"github.com/theclifmeister/terminatr/internal/models"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/tasks"
@@ -170,21 +171,34 @@ func (f *fakeSource) LibraryRemove(_, id, name string) (int, error) {
 }
 func (f *fakeSource) Review(slug string, t *tasks.Task) Review { return f.reviews[t.ID] }
 func (f *fakeSource) Memory(string) (project.Memory, error)    { return f.memory, nil }
-func (f *fakeSource) Agents() []string                         { return f.agents }
-func (f *fakeSource) ModsNote() string                         { return "Claude Code 2.1.289" }
-func (f *fakeSource) NewProject(name string) (string, error)   { return name, nil }
+func (f *fakeSource) Agents() []string {
+	if f.agents == nil {
+		return []string{"claude"} // one agent installed
+	}
+	return f.agents
+}
+func (f *fakeSource) ModsNote() string                       { return "Claude Code 2.1.289" }
+func (f *fakeSource) NewProject(name string) (string, error) { return name, nil }
 func (f *fakeSource) OpenProject(slug string, c, r int) (string, error) {
 	f.opened = append(f.opened, slug)
 	return "s-" + slug, nil
 }
 
-// Catalogs are the built-in manifests' models (claude only, as the
-// tests' agents) with the test's config.toml over them.
+// Catalogs are the installed (Agents) built-in agents' models as the
+// test saved their answers (modelstest), with its config.toml over them.
 func (f *fakeSource) Catalogs() []Catalog {
 	reg, _ := agent.Load("")
-	a, _ := reg.Get("claude")
 	cfg, _ := config.Load()
-	return []Catalog{{Agent: "claude", Manifest: agent.ModelsOf(a), Settings: cfg.Agent("claude")}}
+	return models.Catalogs(reg, cfg, f.Agents())
+}
+func (f *fakeSource) RefreshModels(name string) error {
+	f.settings = append(f.settings, "refresh "+name)
+	return nil
+}
+func (f *fakeSource) Unrefuse(name, model string) error { return models.Unrefuse(name, model) }
+func (f *fakeSource) SyncModel(id string) error {
+	f.settings = append(f.settings, "sync "+id)
+	return nil
 }
 func (f *fakeSource) SetModels(name string, s config.AgentSettings) error {
 	f.settings = append(f.settings, fmt.Sprintf("agents.%s=%v", name, s))

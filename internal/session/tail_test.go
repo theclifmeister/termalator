@@ -52,7 +52,7 @@ turn = { type = "task_complete" }
 		`{"type":"token_count","last":{"input":300,"cached":250},"window":1000,"total":400}` + "\n" +
 		`{"type":"task_complete"}` + "\n" +
 		`{"type":"token_count","last":{"input":7`)
-	got := rt.readTail()
+	got, _ := rt.readTail()
 	want := []agent.Usage{
 		{Input: 60, CacheRead: 40, Context: 100, ContextWindow: 1000, Key: "100"},
 		{Input: 50, CacheRead: 250, Context: 300, ContextWindow: 1000, Key: "400"},
@@ -68,11 +68,11 @@ turn = { type = "task_complete" }
 	}
 	// The partial line, whole now; then a repeat of it across reads.
 	appendLines(`00,"cached":0},"window":1000,"total":1100}` + "\n")
-	if got := rt.readTail(); len(got) != 1 || got[0].Input != 700 {
+	if got, _ := rt.readTail(); len(got) != 1 || got[0].Input != 700 {
 		t.Fatalf("completed line: %+v", got)
 	}
 	appendLines(`{"type":"token_count","last":{"input":700,"cached":0},"window":1000,"total":1100}` + "\n")
-	if got := rt.readTail(); len(got) != 0 {
+	if got, _ := rt.readTail(); len(got) != 0 {
 		t.Fatalf("repeat across reads: %+v", got)
 	}
 }

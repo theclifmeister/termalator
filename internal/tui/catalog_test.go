@@ -8,8 +8,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/config"
+	"github.com/theclifmeister/terminatr/internal/models"
+	"github.com/theclifmeister/terminatr/internal/models/modelstest"
 )
 
 // typeLine replaces an input's text with s and submits it.
@@ -22,33 +23,24 @@ func typeLine(m *dash, s string) tea.Cmd {
 	return cmd
 }
 
-// catalogOf is claude's catalog as saved: its names, the default
-// starred.
-func catalogOf(t *testing.T) string {
+// saved is claude's settings as saved: hidden, added, default.
+func saved(t *testing.T) config.AgentSettings {
 	t.Helper()
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	reg, _ := agent.Load("")
-	a, _ := reg.Get("claude")
-	var out []string
-	for _, x := range agent.Models(a, cfg) {
-		n := x.Name
-		if x.Default {
-			n += "*"
-		}
-		out = append(out, n)
-	}
-	return strings.Join(out, " ")
+	return cfg.Agent("claude")
 }
 
-// TestCatalogPage: General's Models row opens each agent's models as
-// released; adding, changing, making default and removing one saves
-// the agent's own list, which the page and the row show, and r goes
-// back to the list as released.
+// TestCatalogPage: General's Models row opens each installed agent's
+// models as the agent answered; * makes one the default, h hides one,
+// a adds one the agent doesn't list and d removes it again, u offers a
+// refused one again, R asks the agent again and r goes back to what the
+// agent lists. Each change is saved at once.
 func TestCatalogPage(t *testing.T) {
 	t.Setenv("TERMINATR_HOME", t.TempDir())
+	modelstest.Answer(t, "claude", "alpha", "beta", "old-1~")
 	src := &fakeSource{data: testData()}
 	m := newDash(DashOptions{Source: src, Width: 120, Height: 80, State: DashState{Current: "beta"}})
 	m.setData(src.data)
@@ -64,27 +56,25 @@ func TestCatalogPage(t *testing.T) {
 		t.Fatalf("enter opened %T", m.top())
 	}
 	out := screen(m)
-	for _, want := range []string{"Models", "claude", "default the agent's own · as released", "opus", "most capable", "haiku", "a add"} {
+	for _, want := range []string{"Models", "claude", "3 models · asked 1.0 today (test) · default the agent's own", "alpha", "about alpha", "older", "R ask again"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("page lacks %q:\n%s", want, out)
 		}
 	}
 
-	// Add on the agent's line: name, then about.
+	// Add one the agent doesn't list; one it offers, or not one word,
+	// is refused.
 	keyPress(m, "a")
-	typeLine(m, "opus-6")
-	run(m, typeLine(m, "newest, for the hardest work"))
-	if got := catalogOf(t); got != "opus sonnet haiku opus-6" {
-		t.Fatalf("after add: %q", got)
+	run(m, typeLine(m, "mine-1"))
+	if got := saved(t); !slices.Equal(got.Add, []string{"mine-1"}) {
+		t.Fatalf("after add: %+v", got)
 	}
-	if !strings.Contains(screen(m), "your list (r: as released)") {
+	if !strings.Contains(screen(m), "yours, claude doesn't list it") {
 		t.Fatalf("page after add:\n%s", screen(m))
 	}
-
-	// A name already listed, or not one word, is refused.
 	keyPress(m, "a")
-	typeLine(m, "sonnet")
-	if !strings.Contains(v.err, "already lists sonnet") {
+	typeLine(m, "alpha")
+	if !strings.Contains(v.err, "already offers alpha") {
 		t.Fatalf("duplicate: %q", v.err)
 	}
 	keyPress(m, "a")
@@ -93,49 +83,76 @@ func TestCatalogPage(t *testing.T) {
 		t.Fatalf("two words: %q %T", v.err, m.top())
 	}
 
-	// Make opus-6 the default, then rename it: the default follows.
-	for range 4 {
-		keyPress(m, "down")
+	// The default, on and off again.
+	v.sel = 1 // alpha
+	run(m, keyPress(m, "*"))
+	if got := saved(t); got.DefaultModel != "alpha" {
+		t.Fatalf("after default: %+v", got)
 	}
 	run(m, keyPress(m, "*"))
-	if got := catalogOf(t); got != "opus sonnet haiku opus-6*" {
-		t.Fatalf("after default: %q", got)
-	}
-	keyPress(m, "enter")
-	typeLine(m, "opus-6.1")
-	run(m, typeLine(m, "newest"))
-	if got := catalogOf(t); got != "opus sonnet haiku opus-6.1*" {
-		t.Fatalf("after rename: %q", got)
-	}
-	cfg, _ := config.Load()
-	if s := cfg.Agent("claude"); s.Models[3].About != "newest" || s.DefaultModel != "opus-6.1" {
-		t.Fatalf("saved %+v", s)
+	if got := saved(t); got.DefaultModel != "" {
+		t.Fatalf("after default off: %+v", got)
 	}
 
-	// Remove haiku, then the default: none is left.
-	keyPress(m, "up")
-	run(m, keyPress(m, "d"))
-	if got := catalogOf(t); got != "opus sonnet opus-6.1*" {
-		t.Fatalf("after remove: %q", got)
+	// Hide beta; d on it only says h hides it.
+	v.sel = 2
+	keyPress(m, "d")
+	if !strings.Contains(m.msg, "h hides it") {
+		t.Fatalf("d on a listed model: %q", m.msg)
 	}
-	v.sel = 3
-	run(m, keyPress(m, "d"))
-	if got := catalogOf(t); got != "opus sonnet" {
-		t.Fatalf("after removing the default: %q", got)
+	run(m, keyPress(m, "h"))
+	if got := saved(t); !slices.Equal(got.Hide, []string{"beta"}) {
+		t.Fatalf("after hide: %+v", got)
 	}
-	if got := catalogWords(m.catalogs); got != "claude 2" {
-		t.Fatalf("row value %q", got)
+	if got := catalogWords(m.catalogs); got != "claude 3" {
+		t.Fatalf("row value %q", got) // alpha, old-1, mine-1
+	}
+	// Remove mine-1, the one added.
+	v.sel = slices.IndexFunc(v.items(), func(it catalogItem) bool { x, ok := v.model(it); return ok && x.Name == "mine-1" })
+	run(m, keyPress(m, "d"))
+	if got := saved(t); len(got.Add) != 0 {
+		t.Fatalf("after remove: %+v", got)
 	}
 
-	// r: as released again, both keys gone.
+	// A refused model shows why; u offers it again.
+	if err := models.MarkRefused("claude", "alpha", "no access"); err != nil {
+		t.Fatal(err)
+	}
+	v.reload(m)
+	if !strings.Contains(screen(m), "refused for your account: no access") {
+		t.Fatalf("refused:\n%s", screen(m))
+	}
+	v.sel = slices.IndexFunc(v.items(), func(it catalogItem) bool { x, ok := v.model(it); return ok && x.Name == "alpha" })
+	run(m, keyPress(m, "u"))
+	if c, _ := models.Load("claude"); len(c.Refused) != 0 {
+		t.Fatalf("still refused: %+v", c.Refused)
+	}
+
+	// R asks again; r goes back to what the agent lists.
+	run(m, keyPress(m, "R"))
+	if !slices.Contains(src.settings, "refresh claude") {
+		t.Fatalf("no refresh: %v", src.settings)
+	}
 	run(m, keyPress(m, "r"))
-	if got := catalogOf(t); got != "opus sonnet haiku" {
-		t.Fatalf("after reset: %q", got)
+	if got := saved(t); !got.Empty() {
+		t.Fatalf("after reset: %+v", got)
 	}
 	path, _ := config.Path()
 	data, _ := os.ReadFile(path)
-	if strings.Contains(string(data), "models") || strings.Contains(string(data), "default_model") {
+	if strings.Contains(string(data), "hide") || strings.Contains(string(data), "default_model") {
 		t.Fatalf("file after reset:\n%s", data)
+	}
+
+	// Logged out: the models are unknown, and nothing can be added.
+	modelstest.LoggedOut(t, "claude")
+	v.reload(m)
+	if out := screen(m); !strings.Contains(out, "unknown: logged out of claude") || !strings.Contains(out, "--model is refused") {
+		t.Fatalf("logged out:\n%s", out)
+	}
+	v.sel = 0
+	keyPress(m, "a")
+	if !strings.Contains(v.err, "unknown") {
+		t.Fatalf("add while unknown: %q", v.err)
 	}
 	keyPress(m, "esc")
 	if _, ok := m.top().(*settingsView); !ok {
@@ -147,7 +164,8 @@ func TestCatalogPage(t *testing.T) {
 // stale, not dropped; enter leaves it out, and the rest stays.
 func TestModelsSettingStale(t *testing.T) {
 	src, m := popupData(t)
-	if err := config.SetDefaults("models", []string{"opus", "gone"}); err != nil {
+	modelstest.Answer(t, "claude", "alpha", "beta", "gamma")
+	if err := config.SetDefaults("models", []string{"alpha", "gone"}); err != nil {
 		t.Fatal(err)
 	}
 	src.settings = append(src.settings, "defaults.models") // Load reads the file
@@ -172,7 +190,7 @@ func TestModelsSettingStale(t *testing.T) {
 	}
 	run(m, keyPress(m, "enter"))
 	cfg, _ := config.Load()
-	if s, _ := cfg.AllProjects(); !slices.Equal(s.Models, []string{"opus"}) {
+	if s, _ := cfg.AllProjects(); !slices.Equal(s.Models, []string{"alpha"}) {
 		t.Fatalf("saved %v", s.Models)
 	}
 	if slices.Contains(mv.rows(), "gone") {

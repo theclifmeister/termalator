@@ -80,6 +80,9 @@ type Host interface {
 	// Remote turns a coordinator's remote control on or off, as
 	// session.remote does.
 	Remote(session string, on bool) (proto.SessionRemoteResult, error)
+	// SyncModel applies the project's coordinator_model to its running
+	// coordinator, as session.model does.
+	SyncModel(session string) (proto.SessionModelResult, error)
 	// Unstick pastes the queued prompt a session's mod holds while its
 	// agent idles, and says what it did; "" when the mod holds none.
 	Unstick(session string) string
@@ -417,6 +420,7 @@ func (t *Ticker) Sweep() {
 			t.nudge(p, sessions, now)
 		}
 		t.keepRemote(p, sessions, safety, now)
+		t.keepModel(p, sessions)
 		t.autoClear(p, sessions, safety, cfg.ContextHint, now)
 		if prune {
 			t.upkeep(p, safety, now)

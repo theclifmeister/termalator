@@ -18,6 +18,8 @@ import (
 	"github.com/theclifmeister/terminatr/internal/agent"
 	_ "github.com/theclifmeister/terminatr/internal/agent/claude" // registers the Go agent (Doctor)
 	"github.com/theclifmeister/terminatr/internal/codehost"
+	"github.com/theclifmeister/terminatr/internal/models"
+	"github.com/theclifmeister/terminatr/internal/models/modelstest"
 	"github.com/theclifmeister/terminatr/internal/plat/flock"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
@@ -44,6 +46,7 @@ func testDeps(t *testing.T) Deps {
 		PID: filepath.Join(run, "server.pid"), Log: filepath.Join(h, "logs", "server.log"), Sessions: filepath.Join(h, "state", "sessions.json")}
 	d := DefaultDeps(p, "v0", "b0")
 	d.GOOS = "linux"
+	d.ProbeModels = nil // never this machine's agents: tests save their answers (modelstest)
 	return d
 }
 
@@ -812,32 +815,65 @@ func TestServerHangs(t *testing.T) {
 	}
 }
 
-// TestModels: the models line names each agent's catalog and where it
-// comes from; a stale default, models for an unknown agent and allowed
-// models no catalog lists are warnings.
+// TestModels: doctor's agents and models checks for each set of
+// installed agents: none fails; each installed agent says what it
+// offers or why its models are unknown; settings that name an agent
+// that isn't installed fail, and settings its answer no longer backs
+// are warnings.
 func TestModels(t *testing.T) {
 	d := testDeps(t)
-	cs := Models(d)
-	if len(cs) != 1 || cs[0].Status != OK || cs[0].Detail != "claude 3 (as released), codex 2 (as released)" {
-		t.Fatalf("no config: %+v", cs)
+	lines := func() string {
+		var got []string
+		for _, c := range Models(d) {
+			got = append(got, string(c.Status)+" "+c.Name+": "+c.Detail)
+		}
+		return strings.Join(got, "\n")
 	}
-	body := "[agents.claude]\nmodels = [{ name = \"opus-6\", about = \"newest\" }]\n\n[agents.codex]\ndefault_model = \"gpt-1\"\n\n[agents.nope]\ndefault_model = \"\"\n\n" +
-		"[defaults]\nmodels = [\"opus\", \"opus-6\"]\n\n[projects.demo]\nmodels = [\"opus\", \"haiku\"]\n"
+	modelstest.Agents(t)
+	if got := lines(); !strings.HasPrefix(got, "fail agent: no agent is installed, so tm can't run coordinators or threads: install one of Claude Code (claude), Codex (codex)") || strings.Contains(got, "\n") {
+		t.Fatalf("none installed:\n%s", got)
+	}
+	modelstest.Agents(t, "claude")
+	if got := lines(); got != "warn claude models: unknown: not asked yet (tm doctor asks). Threads run claude's own default and --model is refused" {
+		t.Fatalf("claude never asked:\n%s", got)
+	}
+	modelstest.Answer(t, "claude", "alpha", "beta")
+	if got := lines(); got != "ok claude models: 2 models, asked 1.0 today (test)" {
+		t.Fatalf("claude:\n%s", got)
+	}
+	modelstest.LoggedOut(t, "codex")
+	modelstest.Agents(t, "codex")
+	if got := lines(); got != "warn codex models: unknown: logged out of codex. Threads run codex's own default and --model is refused; log in to codex to see your account's models" {
+		t.Fatalf("codex logged out:\n%s", got)
+	}
+	modelstest.Agents(t, "claude", "codex")
+	if got := lines(); !strings.Contains(got, "warn models: several agents are installed (claude, codex) and the settings name none for all projects") {
+		t.Fatalf("both:\n%s", got)
+	}
+	if err := models.MarkRefused("claude", "beta", "no access"); err != nil {
+		t.Fatal(err)
+	}
+	body := "[agents.claude]\nhide = [\"alpha\"]\nadd = [\"mine-1\"]\ndefault_model = \"gone\"\n\n[agents.codex]\nmodels = [{ name = \"x\", about = \"older list\" }]\n\n[agents.nope]\ndefault_model = \"\"\n\n" +
+		"[defaults]\nthread_agent = \"claude\"\ncoordinator_agent = \"claude\"\nmodels = [\"mine-1\", \"zeta\"]\n\n[projects.demo]\nthread_agent = \"pi\"\ncoordinator_model = \"beta\"\n"
 	os.WriteFile(filepath.Join(d.Paths.Home, "config.toml"), []byte(body), 0o600)
-	cs = Models(d)
-	var got []string
-	for _, c := range cs {
-		got = append(got, string(c.Status)+" "+c.Detail)
-	}
+	modelstest.Agents(t, "claude")
 	want := []string{
-		"ok claude 1 (your list), codex 2 (as released)",
-		"warn codex's default model gpt-1 is stale: its models don't list it, so threads run the agent's own default; pick another in Settings > Models",
-		"warn config.toml has models for agent nope, which tm doesn't know (tm agent list)",
-		"warn allowed model opus is stale: no agent lists it (all projects, demo); Settings > Thread models shows it, enter leaves it out",
-		"warn allowed model haiku is stale: no agent lists it (demo); Settings > Thread models shows it, enter leaves it out",
+		"ok claude models: 1 models, asked 1.0 today (test); hidden by you: 1; yours: mine-1; refused for your account: beta (no access)",
+		"warn models: claude's default model gone isn't offered now, so threads run claude's own default; pick another in Settings > Models",
+		"warn models: config.toml [agents.codex] models is the older full list: tm now asks codex for its models; the names it doesn't list count as yours, and Settings > Models saves the new form",
+		"warn models: config.toml has models settings for agent nope, which tm doesn't know (tm agent list)",
+		"fail agent: demo: thread_agent the thread agent is \"pi\", which tm doesn't know (tm agent list): pick another in the project popup",
+		"warn models: demo: coordinator_model beta: claude refused beta",
+		"warn models: model zeta is in the models of all projects, but no installed agent offers it now; --model zeta is refused",
 	}
-	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+	got := strings.Split(lines(), "\n")
+	if len(got) != len(want) {
 		t.Fatalf("got:\n%s", strings.Join(got, "\n"))
+	}
+	for i := range want {
+		if !strings.HasPrefix(got[i], want[i]) {
+			t.Errorf("line %d:\n got %s\nwant %s", i, got[i], want[i])
+		}
 	}
 }
 

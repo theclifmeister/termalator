@@ -6,6 +6,7 @@ package cli
 
 import (
 	"cmp"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -23,7 +24,7 @@ import (
 	"github.com/theclifmeister/terminatr/internal/caller"
 	"github.com/theclifmeister/terminatr/internal/codehost"
 	"github.com/theclifmeister/terminatr/internal/config"
-	"github.com/theclifmeister/terminatr/internal/home"
+	"github.com/theclifmeister/terminatr/internal/models"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/server"
@@ -289,9 +290,10 @@ func (e *Env) threadStart(p *project.Project, o startOpts, asJSON bool) error {
 	if err != nil {
 		return err
 	}
-	// --agent overrides the user's thread_agent setting (§11.2).
-	agentName := cmp.Or(*o.agent, safety.ThreadAgent)
-	if err := checkAgent(agentName, *o.agent == ""); err != nil {
+	// --agent overrides the user's thread_agent setting (§11.2); unset,
+	// the one installed agent.
+	agentName, err := threadAgent(*o.agent, safety)
+	if err != nil {
 		return err
 	}
 	if err := checkModel(cfg, agentName, *o.model, safety.Models); err != nil {
@@ -399,66 +401,58 @@ func (e *Env) threadStart(p *project.Project, o startOpts, asJSON bool) error {
 }
 
 // checkAgent refuses an agent the registry doesn't know (tm agent
-// list): the --agent given, or with setting the project's thread_agent.
-func checkAgent(name string, setting bool) error {
-	dir, err := home.AgentsDir()
-	if err != nil {
-		return err
-	}
-	reg, err := agent.Load(dir) // a broken user manifest is skipped
+// threadAgent is the agent a thread runs: --agent, else the project's
+// thread_agent, else the one installed agent (docs/SPEC.md §8.2,
+// §11.2). One that isn't installed, none installed, or several with
+// none chosen are refused before anything is created.
+func threadAgent(flag string, safety config.Safety) (string, error) {
+	reg := models.Registry()
 	if reg == nil {
-		return err
+		return "", errors.New("no home directory for the agent manifests")
 	}
-	if _, ok := reg.Get(name); ok {
-		return nil
+	installed := models.Installed(reg, nil)
+	if flag == "" {
+		name, _, err := models.Resolve(reg, installed, safety.ThreadAgent, "thread agent")
+		return name, refusal(err)
 	}
-	msg := fmt.Sprintf("no agent %q (tm agent list)", name)
-	if setting {
-		msg = fmt.Sprintf("the user's settings name thread agent %q, which tm doesn't know (tm agent list): ask the user to pick another in the settings popup, or start with --agent", name)
+	if _, ok := reg.Get(flag); !ok {
+		return "", &tasks.Error{Code: models.CodeUnknownAgent, Msg: fmt.Sprintf("no agent %q (tm agent list)", flag)}
 	}
-	return &tasks.Error{Code: "unknown-agent", Msg: msg}
+	if !slices.Contains(installed, flag) {
+		return "", refusal(models.NotInstalled(reg, flag, installed))
+	}
+	return flag, nil
 }
 
-// checkModel refuses a model the agent's catalog doesn't list (its
-// manifest's [[models]], or the user's in config.toml, docs/SPEC.md
-// §8.2), or the project's models allow-list (docs/SPEC.md §11.2) leaves
-// out; "" is the agent's default.
-func checkModel(cfg *config.Config, agentName, model string, allow []string) error {
+// checkModel refuses a model the project may not start a thread with
+// (models.Catalog.Check): the agent's models are unknown, it doesn't
+// offer it, the user's account refused it, or the project's scope
+// leaves it out. "" is the agent's own default. An agent never asked
+// is asked first.
+func checkModel(cfg *config.Config, agentName, model string, scope []string) error {
 	if model == "" {
 		return nil
 	}
-	dir, err := home.AgentsDir()
-	if err != nil {
-		return err
-	}
-	reg, err := agent.Load(dir) // a broken user manifest is skipped
+	reg := models.Registry()
 	if reg == nil {
-		return err
+		return errors.New("no home directory for the agent manifests")
 	}
-	a, ok := reg.Get(agentName)
+	installed := models.Installed(reg, nil)
+	models.Ensure(context.Background(), reg, agentName, nil)
+	c, ok := models.CatalogOf(reg, cfg, agentName, installed)
 	if !ok {
-		return &tasks.Error{Code: "unknown-agent", Msg: fmt.Sprintf("no agent %q (tm agent list)", agentName)}
+		return &tasks.Error{Code: models.CodeUnknownAgent, Msg: fmt.Sprintf("no agent %q (tm agent list)", agentName)}
 	}
-	models := agent.Models(a, cfg)
-	if len(models) == 0 {
-		return &tasks.Error{Code: "unknown-model", Msg: fmt.Sprintf("agent %s lists no models; start the thread without --model", agentName)}
+	return refusal(c.Check(model, scope))
+}
+
+// refusal is a models.Error as the CLI's refusal.
+func refusal(err error) error {
+	var me *models.Error
+	if errors.As(err, &me) {
+		return &tasks.Error{Code: me.Code, Msg: me.Msg}
 	}
-	var names, allowed []string
-	listed := false
-	for _, m := range models {
-		listed = listed || m.Name == model
-		names = append(names, m.Name)
-		if len(allow) == 0 || slices.Contains(allow, m.Name) {
-			allowed = append(allowed, m.Name)
-		}
-	}
-	switch {
-	case !listed:
-		return &tasks.Error{Code: "unknown-model", Msg: fmt.Sprintf("%q isn't one of %s's models: %s (tm context says when each fits)", model, agentName, strings.Join(names, ", "))}
-	case !slices.Contains(allowed, model):
-		return &tasks.Error{Code: "model-not-allowed", Msg: fmt.Sprintf("the user's settings don't allow model %q for this project; allowed: %s (or start without --model for the agent's default)", model, cmp.Or(strings.Join(allowed, ", "), "none"))}
-	}
-	return nil
+	return err
 }
 
 // parkedErr refuses to start, restart or adopt a thread of an inactive

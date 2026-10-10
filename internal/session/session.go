@@ -76,6 +76,7 @@ type Session struct {
 	sized  atomic.Bool
 	remote atomic.Bool // remote control is on
 	held   atomic.Bool // the user turned it off (RemoteHeld)
+	model  atomic.Pointer[ModelState]
 	// ident is the role, project and thread set by Adopt; nil until then.
 	ident atomic.Pointer[Identity]
 	// closeNote, when set, replaces "session exited: …" as the reason
@@ -190,6 +191,16 @@ func (s *Session) SetRemoteControl(on bool) { s.remote.Store(on) }
 // SetRemoteHeld records whether the user turned remote control off.
 func (s *Session) SetRemoteHeld(held bool) { s.held.Store(held) }
 
+// ModelState is the model a session's agent runs, and one waiting for
+// its next start (SessionInfo.Model, ModelNext, ModelPending).
+type ModelState struct {
+	Model, Next string
+	Pending     bool
+}
+
+// SetModel records the model the agent runs and one waiting.
+func (s *Session) SetModel(m ModelState) { s.model.Store(&m) }
+
 // Identity is a session's role, project and thread.
 type Identity struct{ Role, Project, Thread string }
 
@@ -242,6 +253,9 @@ func (s *Session) Info() proto.SessionInfo {
 
 		RemoteControl: s.remote.Load(),
 		RemoteHeld:    s.held.Load(),
+	}
+	if m := s.model.Load(); m != nil {
+		info.Model, info.ModelNext, info.ModelPending = m.Model, m.Next, m.Pending
 	}
 	if s.term != nil {
 		info.Title = s.term.Title()

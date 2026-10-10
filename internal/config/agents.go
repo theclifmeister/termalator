@@ -3,27 +3,31 @@ package config
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
 
-// An agent's models catalog in config.toml (docs/SPEC.md §8.2, §11.2):
+// An agent's model settings in config.toml (docs/SPEC.md §8.2, Models):
 //
 //	[agents.claude]
-//	models = [{ name = "opus", about = "most capable" }, { name = "sonnet", about = "balanced" }]
+//	hide = ["claude-opus-4-6"]
+//	add = ["arn:aws:bedrock:…"]
 //	default_model = "opus"
 //
-// models replaces the manifest's [[models]] as a whole, so a model can be
-// added, changed or removed without a release; unset, the manifest's
-// list is the catalog. default_model is the model a launch passes when
-// none is chosen ("" for none: the agent runs the user's own default);
-// unset, the manifest's default, while the catalog still lists it. The
-// Settings popup's Models page writes both. Which agents exist and
-// whether default_model is in the catalog are checked by the agent
-// layer (agent.Models), since config doesn't read the manifests.
+// tm ships no model list: the models are what the installed agent says
+// (internal/models). These settings lay the user's over it: hide leaves
+// listed models out, add offers models the agent accepts but doesn't
+// list (a Bedrock inference profile, a custom provider's), and
+// default_model is the model a launch passes when none is chosen ("" or
+// unset: none, so the agent runs its own default). The Settings popup's
+// Models page writes them. The older models = [{ name, about }, …]
+// list (a full catalog) is still read: its names count as added, its
+// about lines are not used, and the next save from the popup replaces
+// it. Which agents exist and what they list are checked by
+// internal/models, since config doesn't read the manifests.
 
-// AgentModel is one model of an agent's catalog: a name the agent's
-// model_args accept, and one line on when it fits.
+// AgentModel is one entry of the older models list.
 type AgentModel struct {
 	Name  string `toml:"name" json:"name"`
 	About string `toml:"about" json:"about"`
@@ -31,29 +35,52 @@ type AgentModel struct {
 
 // AgentSettings is one agent's [agents.<name>] table.
 type AgentSettings struct {
-	// Models is the catalog, with HasModels; unset (HasModels false), the
-	// manifest's [[models]].
-	Models    []AgentModel
-	HasModels bool
-	// DefaultModel, with HasDefault, is default_model: "" is none.
+	Hide         []string
+	Add          []string
 	DefaultModel string
-	HasDefault   bool
+	// Legacy is the older models list, HasLegacy when the file has one.
+	Legacy    []AgentModel
+	HasLegacy bool
 }
 
 type rawAgent struct {
-	Models       *[]AgentModel `toml:"models"`
+	Hide         *[]string     `toml:"hide"`
+	Add          *[]string     `toml:"add"`
 	DefaultModel *string       `toml:"default_model"`
+	Models       *[]AgentModel `toml:"models"`
 }
 
 func (r rawAgent) settings() AgentSettings {
 	var s AgentSettings
-	if r.Models != nil {
-		s.Models, s.HasModels = append([]AgentModel{}, (*r.Models)...), true
+	if r.Hide != nil {
+		s.Hide = append([]string{}, (*r.Hide)...)
+	}
+	if r.Add != nil {
+		s.Add = append([]string{}, (*r.Add)...)
 	}
 	if r.DefaultModel != nil {
-		s.DefaultModel, s.HasDefault = *r.DefaultModel, true
+		s.DefaultModel = *r.DefaultModel
+	}
+	if r.Models != nil {
+		s.Legacy, s.HasLegacy = append([]AgentModel{}, (*r.Models)...), true
 	}
 	return s
+}
+
+// Added is the models the user added: add, then the older list's names.
+func (s AgentSettings) Added() []string {
+	out := append([]string{}, s.Add...)
+	for _, m := range s.Legacy {
+		if !slices.Contains(out, m.Name) {
+			out = append(out, m.Name)
+		}
+	}
+	return out
+}
+
+// Empty reports whether the table sets nothing.
+func (s AgentSettings) Empty() bool {
+	return len(s.Hide) == 0 && len(s.Add) == 0 && s.DefaultModel == "" && !s.HasLegacy
 }
 
 // MaxModelAbout is the most characters of a model's about line.
@@ -72,63 +99,41 @@ func CheckModelName(name string) error {
 	return nil
 }
 
-// CheckModelAbout checks a model's about: one line of 1 to MaxModelAbout
-// characters.
-func CheckModelAbout(about string) error {
-	if strings.TrimSpace(about) == "" || strings.ContainsAny(about, "\r\n") || len([]rune(about)) > MaxModelAbout {
-		return fmt.Errorf("a model's about must be one line of 1 to %d characters", MaxModelAbout)
-	}
-	return nil
-}
-
-// CheckCatalog checks a models catalog: each name and about, no name
-// twice. An empty catalog is valid: the agent then offers no models.
-func CheckCatalog(models []AgentModel) error {
+// checkNames checks a list of model names: each one word, none twice.
+func checkNames(key string, names []string) error {
 	seen := map[string]bool{}
-	for _, m := range models {
-		if err := CheckModelName(m.Name); err != nil {
-			return err
+	for _, n := range names {
+		if err := CheckModelName(n); err != nil {
+			return fmt.Errorf("%s: %w", key, err)
 		}
-		if err := CheckModelAbout(m.About); err != nil {
-			return fmt.Errorf("%s: %w", m.Name, err)
+		if seen[n] {
+			return fmt.Errorf("%s lists %q twice", key, n)
 		}
-		if seen[m.Name] {
-			return fmt.Errorf("lists %q twice", m.Name)
-		}
-		seen[m.Name] = true
+		seen[n] = true
 	}
 	return nil
 }
 
-// check checks an [agents.<name>] table's values; a default_model the
-// table's own models leave out is an error, one the manifest's would is
-// the agent layer's.
+// check checks an [agents.<name>] table's values. Whether the agent
+// lists them is internal/models' to say.
 func (s AgentSettings) check() error {
-	if s.HasModels {
-		if err := CheckCatalog(s.Models); err != nil {
-			return fmt.Errorf("models %w", err)
+	if err := checkNames("hide", s.Hide); err != nil {
+		return err
+	}
+	if err := checkNames("add", s.Add); err != nil {
+		return err
+	}
+	for _, m := range s.Legacy {
+		if err := CheckModelName(m.Name); err != nil {
+			return fmt.Errorf("models: %w", err)
 		}
 	}
-	if !s.HasDefault || s.DefaultModel == "" {
-		return nil
-	}
-	if err := CheckModelName(s.DefaultModel); err != nil {
-		return fmt.Errorf("default_model: %w", err)
-	}
-	if s.HasModels && !s.Lists(s.DefaultModel) {
-		return fmt.Errorf("default_model %q isn't one of its models", s.DefaultModel)
+	if s.DefaultModel != "" {
+		if err := CheckModelName(s.DefaultModel); err != nil {
+			return fmt.Errorf("default_model: %w", err)
+		}
 	}
 	return nil
-}
-
-// Lists reports whether the table's own models name name.
-func (s AgentSettings) Lists(name string) bool {
-	for _, m := range s.Models {
-		if m.Name == name {
-			return true
-		}
-	}
-	return false
 }
 
 // Agent returns the [agents.<name>] settings; the zero value when the
@@ -168,14 +173,16 @@ func checkAgentTable(name string) error {
 // AgentTable is the table of agent name's settings.
 func AgentTable(name string) string { return "agents." + name }
 
-// SetAgentModels writes agent name's models catalog and default as s
-// says, in one write: each key s has is set, each it hasn't is removed,
-// so the manifest's applies again (AgentSettings{} resets both). s is
-// checked first: a default_model its models leave out is refused.
+// SetAgentModels writes agent name's model settings as s says, in one
+// write: hide, add and default_model are set when s has them and
+// removed when not, and the older models list is removed (its names
+// are in s.Add when the caller kept them), so AgentSettings{} resets
+// the agent to what it lists itself.
 func SetAgentModels(name string, s AgentSettings) error {
 	if err := checkAgentTable(name); err != nil {
 		return fmt.Errorf("the agent %w", err)
 	}
+	s.Legacy, s.HasLegacy = nil, false
 	if err := s.check(); err != nil {
 		return err
 	}
@@ -194,7 +201,8 @@ func SetAgentModels(name string, s AgentSettings) error {
 			key string
 			has bool
 			val any
-		}{{"models", s.HasModels, append([]AgentModel{}, s.Models...)}, {"default_model", s.HasDefault, s.DefaultModel}} {
+		}{{"hide", len(s.Hide) > 0, append([]string{}, s.Hide...)}, {"add", len(s.Add) > 0, append([]string{}, s.Add...)},
+			{"default_model", s.DefaultModel != "", s.DefaultModel}, {"models", false, nil}} {
 			if k.has {
 				out, err := Edit(data, table, k.key, k.val)
 				if err != nil {

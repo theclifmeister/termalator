@@ -12,7 +12,7 @@
             │                                                                                              │
             │ Machines      <host>│
             │                                                                                              │
-            │ Coordinator   claude · not running; enter on the project starts it                           │
+            │ Coordinator   claude (auto) · not running; enter on the project starts it                    │
             │ Threads       none open                                                                      │
             │               start after asking you (Settings tab)                                          │
             │                                                                                              │

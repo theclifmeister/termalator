@@ -5,12 +5,16 @@ terminatr runs [Codex](https://developers.openai.com/codex) next to Claude Code:
 ## Set up
 
 1. Install Codex and log in with your ChatGPT account (`codex login`). Run `tm doctor` to check that tm finds it.
-2. Choose the agent in a project's popup: `a` on the project, then **Settings**. **Thread agent** sets the agent for new threads, **Coordinator agent** the one for a new coordinator (a running coordinator keeps its agent until it is started anew). Both can be set for all projects too. In `config.toml` they are `thread_agent` and `coordinator_agent`.
+2. With only Codex installed, tm uses it for coordinators and threads (`codex (auto)`). With Claude Code installed too, opening a project asks once which agent to run, for all projects. To choose per project, use the project's popup: `a` on the project, then **Settings**. **Thread agent** sets the agent for new threads, **Coordinator agent** the one for a new coordinator (a running coordinator keeps its agent until it is started anew). Both can be set for all projects too. In `config.toml` they are `thread_agent` and `coordinator_agent`.
 3. For one thread, name the agent instead: `tm thread start --agent codex "title"`.
 
 ## Models
 
-Codex threads run `gpt-6-luna` unless a model is chosen; `gpt-5.6-terra` is the other. `gpt-6-astra` is refused on a ChatGPT login. Pick one with `--model` (`tm thread start --agent codex --model gpt-5.6-terra …`). If the project limits its models (**Thread models** in Settings, or `models` in `config.toml`), the list must include the Codex models, or `--model` is refused with `model-not-allowed`. Without `--model` the default runs and isn't checked. When OpenAI releases another model, add it (or change the default) in Settings > General > **Models**; no tm release is needed.
+tm asks your Codex which models you can use (`codex app-server`, `model/list`), so the list follows your Codex and your login without a tm release. Settings > General > **Models** shows them, and `tm doctor` says when they were last asked. Threads run Codex's own default unless a model is chosen: pick one with `--model` (`tm thread start --agent codex --model <name> …`), or set a default, hide models or add one Codex doesn't list in the Models page. If the project limits its models (**Thread models** in Settings, or `models` in `config.toml`), the list must include the Codex models, or `--model` is refused with `model-not-allowed`.
+
+A Codex coordinator can't switch models while it runs (its `/model` only opens a picker), so a change to **Coordinator model** applies when the coordinator next starts; until then its status bar says `model … on next start`. A Claude coordinator switches at once.
+
+Codex lists every model whatever your plan, so a model your ChatGPT plan doesn't include still shows. The first thread that tries it learns it: Codex refuses it ("not supported when using Codex with a ChatGPT account"), the coordinator gets a `model-refused` item, and tm stops offering that model for your login. Logged out, tm can't tell which models you have: `tm doctor` says so, threads run Codex's default, and `--model` is refused until you `codex login`.
 
 ## Approvals and the sandbox
 

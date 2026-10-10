@@ -12,10 +12,9 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/codehost"
 	"github.com/theclifmeister/terminatr/internal/config"
-	"github.com/theclifmeister/terminatr/internal/home"
+	"github.com/theclifmeister/terminatr/internal/models"
 	"github.com/theclifmeister/terminatr/internal/tasks"
 )
 
@@ -139,8 +138,7 @@ func (p *Project) Context(seen Ticked) ([]Section, error) {
 			head = append(head, "  "+l)
 		}
 	}
-	head = append(head, agentLines(safety.ThreadAgent)...)
-	head = append(head, modelLines(cfg, safety.Models)...)
+	head = append(head, agentModelLines(cfg, safety)...)
 	out = append(out, Section{Title: "Project", Lines: head})
 	out = append(out, capLines("Standing instructions (PROJECT.md)", splitLines(p.Instructions), capInstructions, "PROJECT.md"))
 
@@ -224,83 +222,94 @@ func (p *Project) Context(seen Ticked) ([]Section, error) {
 	return out, nil
 }
 
-// agentLines name the agents the coordinator may start threads with:
-// the user's thread_agent, which tm thread start runs without --agent,
-// and the others the registry knows, for --agent.
-func agentLines(threadAgent string) []string {
-	dir, err := home.AgentsDir()
-	if err != nil {
-		return nil
-	}
-	reg, _ := agent.Load(dir) // a broken user manifest is skipped
+// agentModelLines name the agents the coordinator may start threads
+// with and their models (docs/SPEC.md §8.2, §11.2): only the installed
+// agents; the thread agent tm thread start runs without --agent (the
+// user's setting, or the one installed agent); and each agent's
+// models in the project's scope, as the agent itself described them,
+// its older versions on one line, or why they are unknown.
+func agentModelLines(cfg *config.Config, safety config.Safety) []string {
+	reg := models.Registry()
 	if reg == nil {
 		return nil
 	}
-	names := reg.Names()
-	if !slices.Contains(names, threadAgent) {
-		return []string{fmt.Sprintf("Thread agent: %s (config.toml; the human's), which tm doesn't know: tm thread start refuses without --agent; agents: %s", threadAgent, strings.Join(names, ", "))}
+	installed := models.Installed(reg, nil)
+	name, auto, err := models.Resolve(reg, installed, safety.ThreadAgent, "thread agent")
+	var out []string
+	switch {
+	case len(installed) == 0:
+		return []string{"Agents: none installed, so no thread can start (tm doctor; the human installs one)"}
+	case err != nil:
+		var me *models.Error
+		errors.As(err, &me)
+		msg := err.Error()
+		if me != nil {
+			msg = me.Msg
+		}
+		out = append(out, "Thread agent: "+msg)
+	case auto:
+		out = append(out, "Thread agent: "+name+" (the only agent installed): tm thread start runs it")
+	default:
+		out = append(out, "Thread agent: "+name+" (config.toml; the human's): tm thread start runs it")
 	}
-	out := []string{"Thread agent: " + threadAgent + " (config.toml; the human's): tm thread start runs it"}
-	others := slices.DeleteFunc(slices.Clone(names), func(n string) bool { return n == threadAgent })
-	if len(others) > 0 {
-		out[0] += "; --agent may name another: " + strings.Join(others, ", ")
+	if others := slices.DeleteFunc(slices.Clone(installed), func(n string) bool { return n == name }); len(others) > 0 && err == nil {
+		out[0] += "; --agent may name another installed agent: " + strings.Join(others, ", ")
+	}
+	var known []string
+	for _, c := range models.Catalogs(reg, cfg, installed) {
+		known = append(known, c.Names()...)
+		if !c.Known {
+			out = append(out, fmt.Sprintf("Models of %s: unknown (%s); its threads run %s's own default, and --model is refused", c.Agent, c.Reason, c.Agent))
+			continue
+		}
+		out = append(out, fmt.Sprintf("Models of %s (tm thread start --model; without it, %s):", c.Agent, launchDefault(c, safety.Models)))
+		var older []string
+		shown := 0
+		for _, m := range c.InScope(safety.Models) {
+			shown++
+			if m.Older {
+				older = append(older, m.Name)
+				continue
+			}
+			line := "  " + m.Name
+			if a := m.About(); a != "" {
+				line += ": " + a
+			}
+			if m.Yours {
+				line += " (added by the user; " + c.Agent + " doesn't list it)"
+			}
+			if m.Default {
+				line += " (" + c.Agent + "'s own default)"
+			}
+			out = append(out, line)
+		}
+		if len(older) > 0 {
+			out = append(out, "  also (older versions): "+strings.Join(older, ", "))
+		}
+		if shown == 0 {
+			out = append(out, "  (none in this project's models: start threads without --model)")
+		}
+		for _, m := range c.Refused {
+			out = append(out, fmt.Sprintf("  refused for the user's account: %s (%s); --model %s is refused", m.Name, m.Refusal.Reason, m.Name))
+		}
+	}
+	if len(safety.Models) > 0 {
+		out = append(out, "The user limits this project's models to: "+strings.Join(safety.Models, ", ")+" (config.toml; the human's). Any other --model is refused.")
+		for _, n := range safety.Models {
+			if !slices.Contains(known, n) {
+				out = append(out, "  stale: "+n+" is allowed but no installed agent offers it now; --model "+n+" is refused")
+			}
+		}
 	}
 	return out
 }
 
-// modelLines list each agent's models for tm thread start --model, from
-// its catalog (the manifest's [[models]], or the user's in config.toml):
-// one line per model, the default marked. A non-empty allow lists only
-// those models (the user's restriction, §11.2), and an allowed name no
-// catalog lists any more is flagged stale.
-func modelLines(cfg *config.Config, allow []string) []string {
-	dir, err := home.AgentsDir()
-	if err != nil {
-		return nil
+// launchDefault says what a thread without --model runs.
+func launchDefault(c models.Catalog, scope []string) string {
+	if d := c.LaunchModel(scope); d != "" {
+		return d + ", the user's default"
 	}
-	reg, _ := agent.Load(dir) // a broken user manifest is skipped
-	if reg == nil {
-		return nil
-	}
-	var out []string
-	var known []agent.Model
-	for _, name := range reg.Names() {
-		a, _ := reg.Get(name)
-		models := agent.Models(a, cfg)
-		if len(models) == 0 {
-			continue
-		}
-		head := fmt.Sprintf("Models of %s (tm thread start --model; without it, the agent's default):", name)
-		if cfg.Agent(name).HasModels {
-			head = fmt.Sprintf("Models of %s (the user's list in config.toml; tm thread start --model; without it, the agent's default):", name)
-		}
-		out = append(out, head)
-		var shown int
-		for _, m := range models {
-			if len(allow) > 0 && !slices.Contains(allow, m.Name) {
-				continue
-			}
-			line := "  " + m.Name + ": " + m.About
-			if m.Default {
-				line += " (default)"
-			}
-			out = append(out, line)
-			shown++
-		}
-		if shown == 0 {
-			out = append(out, "  (none of the user's allowed models is listed by this agent: start threads without --model)")
-		}
-		known = append(known, models...)
-	}
-	if len(allow) > 0 {
-		out = append(out, "The user limits the models to: "+strings.Join(allow, ", ")+" (config.toml; the human's). Any other --model is refused.")
-		for _, n := range allow {
-			if !slices.ContainsFunc(known, func(m agent.Model) bool { return m.Name == n }) {
-				out = append(out, "  stale: "+n+" is allowed but no agent lists it any more; --model "+n+" is refused")
-			}
-		}
-	}
-	return out
+	return c.Agent + "'s own default"
 }
 
 func (p *Project) taskSection() (Section, error) {

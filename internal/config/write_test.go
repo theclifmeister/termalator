@@ -122,20 +122,21 @@ func agents(t *testing.T, slug string) (thread, coordinator string) {
 	return s.ThreadAgent, s.CoordinatorAgent
 }
 
-// TestAgents: thread_agent and coordinator_agent are claude unless set;
+// TestAgents: thread_agent and coordinator_agent are "" unless set (the
+// installed agent is resolved where they are used, internal/models);
 // a project's own wins over [defaults], which wins over the older
 // top-level default_agent (coordinators only), and saving [defaults]
 // coordinator_agent drops that line; a name must be one word.
 func TestAgents(t *testing.T) {
 	write(t, "")
-	if th, co := agents(t, "demo"); th != "claude" || co != "claude" {
+	if th, co := agents(t, "demo"); th != "" || co != "" {
 		t.Fatalf("unset: %q %q", th, co)
 	}
 	write(t, "default_agent = \"pi\"\n# mine\n[projects.demo]\nthread_agent = \"codex\"\n")
 	if th, co := agents(t, "demo"); th != "codex" || co != "pi" {
 		t.Fatalf("project and default_agent: %q %q", th, co)
 	}
-	if th, co := agents(t, "other"); th != "claude" || co != "pi" {
+	if th, co := agents(t, "other"); th != "" || co != "pi" {
 		t.Fatalf("other project: %q %q", th, co)
 	}
 	if err := SetDefaults("coordinator_agent", "codex"); err != nil {

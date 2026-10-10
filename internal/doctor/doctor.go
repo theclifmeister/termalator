@@ -25,6 +25,7 @@ import (
 	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/codehost"
 	"github.com/theclifmeister/terminatr/internal/keychain"
+	"github.com/theclifmeister/terminatr/internal/models"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/server"
@@ -104,6 +105,9 @@ type Deps struct {
 	// one's PRs live on (codehost.Detect); empty means GitHub, as for a
 	// fresh install.
 	Hosts func() []RepoHost
+	// ProbeModels asks an installed agent for its models and saves the
+	// answer (models.Refresh); nil only reads what was last asked.
+	ProbeModels func(*agent.Manifest) (models.Cache, error)
 	// Getenv reads the environment (AZURE_DEVOPS_EXT_PAT); nil reads none.
 	Getenv func(string) string
 	// PATGet asks Azure DevOps a URL with a PAT; nil is codehost.PATGet.
@@ -116,7 +120,8 @@ type RepoHost = codehost.RepoHost
 // DefaultDeps uses the real system.
 func DefaultDeps(p server.Paths, version, build string) Deps {
 	return Deps{Paths: p, GOOS: runtime.GOOS, LookPath: exec.LookPath, Run: run, Version: version, Build: build, Getenv: os.Getenv, Hosts: usedHosts,
-		Keychain: func() proto.KeychainStatus { return keychain.Probe(runtime.GOOS, os.Getenv, keychain.Run) }}
+		Keychain:    func() proto.KeychainStatus { return keychain.Probe(runtime.GOOS, os.Getenv, keychain.Run) },
+		ProbeModels: func(m *agent.Manifest) (models.Cache, error) { return models.Refresh(context.Background(), m, nil) }}
 }
 
 // cmdTimeout bounds every program doctor runs (agent --version, git).

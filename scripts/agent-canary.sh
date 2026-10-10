@@ -14,7 +14,10 @@
 #     payload fields tm reads; the rollout's events;
 #   - Claude: tm's plugin and settings in print mode, whose exec-form
 #     hooks fire before it finds no login;
-#   - the screen and file text tm matches, in the binaries.
+#   - the screen and file text tm matches, in the binaries;
+#   - the models probe (docs/SPEC.md §8.2, Models): tm doctor asks each
+#     agent for its models; logged out, as here, its logged-out rule must
+#     match what the agent answers, and Claude on Bedrock still lists.
 # One line per check, "ok" or "FAIL"; exit 1 when any failed.
 #
 #   CI=true TM=./tm scripts/agent-canary.sh
@@ -219,10 +222,30 @@ claude_canary() {
 	strings_in claude-screen-remote-control "$bin" "Disconnect this session" "Remote Control disconnected"
 }
 
+# models NAME AGENT WANT [VAR=VALUE...]: tm doctor's "AGENT models"
+# check, with the variables set, has WANT.
+models() {
+	name=$1 agent=$2 want=$3
+	shift 3
+	got=$(env "$@" TERMINATR_HOME="$work/tm-models" TERMINATR_SOCKET="$work/none.sock" "$tm" doctor --json 2>/dev/null |
+		jq -r --arg n "$agent models" '.. | objects | select(.name? == $n) | .status + " " + .detail' | head -1)
+	case "$got" in
+	*"$want"*) ok "$name" ;;
+	*) fail "$name" "doctor says \"$got\", want \"$want\"" ;;
+	esac
+}
+
+models_canary() {
+	models codex-models-logged-out codex "unknown: logged out of codex"
+	models claude-models-logged-out claude "unknown: logged out of claude"
+	models claude-models-bedrock claude "models, asked" CLAUDE_CODE_USE_BEDROCK=1 AWS_REGION=us-east-1
+}
+
 case "${1:-all}" in
 codex) codex_canary ;;
 claude) claude_canary ;;
-all) codex_canary; claude_canary ;;
-*) echo "usage: agent-canary.sh [codex|claude|all]" >&2; exit 2 ;;
+models) models_canary ;;
+all) codex_canary; claude_canary; models_canary ;;
+*) echo "usage: agent-canary.sh [codex|claude|models|all]" >&2; exit 2 ;;
 esac
 exit $failed

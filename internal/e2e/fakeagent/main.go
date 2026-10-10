@@ -93,6 +93,9 @@ type sessionState struct {
 }
 
 func main() {
+	if listModels(os.Args[1:]) {
+		return
+	}
 	if isCodex() {
 		codexMain()
 		return

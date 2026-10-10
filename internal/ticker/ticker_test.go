@@ -31,6 +31,7 @@ type fakeHost struct {
 	resolve  func(slug, id string) error
 	remote   []string              // "<session> on|off"
 	unstuck  []string              // sessions Unstick was called for
+	synced   []string              // sessions SyncModel was called for
 	unstick  string                // what Unstick answers
 	refresh  func() (string, bool) // the last nudge's
 	cleared  []string              // sessions Clear was called for
@@ -61,6 +62,11 @@ func (h *fakeHost) Resolve(slug, id string) (string, error) {
 func (h *fakeHost) Remote(id string, on bool) (proto.SessionRemoteResult, error) {
 	h.remote = append(h.remote, id+" "+map[bool]string{true: "on", false: "off"}[on])
 	return proto.SessionRemoteResult{RemoteControl: on, How: proto.RemotePrompted}, nil
+}
+
+func (h *fakeHost) SyncModel(id string) (proto.SessionModelResult, error) {
+	h.synced = append(h.synced, id)
+	return proto.SessionModelResult{How: proto.ModelUnchanged}, nil
 }
 
 func (h *fakeHost) Unstick(id string) string {

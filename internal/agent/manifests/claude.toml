@@ -174,20 +174,39 @@ rule = "blocked-question"
 text_option = "Type something"
 submit = "\r"
 
-# The models a thread may be started with (tm thread start --model): the
-# aliases `claude --model` accepts, which follow each family's latest
-# model. Without --model a thread runs the user's own default.
-[[models]]
-name = "opus"
-about = "most capable: large or subtle changes, design, hard debugging, long multi-step work"
+# The models (docs/SPEC.md §8.2, Models): tm ships none and asks Claude
+# Code, as the Agent SDK does: a headless session's initialize control
+# request answers with Claude's own /model list for this user (their
+# login, plan, provider, availableModels and ANTHROPIC_DEFAULT_*_MODEL),
+# without a prompt, so no model call. --safe-mode leaves the user's
+# hooks, plugins and MCP servers out; settings and policy still apply.
+# Checked on 2.1.296 (Max login, logged out, API key, Bedrock, Vertex).
+[list_models]
+args = ["-p", "--safe-mode", "--no-session-persistence", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"]
+send = ['{"type":"control_request","request_id":"tm-models","request":{"subtype":"initialize"}}']
 
-[[models]]
-name = "sonnet"
-about = "balanced: most everyday coding tasks with clear scope"
+[list_models.models]
+reply = { type = "control_response", "response.request_id" = "tm-models" }
+path = "response.response.models"
+name = "value"
+display = "displayName"
+description = "description"
+resolves_to = "resolvedModel"
+# "default" is the user's own default, which passing no --model gives.
+skip = { value = "default" }
+# The fixed versions behind the aliases (claude-opus-4-8, …).
+older_pinned = true
 
-[[models]]
-name = "haiku"
-about = "fastest, cheapest: small well-specified edits, docs; no auto mode, so it stops at every permission prompt"
+[list_models.models.tags]
+"no auto mode" = { supportsAutoMode = "false" }
+
+[list_models.account]
+reply = { type = "control_response", "response.request_id" = "tm-models" }
+path = "response.response.account"
+fingerprint = ["apiProvider", "subscriptionType", "organization", "tokenSource", "apiKeySource"]
+label = ["subscriptionType", "apiProvider"]
+# No login and no API key: Claude then lists its aliases only.
+logged_out = { "response.response.account.tokenSource" = "none", "response.response.account.apiKeySource" = "!*", "response.response.account.apiProvider" = "firstParty" }
 
 [inject]
 # Bracketed paste + Enter while idle with an empty prompt box (core).
@@ -206,6 +225,12 @@ token_env = "CLAUDE_CODE_MESSAGING_TOKEN"
 empty_rule = "idle-empty-box"
 # What auto_clear pastes into an idle coordinator past its context hint.
 clear = "/clear"
+# A coordinator_model change applies live: /model takes the model as its
+# argument, a local command (no model call) that keeps the conversation
+# ("Set model to `Sonnet 5.5` for this session only", checked on 2.1.296;
+# "default" is the user's own default).
+switch_model = "/model {model}"
+switch_model_default = "default"
 
 # Hook payloads are trimmed before they leave the hook process.
 [hook]
@@ -263,6 +288,14 @@ reason = "interrupted"
 [[jsonl_tail.rules]]
 match = { type = "system", subtype = "turn_duration" }
 state = "idle"
+
+# A model the user's account or provider can't use: Claude writes an API
+# error message with error "model_not_found" (checked in 2.1.296: "There's
+# an issue with the selected model (X). It may not exist or you may not
+# have access to it.", or "not available on your bedrock deployment").
+[[jsonl_tail.refused]]
+match = { type = "assistant", error = "model_not_found" }
+text_field = "message.content"
 
 # Hook → state: edges and details (who is asking for what).
 [[hooks]]
