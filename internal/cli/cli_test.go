@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/caller"
 	"github.com/theclifmeister/terminatr/internal/config"
 	"github.com/theclifmeister/terminatr/internal/home"
@@ -532,10 +531,6 @@ func TestThreadAgentSetting(t *testing.T) {
 	}
 }
 
-func agentBuiltin(name string) (string, bool) {
-	b, ok := agent.Builtin(name)
-	return string(b), ok
-}
 
 // TestArchivedShow: tm thread show prints an archived thread from its
 // tarball, its report marked as the thread's data.
