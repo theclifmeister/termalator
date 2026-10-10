@@ -607,34 +607,42 @@ func (s *Server) resume(recs []SessionRecord) (outs []restartOutcome) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, r := range recs {
-		r.CleanExit = false
-		if _, err := os.Stat(r.Cwd); err != nil {
-			s.log.Printf("session %s: not resumed: %v", r.ID, err)
+		o := s.resumeLocked(r)
+		if o.how == "lost" {
 			s.lost = append(s.lost, r.ID)
-			outs = append(outs, restartOutcome{rec: r, how: "lost"})
-			continue
+		} else {
+			s.resumed = append(s.resumed, r.ID)
 		}
-		cols, rows := r.Cols, r.Rows
-		if cols == 0 || rows == 0 {
-			cols, rows = 80, 24
-		}
-		l := agentLaunch{rec: r, resume: true, cols: cols, rows: rows}
-		how := "resumed"
-		if !r.Prompted {
-			how = "fresh"
-			// Nothing to resume: the agent saved no conversation yet.
-			l.resume, l.kick, l.rec.AgentSessionID = false, r.Kickoff, newUUID()
-		}
-		if _, perr := s.launchAgent(l); perr != nil {
-			s.log.Printf("session %s: not resumed: %v", r.ID, perr)
-			s.lost = append(s.lost, r.ID)
-			outs = append(outs, restartOutcome{rec: r, how: "lost"})
-			continue
-		}
-		s.resumed = append(s.resumed, r.ID)
-		outs = append(outs, restartOutcome{rec: r, how: how})
+		outs = append(outs, o)
 	}
 	return outs
+}
+
+// resumeLocked relaunches one recorded agent session under its id:
+// resumed, or fresh when it was never prompted (nothing to resume), or
+// lost when its cwd is gone or the launch fails. s.mu held.
+func (s *Server) resumeLocked(r SessionRecord) restartOutcome {
+	r.CleanExit = false
+	if _, err := os.Stat(r.Cwd); err != nil {
+		s.log.Printf("session %s: not resumed: %v", r.ID, err)
+		return restartOutcome{rec: r, how: "lost"}
+	}
+	cols, rows := r.Cols, r.Rows
+	if cols == 0 || rows == 0 {
+		cols, rows = 80, 24
+	}
+	l := agentLaunch{rec: r, resume: true, cols: cols, rows: rows}
+	how := "resumed"
+	if !r.Prompted {
+		how = "fresh"
+		// Nothing to resume: the agent saved no conversation yet.
+		l.resume, l.kick, l.rec.AgentSessionID = false, r.Kickoff, newUUID()
+	}
+	if _, perr := s.launchAgent(l); perr != nil {
+		s.log.Printf("session %s: not resumed: %v", r.ID, perr)
+		return restartOutcome{rec: r, how: "lost"}
+	}
+	return restartOutcome{rec: r, how: how}
 }
 
 func (s *Server) hookEvent(p proto.HookEventParams) proto.HookEventResult {

@@ -442,6 +442,29 @@ const (
 // coordinator again under the new slug. The human's.
 const MethodProjectRename = "project.rename"
 
+// MethodProjectActive activates or deactivates a project (tm project
+// activate|deactivate, the sidebar's space, docs/SPEC.md §5.1): the
+// server writes the setting, then stops the project's coordinator and
+// threads, keeping their records dormant to resume, or resumes its
+// dormant ones. The human's.
+const MethodProjectActive = "project.active"
+
+// ProjectActiveParams are the params of project.active.
+type ProjectActiveParams struct {
+	Project string `json:"project"`
+	Active  bool   `json:"active"`
+}
+
+// ProjectActiveResult says what project.active did: whether the setting
+// changed, and the sessions it stopped, resumed (or started fresh) and
+// dropped, by name (coordinator, a thread id).
+type ProjectActiveResult struct {
+	Changed bool     `json:"changed"`
+	Stopped []string `json:"stopped,omitempty"`
+	Resumed []string `json:"resumed,omitempty"`
+	Lost    []string `json:"lost,omitempty"`
+}
+
 // ProjectRenameParams are the params of project.rename. The slug is a
 // project's only name.
 type ProjectRenameParams struct {

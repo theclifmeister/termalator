@@ -348,6 +348,7 @@ func TestEverySidebarClickHasKey(t *testing.T) {
 		"show its dashboard": "enter on the project", "open its coordinator": "enter on its coordinator",
 		"project popup": "enter, then a", "tasks": "enter, then t", "inbox": "enter, then i",
 		"open the coordinator": "enter", "attach": "enter",
+		"activate": "space on the project", "deactivate": "space on the project",
 	}
 	m, _ := fresh()
 	for i := range m.tree() {

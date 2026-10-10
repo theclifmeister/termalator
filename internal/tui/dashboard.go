@@ -726,6 +726,9 @@ func (m *dash) sideKeyboard(key string) (tea.Cmd, bool) {
 		}
 		cmds = append(cmds, m.openTarget(*t))
 	}
+	if st.toggle != "" {
+		cmds = append(cmds, m.toggleActive(st.toggle, st.activate))
+	}
 	return tea.Batch(cmds...), true
 }
 
@@ -926,15 +929,24 @@ func (m *dash) cycleProject(next bool) tea.Cmd {
 			i = j
 		}
 	}
-	switch {
-	case i < 0:
-		i = 0
-	case next:
-		i = (i + 1) % len(ps)
-	default:
-		i = (i - 1 + len(ps)) % len(ps)
+	// The k-th project tried; inactive ones are skipped, since opening
+	// never activates.
+	nth := func(k int) int {
+		switch {
+		case i < 0:
+			return k
+		case next:
+			return (i + 1 + k) % len(ps)
+		}
+		return (i - 1 - k + 2*len(ps)) % len(ps)
 	}
-	return m.openProject(ps[i].Slug)
+	for k := range len(ps) {
+		if p := ps[nth(k)]; !p.inactive() {
+			return m.openProject(p.Slug)
+		}
+	}
+	m.msg = "no project is active; space on one in the sidebar activates it"
+	return nil
 }
 
 // View.

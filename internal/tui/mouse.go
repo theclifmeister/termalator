@@ -456,10 +456,12 @@ func (m *dash) sideMenu(mo tea.Mouse) tea.Cmd {
 	}
 	switch r.kind {
 	case treeProject:
-		items = append(items,
-			menuItem{label: "show its dashboard", run: func(m *dash) tea.Cmd { return m.showProject(r.slug) }},
-			menuItem{label: "open its coordinator", run: func(m *dash) tea.Cmd { return m.openProject(r.slug) }})
-		items = append(items, show("project popup", "a"), show("tasks", "t"), show("inbox", "i"))
+		items = append(items, menuItem{label: "show its dashboard", run: func(m *dash) tea.Cmd { return m.showProject(r.slug) }})
+		if !r.inactive {
+			items = append(items, menuItem{label: "open its coordinator", run: func(m *dash) tea.Cmd { return m.openProject(r.slug) }})
+		}
+		items = append(items, show("project popup", "a"), show("tasks", "t"), show("inbox", "i"),
+			menuItem{label: activeLabel(r), key: "space", run: func(m *dash) tea.Cmd { return m.toggleActive(r.slug, r.inactive) }})
 	case treeCoordinator:
 		title += " coordinator"
 		items = append(items, menuItem{label: "open the coordinator", key: "enter", run: func(m *dash) tea.Cmd { return m.openProject(r.slug) }},

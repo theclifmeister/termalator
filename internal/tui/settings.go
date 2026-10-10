@@ -819,9 +819,12 @@ func safetySettings(slug string) []setting {
 	if all {
 		return rows
 	}
-	// The project's own state, never all projects': pause, archive,
-	// delete.
+	// The project's own state, never all projects': activate, pause,
+	// archive, delete.
 	return append(rows, []setting{
+		{label: "Active", help: "Only an active project's coordinator and threads run, and only they come back when the server restarts. Turning it off stops them now, to resume when you turn it on again; asks first while they run. Space in the sidebar does the same.",
+			value:  func(m *dash) string { return onOff(safety(m).Active) },
+			change: func(m *dash) tea.Cmd { return m.toggleActive(slug, !safety(m).Active) }},
 		{label: "Paused", help: "While paused the coordinator gets no nudges, threads get no pull request follow-up, and no new thread starts; the dashboard still follows their state.",
 			value: func(m *dash) string { return onOff(safety(m).Paused) },
 			change: func(m *dash) tea.Cmd {
@@ -918,6 +921,26 @@ func joinNotes(a, b func(m *dash) []string) func(m *dash) []string {
 
 // lifecycle pauses, resumes, archives or deletes a project in the
 // background, then reloads.
+// toggleActive activates or deactivates a project (the sidebar's space,
+// the Active row): deactivating asks first while its coordinator or
+// threads run, which it stops, to resume at its activation (§5.1).
+func (m *dash) toggleActive(slug string, on bool) tea.Cmd {
+	set := func() tea.Cmd {
+		if p := m.projectData(slug); p != nil && p.Safety != nil {
+			s := *p.Safety
+			s.Active = on
+			p.Safety = &s
+			m.rebuild()
+		}
+		return m.lifecycle(slug, map[bool]string{true: "activate", false: "deactivate"}[on])
+	}
+	if busy := runningIn(m.data.Sessions, slug); !on && len(busy) > 0 {
+		m.confirmNo("Deactivate "+slug, DeactivateQuestion(slug, busy), slug+" stays active", set)
+		return nil
+	}
+	return set()
+}
+
 func (m *dash) lifecycle(slug, verb string) tea.Cmd {
 	src := m.src
 	return m.act(func() actionMsg {

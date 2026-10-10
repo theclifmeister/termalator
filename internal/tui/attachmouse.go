@@ -349,8 +349,11 @@ func (c *client) sideItems(r treeRow, t Target) []aitem {
 	switch r.kind {
 	case treeProject:
 		add("show its dashboard", "", func() { c.sideGo(Target{Project: r.slug}) })
-		add("open its coordinator", "", func() { c.sideGo(Target{Project: r.slug, Coordinator: true}) })
+		if !r.inactive {
+			add("open its coordinator", "", func() { c.sideGo(Target{Project: r.slug, Coordinator: true}) })
+		}
 		popups()
+		add(activeLabel(r), "space", func() { c.askActive(r.slug, r.inactive) })
 	case treeCoordinator:
 		add("open the coordinator", "", func() { c.sideGo(t) })
 		popups()

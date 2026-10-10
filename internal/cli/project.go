@@ -28,6 +28,7 @@ const projectUsage = `usage: tm project new <slug> [--goal "…"] [--repo PATH].
        tm project repo add|remove PATH [--project <slug>]
        tm project open <slug> [--agent NAME]   (start or attach its coordinator)
        tm project remote on|off [<slug>]   (remote control of its running coordinator)
+       tm project activate|deactivate <slug> [--yes]  (only an active project's agents run)
        tm project pause|resume [<slug>]    (no nudges, PR follow-up or new threads while paused)
        tm project archive|unarchive <slug> (hidden from the sidebar; the ticker leaves it alone)
        tm project delete <slug> [--yes]    (moves it to the trash; asks first)
@@ -46,7 +47,7 @@ func runProject(e *Env, args []string) error {
 		return projectRepo(e, args[1:])
 	case "remote":
 		return projectRemote(e, args[1:])
-	case "pause", "resume", "archive", "unarchive", "delete":
+	case "activate", "deactivate", "pause", "resume", "archive", "unarchive", "delete":
 		return projectLifecycle(e, args[0], args[1:])
 	case "rename", "mv":
 		return projectRename(e, args[1:])
@@ -92,8 +93,8 @@ func projectNew(e *Env, args []string) error {
 	return nil
 }
 
-// projectLifecycle pauses, resumes, archives, unarchives or deletes a
-// project: the human's (docs/SPEC.md §10).
+// projectLifecycle activates, deactivates, pauses, resumes, archives,
+// unarchives or deletes a project: the human's (docs/SPEC.md §10).
 func projectLifecycle(e *Env, verb string, args []string) error {
 	f := newFlags()
 	yes := f.Bool("yes")
@@ -102,11 +103,11 @@ func projectLifecycle(e *Env, verb string, args []string) error {
 		return err
 	}
 	pause := verb == "pause" || verb == "resume"
-	if len(pos) > 1 || (len(pos) == 0 && !pause) || (*yes && verb != "delete") {
+	if len(pos) > 1 || (len(pos) == 0 && !pause) || (*yes && verb != "delete" && verb != "deactivate") {
 		return usagef("%s", projectUsage)
 	}
 	if e.Caller.IsAgent() {
-		return &project.Error{Code: "human-only", Msg: "the user pauses, archives and deletes projects"}
+		return &project.Error{Code: "human-only", Msg: "the user activates, pauses, archives and deletes projects"}
 	}
 	flag := ""
 	if len(pos) == 1 {
@@ -119,13 +120,26 @@ func projectLifecycle(e *Env, verb string, args []string) error {
 	var call func(method string, params, result any) error
 	if !pause {
 		c, _, err := connect(false)
-		if err == nil {
+		switch {
+		case err == nil:
 			defer c.Close()
 			call = c.Call
+		case (verb == "activate" || verb == "deactivate") && !errors.Is(err, server.ErrNotRunning):
+			// The server runs the project's agents: it must hear of it.
+			return err
 		}
 	}
 	var msg string
 	switch verb {
+	case "activate":
+		msg, err = tui.ActivateProject(call, e.Caller, p.Slug, true)
+	case "deactivate":
+		if !*yes {
+			if err := e.confirmDeactivate(call, p.Slug); err != nil {
+				return err
+			}
+		}
+		msg, err = tui.ActivateProject(call, e.Caller, p.Slug, false)
 	case "pause", "resume":
 		msg, err = tui.PauseProject(e.Caller, p.Slug, verb == "pause")
 	case "archive", "unarchive":
@@ -248,6 +262,25 @@ func (e *Env) confirmDelete(p *project.Project) error {
 	return nil
 }
 
+// confirmDeactivate asks before deactivating a project stops its
+// running coordinator and threads: y on a terminal, else --yes.
+func (e *Env) confirmDeactivate(call func(method string, params, result any) error, slug string) error {
+	busy, err := tui.Running(call, slug)
+	if err != nil || len(busy) == 0 {
+		return err
+	}
+	in, ok := e.Stdin.(*os.File)
+	if !ok || !isTTY(in) {
+		return usagef("tm project deactivate %s stops %s now: confirm with --yes", slug, strings.Join(busy, ", "))
+	}
+	fmt.Fprintf(e.Stdout, "%s [y/N] ", tui.DeactivateQuestion(slug, busy))
+	line, _ := bufio.NewReader(in).ReadString('\n')
+	if a := strings.ToLower(strings.TrimSpace(line)); a != "y" && a != "yes" {
+		return &project.Error{Code: "not-confirmed", Msg: slug + " stays active"}
+	}
+	return nil
+}
+
 func projectList(e *Env, args []string) error {
 	f := newFlags()
 	asJSON := f.Bool("json")
@@ -294,6 +327,8 @@ func projectList(e *Env, args []string) error {
 		name := s.Slug
 		if s.Safety != nil && s.Safety.Archived {
 			name += " (archived)"
+		} else if s.Safety != nil && !s.Safety.Active {
+			name += " (inactive)"
 		} else if s.Safety != nil && s.Safety.Paused {
 			name += " (paused)"
 		}

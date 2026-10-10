@@ -12,6 +12,7 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 
+	"github.com/theclifmeister/terminatr/internal/caller"
 	"github.com/theclifmeister/terminatr/internal/emu"
 	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
@@ -24,8 +25,9 @@ import (
 // screen, the dashboard and the attach view alike, holding the project
 // tree. Each project row has its coordinator's state glyph, a hint when
 // one of its threads is blocked or waiting or one of its tasks needs
-// you (review or blocked), and its count of open threads. Every project
-// is always expanded: its coordinator hangs under it and its open
+// you (review or blocked), and its count of open threads. Every active
+// project is always expanded (an inactive one is collapsed, its row
+// alone, docs/SPEC.md §5.1): its coordinator hangs under it and its open
 // threads under the coordinator, on tree connectors (├─ └─), with their
 // state glyphs and progress in columns of their own. The current project is in
 // the accent colour, and the row you are on is highlighted. A click on a project shows its dashboard, on the
@@ -72,8 +74,11 @@ type treeRow struct {
 	ctx     int  // a coordinator row: its context window's use in percent, -1 for unknown
 	ctxHint bool // a coordinator row: ctx reached [ui] context_hint
 	paused  bool // a project: paused (no nudges, follow-up or new threads)
-	threads int  // a project: its open threads
-	here    bool // the row you are on
+	// inactive: a project the user deactivated, shown collapsed: its row
+	// alone, no coordinator or thread rows (§5.1).
+	inactive bool
+	threads  int  // a project: its open threads
+	here     bool // the row you are on
 	// cursor is the keyboard's row, set while the sidebar has this
 	// console's keyboard focus (markCursor).
 	cursor bool
@@ -158,7 +163,11 @@ func buildTree(ps []ProjectData, sessions []proto.SessionInfo, in treeIn) []tree
 	var out []treeRow
 	for _, p := range ps {
 		pr := treeRow{kind: treeProject, slug: p.Slug, pct: -1, threads: len(p.Threads), current: p.Slug == in.current,
-			hint: p.Counts["needs_you"] > 0 || p.Questions > 0, paused: p.Safety != nil && p.Safety.Paused}
+			hint: p.Counts["needs_you"] > 0 || p.Questions > 0, paused: p.Safety != nil && p.Safety.Paused, inactive: p.inactive()}
+		if pr.inactive {
+			out = append(out, pr)
+			continue
+		}
 		remote, ctx := false, -1
 		for _, s := range sessions {
 			if s.Role == proto.RoleCoordinator && s.Project == p.Slug {
@@ -375,7 +384,8 @@ func treeSel(r treeRow, focused bool) (bool, lipgloss.Style) {
 // column, one blank before its state glyph (two in the Nerd set, whose
 // icon draws wide); never on the project's row, so
 // not in the slim strip either.
-// A paused project gets "∥" after its name, in either width.
+// A paused project gets "∥" after its name, in either width, and an
+// inactive one "⊘", its name faint: it is collapsed, its row alone.
 // The row you are on is in reverse video (and, in the slim strip, marked),
 // so colour is never the only signal. While the sidebar has the keyboard
 // focus, the keyboard's row is instead, in the accent colour.
@@ -387,6 +397,9 @@ func treeCells(r treeRow, cw int, slim, focused bool) string {
 	if r.paused && r.kind == treeProject {
 		pz = i.paused
 	}
+	if r.inactive && r.kind == treeProject {
+		pz += i.inactive
+	}
 	if slim {
 		g, st := coordLook(r.state)
 		if r.hint && r.state != "blocked" {
@@ -397,8 +410,11 @@ func treeCells(r treeRow, cw int, slim, focused bool) string {
 			return " " + sel.Render(fit(g+" "+name, cw-1))
 		}
 		look := styleHead
-		if r.current {
+		switch {
+		case r.current:
 			look = styleTitle
+		case r.inactive:
+			look = styleFaint
 		}
 		return fit(" "+st.Render(g)+" "+look.Render(name), cw)
 	}
@@ -427,8 +443,11 @@ func treeCells(r treeRow, cw int, slim, focused bool) string {
 			return " " + sel.Render(fit(folder+" "+name+right(count, hint, hst, true), cw-1))
 		}
 		look, mark := styleHead, styleFaint.Render(folder)
-		if r.current {
+		switch {
+		case r.current:
 			look, mark = styleTitle, styleAccent.Render(folder)
+		case r.inactive:
+			look = styleFaint
 		}
 		cnt := right(count, hint, hst, false) // no threads: faint
 		if r.threads > 0 {
@@ -736,7 +755,72 @@ func (c *client) sideKeyboard(k uv.Key) {
 	if st.target != nil && !st.here {
 		c.sideGo(*st.target)
 	}
+	if st.toggle != "" {
+		c.askActive(st.toggle, st.activate)
+	}
 	c.poke()
+}
+
+// activeLabel is the menu item of a project row that space does.
+func activeLabel(r treeRow) string {
+	if r.inactive {
+		return "activate"
+	}
+	return "deactivate"
+}
+
+// askActive activates or deactivates a project from the sidebar
+// (space); deactivating asks first, in a dialog, while its coordinator
+// or threads run.
+func (c *client) askActive(slug string, on bool) {
+	if !c.lock() {
+		return
+	}
+	busy := runningIn(c.side.sessions, slug)
+	if on || len(busy) == 0 {
+		c.mu.Unlock()
+		c.setActive(slug, on)
+		return
+	}
+	c.confirm = func(yes bool) {
+		c.confirm = nil
+		c.closeMenu()
+		if !yes {
+			c.flash = slug + " stays active"
+		}
+		c.status()
+		c.mu.Unlock()
+		c.poke()
+		if yes {
+			c.setActive(slug, false)
+		}
+	}
+	c.openDialog("Deactivate "+slug, DeactivateQuestion(slug, busy))
+	c.status()
+	c.mu.Unlock()
+	c.poke()
+}
+
+// setActive activates or deactivates a project through the server, and
+// says what came of it in the status bar.
+func (c *client) setActive(slug string, on bool) {
+	go func() {
+		ctl, err := server.Connect(c.paths, false)
+		msg := ""
+		if err == nil {
+			msg, err = ActivateProject(ctl.Call, caller.FromEnv(), slug, on)
+			ctl.Close()
+		}
+		if err != nil {
+			msg = errMessage(err)
+		}
+		if c.lock() {
+			c.flash = msg
+			c.status()
+			c.mu.Unlock()
+			c.poke()
+		}
+	}()
 }
 
 // appendSidebar draws the sidebar's changed lines. c.mu held.
@@ -903,10 +987,11 @@ func (c *client) sideGo(t Target) {
 const (
 	sideUp = iota
 	sideDown
-	sideIn    // on a project, down to its first row
-	sideOut   // on a row under a project, up to it
-	sideEnter // what a click does
-	sideBack  // the focus goes back to the list or the pane
+	sideIn     // on a project, down to its first row
+	sideOut    // on a row under a project, up to it
+	sideEnter  // what a click does
+	sideBack   // the focus goes back to the list or the pane
+	sideActive // on a project, activate or deactivate it
 )
 
 // sideAction is a sidebar key: its keys, what it does, its help line and
@@ -924,6 +1009,7 @@ var sideActions = []sideAction{
 	{[]string{"left", "h"}, sideOut, "", ""},
 	{[]string{"enter"}, sideEnter, "enter", "what a click does: a project shows its dashboard, its coordinator or a thread attaches"},
 	{[]string{"esc"}, sideBack, "esc", "back to the list (in a session: to the pane)"},
+	{[]string{"space"}, sideActive, "space", "on a project: activate it, or deactivate it (its coordinator and threads stop, to resume when you activate it; asks first while they run)"},
 }
 
 // sideOp is the sidebar operation of key; ok is false for none.
@@ -944,6 +1030,9 @@ type sideStep struct {
 	here   bool // target is the row you are on
 	msg    string
 	back   bool
+	// toggle is the project to activate (activate) or deactivate.
+	toggle   string
+	activate bool
 }
 
 // sideKeyStep decides what sidebar key op does with the cursor at sel in
@@ -970,7 +1059,7 @@ func sideKeyStep(all []treeRow, w int, sel string, op int) sideStep {
 	case sideDown:
 		return moveTo(i + 1)
 	case sideIn:
-		if r.kind == treeProject && w > sideSlim {
+		if r.kind == treeProject && !r.inactive && w > sideSlim {
 			return moveTo(i + 1)
 		}
 	case sideOut:
@@ -979,6 +1068,11 @@ func sideKeyStep(all []treeRow, w int, sel string, op int) sideStep {
 				return moveTo(j)
 			}
 		}
+	case sideActive:
+		if r.kind != treeProject {
+			return sideStep{msg: "space on a project activates or deactivates it"}
+		}
+		return sideStep{toggle: r.slug, activate: r.inactive}
 	case sideEnter:
 		t, can, why := r.target()
 		if !can {
