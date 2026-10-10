@@ -393,10 +393,10 @@ func treeSel(r treeRow, focused bool) (bool, lipgloss.Style) {
 // The slim strip shows projects alone, "● term…": its coordinator's
 // glyph (or the hint), then its name, cut with "…"; the current one's
 // name in the accent colour, as in the full sidebar.
-// A coordinator with remote control on gets "⌁" in its row's count
-// column, one blank before its state glyph (two in the Nerd set, whose
-// icon draws wide); never on the project's row, so
-// not in the slim strip either.
+// A coordinator with remote control on gets "⌁" right after its name and
+// context use ("coordinator 40% ⌁"), one blank between (and, in the Nerd
+// set, whose icon draws wide, two after it); never on the project's row,
+// so not in the slim strip either.
 // A paused project gets "∥" at the far right of its row (the name gives
 // way, never the icons), in either width, then an inactive one "⊘" and, in
 // the full sidebar, the hint "⚑", each in a fixed slot; an inactive
@@ -509,36 +509,38 @@ func treeCells(r treeRow, cw int, slim, focused bool) string {
 		if r.dormant {
 			g = i.inactive
 		}
-		// "⌁" sits at the right of the count column; "coordinator" may
-		// take the rest of it.
+		// "⌁" follows the name and the context use, one blank between;
+		// "coordinator" may take the rest of the label column.
 		lw := max(cw-ld-2, 0) // the label column and the count's
 		// A Nerd Font's remote icon draws two cells wide, over the blank
-		// after it, so that set gets a second one: a blank always shows
-		// between the icon and the state glyph, and the label gives way.
-		name, rc, gap, tail := "coordinator", "", " ", ""
+		// after it, so that set keeps a second one: a blank always shows
+		// after the icon, and the label gives way.
+		name, rc, tail := "coordinator", "", ""
 		if r.remote {
-			if i.name == IconsNerd {
-				gap = "  "
-			}
-			lw = max(lw-1-len(gap), 0)
 			rc, tail = i.remote, " "
+			if i.name == IconsNerd {
+				tail = "  "
+			}
+			lw = max(lw-1-ansi.StringWidth(rc)-ansi.StringWidth(tail), 0)
 		}
 		// The context use follows the name where there is room, coloured
 		// (warn from the threshold, red from 80%), with "/clear?" past it.
-		name = fit(name, max(lw, 0))
-		note, nst := ctxNote(r, lw-len(strings.TrimRight(name, " ")))
-		if note != "" {
-			name = strings.TrimRight(name, " ")
+		name = strings.TrimRight(fit(name, max(lw, 0)), " ")
+		note, nst := ctxNote(r, lw-ansi.StringWidth(name))
+		used := ansi.StringWidth(name) + len(note)
+		icon, plainIcon := "", ""
+		if r.remote {
+			icon, plainIcon = " "+styleAccent.Render(rc)+tail, " "+rc+tail
+			used += ansi.StringWidth(plainIcon)
 		}
-		pad := strings.Repeat(" ", max(lw-ansi.StringWidth(name)-len(note), 0))
+		pad := strings.Repeat(" ", max(cw-ld-2-used, 0))
 		if r.here {
-			return lead + sel.Render(fit(name+note+pad+tail+rc+gap+g, cw-ld))
+			return lead + sel.Render(fit(name+note+plainIcon+pad+" "+g, cw-ld))
 		}
 		if r.state == "" {
 			name = styleFaint.Render(name)
 		}
-		label := name + nst.Render(note) + pad + tail
-		return fit(lead+label+styleAccent.Render(rc)+gap+st.Render(g), cw)
+		return fit(lead+name+nst.Render(note)+icon+pad+" "+st.Render(g), cw)
 	}
 	g, st := stateLook(r.state)
 	if g == "" {

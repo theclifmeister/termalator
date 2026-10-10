@@ -41,8 +41,8 @@ func TestRemoteMarkers(t *testing.T) {
 				t.Errorf("%s slim %v: project row %q", set.name, slim, c)
 			}
 		}
-		// On the coordinator's row, one blank before its state glyph, in
-		// every width the sidebar takes.
+		// On the coordinator's row, right after its name, one blank
+		// between, in every width the sidebar takes.
 		g, _ := coordLook("idle")
 		for w := view.SideMin - 1; w <= 60; w++ {
 			for _, here := range []bool{false, true} {
@@ -50,13 +50,15 @@ func TestRemoteMarkers(t *testing.T) {
 				r.here = here
 				c := ansi.Strip(treeLine(r, w, false, false))
 				// A Nerd Font icon draws two cells wide, so that set keeps
-				// two blanks and one still shows before the state glyph.
-				gap := " "
-				if set.name == IconsNerd {
-					gap = "  "
-				}
-				if !strings.HasSuffix(c, set.remote+gap+g+" ") {
+				// a second blank after it.
+				if !strings.Contains(c, " "+set.remote+" ") || !strings.HasSuffix(c, g+" ") || strings.Index(c, set.remote) > strings.LastIndex(c, g) {
 					t.Errorf("%s w %d here %v: coordinator row %q", set.name, w, here, c)
+				}
+				if w >= 40 {
+					r.ctx = 40
+					if c := ansi.Strip(treeLine(r, w, false, false)); !strings.Contains(c, "coordinator 40% "+set.remote+" ") {
+						t.Errorf("%s w %d here %v: with a percent %q", set.name, w, here, c)
+					}
 				}
 				if ansi.StringWidth(c) != w {
 					t.Errorf("%s w %d: %q is %d wide", set.name, w, c, ansi.StringWidth(c))

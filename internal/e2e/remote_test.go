@@ -58,7 +58,7 @@ func remoteIs(t *testing.T, env *Env, s *Session, on bool, pid int) {
 }
 
 // remoteMarked reports whether the sidebar on screen sc shows "⌁" on
-// the coordinator's row only, at its right, beside the state glyph, and
+// the coordinator's row only, right after its name and context use, and
 // not after the project's name.
 func remoteMarked(sc, slug string) bool {
 	marked := false
@@ -69,7 +69,9 @@ func remoteMarked(sc, slug string) bool {
 		if strings.Contains(row, slug+"⌁") || strings.Contains(row, slug+" ⌁") {
 			return false
 		}
-		if f := strings.Fields(row); len(f) >= 3 && f[len(f)-3] == "coordinator" && f[len(f)-2] == "⌁" {
+		// "coordinator 40% ⌁ ○": right after the name or the percent.
+		f := strings.Fields(row)
+		if c := slices.Index(f, "coordinator"); c >= 0 && len(f) > c+2 && (f[c+1] == "⌁" || strings.HasSuffix(f[c+1], "%") && f[c+2] == "⌁") {
 			marked = true
 		}
 	}
