@@ -286,12 +286,12 @@ func TestDashboardRows(t *testing.T) {
 	m.setData(src.data)
 	out := screen(m)
 	needs := strings.Index(out, "NEEDS YOU")
-	proj := strings.Index(out, " beta ─")
+	proj := strings.Index(out, " beta · active ─")
 	sess := strings.Index(out, "SESSIONS")
 	if needs < 0 || !(needs < proj && proj < sess) {
 		t.Fatalf("sections out of order:\n%s", out)
 	}
-	if strings.Contains(out, "s-5 ") || strings.Contains(out, "PROJECTS") || strings.Contains(out[needs:], " alpha ─") {
+	if strings.Contains(out, "s-5 ") || strings.Contains(out, "PROJECTS") || strings.Contains(out[needs:], " alpha · active ─") {
 		t.Errorf("a thread's session, a PROJECTS section or another project listed:\n%s", out)
 	}
 	// NEEDS YOU: the blocked coordinator and the user's own blocked
@@ -325,7 +325,7 @@ func TestDashboardRows(t *testing.T) {
 	// Without a current project, the first is listed.
 	m = newDash(DashOptions{Source: src, Width: 120 + sideDefault, Height: 30})
 	m.setData(src.data)
-	if out := screen(m); !strings.Contains(out, " alpha ─") || strings.Contains(out, "t-0005") {
+	if out := screen(m); !strings.Contains(out, " alpha · active ─") || strings.Contains(out, "t-0005") {
 		t.Errorf("no current project:\n%s", out)
 	}
 }

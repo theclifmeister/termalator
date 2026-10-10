@@ -118,7 +118,7 @@ func TestSmokeSidebar(t *testing.T) {
 	w.Click(4, sideRow(t, w.Screen(), demo))
 	for _, x := range both {
 		x.WaitUntil("demo's dashboard", wait, func(sc string) bool {
-			return strings.Contains(sc, " "+demo+" ──") && strings.Contains(sc, "t-0001 Small fix") && treeRow(sc, demo, "coordinator") >= 0
+			return strings.Contains(sc, " "+demo+" · active ─") && strings.Contains(sc, "t-0001 Small fix") && treeRow(sc, demo, "coordinator") >= 0
 		})
 	}
 	// beta's row, then its coordinator's row, starts and attaches the
@@ -149,7 +149,7 @@ func TestSmokeSidebar(t *testing.T) {
 	// its coordinator's row attaches the coordinator again.
 	w.Click(4, sideRow(t, w.Screen(), beta))
 	for _, x := range both {
-		x.WaitUntil("beta's dashboard", wait, func(sc string) bool { return strings.Contains(sc, " "+beta+" ──") })
+		x.WaitUntil("beta's dashboard", wait, func(sc string) bool { return strings.Contains(sc, " "+beta+" · active ─") })
 	}
 	clickCoordinator(t, w, beta)
 	w.WaitUntil("attached to beta", wait, func(sc string) bool { return lastLine(sc, beta+" coordinator") })

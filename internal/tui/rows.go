@@ -22,9 +22,10 @@ import (
 // row is one dashboard line: a section header, an unselectable note, or
 // an item with columns.
 type row struct {
-	key  string // selection identity, stable across refreshes
-	head string // a section header: NEEDS YOU, the project, SESSIONS
-	note string // an unselectable line: task counts, "no projects; …"
+	key      string // selection identity, stable across refreshes
+	head     string // a section header: NEEDS YOU, the project, SESSIONS
+	headNote string // after a project header's name: active or inactive
+	note     string // an unselectable line: task counts, "no projects; …"
 
 	// An item's columns: its marker (" ! ", indent), who (project slug or
 	// session id; rows of the project's own section have none), what
@@ -256,12 +257,16 @@ func buildRows(d Data, project string) []row {
 		}
 	}
 	needs = append(needs, loose...)
-	var head string
+	var head, headNote string
 	for _, p := range d.Projects {
 		if p.Slug != project {
 			continue
 		}
 		head = p.Slug
+		headNote = "active"
+		if p.inactive() {
+			headNote = "inactive"
+		}
 		var coord *proto.SessionInfo
 		var members []proto.SessionInfo
 		threadOf := map[string]bool{}
@@ -360,7 +365,7 @@ func buildRows(d Data, project string) []row {
 		rows = append(rows, needs...)
 	}
 	if head != "" {
-		rows = append(rows, row{head: head})
+		rows = append(rows, row{head: head, headNote: headNote})
 		rows = append(rows, projs...)
 	} else {
 		rows = append(rows, row{note: "  no projects; n creates one"})

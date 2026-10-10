@@ -1,5 +1,5 @@
  PROJECTS                    1 │ tm dashboard                                                                                                        ● server ok · 1 session
- ■ demo                  1     │ demo ─────────────────────────────────────────────────────────────────────────────────────│ T1 Fix the login
+ ■ demo                  1     │ demo · active ────────────────────────────────────────────────────────────────────────────│ T1 Fix the login
  └─ coordinator              · │  coordinator                         —           not running; enter starts it  1 inbox    │ ○ idle
     └─ T1 Fix the login  50% ○ │  T1 Fix the login                    ○ idle      report new  50% 1/2 ▸ Fix  <duration>  PR #7  t-…│ ──────────────────────────────────────────────
                                │  tasks: 0 need you · 1 in motion · 0 on deck                                              │ project   demo
@@ -26,5 +26,5 @@
                                │                                                                                           │
                                │                                                                                           │
                                │────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-                               │ ≡ menu · enter attach · a project · t tasks · i inbox · , settings · ? help · prefix+q quit
+                               │ ≡ menu · enter attach · space deactivate · a project · t tasks · i inbox · , settings · ? help · prefix+q quit
  dev                           │
