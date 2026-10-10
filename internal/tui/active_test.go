@@ -31,8 +31,9 @@ func TestInactiveProjectCollapsed(t *testing.T) {
 	// Its row says so in every icon set's glyph.
 	for _, r := range buildTree(d.Projects, d.Sessions, treeIn{}) {
 		if r.slug == "beta" {
-			if line := treeCells(r, 30, false, false); !strings.Contains(ansi.Strip(line), "beta"+ic().inactive) {
-				t.Errorf("row %q, want %q", line, "beta"+ic().inactive)
+			// At the far right, after the paused slot, before the hint's.
+			if line := ansi.Strip(treeCells(r, 30, false, false)); !strings.HasSuffix(line, " "+ic().inactive+" ") {
+				t.Errorf("row %q, want it to end in %q", line, ic().inactive)
 			}
 		}
 	}

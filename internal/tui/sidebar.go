@@ -397,8 +397,10 @@ func treeSel(r treeRow, focused bool) (bool, lipgloss.Style) {
 // column, one blank before its state glyph (two in the Nerd set, whose
 // icon draws wide); never on the project's row, so
 // not in the slim strip either.
-// A paused project gets "∥" after its name, in either width, and an
-// inactive one "⊘", its name faint: it is collapsed, its row alone,
+// A paused project gets "∥" at the far right of its row (the name gives
+// way, never the icons), in either width, then an inactive one "⊘" and, in
+// the full sidebar, the hint "⚑", each in a fixed slot; an inactive
+// project's name is faint: it is collapsed, its row alone,
 // unless the user expanded it; then its coordinator and threads are
 // faint, with "⊘" for their state: dormant.
 // The row you are on is in reverse video (and, in the slim strip, marked),
@@ -408,19 +410,28 @@ func treeCells(r treeRow, cw int, slim, focused bool) string {
 	i := ic()
 	var sel lipgloss.Style
 	r.here, sel = treeSel(r, focused)
-	pz := ""
-	if r.paused && r.kind == treeProject {
-		pz = i.paused
+	// A project row's state icons sit at its far right in a fixed order,
+	// each in a slot of its own (blank when it doesn't apply): paused,
+	// inactive, then (full width) the needs-you hint.
+	slot := func(on bool, g string) string {
+		if on {
+			return g
+		}
+		return " "
 	}
-	if r.inactive && r.kind == treeProject {
-		pz += i.inactive
-	}
+	proj := r.kind == treeProject
+	pz := slot(r.paused && proj, i.paused) + slot(r.inactive && proj, i.inactive)
 	if slim {
 		g, st := coordLook(r.state)
 		if r.hint && r.state != "blocked" {
 			g, st = i.hint, styleWarn
 		}
-		name := ansi.Truncate(r.slug, max(cw-3-ansi.StringWidth(pz), 0), "…") + pz
+		// No blank slots in the strip: it has no columns to line up.
+		pz = strings.TrimSpace(pz)
+		if !proj {
+			pz = ""
+		}
+		name := fit(ansi.Truncate(r.slug, max(cw-3-ansi.StringWidth(pz), 0), "…"), max(cw-3-ansi.StringWidth(pz), 0)) + pz
 		if r.here {
 			return " " + sel.Render(fit(g+" "+name, cw-1))
 		}
@@ -452,10 +463,10 @@ func treeCells(r treeRow, cw int, slim, focused bool) string {
 		if r.current {
 			folder = i.folderOpen
 		}
-		nw := max(cw-3-rw, 1)
-		name := fit(ansi.Truncate(r.slug, max(nw-ansi.StringWidth(pz), 0), "…")+pz, nw)
+		nw := max(cw-3-rw-ansi.StringWidth(pz), 1)
+		name := fit(ansi.Truncate(r.slug, nw, "…"), nw)
 		if r.here {
-			return " " + sel.Render(fit(folder+" "+name+right(count, hint, hst, true), cw-1))
+			return " " + sel.Render(fit(folder+" "+name+count+" "+pz+hint, cw-1))
 		}
 		look, mark := styleHead, styleFaint.Render(folder)
 		switch {
@@ -464,11 +475,11 @@ func treeCells(r treeRow, cw int, slim, focused bool) string {
 		case r.inactive:
 			look = styleFaint
 		}
-		cnt := right(count, hint, hst, false) // no threads: faint
+		cnt := styleFaint.Render(count) // no threads: faint
 		if r.threads > 0 {
-			cnt = count + " " + hst.Render(hint)
+			cnt = count
 		}
-		return fit(" "+mark+" "+look.Render(name)+cnt, cw)
+		return fit(" "+mark+" "+look.Render(name)+cnt+" "+pz+hst.Render(hint), cw)
 	}
 	conn, node := i.mid, i.thread
 	if r.last {

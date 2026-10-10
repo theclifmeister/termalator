@@ -35,9 +35,9 @@ func TestDashboardSidebar(t *testing.T) {
 	m.setData(src.data)
 	want := []string{
 		" PROJECTS                    2 │ tm dashboard",
-		" ■ alpha                   0 ⚑ │", // a task needs you; a blank column before the border
+		" ■ alpha                 0   ⚑ │", // a task needs you; a blank column before the border
 		" └─ coordinator              ▲ │",
-		" ■ beta                    2 ⚑ │", // t-0005 waits on a question
+		" ■ beta                  2   ⚑ │", // t-0005 waits on a question
 		" └─ coordinator              · │",
 		"    ├─ T4 Write docs     60% ● │", // threads hang under the coordinator, task id and title
 		"    └─ t-0006 Old work       · │", // a thread without a task: its own id
