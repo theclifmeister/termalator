@@ -1,0 +1,12 @@
+ PROJECTS                    2 │
+ ■ beta                    0   │
+ └─ coordinator              · │
+ ■ demo⊘                   1   │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+                               │
+ dev                           │

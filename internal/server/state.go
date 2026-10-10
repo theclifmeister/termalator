@@ -21,6 +21,10 @@ type State struct {
 	Shutdown string          `json:"shutdown,omitempty"`
 	NextID   int             `json:"next_id"`
 	Sessions []SessionRecord `json:"sessions"`
+	// Dormant are the agent sessions of inactive projects (docs/SPEC.md
+	// §3.6, §5.1): not running, kept to resume when the project is
+	// activated.
+	Dormant []SessionRecord `json:"dormant,omitempty"`
 }
 
 // SessionRecord is one session in sessions.json.

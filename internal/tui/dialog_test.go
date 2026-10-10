@@ -173,7 +173,7 @@ func TestSessionDialog(t *testing.T) {
 	c.v = view.View{Mode: view.ModeLayout, Focus: "s-1"}
 	c.key(pk)
 	c.key(uv.Key{Code: 'r', Text: "r"})
-	if c.confirmRemote == nil || c.dialog == nil {
+	if c.confirm == nil || c.dialog == nil {
 		t.Fatal("prefix+r opened no dialog")
 	}
 	text := ansi.Strip(strings.Join(c.dialog.lines(), "\n"))
@@ -190,12 +190,12 @@ func TestSessionDialog(t *testing.T) {
 		t.Errorf("the status bar asks: %q", bar)
 	}
 	c.key(uv.Key{Code: uv.KeyEnter})
-	if c.confirmRemote == nil {
+	if c.confirm == nil {
 		t.Fatal("enter answered the question")
 	}
 	c.key(uv.Key{Code: 'n', Text: "n"})
-	if c.confirmRemote != nil || c.dialog != nil || c.flash != "remote control unchanged" {
-		t.Fatalf("n: confirm %v, dialog %v, flash %q", c.confirmRemote, c.dialog, c.flash)
+	if c.confirm != nil || c.dialog != nil || c.flash != "remote control unchanged" {
+		t.Fatalf("n: confirm %v, dialog %v, flash %q", c.confirm != nil, c.dialog, c.flash)
 	}
 	// A click on its n no answers no too.
 	c.key(pk)
@@ -203,14 +203,14 @@ func TestSessionDialog(t *testing.T) {
 	d := c.dialog
 	// A click inside it, off its buttons, leaves it open.
 	c.mouse(uv.MouseClickEvent{X: d.x + 3, Y: d.y + 1, Button: uv.MouseLeft})
-	if c.confirmRemote == nil {
+	if c.confirm == nil {
 		t.Fatal("a click on the question's text closed it")
 	}
 	lines := d.lines()
 	row := len(lines) - 2 // the action row
 	col := strings.Index(ansi.Strip(lines[row]), "n no")
 	c.mouse(uv.MouseClickEvent{X: d.x + len([]rune(ansi.Strip(lines[row])[:col])), Y: d.y + row, Button: uv.MouseLeft})
-	if c.confirmRemote != nil {
+	if c.confirm != nil {
 		t.Fatal("a click on n no left the question open")
 	}
 }

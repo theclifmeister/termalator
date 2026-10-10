@@ -307,6 +307,18 @@ func (vs *views) sessionGone(id string) {
 	}
 }
 
+// collapse folds project slug in every view's tree: it was deactivated
+// (docs/SPEC.md §4).
+func (vs *views) collapse(slug string) {
+	vs.mu.Lock()
+	defer vs.mu.Unlock()
+	for _, lv := range vs.byName {
+		if lv.v.Expand(slug, false) {
+			vs.changedLocked(lv)
+		}
+	}
+}
+
 // renameProject follows a renamed project in every view's current
 // project and selected rows (tm project rename).
 func (vs *views) renameProject(from, to string) {
@@ -326,7 +338,8 @@ func (vs *views) renameProject(from, to string) {
 		if cur == from {
 			cur = to
 		}
-		if cur != v.Current || sel != v.Selected || side != v.SideSel {
+		moved := v.IsExpanded(from) && v.Expand(from, false) && v.Expand(to, true)
+		if moved || cur != v.Current || sel != v.Selected || side != v.SideSel {
 			v.Current, v.Selected, v.SideSel = cur, sel, side
 			vs.changedLocked(lv)
 		}
@@ -414,6 +427,11 @@ func (vs *views) do(method string, p proto.ViewParams) (view.View, *proto.Error)
 		v.ShowProject(p.Project)
 	case proto.MethodViewSelect:
 		v.Selected = p.Key
+	case proto.MethodViewExpand:
+		if p.Project == "" || len(p.Project) > view.MaxKey {
+			return before, proto.Errorf(proto.ErrBadParams, "no project")
+		}
+		v.Expand(p.Project, p.On)
 	case proto.MethodViewSideSel:
 		if len(p.Key) > view.MaxKey {
 			return before, proto.Errorf(proto.ErrBadParams, "key too long")

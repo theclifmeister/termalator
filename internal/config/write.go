@@ -173,12 +173,13 @@ func validKey(key string) bool {
 
 // ProjectKeys are the settings of a [projects.<slug>] table; all but
 // ProjectOnly are also those of [defaults].
-var ProjectKeys = []string{"start_threads", "yolo", "coordinator_approves", "parallel_threads", "auto_close", "auto_close_days", "auto_resolve", "pr_followup", "pr_poll_seconds", "complete_tasks", "coordinator_remote_control", "auto_clear", "coordinator_merges", "fast_forward_checkout", "thread_agent", "coordinator_agent", "models", "coordinator_model", "paused", "archived",
+var ProjectKeys = []string{"start_threads", "yolo", "coordinator_approves", "parallel_threads", "auto_close", "auto_close_days", "auto_resolve", "pr_followup", "pr_poll_seconds", "complete_tasks", "coordinator_remote_control", "auto_clear", "coordinator_merges", "fast_forward_checkout", "thread_agent", "coordinator_agent", "models", "coordinator_model", "active", "paused", "archived",
 	"archive_tasks_days", "archive_threads_days", "archive_inbox_days", "archive_journal_days"}
 
-// ProjectOnly are a project's own state, never all projects': a paused
-// or archived [defaults] would stop or hide every project.
-var ProjectOnly = []string{"paused", "archived"}
+// ProjectOnly are a project's own state, never all projects': an
+// inactive, paused or archived [defaults] would stop or hide every
+// project.
+var ProjectOnly = []string{"active", "paused", "archived"}
 
 // Set sets key in table ("" is the top level, "keys", "projects.<slug>")
 // to value: a bool, an int or a string.

@@ -148,6 +148,10 @@ type Safety struct {
 	// project's scope and its coordinator agent's models; "" is the
 	// agent's default.
 	CoordinatorModel string `json:"coordinator_model,omitempty"`
+	// Active: the project's coordinator and threads run and are resumed
+	// at a server start; an inactive project's stay dormant, kept to
+	// resume at its activation, and the ticker leaves it alone (§5.1).
+	Active bool `json:"active"`
 	// Paused stops the ticker's prompts (nudges, PR follow-up) and new
 	// threads of the project; state polling goes on (§7.5, §11.2).
 	Paused bool `json:"paused"`
@@ -210,7 +214,7 @@ const LegacyAgent = "claude"
 // [defaults] (all projects) name.
 var Defaults = Safety{StartThreads: StartPropose, Yolo: false, CoordinatorApproves: true,
 	ParallelThreads: 10, AutoClose: CloseMerged, AutoCloseDays: 7, PRFollowup: true, PRPollSeconds: DefaultPRPollSeconds,
-	CompleteTasks: CompleteUser, FastForwardCheckout: true, Merge: MergeCoordinator, Guard: true,
+	CompleteTasks: CompleteUser, FastForwardCheckout: true, Merge: MergeCoordinator, Guard: true, Active: true,
 	ArchiveTasksDays: 30, ArchiveThreadsDays: 30, ArchiveInboxDays: 30, ArchiveJournalDays: 30}
 
 type rawSafety struct {
@@ -234,6 +238,7 @@ type rawSafety struct {
 	CoordAgent     *string   `toml:"coordinator_agent"`
 	Models         *[]string `toml:"models"`
 	CoordModel     *string   `toml:"coordinator_model"`
+	Active         *bool     `toml:"active"`
 	Paused         *bool     `toml:"paused"`
 	Archived       *bool     `toml:"archived"`
 	Merge          *string   `toml:"merge"`
@@ -442,10 +447,10 @@ func (c *Config) AllProjects() (Safety, error) {
 	if c.agent != "" {
 		s.CoordinatorAgent = c.agent
 	}
-	// Pausing or archiving is a project's own state: in [defaults] it
-	// would stop or hide every project.
-	if c.defaults.Paused != nil || c.defaults.Archived != nil {
-		return s, fmt.Errorf("%s: defaults can't set paused or archived; they are each project's own", c.Path)
+	// Activating, pausing or archiving is a project's own state: in
+	// [defaults] it would stop or hide every project.
+	if c.defaults.Active != nil || c.defaults.Paused != nil || c.defaults.Archived != nil {
+		return s, fmt.Errorf("%s: defaults can't set active, paused or archived; they are each project's own", c.Path)
 	}
 	return s, c.defaults.apply(&s, c.Path, "defaults")
 }
@@ -575,6 +580,9 @@ func (r rawSafety) apply(s *Safety, path, table string) error {
 			}
 		}
 		s.CoordinatorModel = *r.CoordModel
+	}
+	if r.Active != nil {
+		s.Active = *r.Active
 	}
 	if r.Paused != nil {
 		s.Paused = *r.Paused

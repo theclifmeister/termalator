@@ -1,7 +1,8 @@
 package project
 
-// A project's lifecycle (docs/SPEC.md §5.1, §11.2): pausing, archiving
-// and deleting it are the human's. Paused and archived are settings in
+// A project's lifecycle (docs/SPEC.md §5.1, §11.2): activating,
+// pausing, archiving and deleting it are the human's. Active, paused and
+// archived are settings in
 // config.toml, out of the coordinator's reach; delete moves the folder
 // to <home>/.trash/.
 
@@ -16,9 +17,10 @@ import (
 	"github.com/theclifmeister/terminatr/internal/home"
 )
 
-// SetFlag sets the project's "paused" or "archived" setting and journals
-// the change (project.pause, project.resume, project.archive,
-// project.unarchive). changed is false when it was already so.
+// SetFlag sets the project's "active", "paused" or "archived" setting
+// and journals the change (project.activate, project.deactivate,
+// project.pause, project.resume, project.archive, project.unarchive).
+// changed is false when it was already so.
 func (p *Project) SetFlag(c caller.Caller, key string, on bool) (changed bool, err error) {
 	cfg, err := config.Load()
 	if err != nil {
@@ -30,6 +32,11 @@ func (p *Project) SetFlag(c caller.Caller, key string, on bool) (changed bool, e
 	}
 	var action string
 	switch key {
+	case "active":
+		if s.Active == on {
+			return false, nil
+		}
+		action = map[bool]string{true: "project.activate", false: "project.deactivate"}[on]
 	case "paused":
 		if s.Paused == on {
 			return false, nil
@@ -51,8 +58,8 @@ func (p *Project) SetFlag(c caller.Caller, key string, on bool) (changed bool, e
 
 // Trash moves the project's folder to <home>/.trash/<slug>-<UTC time>
 // and returns where it went. Its threads' worktrees stay where they are
-// (tm doctor lists them as leftovers), and its archived and paused
-// settings are dropped, so a new project of the slug starts without them.
+// (tm doctor lists them as leftovers), and its active, archived and
+// paused settings are dropped, so a new project of the slug starts without them.
 func (p *Project) Trash(c caller.Caller, now time.Time) (string, error) {
 	trash, err := home.TrashDir()
 	if err != nil {
@@ -76,7 +83,7 @@ func (p *Project) Trash(c caller.Caller, now time.Time) (string, error) {
 	if err := os.Rename(p.Dir, dst); err != nil {
 		return "", err
 	}
-	if err := config.ClearProject(p.Slug, "archived", "paused"); err != nil {
+	if err := config.ClearProject(p.Slug, "active", "archived", "paused"); err != nil {
 		return dst, fmt.Errorf("moved to %s, but its settings stay: %w", dst, err)
 	}
 	return dst, nil

@@ -299,7 +299,7 @@ func (e *Env) threadStart(p *project.Project, o startOpts, asJSON bool) error {
 	if err := checkModel(cfg, agentName, *o.model, safety.Models); err != nil {
 		return err
 	}
-	if err := pausedErr(p, safety); err != nil {
+	if err := parkedErr(p, safety); err != nil {
 		return err
 	}
 	if safety.StartThreads == config.StartPropose && e.Caller.IsAgent() && !*o.approved && !*o.overCap {
@@ -455,9 +455,12 @@ func refusal(err error) error {
 	return err
 }
 
-// pausedErr refuses to start or restart a thread of a paused project
-// (docs/SPEC.md §11.2).
-func pausedErr(p *project.Project, safety config.Safety) error {
+// parkedErr refuses to start, restart or adopt a thread of an inactive
+// or a paused project (docs/SPEC.md §5.1, §11.2).
+func parkedErr(p *project.Project, safety config.Safety) error {
+	if !safety.Active {
+		return &tasks.Error{Code: "project-inactive", Msg: fmt.Sprintf("%s is inactive: no thread starts until the user activates it (tm project activate %s, or space on it in the sidebar)", p.Slug, p.Slug)}
+	}
 	if !safety.Paused {
 		return nil
 	}
@@ -538,7 +541,7 @@ func (e *Env) threadAdopt(p *project.Project, sid string, o adoptOpts, asJSON bo
 	if err != nil {
 		return err
 	}
-	if err := pausedErr(p, safety); err != nil {
+	if err := parkedErr(p, safety); err != nil {
 		return err
 	}
 	if safety.StartThreads == config.StartPropose && e.Caller.IsAgent() && !*o.approved {
@@ -1492,7 +1495,7 @@ func (e *Env) threadRestart(p *project.Project, id string) error {
 	if err != nil {
 		return err
 	}
-	if err := pausedErr(p, safety); err != nil {
+	if err := parkedErr(p, safety); err != nil {
 		return err
 	}
 	if _, live := e.sessionOf(r); live {

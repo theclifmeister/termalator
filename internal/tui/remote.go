@@ -67,7 +67,8 @@ func (c *client) askRemote() {
 		return
 	}
 	if c.focus.info.Role == proto.RoleCoordinator {
-		c.confirmRemote = c.focus
+		p := c.focus
+		c.confirm = func(yes bool) { c.answerRemote(p, yes) }
 		c.openDialog("Remote control", remoteQuestion(c.focus.info))
 	} else {
 		c.flash = "remote control is for coordinators"
@@ -80,7 +81,7 @@ func (c *client) askRemote() {
 // answerRemote turns p's remote control around on yes. c.mu held;
 // released here.
 func (c *client) answerRemote(p *pane, yes bool) {
-	c.confirmRemote = nil
+	c.confirm = nil
 	c.closeMenu()
 	yes = yes && !p.gone
 	on, slug := !p.info.RemoteControl, p.info.Project

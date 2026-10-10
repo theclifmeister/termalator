@@ -24,6 +24,9 @@ const (
 	MethodViewSelect = "view.select"
 	// MethodViewSideSel moves the sidebar's keyboard row to Key.
 	MethodViewSideSel = "view.sidesel"
+	// MethodViewExpand expands (On) or collapses an inactive Project in
+	// the sidebar's tree, without activating it (since protocol 10).
+	MethodViewExpand = "view.expand"
 	// MethodViewSidebar sets the projects sidebar (Sidebar).
 	MethodViewSidebar = "view.sidebar"
 	// MethodViewInfo sets the info panel beside a thread's pane (Info).
@@ -110,4 +113,6 @@ type ViewParams struct {
 	Cols    uint16        `json:"cols,omitempty"`
 	Rows    uint16        `json:"rows,omitempty"`
 	Resize  bool          `json:"resize,omitempty"`
+	// On expands the project (view.expand); false collapses it.
+	On bool `json:"on,omitempty"`
 }

@@ -107,6 +107,11 @@ type Server struct {
 	// same id (a remote control change), instead of ending, with the
 	// remote control state they get.
 	relaunch map[string]bool
+	// sleeping marks sessions stopped because their project was
+	// deactivated: their records go to dormant, to resume at its
+	// activation (active.go).
+	sleeping map[string]bool
+	dormant  map[string]SessionRecord
 	blocked  map[string]bool // sessions whose agent is blocked, for alerts
 	nextID   int
 	stopping bool
@@ -223,6 +228,8 @@ func Run(ctx context.Context, opts Options) error {
 		sessions: map[string]*session.Session{},
 		records:  map[string]SessionRecord{},
 		relaunch: map[string]bool{},
+		sleeping: map[string]bool{},
+		dormant:  map[string]SessionRecord{},
 		blocked:  map[string]bool{},
 		nextID:   1,
 		conns:    map[net.Conn]struct{}{},
@@ -313,9 +320,10 @@ func Run(ctx context.Context, opts Options) error {
 }
 
 // loadPrevious reads the last server's sessions.json: was its shutdown
-// clean, which agent sessions to resume, and which sessions are gone.
-// Shell sessions and agents without a recorded agent session id are never
-// restored (docs/SPEC.md §3.6).
+// clean, which agent sessions to resume, which stay dormant (an inactive
+// or archived project's), and which sessions are gone. Shell sessions
+// and agents without a recorded agent session id are never restored
+// (docs/SPEC.md §3.6, §5.1).
 func (s *Server) loadPrevious() (resume []SessionRecord, lost []restartOutcome) {
 	prev, err := loadState(s.opts.Paths.Sessions)
 	if err != nil {
@@ -334,11 +342,26 @@ func (s *Server) loadPrevious() (resume []SessionRecord, lost []restartOutcome) 
 		s.prevShut = "crash"
 		s.log.Printf("previous server (pid %d) did not shut down cleanly", prev.ServerPID)
 	}
+	boots := projectBoots()
+	for _, r := range prev.Dormant {
+		switch why := dormantGone(r); {
+		case why != "":
+			s.log.Printf("session %s: dormant %s dropped: %s", r.ID, restartLabel(r), why)
+		case boots(r.Project):
+			resume = append(resume, r)
+		default:
+			s.dormant[r.ID] = r
+		}
+	}
 	for _, r := range prev.Sessions {
 		if r.Project != "" {
 			s.prevProject[r.ID] = r.Project
 		}
 		if r.Agent != "" && r.AgentSessionID != "" {
+			if dormantRole(r) && !boots(r.Project) {
+				s.dormant[r.ID] = r
+				continue
+			}
 			resume = append(resume, r)
 			continue
 		}
@@ -367,6 +390,10 @@ func (s *Server) saveLocked(shutdown string) error {
 		st.Sessions = append(st.Sessions, r)
 	}
 	sort.Slice(st.Sessions, func(i, j int) bool { return st.Sessions[i].Created.Before(st.Sessions[j].Created) })
+	for _, r := range s.dormant {
+		st.Dormant = append(st.Dormant, r)
+	}
+	sort.Slice(st.Dormant, func(i, j int) bool { return st.Dormant[i].Created.Before(st.Dormant[j].Created) })
 	return saveState(s.opts.Paths.Sessions, st)
 }
 
@@ -555,6 +582,14 @@ func (s *Server) dispatch(req proto.Request, peerPID int) (any, *proto.Error) {
 			return nil, err
 		}
 		return s.renameProject(p, s.callerOf(peerPID))
+	case proto.MethodProjectActive:
+		var p proto.ProjectActiveParams
+		if err := decodeParams(req.Params, &p); err != nil {
+			return nil, err
+		}
+		res, perr := s.setActive(p, s.callerOf(peerPID))
+		s.kick()
+		return res, perr
 	case proto.MethodPing:
 		return map[string]bool{"pong": true}, nil
 	case proto.MethodServerStatus:
@@ -813,6 +848,9 @@ func (s *Server) startSession(p proto.SessionStartParams) (any, *proto.Error) {
 	default:
 		return nil, proto.Errorf(proto.ErrBadParams, "unknown role %q", role)
 	}
+	if (role == proto.RoleCoordinator || role == proto.RoleThread) && !projectActive(p.Project) {
+		return nil, inactiveErr(p.Project)
+	}
 	if p.Brief != "" && !filepath.IsAbs(p.Brief) {
 		return nil, proto.Errorf(proto.ErrBadParams, "brief must be an absolute path: %q", p.Brief)
 	}
@@ -907,6 +945,10 @@ func (s *Server) sessionExited(sess *session.Session) {
 	s.watch.wake()
 	if s.stopping {
 		return // keep the record: shutdown writes it for resume
+	}
+	if s.sleeping[sess.ID()] {
+		s.sleepLocked(sess.ID())
+		return
 	}
 	if on, ok := s.relaunch[sess.ID()]; ok {
 		delete(s.relaunch, sess.ID())

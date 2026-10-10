@@ -165,9 +165,11 @@ type Source interface {
 	// SetRemote turns remote control of the project's running
 	// coordinator on or off (prefix+r), saying what it did.
 	SetRemote(slug string, on bool) (string, error)
-	// Lifecycle pauses, resumes, archives or deletes a project (verb
-	// "pause", "resume", "archive", "delete"), saying what it did
-	// (lifecycle.go).
+	// Lifecycle activates, deactivates, pauses, resumes, archives or
+	// deletes a project (verb "activate", "deactivate", "pause",
+	// "resume", "archive", "delete"), saying what it did (lifecycle.go).
+	// Deactivating stops the project's coordinator and threads: the
+	// caller asks first.
 	Lifecycle(slug, verb string) (string, error)
 	// Memory is the project's CONTEXT.md, MEMORY.md and memory notes'
 	// titles, for the project popup's Memory tab.
@@ -433,6 +435,8 @@ func journalAll(c caller.Caller, key string, value any) {
 
 func (s *ServerSource) Lifecycle(slug, verb string) (string, error) {
 	switch verb {
+	case "activate", "deactivate":
+		return ActivateProject(s.call, s.Caller, slug, verb == "activate")
 	case "pause", "resume":
 		return PauseProject(s.Caller, slug, verb == "pause")
 	case "archive":
@@ -632,6 +636,15 @@ func catalogNames(cats []Catalog) []string {
 	return out
 }
 
+// inactive says whether the user deactivated the project (§5.1).
+func (p ProjectData) inactive() bool { return p.Safety != nil && !p.Safety.Active }
+
+// InactiveError is opening an inactive project's coordinator: opening
+// never activates (docs/SPEC.md §5.1).
+func InactiveError(slug string) error {
+	return &project.Error{Code: "project-inactive", Msg: slug + " is inactive: activate it first (space on it in the sidebar, or tm project activate " + slug + ")"}
+}
+
 // OpenCoordinator returns the id of the project's coordinator session,
 // starting one (agent, role coordinator, cwd the project folder) if none
 // runs: `tm project open` and the dashboard's project rows. An empty
@@ -657,6 +670,9 @@ func OpenCoordinator(call func(method string, params, result any) error, slug, a
 	cfg, err := config.Load()
 	if err == nil {
 		safety, _ = cfg.Safety(slug)
+	}
+	if !safety.Active {
+		return "", InactiveError(slug)
 	}
 	name, model, err := coordinatorAgent(cfg, agentName, safety)
 	if err != nil {
