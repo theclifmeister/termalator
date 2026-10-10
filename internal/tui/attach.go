@@ -277,11 +277,13 @@ type client struct {
 	prefix  chord
 	pending bool   // the prefix was typed: the next key is a command
 	flash   string // a note for the status bar until the next key
-	// confirmRemote: asking whether to turn this coordinator's remote
-	// control on or off.
-	confirmRemote *pane
+	// confirm answers the yes/no question the dialog asks (whether to
+	// turn a coordinator's remote control around, to deactivate a
+	// project), nil while none asks. It is called with c.mu held and
+	// releases it.
+	confirm func(yes bool)
 	// dialog is the yes/no dialog drawn over the panes while one asks
-	// (confirmRemote), nil otherwise.
+	// (confirm), nil otherwise.
 	dialog   *amenu
 	takeover func(proto.SessionInfo) error
 	// told are the threads' sessions whose coordinator this attach has
@@ -1012,25 +1014,25 @@ func (c *client) key(k uv.Key) {
 	if !c.lock() {
 		return
 	}
-	if !c.pending && c.prefix.match(k) && (c.menu != nil || c.confirmRemote != nil) {
+	if !c.pending && c.prefix.match(k) && (c.menu != nil || c.confirm != nil) {
 		// The prefix works from a menu or a question too: it closes the
 		// menu, or answers no, and starts a command.
 		if c.menu != nil || c.dialog != nil {
 			c.closeMenu()
 		}
-		c.confirmRemote = nil
+		c.confirm = nil
 	}
 	if c.menu != nil {
 		c.menuKey(k)
 		return
 	}
-	if p := c.confirmRemote; p != nil {
+	if answer := c.confirm; answer != nil {
 		// y says yes, n or esc no; no other key answers.
 		switch keyName(k) {
 		case "y":
-			c.answerRemote(p, true)
+			answer(true)
 		case "n", "esc":
-			c.answerRemote(p, false)
+			answer(false)
 		default:
 			c.mu.Unlock()
 		}
@@ -1381,7 +1383,7 @@ func (c *client) mouse(ev uv.Event) {
 		c.selMouse(c.drag.p, m)
 		c.mu.Unlock()
 		return
-	case press && c.confirmRemote != nil:
+	case press && c.confirm != nil:
 		// The dialog's buttons answer; a click outside it says no, as
 		// a click outside a popup closes it.
 		d := c.dialog
@@ -1395,9 +1397,9 @@ func (c *client) mouse(ev uv.Event) {
 		}
 		switch {
 		case key == "y":
-			c.answerRemote(c.confirmRemote, true)
+			c.confirm(true)
 		case key == "n", key == "esc", d == nil, m.X < d.x || m.X >= d.x+w || m.Y < d.y || m.Y >= d.y+h:
-			c.answerRemote(c.confirmRemote, false)
+			c.confirm(false)
 		default:
 			c.mu.Unlock()
 		}

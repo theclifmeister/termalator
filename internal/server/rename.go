@@ -4,11 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/theclifmeister/terminatr/internal/agent"
 	"github.com/theclifmeister/terminatr/internal/caller"
 	"github.com/theclifmeister/terminatr/internal/config"
+	"github.com/theclifmeister/terminatr/internal/home"
+	"github.com/theclifmeister/terminatr/internal/project"
 	"github.com/theclifmeister/terminatr/internal/proto"
 	"github.com/theclifmeister/terminatr/internal/rename"
 	"github.com/theclifmeister/terminatr/internal/session"
@@ -27,6 +30,7 @@ func (s *Server) renameProject(p proto.ProjectRenameParams, c caller.Caller) (an
 	if err := rename.Check(o); err != nil {
 		return nil, codeErr(err)
 	}
+	oldDir, _ := project.Dir(p.From)
 	var busy []string
 	var coord *session.Session
 	var rec SessionRecord
@@ -76,6 +80,9 @@ func (s *Server) renameProject(p proto.ProjectRenameParams, c caller.Caller) (an
 		return nil, codeErr(err)
 	}
 	s.views.renameProject(p.From, p.To)
+	if root, err := home.WorktreesDir(); err == nil {
+		s.renameDormant(p.From, p.To, oldDir, res.Dir, filepath.Join(root, p.From), res.Worktrees)
+	}
 	if s.tick != nil {
 		s.tick.Kick()
 	}

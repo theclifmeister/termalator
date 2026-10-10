@@ -391,9 +391,9 @@ func (t *Ticker) Sweep() {
 		if err != nil {
 			safety = config.Defaults
 		}
-		if safety.Archived {
+		if safety.Archived || !safety.Active {
 			// No ticker work at all (§5.1); what it knew is kept for an
-			// unarchive.
+			// unarchive or an activation.
 			if recs, err := thread.List(p); err == nil {
 				for _, r := range recs {
 					seen[p.Slug+"/"+r.ID] = true

@@ -228,7 +228,7 @@ func projectRow(screen, slug string) int {
 		if len(r) < 4 || r[1] != '■' {
 			continue
 		}
-		if f := strings.Fields(string(r[3:min(len(r), sideDefault-1)])); len(f) > 0 && strings.TrimSuffix(f[0], "⌁") == slug {
+		if f := strings.Fields(string(r[3:min(len(r), sideDefault-1)])); len(f) > 0 && strings.TrimRight(f[0], "⌁∥⊘") == slug {
 			return i
 		}
 	}

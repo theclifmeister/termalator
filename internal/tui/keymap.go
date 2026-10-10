@@ -130,6 +130,7 @@ func symbolLines(w int) []string {
 		{i.hint, "in the sidebar: something in this project needs you"},
 		{i.remote, "remote control is on for this coordinator"},
 		{i.paused, "the project is paused"},
+		{i.inactive, "the project is inactive: its coordinator and threads don't run"},
 		{i.todoDone + " " + i.todoNow + " " + i.todoOpen, "a step done, under way, to do"},
 		{i.current, "the step under way"},
 		{strings.Repeat(i.barOn, 2) + strings.Repeat(i.barOff, 3), "progress, always beside its count (2/5)"},

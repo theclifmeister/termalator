@@ -136,7 +136,7 @@ func TestAttachPrefixQuits(t *testing.T) {
 			c.focus = &pane{info: proto.SessionInfo{ID: "s-1", Role: proto.RoleCoordinator, Project: "demo"}}
 			c.v = view.View{Mode: view.ModeLayout, Focus: "s-1"}
 			open(c)
-			if name == "the sidebar" && c.kb != areaSide || name == "the menu" && c.menu == nil || name == "a question" && c.confirmRemote == nil {
+			if name == "the sidebar" && c.kb != areaSide || name == "the menu" && c.menu == nil || name == "a question" && c.confirm == nil {
 				t.Fatalf("bare %v, %s: didn't open", bare, name)
 			}
 			c.key(pk)

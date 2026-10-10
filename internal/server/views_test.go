@@ -319,8 +319,17 @@ func TestViewsTree(t *testing.T) {
 	if _, err := vs.do(proto.MethodViewProject, proto.ViewParams{Client: a.id}); err == nil {
 		t.Fatal("view.project without a project")
 	}
-	if _, err := vs.do("view.expand", proto.ViewParams{Client: a.id, Project: "p"}); err == nil {
-		t.Fatal("view.expand is gone, yet answered")
+	// view.expand expands an inactive project on every console, and
+	// collapse (its deactivation) folds it in every view.
+	if v = mustDo(t, vs, proto.MethodViewExpand, proto.ViewParams{Client: a.id, Project: "p", On: true}); !v.IsExpanded("p") || !woken(b) {
+		t.Fatalf("expand: %+v", v)
+	}
+	if _, err := vs.do(proto.MethodViewExpand, proto.ViewParams{Client: a.id}); err == nil {
+		t.Fatal("view.expand without a project")
+	}
+	vs.collapse("p")
+	if v, _ := vs.get(view.Main); v.IsExpanded("p") || !woken(b) {
+		t.Fatalf("collapse: %+v", v)
 	}
 	own, name := join(t, vs, proto.ViewSubscribeParams{Own: true, Cols: 120, Rows: 30})
 	mustDo(t, vs, proto.MethodViewSideSel, proto.ViewParams{Client: own.id, Key: "p:z"})
